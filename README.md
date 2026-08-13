@@ -45,12 +45,12 @@ Prerequisites:
 
 - Windows 10/11.
 - Node.js and npm.
-- Codex CLI on `PATH`: `npm install -g @openai/codex`.
+- Exact supported Codex CLI: `codex-cli 0.144.6`, resolved as described below.
 - Rust toolchain via `rustup` for building the Tauri app.
 - Microsoft C++ Build Tools with the Desktop development with C++ workload.
 - Microsoft Edge WebView2 Runtime if it is not already installed in the environment.
 
-`cargo` and `rustc` are build-time requirements. They are not part of the intended runtime path for rewriting text; at runtime the app needs the bundled Tauri app and `codex` on `PATH`.
+`cargo` and `rustc` are build-time requirements. They are not part of the intended runtime path for rewriting text; at runtime the app needs the bundled Tauri app and the exact supported Codex CLI. The runtime resolver uses a non-empty `CODEX_PENCIL_CODEX_BIN` first, then the first `codex.cmd` on `PATH`, and finally the first `codex.exe` on `PATH`. A configured override is authoritative and is not silently bypassed.
 
 If Rust was just installed and `where cargo` or `where rustc` still fails, open a new terminal or add `%USERPROFILE%\.cargo\bin` to the current session PATH.
 
@@ -125,7 +125,7 @@ The helper prints Node/npm/Codex/Rust tool versions, runs the frontend checks, a
 - Rewrite modes: `grammar`, `natural`, `concise`, `polite`, `translate_en`, `translate_ko`.
 - The Rust backend starts `codex app-server` with piped stdin/stdout/stderr. The default app-server transport is stdio, which is local to the child process.
 - The app must not be changed to launch Codex app-server with a websocket, TCP listener, or non-local network transport.
-- Rewrites use ephemeral Codex threads with `approvalPolicy: "never"` and a strict JSON schema for `{ replacement, summary, edits, confidence }`.
+- Rewrites use ephemeral Codex threads with `approvalPolicy: "never"` and a strict JSON schema requiring `{ replacement, changed, summary, confidence }`. Optional `edits` remain available for the existing review UI, and `additionalProperties` is `false`.
 - Applying a rewrite writes the replacement to the clipboard, sends `Ctrl+V`, and restores the previous text clipboard when available and enabled.
 - Settings are stored locally in the Tauri app config directory as `settings.json`.
 
@@ -134,9 +134,10 @@ The helper prints Node/npm/Codex/Rust tool versions, runs the frontend checks, a
 Codex Pencil uses Codex managed auth through the local app-server protocol:
 
 1. The Rust backend starts `codex app-server`.
-2. It initializes the protocol with `initialize` and `experimentalApi: true`.
-3. It reads auth state with `account/read`.
-4. Device-code login starts with:
+2. It sends one `initialize` request and awaits its response.
+3. It sends an id-less `initialized` notification and only then marks the connection ready. Experimental API capability is not enabled.
+4. It reads auth state with `account/read`.
+5. Device-code login starts with:
 
 ```json
 {
@@ -148,9 +149,22 @@ Codex Pencil uses Codex managed auth through the local app-server protocol:
 }
 ```
 
-5. Codex returns `loginId`, `verificationUrl`, and `userCode`.
-6. The UI displays `userCode` and provides a button to open `verificationUrl`.
-7. The app listens for `account/login/completed` and `account/updated` notifications, and also polls `account/read` while waiting.
+6. Codex returns `loginId`, `verificationUrl`, and `userCode`.
+7. The UI displays `userCode` and provides a button to open `verificationUrl`.
+8. The app listens for `account/login/completed` and `account/updated` notifications, and also polls `account/read` while waiting.
+
+Requests are rejected locally until the handshake completes. A closed stdout stream, unwritable stdin, malformed protocol JSON, or child-process exit invalidates the cached client and fails pending requests. The next user request performs at most one clean reconnect; an in-flight request is not silently replayed.
+
+## Codex App Server Protocol Authority
+
+- Supported version: `codex-cli 0.144.6`.
+- Retained schema bundle: `src-tauri/protocol/codex-cli-0.144.6/`.
+- Schema generation: `& $resolvedCodex app-server generate-json-schema --out src-tauri/protocol/codex-cli-0.144.6`.
+- Experimental fields were not requested; `--experimental` was not passed.
+- Generated JSON files: 267.
+- Canonical bundle SHA-256: `c954593823626b5194b7f687c27d542eb87fcfa63e5e11af3ca95f9b6c39c6e8`.
+
+The fingerprint algorithm and executable resolution policy are recorded in `src-tauri/protocol/codex-cli-0.144.6/PROVENANCE.md`. Regenerate into a new versioned directory and update the resolver pin, tests, README, and fingerprint together when intentionally supporting a different Codex version.
 
 The app does not implement custom OAuth, does not store or display tokens, does not use an OpenAI API key, and does not expose a network listener.
 
@@ -165,7 +179,7 @@ The app does not implement custom OAuth, does not store or display tokens, does 
 
 ## Second-Pass Verification Notes
 
-- `codex --version`: `codex-cli 0.141.0`.
+- Supported and verified `codex --version`: `codex-cli 0.144.6`.
 - `rustc` and `cargo` were installed at `%USERPROFILE%\.cargo\bin`, but the original shell PATH did not include that directory.
 - With `%USERPROFILE%\.cargo\bin` temporarily prepended to PATH, `npm run build` completed and produced MSI/NSIS bundles.
 - With the same temporary PATH, `cargo test` passed all Rust tests.

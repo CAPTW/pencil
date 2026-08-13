@@ -1,3 +1,7 @@
+use crate::codex_binary::{
+    is_supported_codex_version, read_codex_version, resolve_codex_executable,
+    SUPPORTED_CODEX_VERSION,
+};
 use serde::Serialize;
 use std::process::Command;
 
@@ -22,10 +26,48 @@ pub struct CommandCheck {
 pub fn check() -> PrerequisiteReport {
     PrerequisiteReport {
         commands: vec![
-            check_command("codex", true, false),
+            check_codex(),
             check_command("cargo", false, true),
             check_command("rustc", false, true),
         ],
+    }
+}
+
+fn check_codex() -> CommandCheck {
+    let Some(path) = resolve_codex_executable() else {
+        return CommandCheck {
+            name: "codex".to_string(),
+            available: false,
+            version: None,
+            path: None,
+            required_at_runtime: true,
+            required_for_build: false,
+            error: Some(
+                "Codex CLI must be available as `codex.cmd` or `codex.exe`, or through `CODEX_PENCIL_CODEX_BIN`."
+                    .to_string(),
+            ),
+        };
+    };
+
+    let version_result = read_codex_version(&path);
+    let version = version_result.as_ref().ok().cloned();
+    let available = version.as_deref().is_some_and(is_supported_codex_version);
+    let error = match version_result {
+        Ok(version) if !is_supported_codex_version(&version) => Some(format!(
+            "Codex Pencil supports exactly `{SUPPORTED_CODEX_VERSION}`, but `{version}` was resolved."
+        )),
+        Ok(_) => None,
+        Err(error) => Some(error),
+    };
+
+    CommandCheck {
+        name: "codex".to_string(),
+        available,
+        version,
+        path: Some(path.to_string_lossy().into_owned()),
+        required_at_runtime: true,
+        required_for_build: false,
+        error,
     }
 }
 
