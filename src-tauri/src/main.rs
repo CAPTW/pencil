@@ -1,12 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod clipboard;
+mod codex_binary;
 mod codex_client;
 mod prerequisites;
 mod settings;
 
 use clipboard::CursorPoint;
-use codex_client::{AuthStatus, CodexClient, DeviceLogin, RewriteResult};
+use codex_client::{AuthStatus, CodexClient, CodexClientCache, DeviceLogin, RewriteResult};
 use prerequisites::PrerequisiteReport;
 use serde::Serialize;
 use settings::{AppSettings, RewriteMode};
@@ -20,7 +21,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 struct AppState {
-    codex: Mutex<Option<Arc<CodexClient>>>,
+    codex: CodexClientCache,
     capture: Mutex<Option<CapturedSelection>>,
     startup_notices: Mutex<Vec<String>>,
 }
@@ -28,7 +29,7 @@ struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            codex: Mutex::new(None),
+            codex: CodexClientCache::default(),
             capture: Mutex::new(None),
             startup_notices: Mutex::new(Vec::new()),
         }
@@ -161,14 +162,7 @@ async fn dismiss_window(app: AppHandle, state: State<'_, AppState>) -> Result<()
 }
 
 async fn ensure_codex(state: &State<'_, AppState>) -> Result<Arc<CodexClient>, String> {
-    let mut guard = state.codex.lock().await;
-    if let Some(client) = guard.as_ref() {
-        return Ok(client.clone());
-    }
-
-    let client = Arc::new(CodexClient::connect().await?);
-    *guard = Some(client.clone());
-    Ok(client)
+    state.codex.get().await
 }
 
 fn main() {

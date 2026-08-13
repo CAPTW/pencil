@@ -74,6 +74,7 @@ type RewriteEdit = {
 
 type RewriteResult = {
   replacement: string;
+  changed: boolean;
   summary: string;
   edits: RewriteEdit[];
   confidence: number;

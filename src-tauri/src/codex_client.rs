@@ -1,33 +1,169 @@
-use crate::settings::RewriteMode;
+use crate::{codex_binary::resolve_supported_codex, settings::RewriteMode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
-    env,
+    fmt,
+    future::Future,
     process::Stdio,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU64, AtomicU8, Ordering},
         Arc, Mutex as StdMutex,
     },
     time::Duration,
 };
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader},
     process::Command,
     sync::{broadcast, mpsc, oneshot, Mutex},
     time::timeout,
 };
 
+const CONNECTION_NEW: u8 = 0;
+const CONNECTION_INITIALIZING: u8 = 1;
+const CONNECTION_READY: u8 = 2;
+const CONNECTION_DEAD: u8 = 3;
+const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+
+type PendingSender = oneshot::Sender<Result<Value, ProtocolError>>;
+type PendingRequests = Arc<Mutex<HashMap<u64, PendingSender>>>;
+
+struct OutgoingMessage {
+    value: Value,
+    written: Option<oneshot::Sender<Result<(), ProtocolError>>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ProtocolError {
+    NotReady,
+    AlreadyInitialized,
+    Timeout(String),
+    WriteTimeout,
+    InvalidJson,
+    StdoutClosed,
+    StdinClosed,
+    ChildExited,
+    ChildWaitFailed,
+    ChannelClosed,
+    SerializationFailed,
+    RequestIdExhausted,
+    Remote(String),
+}
+
+impl fmt::Display for ProtocolError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotReady => write!(formatter, "Codex app-server connection is not initialized."),
+            Self::AlreadyInitialized => write!(
+                formatter,
+                "Codex app-server connection is already initialized."
+            ),
+            Self::Timeout(method) => write!(formatter, "Codex request timed out: {method}"),
+            Self::WriteTimeout => write!(formatter, "Timed out writing to Codex app-server."),
+            Self::InvalidJson => write!(
+                formatter,
+                "Codex app-server returned invalid protocol JSON."
+            ),
+            Self::StdoutClosed => write!(formatter, "Codex app-server closed stdout unexpectedly."),
+            Self::StdinClosed => write!(formatter, "Codex app-server stdin is no longer writable."),
+            Self::ChildExited => write!(formatter, "Codex app-server exited unexpectedly."),
+            Self::ChildWaitFailed => {
+                write!(formatter, "Could not monitor the Codex app-server process.")
+            }
+            Self::ChannelClosed => write!(formatter, "Codex app-server request channel is closed."),
+            Self::SerializationFailed => {
+                write!(formatter, "Could not serialize a Codex protocol message.")
+            }
+            Self::RequestIdExhausted => write!(formatter, "Codex request id counter exhausted."),
+            Self::Remote(message) => write!(
+                formatter,
+                "Codex app-server rejected the request: {message}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ProtocolError {}
+
+#[derive(Clone)]
+struct TransportFailure {
+    pending: PendingRequests,
+    notifications: broadcast::Sender<Value>,
+    state: Arc<AtomicU8>,
+}
+
+impl TransportFailure {
+    async fn fail(&self, error: ProtocolError) {
+        if self.state.swap(CONNECTION_DEAD, Ordering::SeqCst) == CONNECTION_DEAD {
+            return;
+        }
+
+        fail_all_pending(&self.pending, error.clone()).await;
+        let _ = self.notifications.send(json!({
+            "method": "codex/process/exited",
+            "params": {
+                "message": error.to_string()
+            }
+        }));
+    }
+}
+
 pub struct CodexClient {
-    tx: mpsc::Sender<Value>,
-    pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>,
+    tx: mpsc::Sender<OutgoingMessage>,
+    pending: PendingRequests,
     notifications: broadcast::Sender<Value>,
     next_id: AtomicU64,
+    state: Arc<AtomicU8>,
+    failure: TransportFailure,
     _shutdown: ChildShutdown,
+}
+
+pub struct CodexClientCache {
+    client: Mutex<Option<Arc<CodexClient>>>,
+}
+
+impl Default for CodexClientCache {
+    fn default() -> Self {
+        Self {
+            client: Mutex::new(None),
+        }
+    }
+}
+
+impl CodexClientCache {
+    pub async fn get(&self) -> Result<Arc<CodexClient>, String> {
+        self.get_or_connect_with(CodexClient::connect).await
+    }
+
+    async fn get_or_connect_with<F, Fut>(&self, connect: F) -> Result<Arc<CodexClient>, String>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<CodexClient, String>>,
+    {
+        let mut guard = self.client.lock().await;
+        if let Some(client) = guard.as_ref() {
+            if client.is_healthy() {
+                return Ok(client.clone());
+            }
+        }
+
+        *guard = None;
+        let client = Arc::new(connect().await?);
+        *guard = Some(client.clone());
+        Ok(client)
+    }
 }
 
 struct ChildShutdown {
     tx: StdMutex<Option<oneshot::Sender<()>>>,
+}
+
+impl ChildShutdown {
+    fn detached() -> Self {
+        Self {
+            tx: StdMutex::new(None),
+        }
+    }
 }
 
 impl Drop for ChildShutdown {
@@ -58,7 +194,7 @@ pub struct DeviceLogin {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct RewriteEdit {
     pub before: String,
     pub after: String,
@@ -69,6 +205,7 @@ pub struct RewriteEdit {
 #[serde(rename_all = "camelCase")]
 pub struct RewriteResult {
     pub replacement: String,
+    pub changed: bool,
     pub summary: String,
     pub edits: Vec<RewriteEdit>,
     pub confidence: f64,
@@ -77,7 +214,8 @@ pub struct RewriteResult {
 
 impl CodexClient {
     pub async fn connect() -> Result<Self, String> {
-        let mut command = codex_command().ok_or_else(missing_codex_message)?;
+        let resolved = resolve_supported_codex()?;
+        let mut command = Command::new(&resolved);
 
         // Keep Codex app-server on stdio only. The default transport for
         // `codex app-server` is stdio://, which is local to this child process.
@@ -107,46 +245,63 @@ impl CodexClient {
             .take()
             .ok_or_else(|| "Could not open Codex app-server stderr.".to_string())?;
 
-        let (tx, mut rx) = mpsc::channel::<Value>(64);
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let (client, failure) = Self::from_io(
+            stdout,
+            stdin,
+            ChildShutdown {
+                tx: StdMutex::new(Some(shutdown_tx)),
+            },
+        );
+        spawn_stderr_drain(stderr);
+        spawn_child_watcher(child, shutdown_rx, failure);
+
+        client
+            .perform_handshake()
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(client)
+    }
+
+    fn from_io<R, W>(stdout: R, stdin: W, shutdown: ChildShutdown) -> (Self, TransportFailure)
+    where
+        R: AsyncRead + Unpin + Send + 'static,
+        W: AsyncWrite + Unpin + Send + 'static,
+    {
+        let (tx, rx) = mpsc::channel::<OutgoingMessage>(64);
         let (notifications, _) = broadcast::channel::<Value>(256);
         let pending = Arc::new(Mutex::new(HashMap::new()));
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let state = Arc::new(AtomicU8::new(CONNECTION_NEW));
+        let failure = TransportFailure {
+            pending: pending.clone(),
+            notifications: notifications.clone(),
+            state: state.clone(),
+        };
 
-        tokio::spawn(async move {
-            let mut stdin = stdin;
-            while let Some(message) = rx.recv().await {
-                let Ok(line) = serde_json::to_string(&message) else {
-                    continue;
-                };
-
-                if stdin.write_all(line.as_bytes()).await.is_err() {
-                    break;
-                }
-                if stdin.write_all(b"\n").await.is_err() {
-                    break;
-                }
-                if stdin.flush().await.is_err() {
-                    break;
-                }
-            }
-        });
-
-        spawn_stdout_reader(stdout, pending.clone(), notifications.clone(), tx.clone());
-        spawn_stderr_drain(stderr);
-        spawn_child_watcher(child, shutdown_rx, pending.clone(), notifications.clone());
+        spawn_stdin_writer(stdin, rx, failure.clone());
+        spawn_stdout_reader(
+            stdout,
+            pending.clone(),
+            notifications.clone(),
+            tx.clone(),
+            failure.clone(),
+        );
 
         let client = Self {
             tx,
             pending,
             notifications,
             next_id: AtomicU64::new(1),
-            _shutdown: ChildShutdown {
-                tx: StdMutex::new(Some(shutdown_tx)),
-            },
+            state,
+            failure: failure.clone(),
+            _shutdown: shutdown,
         };
 
-        client.initialize().await?;
-        Ok(client)
+        (client, failure)
+    }
+
+    pub fn is_healthy(&self) -> bool {
+        self.state.load(Ordering::SeqCst) == CONNECTION_READY
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<Value> {
@@ -164,17 +319,21 @@ impl CodexClient {
             )
             .await?;
 
-        let account = result.get("account");
+        let account = result
+            .get("account")
+            .ok_or_else(|| "Codex account response was missing `account`.".to_string())?;
         let requires_openai_auth = result
             .get("requiresOpenaiAuth")
             .and_then(Value::as_bool)
-            .unwrap_or(false);
+            .ok_or_else(|| {
+                "Codex account response was missing `requiresOpenaiAuth`.".to_string()
+            })?;
 
         Ok(AuthStatus {
-            logged_in: account.is_some_and(|value| !value.is_null()),
-            account_label: account.and_then(account_label),
+            logged_in: !account.is_null(),
+            account_label: account_label(account),
             auth_mode: account
-                .and_then(|value| value.get("type"))
+                .get("type")
                 .and_then(Value::as_str)
                 .map(ToOwned::to_owned),
             requires_openai_auth,
@@ -185,9 +344,7 @@ impl CodexClient {
         let result = self
             .request(
                 "account/login/start",
-                json!({
-                    "type": "chatgptDeviceCode"
-                }),
+                device_login_params(),
                 Duration::from_secs(30),
             )
             .await?;
@@ -204,7 +361,7 @@ impl CodexClient {
     }
 
     pub async fn cancel_login(&self, login_id: String) -> Result<(), String> {
-        let _ = self
+        let result = self
             .request(
                 "account/login/cancel",
                 json!({
@@ -213,10 +370,17 @@ impl CodexClient {
                 Duration::from_secs(15),
             )
             .await?;
-        Ok(())
+        match result.get("status").and_then(Value::as_str) {
+            Some("canceled" | "notFound") => Ok(()),
+            _ => Err("Codex returned an invalid login-cancellation response.".to_string()),
+        }
     }
 
-    pub async fn rewrite(&self, selected_text: &str, mode: RewriteMode) -> Result<RewriteResult, String> {
+    pub async fn rewrite(
+        &self,
+        selected_text: &str,
+        mode: RewriteMode,
+    ) -> Result<RewriteResult, String> {
         let thread = self
             .request(
                 "thread/start",
@@ -241,25 +405,11 @@ impl CodexClient {
             .to_string();
 
         let mut notifications = self.notifications.subscribe();
+        let prompt = rewrite_prompt(selected_text, mode);
         let turn = self
             .request(
                 "turn/start",
-                json!({
-                    "threadId": thread_id,
-                    "input": [
-                        {
-                            "type": "text",
-                            "text": rewrite_prompt(selected_text, mode),
-                            "text_elements": []
-                        }
-                    ],
-                    "approvalPolicy": "never",
-                    "outputSchema": rewrite_output_schema(),
-                    "responsesapiClientMetadata": {
-                        "codex_pencil_action": "rewrite",
-                        "codex_pencil_mode": mode.label()
-                    }
-                }),
+                rewrite_turn_params(&thread_id, &prompt),
                 Duration::from_secs(30),
             )
             .await?;
@@ -271,37 +421,91 @@ impl CodexClient {
             .ok_or_else(|| "Codex did not return a turn id.".to_string())?
             .to_string();
 
-        let final_text = self.wait_for_turn(&mut notifications, &thread_id, &turn_id).await?;
+        let final_text = self
+            .wait_for_turn(&mut notifications, &thread_id, &turn_id)
+            .await?;
         parse_rewrite_result(&final_text, mode)
     }
 
-    async fn initialize(&self) -> Result<(), String> {
-        let _ = self
-            .request(
+    async fn perform_handshake(&self) -> Result<(), ProtocolError> {
+        match self.state.compare_exchange(
+            CONNECTION_NEW,
+            CONNECTION_INITIALIZING,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(_) => {}
+            Err(CONNECTION_DEAD) => return Err(ProtocolError::NotReady),
+            Err(_) => return Err(ProtocolError::AlreadyInitialized),
+        }
+
+        let handshake = async {
+            self.request_protocol_inner(
                 "initialize",
                 json!({
                     "clientInfo": {
                         "name": "codex-pencil",
                         "title": "Codex Pencil",
                         "version": env!("CARGO_PKG_VERSION")
-                    },
-                    "capabilities": {
-                        "experimentalApi": true,
-                        "requestAttestation": false,
-                        "optOutNotificationMethods": [
-                            "command/exec/outputDelta",
-                            "process/outputDelta",
-                            "item/commandExecution/outputDelta"
-                        ]
                     }
                 }),
                 Duration::from_secs(30),
+                false,
             )
             .await?;
-        Ok(())
+
+            self.send_notification("initialized", json!({})).await
+        }
+        .await;
+
+        match handshake {
+            Ok(()) => self
+                .state
+                .compare_exchange(
+                    CONNECTION_INITIALIZING,
+                    CONNECTION_READY,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                )
+                .map(|_| ())
+                .map_err(|_| ProtocolError::ChannelClosed),
+            Err(error) => {
+                self.failure.fail(error.clone()).await;
+                Err(error)
+            }
+        }
     }
 
     async fn request(&self, method: &str, params: Value, wait: Duration) -> Result<Value, String> {
+        self.request_protocol(method, params, wait)
+            .await
+            .map_err(|error| error.to_string())
+    }
+
+    async fn request_protocol(
+        &self,
+        method: &str,
+        params: Value,
+        wait: Duration,
+    ) -> Result<Value, ProtocolError> {
+        self.request_protocol_inner(method, params, wait, true)
+            .await
+    }
+
+    async fn request_protocol_inner(
+        &self,
+        method: &str,
+        params: Value,
+        wait: Duration,
+        require_ready: bool,
+    ) -> Result<Value, ProtocolError> {
+        let state = self.state.load(Ordering::SeqCst);
+        if (require_ready && state != CONNECTION_READY)
+            || (!require_ready && state != CONNECTION_INITIALIZING)
+        {
+            return Err(ProtocolError::NotReady);
+        }
+
         let id = self.next_request_id()?;
         let (tx, rx) = oneshot::channel();
 
@@ -313,25 +517,65 @@ impl CodexClient {
             "params": params
         });
 
-        if self.tx.send(message).await.is_err() {
+        if let Err(error) = self.send_outgoing(message).await {
             self.pending.lock().await.remove(&id);
-            return Err("Codex app-server is not accepting requests. It may have exited unexpectedly.".to_string());
+            return Err(error);
         }
 
         match timeout(wait, rx).await {
             Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err("Codex app-server closed the request channel.".to_string()),
+            Ok(Err(_)) => Err(ProtocolError::ChannelClosed),
             Err(_) => {
                 self.pending.lock().await.remove(&id);
-                Err(format!("Codex request timed out: {method}"))
+                Err(ProtocolError::Timeout(method.to_string()))
             }
         }
     }
 
-    fn next_request_id(&self) -> Result<u64, String> {
+    async fn send_notification(&self, method: &str, params: Value) -> Result<(), ProtocolError> {
+        self.send_outgoing(json!({
+            "method": method,
+            "params": params
+        }))
+        .await
+    }
+
+    async fn send_outgoing(&self, value: Value) -> Result<(), ProtocolError> {
+        let (written_tx, written_rx) = oneshot::channel();
+        let outgoing = OutgoingMessage {
+            value,
+            written: Some(written_tx),
+        };
+
+        match timeout(WRITE_TIMEOUT, self.tx.send(outgoing)).await {
+            Ok(Ok(())) => {}
+            Ok(Err(_)) => {
+                self.failure.fail(ProtocolError::ChannelClosed).await;
+                return Err(ProtocolError::ChannelClosed);
+            }
+            Err(_) => {
+                self.failure.fail(ProtocolError::WriteTimeout).await;
+                return Err(ProtocolError::WriteTimeout);
+            }
+        }
+
+        match timeout(WRITE_TIMEOUT, written_rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => {
+                self.failure.fail(ProtocolError::ChannelClosed).await;
+                Err(ProtocolError::ChannelClosed)
+            }
+            Err(_) => {
+                self.failure.fail(ProtocolError::WriteTimeout).await;
+                Err(ProtocolError::WriteTimeout)
+            }
+        }
+    }
+
+    fn next_request_id(&self) -> Result<u64, ProtocolError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         if id == u64::MAX {
-            return Err("Codex request id counter exhausted.".to_string());
+            return Err(ProtocolError::RequestIdExhausted);
         }
         Ok(id)
     }
@@ -350,7 +594,10 @@ impl CodexClient {
                     .await
                     .map_err(|error| format!("Codex notification stream closed: {error}"))?;
 
-                let method = notification.get("method").and_then(Value::as_str).unwrap_or_default();
+                let method = notification
+                    .get("method")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 let params = notification.get("params").unwrap_or(&Value::Null);
 
                 if method == "codex/process/exited" {
@@ -375,7 +622,9 @@ impl CodexClient {
                     }
                     "item/completed" => {
                         if params.get("turnId").and_then(Value::as_str) == Some(turn_id) {
-                            if let Some(text) = agent_message_text(params.get("item").unwrap_or(&Value::Null)) {
+                            if let Some(text) =
+                                agent_message_text(params.get("item").unwrap_or(&Value::Null))
+                            {
                                 latest_agent_message = text;
                             }
                         }
@@ -426,25 +675,66 @@ impl CodexClient {
     }
 }
 
-fn spawn_stdout_reader(
-    stdout: tokio::process::ChildStdout,
-    pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>,
+fn spawn_stdin_writer<W>(
+    mut stdin: W,
+    mut rx: mpsc::Receiver<OutgoingMessage>,
+    failure: TransportFailure,
+) where
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+    tokio::spawn(async move {
+        while let Some(outgoing) = rx.recv().await {
+            let mut line = match serde_json::to_vec(&outgoing.value) {
+                Ok(line) => line,
+                Err(_) => {
+                    if let Some(written) = outgoing.written {
+                        let _ = written.send(Err(ProtocolError::SerializationFailed));
+                    }
+                    failure.fail(ProtocolError::SerializationFailed).await;
+                    return;
+                }
+            };
+            line.push(b'\n');
+
+            if stdin.write_all(&line).await.is_err() || stdin.flush().await.is_err() {
+                if let Some(written) = outgoing.written {
+                    let _ = written.send(Err(ProtocolError::StdinClosed));
+                }
+                failure.fail(ProtocolError::StdinClosed).await;
+                return;
+            }
+
+            if let Some(written) = outgoing.written {
+                let _ = written.send(Ok(()));
+            }
+        }
+    });
+}
+
+fn spawn_stdout_reader<R>(
+    stdout: R,
+    pending: PendingRequests,
     notifications: broadcast::Sender<Value>,
-    tx: mpsc::Sender<Value>,
-) {
+    tx: mpsc::Sender<OutgoingMessage>,
+    failure: TransportFailure,
+) where
+    R: AsyncRead + Unpin + Send + 'static,
+{
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
+        loop {
+            let line = match lines.next_line().await {
+                Ok(Some(line)) => line,
+                Ok(None) | Err(_) => {
+                    failure.fail(ProtocolError::StdoutClosed).await;
+                    return;
+                }
+            };
+
             let message = match serde_json::from_str::<Value>(&line) {
                 Ok(message) => message,
                 Err(_) => {
-                    fail_all_pending(&pending, "Codex app-server returned invalid protocol JSON.").await;
-                    let _ = notifications.send(json!({
-                        "method": "codex/process/exited",
-                        "params": {
-                            "message": "Codex app-server returned invalid protocol JSON."
-                        }
-                    }));
+                    failure.fail(ProtocolError::InvalidJson).await;
                     return;
                 }
             };
@@ -457,7 +747,12 @@ fn spawn_stdout_reader(
                         "message": "Codex Pencil does not support server-initiated requests."
                     }
                 });
-                let _ = tx.send(response).await;
+                let _ = tx
+                    .send(OutgoingMessage {
+                        value: response,
+                        written: None,
+                    })
+                    .await;
                 continue;
             }
 
@@ -465,7 +760,7 @@ fn spawn_stdout_reader(
                 let sender = pending.lock().await.remove(&id);
                 if let Some(sender) = sender {
                     let result = if let Some(error) = message.get("error") {
-                        Err(error_message(error))
+                        Err(ProtocolError::Remote(error_message(error)))
                     } else {
                         Ok(message.get("result").cloned().unwrap_or(Value::Null))
                     };
@@ -478,14 +773,6 @@ fn spawn_stdout_reader(
                 let _ = notifications.send(message);
             }
         }
-
-        fail_all_pending(&pending, "Codex app-server exited unexpectedly.").await;
-        let _ = notifications.send(json!({
-            "method": "codex/process/exited",
-            "params": {
-                "message": "Codex app-server exited unexpectedly."
-            }
-        }));
     });
 }
 
@@ -501,29 +788,18 @@ fn spawn_stderr_drain(stderr: tokio::process::ChildStderr) {
 fn spawn_child_watcher(
     mut child: tokio::process::Child,
     mut shutdown: oneshot::Receiver<()>,
-    pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>,
-    notifications: broadcast::Sender<Value>,
+    failure: TransportFailure,
 ) {
     tokio::spawn(async move {
         loop {
             match child.try_wait() {
-                Ok(Some(status)) => {
-                    let message = format!("Codex app-server exited with status {status}.");
-                    fail_all_pending(&pending, &message).await;
-                    let _ = notifications.send(json!({
-                        "method": "codex/process/exited",
-                        "params": { "message": message }
-                    }));
+                Ok(Some(_)) => {
+                    failure.fail(ProtocolError::ChildExited).await;
                     return;
                 }
                 Ok(None) => {}
-                Err(error) => {
-                    let message = format!("Could not wait for Codex app-server: {error}");
-                    fail_all_pending(&pending, &message).await;
-                    let _ = notifications.send(json!({
-                        "method": "codex/process/exited",
-                        "params": { "message": message }
-                    }));
+                Err(_) => {
+                    failure.fail(ProtocolError::ChildWaitFailed).await;
                     return;
                 }
             }
@@ -540,14 +816,11 @@ fn spawn_child_watcher(
     });
 }
 
-async fn fail_all_pending(
-    pending: &Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>,
-    message: &str,
-) {
+async fn fail_all_pending(pending: &PendingRequests, error: ProtocolError) {
     let mut pending = pending.lock().await;
     let requests = std::mem::take(&mut *pending);
     for (_, sender) in requests {
-        let _ = sender.send(Err(message.to_string()));
+        let _ = sender.send(Err(error.clone()));
     }
 }
 
@@ -569,8 +842,14 @@ fn error_message(error: &Value) -> String {
 fn account_label(account: &Value) -> Option<String> {
     match account.get("type").and_then(Value::as_str) {
         Some("chatgpt") => {
-            let email = account.get("email").and_then(Value::as_str).unwrap_or("ChatGPT");
-            let plan = account.get("planType").and_then(Value::as_str).unwrap_or("unknown");
+            let email = account
+                .get("email")
+                .and_then(Value::as_str)
+                .unwrap_or("ChatGPT");
+            let plan = account
+                .get("planType")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
             Some(format!("{email} ({plan})"))
         }
         Some(other) => Some(other.to_string()),
@@ -586,6 +865,27 @@ fn required_string(value: &Value, key: &str) -> Result<String, String> {
         .ok_or_else(|| format!("Codex response was missing `{key}`."))
 }
 
+fn device_login_params() -> Value {
+    json!({
+        "type": "chatgptDeviceCode"
+    })
+}
+
+fn rewrite_turn_params(thread_id: &str, prompt: &str) -> Value {
+    json!({
+        "threadId": thread_id,
+        "input": [
+            {
+                "type": "text",
+                "text": prompt,
+                "text_elements": []
+            }
+        ],
+        "approvalPolicy": "never",
+        "outputSchema": rewrite_output_schema()
+    })
+}
+
 pub(crate) fn rewrite_prompt(selected_text: &str, mode: RewriteMode) -> String {
     format!(
         "Rewrite the selected text for Codex Pencil.\n\
@@ -599,7 +899,7 @@ pub(crate) fn rewrite_prompt(selected_text: &str, mode: RewriteMode) -> String {
          - Preserve formatting where practical.\n\
          - Return strict JSON only. No Markdown, no prose before or after JSON, no code fences.\n\n\
          Expected JSON shape:\n\
-         {{\"replacement\":\"...\",\"summary\":\"...\",\"edits\":[{{\"before\":\"...\",\"after\":\"...\",\"reason\":\"...\"}}],\"confidence\":0.0}}\n\n\
+         {{\"replacement\":\"...\",\"changed\":true,\"summary\":\"...\",\"edits\":[{{\"before\":\"...\",\"after\":\"...\",\"reason\":\"...\"}}],\"confidence\":0.0}}\n\n\
          Selected text:\n\
          <selection>\n{selected_text}\n</selection>",
         mode_label = mode.label(),
@@ -611,11 +911,15 @@ fn rewrite_output_schema() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
-        "required": ["replacement", "summary", "edits", "confidence"],
+        "required": ["replacement", "changed", "summary", "confidence"],
         "properties": {
             "replacement": {
                 "type": "string",
                 "description": "The complete non-empty text that should replace the selected text."
+            },
+            "changed": {
+                "type": "boolean",
+                "description": "Whether the replacement differs from the selected text."
             },
             "summary": {
                 "type": "string",
@@ -671,205 +975,516 @@ fn agent_message_text(item: &Value) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StructuredRewriteResult {
+    replacement: String,
+    changed: bool,
+    summary: String,
+    confidence: f64,
+    #[serde(default)]
+    edits: Vec<RewriteEdit>,
+}
+
 pub(crate) fn parse_rewrite_result(text: &str, mode: RewriteMode) -> Result<RewriteResult, String> {
-    let value = parse_json_object(text).map_err(|error| format!("Codex returned invalid JSON: {error}"))?;
-    let replacement = value
-        .get("replacement")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| "Codex JSON did not include a non-empty replacement.".to_string())?;
+    let structured = serde_json::from_str::<StructuredRewriteResult>(text)
+        .map_err(|error| format!("Codex returned invalid structured JSON: {error}"))?;
 
-    let summary = value
-        .get("summary")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| format!("Rewrote text in {} mode.", mode.label()));
-
-    let edits = value
-        .get("edits")
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(parse_edit)
-                .take(8)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    let confidence = value
-        .get("confidence")
-        .and_then(Value::as_f64)
-        .filter(|value| value.is_finite())
-        .unwrap_or(0.0)
-        .clamp(0.0, 1.0);
+    if structured.replacement.is_empty() {
+        return Err("Codex JSON included an empty replacement.".to_string());
+    }
+    if !structured.confidence.is_finite() || !(0.0..=1.0).contains(&structured.confidence) {
+        return Err("Codex JSON included confidence outside 0 through 1.".to_string());
+    }
+    if structured.edits.len() > 8 {
+        return Err("Codex JSON included more than 8 edit details.".to_string());
+    }
 
     Ok(RewriteResult {
-        replacement,
-        summary,
-        edits,
-        confidence,
+        replacement: structured.replacement,
+        changed: structured.changed,
+        summary: structured.summary,
+        edits: structured.edits,
+        confidence: structured.confidence,
         mode,
     })
-}
-
-fn parse_edit(value: &Value) -> Option<RewriteEdit> {
-    Some(RewriteEdit {
-        before: value.get("before")?.as_str()?.trim().to_string(),
-        after: value.get("after")?.as_str()?.trim().to_string(),
-        reason: value.get("reason")?.as_str()?.trim().to_string(),
-    })
-}
-
-fn parse_json_object(text: &str) -> Result<Value, serde_json::Error> {
-    let trimmed = text.trim();
-    if let Ok(value) = serde_json::from_str(trimmed) {
-        return Ok(value);
-    }
-
-    let without_fence = trimmed
-        .strip_prefix("```json")
-        .or_else(|| trimmed.strip_prefix("```"))
-        .and_then(|value| value.strip_suffix("```"))
-        .map(str::trim)
-        .unwrap_or(trimmed);
-
-    if let Ok(value) = serde_json::from_str(without_fence) {
-        return Ok(value);
-    }
-
-    if let Some(candidate) = extract_first_json_object(trimmed) {
-        return serde_json::from_str(candidate);
-    }
-
-    serde_json::from_str(trimmed)
-}
-
-fn extract_first_json_object(text: &str) -> Option<&str> {
-    let mut start = None;
-    let mut depth = 0usize;
-    let mut in_string = false;
-    let mut escaped = false;
-
-    for (index, ch) in text.char_indices() {
-        if start.is_none() {
-            if ch == '{' {
-                start = Some(index);
-                depth = 1;
-            }
-            continue;
-        }
-
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-
-        match ch {
-            '"' => in_string = true,
-            '{' => depth += 1,
-            '}' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    let object_start = start?;
-                    return text.get(object_start..=index);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    None
-}
-
-fn codex_command() -> Option<Command> {
-    if let Ok(path) = env::var("CODEX_PENCIL_CODEX_BIN") {
-        if !path.trim().is_empty() {
-            return Some(Command::new(path));
-        }
-    }
-
-    #[cfg(windows)]
-    {
-        for candidate in ["codex.cmd", "codex.exe"] {
-            if let Some(path) = where_first(candidate) {
-                return Some(Command::new(path));
-            }
-        }
-    }
-
-    #[cfg(not(windows))]
-    {
-        Some(Command::new("codex"))
-    }
-
-    #[cfg(windows)]
-    None
-}
-
-fn missing_codex_message() -> String {
-    "Codex CLI is required at runtime. Install it with `npm install -g @openai/codex` and ensure `codex` is available on PATH.".to_string()
-}
-
-#[cfg(windows)]
-fn where_first(name: &str) -> Option<String> {
-    let output = std::process::Command::new("where").arg(name).output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    String::from_utf8(output.stdout)
-        .ok()?
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .map(ToOwned::to_owned)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::{
+        duplex, split, AsyncBufReadExt, AsyncWriteExt, BufReader, Lines, ReadHalf, WriteHalf,
+    };
+
+    struct FakeAppServer {
+        lines: Lines<BufReader<ReadHalf<tokio::io::DuplexStream>>>,
+        writer: WriteHalf<tokio::io::DuplexStream>,
+    }
+
+    fn fake_transport() -> (CodexClient, FakeAppServer, TransportFailure) {
+        let (client_stream, server_stream) = duplex(16 * 1024);
+        let (client_stdout, client_stdin) = split(client_stream);
+        let (server_stdin, server_stdout) = split(server_stream);
+        let (client, failure) =
+            CodexClient::from_io(client_stdout, client_stdin, ChildShutdown::detached());
+
+        (
+            client,
+            FakeAppServer {
+                lines: BufReader::new(server_stdin).lines(),
+                writer: server_stdout,
+            },
+            failure,
+        )
+    }
+
+    impl FakeAppServer {
+        async fn receive(&mut self) -> Value {
+            let line = timeout(Duration::from_secs(1), self.lines.next_line())
+                .await
+                .expect("fake app-server timed out waiting for a client message")
+                .expect("fake app-server could not read a client message")
+                .expect("client stdout closed before the expected message");
+            serde_json::from_str(&line).expect("client emitted malformed JSON")
+        }
+
+        async fn send(&mut self, message: Value) {
+            let mut line = serde_json::to_vec(&message).expect("fixture response must serialize");
+            line.push(b'\n');
+            self.writer
+                .write_all(&line)
+                .await
+                .expect("fixture response must be writable");
+            self.writer
+                .flush()
+                .await
+                .expect("fixture response must flush");
+        }
+
+        async fn send_raw(&mut self, line: &[u8]) {
+            self.writer
+                .write_all(line)
+                .await
+                .expect("fixture bytes must be writable");
+            self.writer.flush().await.expect("fixture bytes must flush");
+        }
+
+        async fn close_stdout(&mut self) {
+            self.writer
+                .shutdown()
+                .await
+                .expect("fixture stdout must close");
+        }
+
+        async fn expect_no_message(&mut self) {
+            assert!(timeout(Duration::from_millis(50), self.lines.next_line())
+                .await
+                .is_err());
+        }
+    }
+
+    async fn complete_handshake(client: &CodexClient, server: &mut FakeAppServer) -> Vec<Value> {
+        let server_flow = async {
+            let initialize = server.receive().await;
+            let id = initialize
+                .get("id")
+                .and_then(Value::as_u64)
+                .expect("initialize must have a numeric id");
+            server
+                .send(json!({
+                    "id": id,
+                    "result": {
+                        "codexHome": "C:\\codex-fixture",
+                        "platformFamily": "windows",
+                        "platformOs": "windows",
+                        "userAgent": "codex-fixture"
+                    }
+                }))
+                .await;
+            let initialized = server.receive().await;
+            vec![initialize, initialized]
+        };
+
+        let (handshake, messages) = tokio::join!(client.perform_handshake(), server_flow);
+        handshake.expect("handshake must succeed against the fixture");
+        messages
+    }
+
+    #[tokio::test]
+    async fn handshake_waits_for_initialize_response_then_sends_initialized_before_account_read() {
+        let (client, mut server, _failure) = fake_transport();
+        let messages = complete_handshake(&client, &mut server).await;
+
+        assert_eq!(
+            messages[0].get("method").and_then(Value::as_str),
+            Some("initialize")
+        );
+        assert!(messages[0].get("id").is_some());
+        assert!(messages[0]
+            .pointer("/params/capabilities/experimentalApi")
+            .is_none());
+        assert_eq!(
+            messages[1].get("method").and_then(Value::as_str),
+            Some("initialized")
+        );
+        assert!(messages[1].get("id").is_none());
+
+        let server_flow = async {
+            let request = server.receive().await;
+            assert_eq!(
+                request.get("method").and_then(Value::as_str),
+                Some("account/read")
+            );
+            assert_eq!(
+                request.pointer("/params/refreshToken"),
+                Some(&Value::Bool(false))
+            );
+            let id = request
+                .get("id")
+                .and_then(Value::as_u64)
+                .expect("account/read must have a numeric id");
+            server
+                .send(json!({
+                    "id": id,
+                    "result": { "account": null, "requiresOpenaiAuth": true }
+                }))
+                .await;
+        };
+        let (status, ()) = tokio::join!(client.auth_status(), server_flow);
+        let status = status.expect("account/read must parse");
+        assert!(!status.logged_in);
+        assert!(status.requires_openai_auth);
+    }
+
+    #[tokio::test]
+    async fn rejects_requests_before_handshake_without_writing_them() {
+        let (client, mut server, _failure) = fake_transport();
+
+        let error = client
+            .request_protocol(
+                "account/read",
+                json!({ "refreshToken": false }),
+                Duration::from_secs(1),
+            )
+            .await
+            .expect_err("pre-handshake request must fail");
+
+        assert_eq!(error, ProtocolError::NotReady);
+        assert!(client.pending.lock().await.is_empty());
+        server.expect_no_message().await;
+    }
+
+    #[tokio::test]
+    async fn repeated_initialize_is_rejected_without_a_second_wire_request() {
+        let (client, mut server, _failure) = fake_transport();
+        complete_handshake(&client, &mut server).await;
+
+        let error = client
+            .perform_handshake()
+            .await
+            .expect_err("a connection can initialize only once");
+
+        assert_eq!(error, ProtocolError::AlreadyInitialized);
+        server.expect_no_message().await;
+    }
+
+    #[tokio::test]
+    async fn malformed_json_fails_initialize_and_cleans_pending_requests() {
+        let (client, mut server, _failure) = fake_transport();
+        let server_flow = async {
+            let request = server.receive().await;
+            assert_eq!(
+                request.get("method").and_then(Value::as_str),
+                Some("initialize")
+            );
+            server.send_raw(b"{malformed-json}\n").await;
+        };
+
+        let (result, ()) = tokio::join!(client.perform_handshake(), server_flow);
+
+        assert_eq!(
+            result.expect_err("malformed JSON must fail the handshake"),
+            ProtocolError::InvalidJson
+        );
+        assert!(!client.is_healthy());
+        assert!(client.pending.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn request_timeout_removes_the_pending_request() {
+        let (client, mut server, _failure) = fake_transport();
+        complete_handshake(&client, &mut server).await;
+
+        let server_flow = async {
+            let request = server.receive().await;
+            assert_eq!(
+                request.get("method").and_then(Value::as_str),
+                Some("account/read")
+            );
+        };
+        let request = client.request_protocol(
+            "account/read",
+            json!({ "refreshToken": false }),
+            Duration::from_millis(25),
+        );
+        let (result, ()) = tokio::join!(request, server_flow);
+
+        assert_eq!(
+            result.expect_err("unanswered request must time out"),
+            ProtocolError::Timeout("account/read".to_string())
+        );
+        assert!(client.pending.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn stdout_closure_invalidates_client_and_fails_pending_request() {
+        let (client, mut server, _failure) = fake_transport();
+        complete_handshake(&client, &mut server).await;
+
+        let server_flow = async {
+            let request = server.receive().await;
+            assert_eq!(
+                request.get("method").and_then(Value::as_str),
+                Some("account/read")
+            );
+            server.close_stdout().await;
+        };
+        let request = client.request_protocol(
+            "account/read",
+            json!({ "refreshToken": false }),
+            Duration::from_secs(1),
+        );
+        let (result, ()) = tokio::join!(request, server_flow);
+
+        assert_eq!(
+            result.expect_err("stdout closure must fail pending RPCs"),
+            ProtocolError::StdoutClosed
+        );
+        assert!(!client.is_healthy());
+        assert!(client.pending.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn child_exit_invalidates_client_and_fails_pending_request_with_typed_error() {
+        let (client, mut server, failure) = fake_transport();
+        complete_handshake(&client, &mut server).await;
+
+        let server_flow = async {
+            let request = server.receive().await;
+            assert_eq!(
+                request.get("method").and_then(Value::as_str),
+                Some("account/read")
+            );
+            failure.fail(ProtocolError::ChildExited).await;
+        };
+        let request = client.request_protocol(
+            "account/read",
+            json!({ "refreshToken": false }),
+            Duration::from_secs(1),
+        );
+        let (result, ()) = tokio::join!(request, server_flow);
+
+        assert_eq!(
+            result.expect_err("child exit must fail pending RPCs"),
+            ProtocolError::ChildExited
+        );
+        assert!(!client.is_healthy());
+        assert!(client.pending.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn auth_notifications_are_forwarded_after_handshake() {
+        let (client, mut server, _failure) = fake_transport();
+        complete_handshake(&client, &mut server).await;
+        let mut notifications = client.subscribe();
+
+        server
+            .send(json!({
+                "method": "account/updated",
+                "params": { "authMode": "chatgpt", "planType": "plus" }
+            }))
+            .await;
+        let account_updated = timeout(Duration::from_secs(1), notifications.recv())
+            .await
+            .expect("account/updated notification must arrive")
+            .expect("notification channel must stay open");
+
+        server
+            .send(json!({
+                "method": "account/login/completed",
+                "params": { "loginId": null, "success": true, "error": null }
+            }))
+            .await;
+        let login_completed = timeout(Duration::from_secs(1), notifications.recv())
+            .await
+            .expect("account/login/completed notification must arrive")
+            .expect("notification channel must stay open");
+
+        assert_eq!(
+            account_updated.get("method").and_then(Value::as_str),
+            Some("account/updated")
+        );
+        assert_eq!(
+            login_completed.get("method").and_then(Value::as_str),
+            Some("account/login/completed")
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    #[ignore = "requires the exact locally installed Codex CLI"]
+    async fn live_supported_app_server_completes_handshake_and_account_read() {
+        let client = CodexClient::connect()
+            .await
+            .expect("exact supported Codex app-server must complete the handshake");
+
+        client
+            .auth_status()
+            .await
+            .expect("account/read must succeed without exposing the response payload");
+        assert!(client.is_healthy());
+    }
+
+    #[tokio::test]
+    async fn cache_reconnects_once_after_child_invalidation_then_reuses_the_new_client() {
+        let cache = CodexClientCache::default();
+        let (first_source, mut first_server, first_failure) = fake_transport();
+        complete_handshake(&first_source, &mut first_server).await;
+        let first = cache
+            .get_or_connect_with(|| async { Ok(first_source) })
+            .await
+            .expect("first connection must be cached");
+
+        first_failure.fail(ProtocolError::ChildExited).await;
+        assert!(!first.is_healthy());
+
+        let (second_source, mut second_server, _second_failure) = fake_transport();
+        complete_handshake(&second_source, &mut second_server).await;
+        let reconnects = AtomicU64::new(0);
+        let second = cache
+            .get_or_connect_with(|| async {
+                reconnects.fetch_add(1, Ordering::SeqCst);
+                Ok(second_source)
+            })
+            .await
+            .expect("next request must reconnect once");
+        let reused = cache
+            .get_or_connect_with(|| async {
+                reconnects.fetch_add(1, Ordering::SeqCst);
+                Err("healthy cached client must not reconnect".to_string())
+            })
+            .await
+            .expect("healthy replacement must be reused");
+
+        assert_eq!(reconnects.load(Ordering::SeqCst), 1);
+        assert!(Arc::ptr_eq(&second, &reused));
+    }
+
+    #[tokio::test]
+    async fn structured_rewrite_round_trip_uses_stable_requests_and_strict_result_contract() {
+        let (client, mut server, _failure) = fake_transport();
+        complete_handshake(&client, &mut server).await;
+
+        let server_flow = async {
+            let thread_request = server.receive().await;
+            assert_eq!(
+                thread_request.get("method").and_then(Value::as_str),
+                Some("thread/start")
+            );
+            let thread_request_id = thread_request
+                .get("id")
+                .and_then(Value::as_u64)
+                .expect("thread/start must have a numeric id");
+            server
+                .send(json!({
+                    "id": thread_request_id,
+                    "result": { "thread": { "id": "thread-fixture" } }
+                }))
+                .await;
+
+            let turn_request = server.receive().await;
+            assert_eq!(
+                turn_request.get("method").and_then(Value::as_str),
+                Some("turn/start")
+            );
+            assert!(turn_request
+                .pointer("/params/responsesapiClientMetadata")
+                .is_none());
+            assert_eq!(
+                turn_request.pointer("/params/outputSchema/additionalProperties"),
+                Some(&Value::Bool(false))
+            );
+            let turn_request_id = turn_request
+                .get("id")
+                .and_then(Value::as_u64)
+                .expect("turn/start must have a numeric id");
+            server
+                .send(json!({
+                    "id": turn_request_id,
+                    "result": { "turn": { "id": "turn-fixture" } }
+                }))
+                .await;
+            server
+                .send(json!({
+                    "method": "turn/completed",
+                    "params": {
+                        "threadId": "thread-fixture",
+                        "turn": {
+                            "id": "turn-fixture",
+                            "status": "completed",
+                            "items": [{
+                                "type": "agentMessage",
+                                "phase": "final_answer",
+                                "text": "{\"replacement\":\" revised fixture \",\"changed\":true,\"summary\":\"Adjusted grammar.\",\"confidence\":0.91}"
+                            }]
+                        }
+                    }
+                }))
+                .await;
+        };
+
+        let (result, ()) = tokio::join!(
+            client.rewrite("synthetic fixture input", RewriteMode::Grammar),
+            server_flow
+        );
+        let result = result.expect("structured rewrite round trip must succeed");
+
+        assert_eq!(result.replacement, " revised fixture ");
+        assert!(result.changed);
+        assert_eq!(result.summary, "Adjusted grammar.");
+        assert_eq!(result.confidence, 0.91);
+    }
 
     #[test]
-    fn parses_strict_rewrite_json() {
+    fn parses_strict_rewrite_json_without_trimming_replacement() {
         let result = parse_rewrite_result(
-            r#"{"replacement":"Hello.","summary":"Fixed punctuation.","edits":[{"before":"Hello","after":"Hello.","reason":"Added punctuation"}],"confidence":0.82}"#,
+            r#"{"replacement":" \nHello.\n  ","changed":true,"summary":"Fixed punctuation.","edits":[{"before":"Hello","after":"Hello.","reason":"Added punctuation"}],"confidence":0.82}"#,
             RewriteMode::Grammar,
         )
         .unwrap();
 
-        assert_eq!(result.replacement, "Hello.");
+        assert_eq!(result.replacement, " \nHello.\n  ");
+        assert!(result.changed);
         assert_eq!(result.summary, "Fixed punctuation.");
         assert_eq!(result.edits.len(), 1);
         assert_eq!(result.confidence, 0.82);
     }
 
     #[test]
-    fn extracts_first_json_object_from_wrapped_output() {
+    fn rejects_wrapped_output_instead_of_extracting_json() {
         let result = parse_rewrite_result(
-            "Here is the JSON: {\"replacement\":\"Done\",\"summary\":\"Updated tone\",\"edits\":[],\"confidence\":1.4} trailing text",
+            "Here is the JSON: {\"replacement\":\"Done\",\"changed\":true,\"summary\":\"Updated tone\",\"confidence\":0.9}",
             RewriteMode::Natural,
-        )
-        .unwrap();
+        );
 
-        assert_eq!(result.replacement, "Done");
-        assert_eq!(result.confidence, 1.0);
+        assert!(result.is_err());
     }
 
     #[test]
     fn rejects_empty_replacement() {
         let result = parse_rewrite_result(
-            r#"{"replacement":"   ","summary":"No change","edits":[],"confidence":0.5}"#,
+            r#"{"replacement":"","changed":false,"summary":"No change","confidence":0.5}"#,
             RewriteMode::Grammar,
         );
 
@@ -877,21 +1492,82 @@ mod tests {
     }
 
     #[test]
-    fn defaults_malformed_edits_to_empty() {
+    fn rejects_missing_or_malformed_required_fields_instead_of_defaulting() {
         let result = parse_rewrite_result(
-            r#"{"replacement":"Hi","summary":"Shortened","edits":[{"before":4}],"confidence":-0.1}"#,
+            r#"{"replacement":"Hi","summary":"Shortened","confidence":"high"}"#,
             RewriteMode::Concise,
-        )
-        .unwrap();
+        );
 
-        assert!(result.edits.is_empty());
-        assert_eq!(result.confidence, 0.0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_out_of_range_confidence_and_unknown_properties() {
+        let out_of_range = parse_rewrite_result(
+            r#"{"replacement":"Hi","changed":true,"summary":"Shortened","confidence":1.1}"#,
+            RewriteMode::Concise,
+        );
+        let unknown_property = parse_rewrite_result(
+            r#"{"replacement":"Hi","changed":true,"summary":"Shortened","confidence":0.8,"extra":true}"#,
+            RewriteMode::Concise,
+        );
+
+        assert!(out_of_range.is_err());
+        assert!(unknown_property.is_err());
+    }
+
+    #[test]
+    fn rewrite_schema_requires_stable_contract_and_forbids_additional_properties() {
+        let schema = rewrite_output_schema();
+        let required = schema
+            .get("required")
+            .and_then(Value::as_array)
+            .expect("schema must declare required fields");
+
+        for field in ["replacement", "changed", "summary", "confidence"] {
+            assert!(required.contains(&Value::String(field.to_string())));
+        }
+        assert_eq!(
+            schema.get("additionalProperties"),
+            Some(&Value::Bool(false))
+        );
+        assert_eq!(
+            schema.pointer("/properties/confidence/minimum"),
+            Some(&json!(0))
+        );
+        assert_eq!(
+            schema.pointer("/properties/confidence/maximum"),
+            Some(&json!(1))
+        );
+    }
+
+    #[test]
+    fn device_login_uses_schema_stable_chatgpt_managed_variant() {
+        assert_eq!(
+            device_login_params(),
+            json!({ "type": "chatgptDeviceCode" })
+        );
+    }
+
+    #[test]
+    fn turn_start_omits_undocumented_metadata_field() {
+        let params = rewrite_turn_params("thread-fixture", "prompt-fixture");
+
+        assert!(params.get("responsesapiClientMetadata").is_none());
+        assert_eq!(
+            params.get("threadId").and_then(Value::as_str),
+            Some("thread-fixture")
+        );
+        assert!(params.get("outputSchema").is_some());
     }
 
     #[test]
     fn prompt_keeps_language_unless_translation() {
         let prompt = rewrite_prompt("안녕하세요", RewriteMode::Polite);
-        assert!(prompt.contains("Keep the user's language unless the mode is translate_en or translate_ko."));
-        assert!(prompt.contains("Preserve URLs, code, shell commands, product names, numbers, and email addresses"));
+        assert!(prompt
+            .contains("Keep the user's language unless the mode is translate_en or translate_ko."));
+        assert!(prompt.contains(
+            "Preserve URLs, code, shell commands, product names, numbers, and email addresses"
+        ));
     }
 }
