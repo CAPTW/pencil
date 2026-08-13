@@ -14,6 +14,12 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  parseApplyOutcome,
+  parseSelectionCaptured,
+  sameCaptureToken,
+  type CaptureToken,
+} from "./captureContract";
 
 type RewriteMode =
   | "grammar"
@@ -42,10 +48,9 @@ type DeviceLogin = {
   userCode: string;
 };
 
-type SelectionCaptured = {
-  sessionId: string;
+type ActiveSelection = {
+  token: CaptureToken;
   charCount: number;
-  cursor: { x: number; y: number };
 };
 
 type CaptureError = {
@@ -117,7 +122,7 @@ export default function App() {
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [prerequisites, setPrerequisites] = useState<PrerequisiteReport | null>(null);
   const [deviceLogin, setDeviceLogin] = useState<DeviceLogin | null>(null);
-  const [selection, setSelection] = useState<SelectionCaptured | null>(null);
+  const [selection, setSelection] = useState<ActiveSelection | null>(null);
   const [result, setResult] = useState<RewriteResult | null>(null);
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState("Ready");
@@ -128,6 +133,9 @@ export default function App() {
   const [isStartingLogin, setIsStartingLogin] = useState(false);
   const modeRef = useRef<RewriteMode>(DEFAULT_SETTINGS.mode);
   const autoRewriteRef = useRef(DEFAULT_SETTINGS.autoRewrite);
+  const currentTokenRef = useRef<CaptureToken | null>(null);
+  const rewritingTokenRef = useRef<CaptureToken | null>(null);
+  const applyingTokenRef = useRef<CaptureToken | null>(null);
 
   useEffect(() => {
     modeRef.current = settings.mode;
@@ -162,20 +170,40 @@ export default function App() {
     }
   }, []);
 
-  const rewrite = useCallback(async (mode: RewriteMode = modeRef.current) => {
+  const rewrite = useCallback(async (
+    mode: RewriteMode = modeRef.current,
+    requestedToken: CaptureToken | null = currentTokenRef.current,
+  ) => {
+    if (!requestedToken || rewritingTokenRef.current) {
+      return;
+    }
+    rewritingTokenRef.current = requestedToken;
     setIsRewriting(true);
     setError(null);
     setStatus("Rewriting with Codex");
     try {
-      const next = await invoke<RewriteResult>("rewrite_selected_text", { mode });
+      const next = await invoke<RewriteResult>("rewrite_selected_text", {
+        sessionId: requestedToken.sessionId,
+        generation: requestedToken.generation,
+        mode,
+      });
+      if (!sameCaptureToken(currentTokenRef.current, requestedToken)) {
+        return;
+      }
       setResult(next);
       setDraft(next.replacement);
       setStatus("Replacement ready");
     } catch (nextError) {
+      if (!sameCaptureToken(currentTokenRef.current, requestedToken)) {
+        return;
+      }
       setError(toErrorMessage(nextError));
       setStatus("Rewrite failed");
     } finally {
-      setIsRewriting(false);
+      if (sameCaptureToken(rewritingTokenRef.current, requestedToken)) {
+        rewritingTokenRef.current = null;
+        setIsRewriting(false);
+      }
     }
   }, []);
 
@@ -216,23 +244,51 @@ export default function App() {
 
     void refreshAuth();
 
-    void listen<SelectionCaptured>("selection-captured", (event) => {
-      setSelection(event.payload);
+    void listen<unknown>("selection-captured", (event) => {
+      const payload = parseSelectionCaptured(event.payload);
+      if (!payload) {
+        currentTokenRef.current = null;
+        rewritingTokenRef.current = null;
+        applyingTokenRef.current = null;
+        setSelection(null);
+        setResult(null);
+        setDraft("");
+        setIsRewriting(false);
+        setIsApplying(false);
+        setError("The capture token was invalid. Capture the selection again.");
+        setStatus("Capture rejected");
+        return;
+      }
+      const token: CaptureToken = {
+        sessionId: payload.sessionId,
+        generation: payload.generation,
+      };
+      currentTokenRef.current = token;
+      rewritingTokenRef.current = null;
+      applyingTokenRef.current = null;
+      setSelection({ token, charCount: Array.from(payload.selectedText).length });
       setResult(null);
       setDraft("");
+      setIsRewriting(false);
+      setIsApplying(false);
       setError(null);
       setStatus("Selection captured");
       if (autoRewriteRef.current) {
-        void rewrite(modeRef.current);
+        void rewrite(modeRef.current, token);
       }
     }).then((unlisten) => {
       unlistenSelection = unlisten;
     });
 
     void listen<CaptureError>("capture-error", (event) => {
+      currentTokenRef.current = null;
+      rewritingTokenRef.current = null;
+      applyingTokenRef.current = null;
       setSelection(null);
       setResult(null);
       setDraft("");
+      setIsRewriting(false);
+      setIsApplying(false);
       setError(event.payload.message);
       setStatus("No selection");
     }).then((unlisten) => {
@@ -339,8 +395,8 @@ export default function App() {
   async function chooseMode(mode: RewriteMode) {
     const next = { ...settings, mode };
     await saveSettings(next);
-    if (selection) {
-      void rewrite(mode);
+    if (selection && !result && !isRewriting) {
+      void rewrite(mode, selection.token);
     }
   }
 
@@ -353,31 +409,113 @@ export default function App() {
   }
 
   async function applyReplacement() {
-    if (!draft.trim()) {
+    const token = currentTokenRef.current;
+    if (!token || draft.length === 0) {
       return;
     }
 
+    applyingTokenRef.current = token;
     setIsApplying(true);
     setError(null);
     try {
-      await invoke("apply_replacement", {
+      const rawOutcome = await invoke<unknown>("apply_replacement", {
+        sessionId: token.sessionId,
+        generation: token.generation,
         replacement: draft,
         restoreClipboard: settings.restoreClipboard,
       });
-      setStatus("Applied");
+      if (!sameCaptureToken(currentTokenRef.current, token)) {
+        return;
+      }
+      const outcome = parseApplyOutcome(rawOutcome);
+      if (!outcome) {
+        currentTokenRef.current = null;
+        setSelection(null);
+        setError("Apply returned an invalid response. Capture the selection again.");
+        setStatus("Apply rejected");
+        return;
+      }
+      if (outcome.status === "applied") {
+        currentTokenRef.current = null;
+        setSelection(null);
+        setStatus("Applied");
+        return;
+      }
+      if (outcome.status === "copied_fallback") {
+        currentTokenRef.current = null;
+        setSelection(null);
+        setStatus("Copied — paste manually");
+        setError(
+          "The captured target could not be proven safe. The approved replacement is on the clipboard; paste it manually.",
+        );
+        return;
+      }
+      if (outcome.status === "rejected_stale") {
+        currentTokenRef.current = null;
+        setSelection(null);
+        setResult(null);
+        setDraft("");
+        setStatus("Stale result rejected");
+        setError("This result no longer belongs to the current capture. Capture the selection again.");
+        return;
+      }
+
+      setStatus("Apply failed safely");
+      if (
+        outcome.reason === "input_injection_failed" ||
+        outcome.reason === "invalid_session_state"
+      ) {
+        currentTokenRef.current = null;
+        setSelection(null);
+      }
+      setError(
+        outcome.reason === "clipboard_ownership_lost"
+          ? "The clipboard changed before paste. Nothing was pasted; review and try again."
+          : outcome.reason === "input_injection_failed"
+            ? "Windows did not confirm the complete paste input. Automatic retry is disabled; capture again."
+            : "Nothing was pasted. Review the target and try again.",
+      );
     } catch (nextError) {
+      if (!sameCaptureToken(currentTokenRef.current, token)) {
+        return;
+      }
+      currentTokenRef.current = null;
+      setSelection(null);
       setError(toErrorMessage(nextError));
+      setStatus("Apply failed safely");
     } finally {
-      setIsApplying(false);
+      if (sameCaptureToken(applyingTokenRef.current, token)) {
+        applyingTokenRef.current = null;
+        setIsApplying(false);
+      }
     }
   }
 
   async function dismiss() {
-    await invoke("dismiss_window");
+    const token = currentTokenRef.current;
+    currentTokenRef.current = null;
+    rewritingTokenRef.current = null;
+    applyingTokenRef.current = null;
+    setSelection(null);
+    setResult(null);
+    setDraft("");
+    setIsRewriting(false);
+    setIsApplying(false);
+    try {
+      await invoke("dismiss_window", {
+        sessionId: token?.sessionId ?? null,
+        generation: token?.generation ?? null,
+      });
+    } catch (nextError) {
+      if (!currentTokenRef.current) {
+        setError(toErrorMessage(nextError));
+        setStatus("Dismiss failed");
+      }
+    }
   }
 
-  const canRewrite = Boolean(selection && auth?.loggedIn && !isRewriting);
-  const canApply = Boolean(result && draft.trim() && !isApplying && !isRewriting);
+  const canRewrite = Boolean(selection && auth?.loggedIn && !isRewriting && !result);
+  const canApply = Boolean(selection && result && draft.length > 0 && !isApplying && !isRewriting);
   const loginStatusLabel =
     loginState === "starting"
       ? "Starting login"
