@@ -1,11 +1,23 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod apply_safety;
+mod capture_session;
 mod clipboard;
 mod codex_binary;
 mod codex_client;
 mod prerequisites;
 mod settings;
+mod windows_apply;
+mod windows_target;
 
+#[cfg(test)]
+mod p0_02_contract_tests;
+
+#[cfg(all(test, windows))]
+mod p0_02_windows_live_tests;
+
+use apply_safety::{apply_current_session, ApplyOutcome};
+use capture_session::{CaptureSessionStore, SessionToken};
 use clipboard::CursorPoint;
 use codex_client::{AuthStatus, CodexClient, CodexClientCache, DeviceLogin, RewriteResult};
 use prerequisites::PrerequisiteReport;
@@ -19,10 +31,12 @@ use tauri::{
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
+use windows_apply::WindowsApplyPlatform;
+use windows_target::{capture_before_widget_focus, WindowsForegroundTargetPlatform};
 
 struct AppState {
     codex: CodexClientCache,
-    capture: Mutex<Option<CapturedSelection>>,
+    capture: Mutex<CaptureSessionStore>,
     startup_notices: Mutex<Vec<String>>,
 }
 
@@ -30,30 +44,18 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             codex: CodexClientCache::default(),
-            capture: Mutex::new(None),
+            capture: Mutex::new(CaptureSessionStore::default()),
             startup_notices: Mutex::new(Vec::new()),
         }
     }
-}
-
-#[derive(Clone, Debug)]
-struct CapturedSelection {
-    selected_text: String,
-    previous_clipboard: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SelectionCapturedEvent {
     session_id: String,
-    char_count: usize,
-    cursor: CursorPayload,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct CursorPayload {
-    x: i32,
-    y: i32,
+    generation: u64,
+    selected_text: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -83,7 +85,10 @@ async fn auth_status(state: State<'_, AppState>) -> Result<AuthStatus, String> {
 }
 
 #[tauri::command]
-async fn start_device_login(app: AppHandle, state: State<'_, AppState>) -> Result<DeviceLogin, String> {
+async fn start_device_login(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<DeviceLogin, String> {
     let client = ensure_codex(&state).await?;
     let login = client.start_device_login().await?;
     spawn_auth_notification_bridge(app, client, login.login_id.clone());
@@ -96,39 +101,65 @@ async fn cancel_device_login(login_id: String, state: State<'_, AppState>) -> Re
 }
 
 #[tauri::command]
-async fn rewrite_selected_text(mode: RewriteMode, state: State<'_, AppState>) -> Result<RewriteResult, String> {
+async fn rewrite_selected_text(
+    session_id: String,
+    generation: u64,
+    mode: RewriteMode,
+    state: State<'_, AppState>,
+) -> Result<RewriteResult, String> {
+    let token = SessionToken {
+        session_id,
+        generation,
+    };
     let selected_text = {
-        let capture = state.capture.lock().await;
+        let mut capture = state.capture.lock().await;
         capture
-            .as_ref()
-            .map(|capture| capture.selected_text.clone())
-            .ok_or_else(|| "Press Ctrl+Shift+G after selecting text first.".to_string())?
+            .begin_rewrite(&token)
+            .map_err(|error| error.code().to_string())?
     };
 
-    ensure_codex(&state).await?.rewrite(&selected_text, mode).await
+    let rewrite = match ensure_codex(&state).await {
+        Ok(client) => client.rewrite(&selected_text, mode).await,
+        Err(error) => Err(error),
+    };
+
+    let mut capture = state.capture.lock().await;
+    match rewrite {
+        Ok(result) => {
+            capture
+                .finish_rewrite_success(&token)
+                .map_err(|error| error.code().to_string())?;
+            Ok(result)
+        }
+        Err(error) => match capture.finish_rewrite_failure(&token) {
+            Ok(()) => Err(error),
+            Err(session_error) => Err(session_error.code().to_string()),
+        },
+    }
 }
 
 #[tauri::command]
 async fn apply_replacement(
+    session_id: String,
+    generation: u64,
     replacement: String,
     restore_clipboard: bool,
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<(), String> {
-    let previous_clipboard = {
-        let capture = state.capture.lock().await;
-        capture.as_ref().and_then(|capture| capture.previous_clipboard.clone())
+) -> Result<ApplyOutcome, String> {
+    let token = SessionToken {
+        session_id,
+        generation,
     };
-
-    clipboard::paste_replacement(&replacement, previous_clipboard.as_deref(), restore_clipboard).await?;
-
-    {
-        let mut capture = state.capture.lock().await;
-        *capture = None;
-    }
-
-    hide_main_window(&app)?;
-    Ok(())
+    let mut capture = state.capture.lock().await;
+    let mut platform = WindowsApplyPlatform::new(app);
+    Ok(apply_current_session(
+        &mut capture,
+        &token,
+        &replacement,
+        restore_clipboard,
+        &mut platform,
+    ))
 }
 
 #[tauri::command]
@@ -153,10 +184,24 @@ async fn take_startup_notices(state: State<'_, AppState>) -> Result<Vec<String>,
 }
 
 #[tauri::command]
-async fn dismiss_window(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+async fn dismiss_window(
+    session_id: Option<String>,
+    generation: Option<u64>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     {
         let mut capture = state.capture.lock().await;
-        *capture = None;
+        match (session_id, generation) {
+            (Some(session_id), Some(generation)) => capture
+                .cancel(&SessionToken {
+                    session_id,
+                    generation,
+                })
+                .map_err(|error| error.code().to_string())?,
+            (None, None) if !capture.has_active() => {}
+            _ => return Err("session_token_required".to_string()),
+        }
     }
     hide_main_window(&app)
 }
@@ -204,7 +249,7 @@ fn main() {
                 tauri::async_runtime::spawn(async move {
                     let state = app.state::<AppState>();
                     let mut capture = state.capture.lock().await;
-                    *capture = None;
+                    capture.cancel_active();
                 });
             }
         })
@@ -230,6 +275,11 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
             }
             "hide" => {
                 let _ = hide_main_window(app);
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state = app.state::<AppState>();
+                    state.capture.lock().await.cancel_active();
+                });
             }
             "account" => {
                 let _ = show_main_window(app, None);
@@ -243,27 +293,30 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
 }
 
 fn register_global_hotkey(app: &mut tauri::App) -> Result<(), String> {
-    use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+    use tauri_plugin_global_shortcut::{
+        Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
+    };
 
     let hotkey = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyG);
     let handler_hotkey = hotkey.clone();
 
-    app.handle().plugin(
-        tauri_plugin_global_shortcut::Builder::new()
-            .with_handler(move |app, shortcut, event| {
-                if shortcut == &handler_hotkey && event.state() == ShortcutState::Pressed {
-                    let app = app.clone();
-                    tauri::async_runtime::spawn(async move {
-                        if let Err(message) = capture_from_hotkey(app.clone()).await {
-                            let _ = app.emit("capture-error", CaptureErrorEvent { message });
-                            let _ = show_main_window(&app, None);
-                        }
-                    });
-                }
-            })
-            .build(),
-    )
-    .map_err(|error| format!("Could not initialize global shortcut support: {error}"))?;
+    app.handle()
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(move |app, shortcut, event| {
+                    if shortcut == &handler_hotkey && event.state() == ShortcutState::Pressed {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(message) = capture_from_hotkey(app.clone()).await {
+                                let _ = app.emit("capture-error", CaptureErrorEvent { message });
+                                let _ = show_main_window(&app, None);
+                            }
+                        });
+                    }
+                })
+                .build(),
+        )
+        .map_err(|error| format!("Could not initialize global shortcut support: {error}"))?;
 
     app.global_shortcut()
         .register(hotkey)
@@ -279,8 +332,13 @@ fn spawn_auth_notification_bridge(app: AppHandle, client: Arc<CodexClient>, logi
                 return;
             };
 
-            let method = notification.get("method").and_then(serde_json::Value::as_str).unwrap_or_default();
-            let params = notification.get("params").unwrap_or(&serde_json::Value::Null);
+            let method = notification
+                .get("method")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            let params = notification
+                .get("params")
+                .unwrap_or(&serde_json::Value::Null);
 
             match method {
                 "account/login/completed" => {
@@ -288,7 +346,10 @@ fn spawn_auth_notification_bridge(app: AppHandle, client: Arc<CodexClient>, logi
                         .get("loginId")
                         .and_then(serde_json::Value::as_str)
                         .map(ToOwned::to_owned);
-                    if event_login_id.as_deref().is_some_and(|value| value != login_id) {
+                    if event_login_id
+                        .as_deref()
+                        .is_some_and(|value| value != login_id)
+                    {
                         continue;
                     }
 
@@ -331,33 +392,73 @@ fn spawn_auth_notification_bridge(app: AppHandle, client: Arc<CodexClient>, logi
 }
 
 async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
-    let capture = clipboard::capture_selected_text().await?;
-    let char_count = capture.selected_text.chars().count();
-    let cursor = capture.cursor.clone();
-    let session_id = Uuid::new_v4().to_string();
+    struct PreparedCapture {
+        token: SessionToken,
+        selected_text: String,
+        cursor: CursorPoint,
+    }
 
     {
         let state = app.state::<AppState>();
-        let mut slot = state.capture.lock().await;
-        *slot = Some(CapturedSelection {
-            selected_text: capture.selected_text,
-            previous_clipboard: capture.previous_text,
-        });
+        state.capture.lock().await.cancel_active();
     }
 
-    show_main_window(&app, Some(&cursor))?;
-    app.emit(
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Codex Pencil window is missing.".to_string())?;
+    let own_hwnd = window
+        .hwnd()
+        .map_err(|_| "Codex Pencil window handle is unavailable.".to_string())?
+        .0 as isize;
+    let mut target_platform = WindowsForegroundTargetPlatform;
+    let prepare_app = app.clone();
+    let focus_app = app.clone();
+
+    let (_, prepared) = capture_before_widget_focus(
+        &mut target_platform,
+        own_hwnd,
+        std::process::id(),
+        move |target| {
+            let app = prepare_app.clone();
+            async move {
+                let capture = clipboard::capture_selected_text().await?;
+                let token = {
+                    let state = app.state::<AppState>();
+                    let mut store = state.capture.lock().await;
+                    store
+                        .capture(
+                            Uuid::new_v4().to_string(),
+                            capture.selected_text.clone(),
+                            target,
+                            capture.previous_text,
+                            capture.owned_sequence,
+                        )
+                        .map_err(|error| error.code().to_string())?
+                };
+                Ok(PreparedCapture {
+                    token,
+                    selected_text: capture.selected_text,
+                    cursor: capture.cursor,
+                })
+            }
+        },
+        move |prepared| show_main_window(&focus_app, Some(&prepared.cursor)),
+    )
+    .await?;
+
+    let token = prepared.token.clone();
+    if let Err(error) = app.emit(
         "selection-captured",
         SelectionCapturedEvent {
-            session_id,
-            char_count,
-            cursor: CursorPayload {
-                x: cursor.x,
-                y: cursor.y,
-            },
+            session_id: prepared.token.session_id,
+            generation: prepared.token.generation,
+            selected_text: prepared.selected_text,
         },
-    )
-    .map_err(|error| format!("Could not notify window: {error}"))?;
+    ) {
+        let state = app.state::<AppState>();
+        let _ = state.capture.lock().await.cancel(&token);
+        return Err(format!("Could not notify window: {error}"));
+    }
 
     Ok(())
 }
@@ -375,8 +476,12 @@ fn show_main_window(app: &AppHandle, cursor: Option<&CursorPoint>) -> Result<(),
             .map_err(|error| format!("Could not position window: {error}"))?;
     }
 
-    window.show().map_err(|error| format!("Could not show window: {error}"))?;
-    window.set_focus().map_err(|error| format!("Could not focus window: {error}"))?;
+    window
+        .show()
+        .map_err(|error| format!("Could not show window: {error}"))?;
+    window
+        .set_focus()
+        .map_err(|error| format!("Could not focus window: {error}"))?;
     Ok(())
 }
 
@@ -384,5 +489,7 @@ fn hide_main_window(app: &AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "Codex Pencil window is missing.".to_string())?;
-    window.hide().map_err(|error| format!("Could not hide window: {error}"))
+    window
+        .hide()
+        .map_err(|error| format!("Could not hide window: {error}"))
 }

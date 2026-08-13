@@ -15,9 +15,11 @@ Codex Pencil is a compact Windows tray/widget writing assistant built with Tauri
 |-- vite.config.ts
 |-- scripts
 |   |-- build-tauri.ps1
+|   |-- test-capture-contract.mjs
 |   `-- verify-windows.ps1
 |-- src
 |   |-- App.tsx
+|   |-- captureContract.ts
 |   |-- main.tsx
 |   |-- styles.css
 |   `-- vite-env.d.ts
@@ -31,11 +33,15 @@ Codex Pencil is a compact Windows tray/widget writing assistant built with Tauri
     |   |-- icon.ico
     |   `-- icon.png
     |-- src
+    |   |-- apply_safety.rs
+    |   |-- capture_session.rs
     |   |-- clipboard.rs
     |   |-- codex_client.rs
     |   |-- main.rs
     |   |-- prerequisites.rs
-    |   `-- settings.rs
+    |   |-- settings.rs
+    |   |-- windows_apply.rs
+    |   `-- windows_target.rs
     `-- tauri.conf.json
 ```
 
@@ -101,6 +107,7 @@ codex --version
 cargo --version
 rustc --version
 npm run typecheck
+node scripts/test-capture-contract.mjs
 npm run build:frontend
 npm run build
 ```
@@ -121,12 +128,13 @@ The helper prints Node/npm/Codex/Rust tool versions, runs the frontend checks, a
 - `Ctrl+Shift+G` is registered by the Rust global-shortcut plugin.
 - The tray menu includes Show, Hide, Login / Account, and Quit.
 - On hotkey press, Rust saves the current text clipboard when possible, writes a sentinel, sends `Ctrl+C`, reads the copied selection, then restores the previous text clipboard when possible.
-- The full selected text is kept in Rust memory for the current capture and is not stored in settings or logged. The local React preview receives the replacement, summary, confidence, and edit snippets (`before`/`after`/`reason`) returned by Codex so the user can review before applying.
+- Before the widget is shown or focused, Rust captures the foreground target window and its owning process for a backend-owned capture session. Raw target handles and process identifiers are never sent to React.
+- The full selected text is kept in Rust memory for the current capture and is not stored in settings or logged. React receives the selected text in the one-shot capture event only to derive the displayed character count, then retains the opaque session token rather than the source text. The local React preview receives the replacement, summary, confidence, and edit snippets (`before`/`after`/`reason`) returned by Codex so the user can review before applying.
 - Rewrite modes: `grammar`, `natural`, `concise`, `polite`, `translate_en`, `translate_ko`.
 - The Rust backend starts `codex app-server` with piped stdin/stdout/stderr. The default app-server transport is stdio, which is local to the child process.
 - The app must not be changed to launch Codex app-server with a websocket, TCP listener, or non-local network transport.
 - Rewrites use ephemeral Codex threads with `approvalPolicy: "never"` and a strict JSON schema requiring `{ replacement, changed, summary, confidence }`. Optional `edits` remain available for the existing review UI, and `additionalProperties` is `false`.
-- Applying a rewrite writes the replacement to the clipboard, sends `Ctrl+V`, and restores the previous text clipboard when available and enabled.
+- Applying a rewrite requires the exact current session identifier and generation. Rust validates lifecycle state, target-window validity, owning process, and actual foreground restoration before writing the replacement or sending one `Ctrl+V` sequence.
 - Settings are stored locally in the Tauri app config directory as `settings.json`.
 
 ## Codex Auth Model
@@ -168,6 +176,24 @@ The fingerprint algorithm and executable resolution policy are recorded in `src-
 
 The app does not implement custom OAuth, does not store or display tokens, does not use an OpenAI API key, and does not expose a network listener.
 
+## Target-bound Apply Contract
+
+- Each successful capture creates one in-memory lifecycle: `Captured -> Rewriting -> Ready -> Applying -> Completed`, with explicit retry/cancellation transitions for failures.
+- A new capture or dismiss invalidates the old token. An asynchronous rewrite completion is accepted only if its session identifier and generation are still current; stale completions cannot become `Ready`.
+- Stale or mismatched Apply requests are rejected before any clipboard write, widget action, or keyboard input.
+- A current `Ready` session first revalidates the captured window and process, hides the widget, performs bounded activation attempts, and verifies `GetForegroundWindow()` immediately before `SendInput`.
+- If a valid current target is missing, belongs to a different process, or cannot be proven foreground, the approved replacement is copied without `Ctrl+V`. The widget reports that the user must paste manually.
+- A zero or partial `SendInput` result is a typed failure and cancels the session so automatic retry cannot duplicate or redirect uncertain input.
+- Clipboard restore is supported for text only. The app records clipboard sequence ownership, uses newer readable text as the restore candidate when another actor changed the clipboard before Apply, and restores only while the replacement sequence is still app-owned. A later external clipboard change is never overwritten. Copy-only fallback intentionally leaves the approved replacement on the clipboard.
+- The ignored interactive harness uses only synthetic text and can be run with a separate target directory:
+
+```powershell
+$env:CARGO_TARGET_DIR = "$PWD\src-tauri\target\p0-02-verification"
+cargo test --manifest-path src-tauri/Cargo.toml p0_02_windows_live_tests::windows_live_target_bound_apply_acceptance -- --ignored --exact --nocapture
+```
+
+The harness requires an interactive Windows desktop where `SendInput` is actually delivered to the verified foreground editor. An environment that accepts the input records but does not deliver them cannot be treated as live acceptance evidence.
+
 ## Privacy Behavior
 
 - No continuous clipboard monitoring.
@@ -188,6 +214,7 @@ The app does not implement custom OAuth, does not store or display tokens, does 
 ## Known Limitations
 
 - Clipboard restore is text-only. Complex clipboard formats such as images, files, rich HTML/RTF, or app-private formats may not be preserved after the copy/paste workflow.
+- Clipboard sequence checks narrow ownership races but cannot atomically preserve or reconstruct unsupported rich/non-text formats. Copy-only fallback deliberately replaces the clipboard text and does not restore it.
 - Password-field detection is not reliable in the current MVP, so the app does not claim to detect password fields. Do not use the hotkey in password or secret fields.
 - Some apps block simulated `Ctrl+C` or `Ctrl+V`, run elevated, or use custom editors that do not expose selected text through the clipboard.
 - Codex CLI must be installed and authenticated-capable.
@@ -212,6 +239,8 @@ cd D:\dev\repos\Grammar\src-tauri\target\release
 - Verify each mode produces a non-empty replacement, summary, confidence, and optional local edit details.
 - Confirm Apply is disabled until a rewrite result exists and remains disabled while a rewrite is pending.
 - Click Apply and confirm the selected text in the original app is replaced.
+- Close the captured target before Apply and confirm no automatic paste occurs, the replacement remains on the clipboard, and the widget instructs you to paste manually.
+- Start a new capture before an older rewrite completes and confirm the older result cannot replace or Apply against the new capture.
 - Confirm the previous text clipboard is restored when Restore clipboard is enabled and the previous clipboard was text.
 - Disable Restore clipboard and confirm the replacement remains on the clipboard after Apply.
 - Press the hotkey with no selected text and confirm the No text selected state.
