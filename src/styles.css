@@ -153,6 +153,8 @@ h1 {
   flex-direction: column;
   gap: 16px;
   padding-top: 4px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .settings-heading {
@@ -181,6 +183,7 @@ h1 {
 }
 
 .shortcut-recorder,
+.settings-field select,
 .translation-field select {
   width: 100%;
   height: 36px;
@@ -199,9 +202,264 @@ h1 {
 
 .shortcut-recorder.recording,
 .shortcut-recorder:focus,
+.settings-field select:focus,
 .translation-field select:focus {
   border-color: #1b6f55;
   box-shadow: 0 0 0 3px rgba(27, 111, 85, 0.12);
+}
+
+.terminology-settings {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #d5ded7;
+  border-radius: 8px;
+  background: #f7faf6;
+}
+
+.terminology-heading,
+.terminology-toggles,
+.inline-form,
+.profile-row,
+.entry-form-heading,
+.row-actions,
+.export-actions,
+.file-button,
+.case-toggle {
+  display: flex;
+  align-items: center;
+}
+
+.terminology-heading {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.terminology-heading h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.terminology-heading p,
+.terminology-recovery,
+.import-plan {
+  margin: 3px 0 0;
+  color: #68756e;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.terminology-toggles {
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.terminology-toggles label,
+.case-toggle {
+  gap: 5px;
+  color: #4a574f;
+  font-size: 10px;
+}
+
+.terminology-toggles input,
+.case-toggle input {
+  accent-color: #1b6f55;
+}
+
+.inline-form {
+  gap: 6px;
+}
+
+.inline-form input,
+.terminology-search input,
+.terminology-search select,
+.entry-form input,
+.entry-form select,
+.entry-form textarea {
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #cfd8d1;
+  border-radius: 6px;
+  outline: none;
+  color: #17201b;
+  font-size: 10px;
+  background: #fff;
+}
+
+.inline-form input {
+  flex: 1;
+}
+
+.profile-list,
+.entry-list,
+.suggestion-list {
+  display: grid;
+  gap: 5px;
+}
+
+.profile-row,
+.entry-row,
+.suggestion-list article {
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid #d9e1db;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.profile-row > span,
+.entry-copy {
+  min-width: 0;
+  flex: 1;
+  font-size: 10px;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.badge-row small,
+.terminology-warnings span {
+  padding: 2px 5px;
+  border-radius: 999px;
+  color: #315345;
+  font-size: 9px;
+  background: #e6f0e9;
+}
+
+.row-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.row-actions button,
+.entry-form-heading button {
+  padding: 3px 5px;
+  border-radius: 5px;
+  color: #315345;
+  font-size: 9px;
+  background: #edf3ef;
+  cursor: pointer;
+}
+
+.row-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.terminology-search {
+  display: grid;
+  grid-template-columns: auto repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 5px;
+}
+
+.terminology-search > input {
+  grid-column: 2 / -1;
+}
+
+.entry-form {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid #d5ded7;
+  border-radius: 7px;
+  background: #fdfefd;
+}
+
+.entry-form-heading {
+  justify-content: space-between;
+  font-size: 10px;
+}
+
+.entry-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.entry-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.entry-copy strong,
+.entry-copy span,
+.suggestion-list article strong,
+.suggestion-list article span,
+.suggestion-list article small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entry-copy span,
+.suggestion-list article span,
+.suggestion-list article small {
+  color: #68756e;
+  font-size: 9px;
+}
+
+.import-export,
+.import-plan,
+.terminology-recovery {
+  display: grid;
+  gap: 6px;
+}
+
+.export-actions {
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.file-button {
+  justify-content: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #cfd8d1;
+  border-radius: 7px;
+  color: #334139;
+  font-size: 11px;
+  font-weight: 650;
+  background: #fff;
+  cursor: pointer;
+}
+
+.file-button input {
+  display: none;
+}
+
+.terminology-warnings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid #e7d5aa;
+  border-radius: 6px;
+  background: #fff9e9;
+}
+
+.terminology-warnings small {
+  width: 100%;
+  color: #735f31;
+  font-size: 9px;
+}
+
+.suggestion-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.suggestion-list article > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
 }
 
 .settings-actions {
@@ -426,6 +684,23 @@ textarea {
 textarea:focus {
   border-color: #1b6f55;
   box-shadow: 0 0 0 3px rgba(27, 111, 85, 0.12);
+}
+
+.entry-form textarea {
+  height: auto;
+  min-height: 48px;
+  resize: vertical;
+}
+
+.import-conflict-list {
+  max-height: 110px;
+  margin: 0;
+  padding: 6px 6px 6px 22px;
+  overflow: auto;
+  border: 1px solid rgba(86, 103, 94, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #54645b;
 }
 
 .loading-state {

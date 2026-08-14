@@ -17,12 +17,14 @@ Codex Pencil is a compact Windows tray/widget writing assistant built with Tauri
 |   |-- build-tauri.ps1
 |   |-- test-capture-contract.mjs
 |   |-- test-promptless-contract.mjs
+|   |-- test-terminology-contract.mjs
 |   `-- verify-windows.ps1
 |-- src
 |   |-- App.tsx
 |   |-- captureContract.ts
 |   |-- main.tsx
 |   |-- promptlessContract.ts
+|   |-- terminologyContract.ts
 |   |-- styles.css
 |   `-- vite-env.d.ts
 `-- src-tauri
@@ -43,6 +45,12 @@ Codex Pencil is a compact Windows tray/widget writing assistant built with Tauri
     |   |-- prerequisites.rs
     |   |-- shortcut.rs
     |   |-- settings.rs
+    |   |-- terminology.rs
+    |   |-- terminology_import_export.rs
+    |   |-- terminology_matcher.rs
+    |   |-- terminology_service.rs
+    |   |-- terminology_store.rs
+    |   |-- terminology_validation.rs
     |   |-- translation.rs
     |   |-- windows_apply.rs
     |   `-- windows_target.rs
@@ -113,6 +121,7 @@ rustc --version
 npm run typecheck
 node scripts/test-capture-contract.mjs
 node scripts/test-promptless-contract.mjs
+node scripts/test-terminology-contract.mjs
 npm run build:frontend
 npm run build
 ```
@@ -132,7 +141,7 @@ The helper prints Node/npm/Codex/Rust tool versions, runs the frontend checks, a
 - The app runs as a Tauri tray app with one hidden floating window.
 - The Rust global-shortcut plugin registers one primary shortcut. Its default is `Ctrl+Shift+G`; Settings can transactionally replace it or reset it to the default.
 - A candidate shortcut is normalized and registered before the old binding is removed. Registration conflicts leave the old runtime binding and persisted setting unchanged; persistence failure attempts a bounded rollback to the old binding.
-- Saved settings use schema version 2 and recoverable same-directory temporary-file promotion with a previous-file backup. Legacy settings migrate to the canonical shortcut and translation defaults.
+- Saved settings use schema version 3 and recoverable same-directory temporary-file promotion with a previous-file backup. Schema version 2 migrates without changing the shortcut, mode, translation target/format, clipboard restore, or auto-rewrite preferences. Terminology defaults to enabled with `general` active, approved matches and suggestions enabled, and `autoSaveSuggestions` fixed to `false`.
 - The tray menu includes Show, Hide, Login / Account, Settings, and Quit. Settings shows and focuses the existing widget and opens its focused settings view.
 - On hotkey press, Rust saves the current text clipboard when possible, writes a sentinel, sends `Ctrl+C`, reads the copied selection, then restores the previous text clipboard when possible.
 - Before the widget is shown or focused, Rust captures the foreground target window and its owning process for a backend-owned capture session. Raw target handles and process identifiers are never sent to React.
@@ -190,6 +199,7 @@ The app does not implement custom OAuth, does not store or display tokens, does 
 - Each successful capture creates one in-memory lifecycle: `Captured -> Rewriting -> Ready -> Applying -> Completed`, with explicit retry/cancellation transitions for failures.
 - A new capture or dismiss invalidates the old token. An asynchronous rewrite completion is accepted only if its session identifier and generation are still current; stale completions cannot become `Ready`.
 - Translation additionally binds `Ready` and Apply to the exact mode and target language. A target/mode change invalidates an older result without changing the clipboard or sending input. Apply-format changes remain local and do not require another model request.
+- Terminology-aware rewrites additionally bind `Ready` and Apply to the enabled flags, active profile, store revision, and deterministic matched entry IDs. A profile, dictionary, or terminology-setting change makes the older result stale before clipboard or input activity.
 - Stale or mismatched Apply requests are rejected before any clipboard write, widget action, or keyboard input.
 - A current `Ready` session first revalidates the captured window and process, hides the widget, performs bounded activation attempts, and verifies `GetForegroundWindow()` immediately before `SendInput`.
 - If a valid current target is missing, belongs to a different process, or cannot be proven foreground, the approved replacement is copied without `Ctrl+V`. The widget reports that the user must paste manually.
@@ -213,10 +223,43 @@ cargo test --manifest-path src-tauri/Cargo.toml p1_01_windows_live_tests::p1_01_
 cargo test --manifest-path src-tauri/Cargo.toml p0_02_windows_live_tests::p1_01_windows_live_translation_formats_acceptance -- --ignored --exact --test-threads=1
 ```
 
+## Local Terminology Memory
+
+The personal dictionary is local product configuration, not document or rewrite history.
+
+- The store is `terminology.v1.json` under Tauri `app_data_dir`; `terminology.v1.json.bak` retains a valid recovery source. Writes validate the complete next store, sync a same-directory temporary file, and promote it without partially updating in-memory state.
+- A new store contains reserved `global` and `general` profiles. `global` is always enabled and implicitly active; settings select exactly one enabled non-global profile.
+- Entry types are `translation`, `preferred`, and `protected`; states are `approved`, `suggested`, and `disabled`. Suggested and disabled entries are inert. Suggestions require an explicit Save as suggested action and a later explicit Approve action before matching.
+- Automatic matching is local, NFC-normalized, exact `whole_phrase` matching with aliases and deterministic profile/language/length/priority/time/ID precedence. It does not use fuzzy matching, embeddings, document scanning, or a database.
+- Only approved entries from `global` and the active profile that actually match the backend-owned selected text are serialized as request constraints. The subset is capped at 50 entries and 16 KiB. Notes, profile names, usage counters, timestamps, unmatched entries, suggested/disabled entries, UI search text, and the full dictionary are not sent.
+- Selected text and terminology constraints are encoded as untrusted JSON data in the existing stdio App Server request. Protected terms are preserve-exact constraints; translation and preferred entries carry only the matched source and preferred form.
+- Result validation is local. Missing protected or preferred forms, unverified usage, matcher truncation, and conflicts produce review warnings; they do not silently rewrite or auto-Apply the result.
+- `usageCount` is best-effort and increments only after the user approves an Apply or copy-only action. No sentence, result, clipboard value, Prompt, or model output is stored with it.
+- JSON export is the versioned profile/entry store. CSV uses fixed RFC 4180 columns and CRLF records. Import accepts at most 2 MiB, performs an expiring dry run, reports duplicates/conflicts, applies only valid non-conflicting data in one revision, and rejects a stale plan if the store changed.
+- If both main and backup are invalid, the app exposes a content-free unrecoverable state and does not overwrite either automatically. The user must explicitly reset or import a valid recovery file.
+
+Focused checks:
+
+```powershell
+$env:CARGO_TARGET_DIR = Join-Path $env:TEMP "grammar-p1-02-target"
+cargo test --manifest-path src-tauri/Cargo.toml p1_02_contract_tests:: -- --test-threads=1
+node scripts/test-terminology-contract.mjs
+npm run typecheck
+```
+
+The ignored P1-02 Windows acceptance uses only owned temporary app data and bounded synthetic editor windows. It exercises persistence/recovery and terminology-bound target Apply without live model inference:
+
+```powershell
+$env:CARGO_TARGET_DIR = Join-Path $env:TEMP "grammar-p1-02-live"
+cargo test --manifest-path src-tauri/Cargo.toml p1_02_windows_live_tests::p1_02_windows_live_store_profile_suggestion_and_import_restart_acceptance -- --ignored --exact --test-threads=1
+cargo test --manifest-path src-tauri/Cargo.toml p1_02_windows_live_tests::p1_02_windows_live_matched_validation_and_target_bound_apply_acceptance -- --ignored --exact --test-threads=1
+```
+
 ## Privacy Behavior
 
 - No continuous clipboard monitoring.
 - No rewrite history storage.
+- No document, clipboard, Prompt, or terminology-request history storage. Dictionary exports contain only local profiles and terminology entries.
 - Selected text is sent to Codex only after the user presses `Ctrl+Shift+G` and the app performs a rewrite.
 - The local preview UI may receive and display replacement text plus short edit metadata. Edit metadata can include snippets from the selected text.
 - Prompts and selected text should not be logged. Codex app-server stderr is drained and discarded by the app.
@@ -238,6 +281,9 @@ cargo test --manifest-path src-tauri/Cargo.toml p0_02_windows_live_tests::p1_01_
 - Some apps block simulated `Ctrl+C` or `Ctrl+V`, run elevated, or use custom editors that do not expose selected text through the clipboard.
 - Codex CLI must be installed and authenticated-capable.
 - Superseded translation requests are discarded when they complete, but this gate does not interrupt an already-running Codex App Server turn.
+- Terminology matching is intentionally exact and deterministic. This MVP has one active non-global profile, no automatic app/document profile switching, no fuzzy or semantic matching, and no cloud synchronization.
+- The terminology backup is a recovery source, not a journal. Recovery can roll back the most recent semantic mutation if the newest main file becomes invalid.
+- CSV is an entry-oriented interchange format: its fixed columns do not encode profile enablement or profiles with no entries. New CSV-only profiles are imported enabled but never become active automatically; use JSON for a full-fidelity local profile/store backup.
 
 ## Runtime Smoke Test Checklist
 

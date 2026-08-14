@@ -15,7 +15,7 @@ export type PrimaryShortcut = ShortcutCandidate &
   }>;
 
 export type AppSettings = Readonly<{
-  schemaVersion: 2;
+  schemaVersion: 3;
   mode: RewriteMode;
   restoreClipboard: boolean;
   autoRewrite: boolean;
@@ -24,6 +24,13 @@ export type AppSettings = Readonly<{
     sourceLanguage: "auto";
     targetLanguage: TranslationTargetLanguage;
     applyFormat: TranslationApplyFormat;
+  }>;
+  terminology: Readonly<{
+    enabled: boolean;
+    activeProfileId: string;
+    useApprovedTerminology: boolean;
+    suggestTerminology: boolean;
+    autoSaveSuggestions: false;
   }>;
 }>;
 
@@ -121,8 +128,9 @@ export function parseAppSettings(value: unknown): AppSettings | null {
       "autoRewrite",
       "shortcut",
       "translation",
+      "terminology",
     ]) ||
-    value.schemaVersion !== 2 ||
+    value.schemaVersion !== 3 ||
     typeof value.mode !== "string" ||
     !MODES.has(value.mode as RewriteMode) ||
     typeof value.restoreClipboard !== "boolean" ||
@@ -130,7 +138,15 @@ export function parseAppSettings(value: unknown): AppSettings | null {
     !isRecord(value.shortcut) ||
     !hasExactKeys(value.shortcut, ["primary"]) ||
     !isRecord(value.translation) ||
-    !hasExactKeys(value.translation, ["sourceLanguage", "targetLanguage", "applyFormat"])
+    !hasExactKeys(value.translation, ["sourceLanguage", "targetLanguage", "applyFormat"]) ||
+    !isRecord(value.terminology) ||
+    !hasExactKeys(value.terminology, [
+      "enabled",
+      "activeProfileId",
+      "useApprovedTerminology",
+      "suggestTerminology",
+      "autoSaveSuggestions",
+    ])
   ) {
     return null;
   }
@@ -141,12 +157,20 @@ export function parseAppSettings(value: unknown): AppSettings | null {
     typeof value.translation.targetLanguage !== "string" ||
     !TARGET_LANGUAGES.has(value.translation.targetLanguage as TranslationTargetLanguage) ||
     typeof value.translation.applyFormat !== "string" ||
-    !APPLY_FORMATS.has(value.translation.applyFormat as TranslationApplyFormat)
+    !APPLY_FORMATS.has(value.translation.applyFormat as TranslationApplyFormat) ||
+    typeof value.terminology.enabled !== "boolean" ||
+    typeof value.terminology.activeProfileId !== "string" ||
+    value.terminology.activeProfileId.length === 0 ||
+    value.terminology.activeProfileId.length > 128 ||
+    !/^[A-Za-z0-9_.-]+$/.test(value.terminology.activeProfileId) ||
+    typeof value.terminology.useApprovedTerminology !== "boolean" ||
+    typeof value.terminology.suggestTerminology !== "boolean" ||
+    value.terminology.autoSaveSuggestions !== false
   ) {
     return null;
   }
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     mode: value.mode as RewriteMode,
     restoreClipboard: value.restoreClipboard,
     autoRewrite: value.autoRewrite,
@@ -155,6 +179,13 @@ export function parseAppSettings(value: unknown): AppSettings | null {
       sourceLanguage: "auto",
       targetLanguage: value.translation.targetLanguage as TranslationTargetLanguage,
       applyFormat: value.translation.applyFormat as TranslationApplyFormat,
+    },
+    terminology: {
+      enabled: value.terminology.enabled,
+      activeProfileId: value.terminology.activeProfileId,
+      useApprovedTerminology: value.terminology.useApprovedTerminology,
+      suggestTerminology: value.terminology.suggestTerminology,
+      autoSaveSuggestions: false,
     },
   };
 }

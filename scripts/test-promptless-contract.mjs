@@ -16,7 +16,7 @@ const moduleUrl = `data:text/javascript;base64,${Buffer.from(outputText).toStrin
 const contract = await import(moduleUrl);
 
 const settings = contract.parseAppSettings({
-  schemaVersion: 2,
+  schemaVersion: 3,
   mode: "translate",
   restoreClipboard: true,
   autoRewrite: true,
@@ -32,9 +32,24 @@ const settings = contract.parseAppSettings({
     targetLanguage: "zh-Hant",
     applyFormat: "source_with_translation",
   },
+  terminology: {
+    enabled: true,
+    activeProfileId: "general",
+    useApprovedTerminology: true,
+    suggestTerminology: true,
+    autoSaveSuggestions: false,
+  },
 });
 assert.ok(settings);
 assert.equal(settings.translation.targetLanguage, "zh-Hant");
+assert.equal(settings.terminology.autoSaveSuggestions, false);
+assert.equal(
+  contract.parseAppSettings({
+    ...settings,
+    terminology: { ...settings.terminology, autoSaveSuggestions: true },
+  }),
+  null,
+);
 assert.equal(
   contract.parseAppSettings({
     ...settings,
