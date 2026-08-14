@@ -7,33 +7,41 @@ import {
   Languages,
   Loader2,
   LogIn,
+  Keyboard,
   RefreshCcw,
+  RotateCcw,
+  Settings as SettingsIcon,
   ShieldCheck,
   Sparkles,
   AlertTriangle,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import {
   parseApplyOutcome,
   parseSelectionCaptured,
   sameCaptureToken,
   type CaptureToken,
 } from "./captureContract";
-
-type RewriteMode =
-  | "grammar"
-  | "natural"
-  | "concise"
-  | "polite"
-  | "translate_en"
-  | "translate_ko";
-
-type AppSettings = {
-  mode: RewriteMode;
-  restoreClipboard: boolean;
-  autoRewrite: boolean;
-};
+import {
+  parseAppSettings,
+  parseShortcutUpdateResponse,
+  sameRewriteIntent,
+  shortcutCandidateFromKeyEvent,
+  type AppSettings,
+  type RewriteIntentToken,
+  type RewriteMode,
+  type ShortcutCandidate,
+  type TranslationApplyFormat,
+  type TranslationTargetLanguage,
+} from "./promptlessContract";
 
 type AuthStatus = {
   loggedIn: boolean;
@@ -103,14 +111,34 @@ const MODES: Array<{ id: RewriteMode; label: string; icon: "sparkles" | "languag
   { id: "natural", label: "Natural", icon: "sparkles" },
   { id: "concise", label: "Concise", icon: "sparkles" },
   { id: "polite", label: "Polite", icon: "sparkles" },
-  { id: "translate_en", label: "English", icon: "languages" },
-  { id: "translate_ko", label: "Korean", icon: "languages" },
+  { id: "translate", label: "Translate", icon: "languages" },
+];
+
+const TARGET_LANGUAGES: Array<{ id: TranslationTargetLanguage; label: string }> = [
+  { id: "ko", label: "Korean" },
+  { id: "en", label: "English" },
+  { id: "ja", label: "Japanese" },
+  { id: "zh-Hans", label: "Simplified Chinese" },
+  { id: "zh-Hant", label: "Traditional Chinese" },
 ];
 
 const DEFAULT_SETTINGS: AppSettings = {
+  schemaVersion: 2,
   mode: "grammar",
   restoreClipboard: true,
   autoRewrite: true,
+  shortcut: {
+    primary: {
+      modifiers: ["CTRL", "SHIFT"],
+      key: "G",
+      display: "Ctrl+Shift+G",
+    },
+  },
+  translation: {
+    sourceLanguage: "auto",
+    targetLanguage: "en",
+    applyFormat: "translation_only",
+  },
 };
 
 function toErrorMessage(error: unknown): string {
@@ -131,14 +159,23 @@ export default function App() {
   const [isRewriting, setIsRewriting] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [isStartingLogin, setIsStartingLogin] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [recordingShortcut, setRecordingShortcut] = useState(false);
+  const [shortcutCandidateLabel, setShortcutCandidateLabel] = useState<string | null>(null);
   const modeRef = useRef<RewriteMode>(DEFAULT_SETTINGS.mode);
+  const targetLanguageRef = useRef<TranslationTargetLanguage>(
+    DEFAULT_SETTINGS.translation.targetLanguage,
+  );
   const autoRewriteRef = useRef(DEFAULT_SETTINGS.autoRewrite);
   const currentTokenRef = useRef<CaptureToken | null>(null);
-  const rewritingTokenRef = useRef<CaptureToken | null>(null);
+  const currentIntentRef = useRef<RewriteIntentToken | null>(null);
+  const rewritingIntentRef = useRef<RewriteIntentToken | null>(null);
+  const resultIntentRef = useRef<RewriteIntentToken | null>(null);
   const applyingTokenRef = useRef<CaptureToken | null>(null);
 
   useEffect(() => {
     modeRef.current = settings.mode;
+    targetLanguageRef.current = settings.translation.targetLanguage;
     autoRewriteRef.current = settings.autoRewrite;
   }, [settings]);
 
@@ -161,23 +198,38 @@ export default function App() {
     }
   }, []);
 
-  const saveSettings = useCallback(async (next: AppSettings) => {
-    setSettings(next);
+  const saveSettings = useCallback(async (next: AppSettings): Promise<AppSettings | null> => {
     try {
-      await invoke("save_settings", { settings: next });
+      const saved = parseAppSettings(await invoke<unknown>("save_settings", { settings: next }));
+      if (!saved) {
+        setError("Settings returned an invalid response. Your previous settings remain active.");
+        return null;
+      }
+      setSettings(saved);
+      return saved;
     } catch (nextError) {
       setError(toErrorMessage(nextError));
+      return null;
     }
   }, []);
 
   const rewrite = useCallback(async (
     mode: RewriteMode = modeRef.current,
     requestedToken: CaptureToken | null = currentTokenRef.current,
+    targetLanguage: TranslationTargetLanguage = targetLanguageRef.current,
   ) => {
-    if (!requestedToken || rewritingTokenRef.current) {
+    if (!requestedToken) {
       return;
     }
-    rewritingTokenRef.current = requestedToken;
+    const requestedIntent: RewriteIntentToken = {
+      ...requestedToken,
+      mode,
+      targetLanguage: mode === "translate" ? targetLanguage : null,
+    };
+    if (sameRewriteIntent(rewritingIntentRef.current, requestedIntent)) {
+      return;
+    }
+    rewritingIntentRef.current = requestedIntent;
     setIsRewriting(true);
     setError(null);
     setStatus("Rewriting with Codex");
@@ -186,22 +238,24 @@ export default function App() {
         sessionId: requestedToken.sessionId,
         generation: requestedToken.generation,
         mode,
+        targetLanguage: requestedIntent.targetLanguage,
       });
-      if (!sameCaptureToken(currentTokenRef.current, requestedToken)) {
+      if (!sameRewriteIntent(currentIntentRef.current, requestedIntent)) {
         return;
       }
       setResult(next);
+      resultIntentRef.current = requestedIntent;
       setDraft(next.replacement);
       setStatus("Replacement ready");
     } catch (nextError) {
-      if (!sameCaptureToken(currentTokenRef.current, requestedToken)) {
+      if (!sameRewriteIntent(currentIntentRef.current, requestedIntent)) {
         return;
       }
       setError(toErrorMessage(nextError));
       setStatus("Rewrite failed");
     } finally {
-      if (sameCaptureToken(rewritingTokenRef.current, requestedToken)) {
-        rewritingTokenRef.current = null;
+      if (sameRewriteIntent(rewritingIntentRef.current, requestedIntent)) {
+        rewritingIntentRef.current = null;
         setIsRewriting(false);
       }
     }
@@ -213,11 +267,17 @@ export default function App() {
     let unlistenLogin: UnlistenFn | undefined;
     let unlistenAuthChanged: UnlistenFn | undefined;
     let unlistenProcessExited: UnlistenFn | undefined;
+    let unlistenOpenSettings: UnlistenFn | undefined;
 
-    void invoke<AppSettings>("load_settings")
-      .then((next) => {
+    void invoke<unknown>("load_settings")
+      .then((value) => {
+        const next = parseAppSettings(value);
+        if (!next) {
+          throw new Error("Settings response was invalid.");
+        }
         setSettings(next);
         modeRef.current = next.mode;
+        targetLanguageRef.current = next.translation.targetLanguage;
         autoRewriteRef.current = next.autoRewrite;
       })
       .catch((nextError) => setError(toErrorMessage(nextError)));
@@ -236,7 +296,13 @@ export default function App() {
     void invoke<string[]>("take_startup_notices")
       .then((notices) => {
         if (notices.length > 0) {
-          setError(notices[0]);
+          setError(
+            notices.includes("shortcut_startup_failed")
+              ? "The saved shortcut could not be registered. Open Settings to recover it."
+              : notices.includes("shortcut_startup_fallback")
+                ? "The saved shortcut was unavailable. Ctrl+Shift+G is active."
+                : "Settings were recovered safely. Review them before continuing.",
+          );
           setStatus("Setup warning");
         }
       })
@@ -248,7 +314,9 @@ export default function App() {
       const payload = parseSelectionCaptured(event.payload);
       if (!payload) {
         currentTokenRef.current = null;
-        rewritingTokenRef.current = null;
+        currentIntentRef.current = null;
+        rewritingIntentRef.current = null;
+        resultIntentRef.current = null;
         applyingTokenRef.current = null;
         setSelection(null);
         setResult(null);
@@ -264,7 +332,14 @@ export default function App() {
         generation: payload.generation,
       };
       currentTokenRef.current = token;
-      rewritingTokenRef.current = null;
+      const intent: RewriteIntentToken = {
+        ...token,
+        mode: modeRef.current,
+        targetLanguage: modeRef.current === "translate" ? targetLanguageRef.current : null,
+      };
+      currentIntentRef.current = intent;
+      rewritingIntentRef.current = null;
+      resultIntentRef.current = null;
       applyingTokenRef.current = null;
       setSelection({ token, charCount: Array.from(payload.selectedText).length });
       setResult(null);
@@ -274,7 +349,7 @@ export default function App() {
       setError(null);
       setStatus("Selection captured");
       if (autoRewriteRef.current) {
-        void rewrite(modeRef.current, token);
+        void rewrite(modeRef.current, token, targetLanguageRef.current);
       }
     }).then((unlisten) => {
       unlistenSelection = unlisten;
@@ -282,7 +357,9 @@ export default function App() {
 
     void listen<CaptureError>("capture-error", (event) => {
       currentTokenRef.current = null;
-      rewritingTokenRef.current = null;
+      currentIntentRef.current = null;
+      rewritingIntentRef.current = null;
+      resultIntentRef.current = null;
       applyingTokenRef.current = null;
       setSelection(null);
       setResult(null);
@@ -324,12 +401,20 @@ export default function App() {
       unlistenProcessExited = unlisten;
     });
 
+    void listen("open-settings", () => {
+      setSettingsOpen(true);
+      setRecordingShortcut(false);
+    }).then((unlisten) => {
+      unlistenOpenSettings = unlisten;
+    });
+
     return () => {
       unlistenSelection?.();
       unlistenError?.();
       unlistenLogin?.();
       unlistenAuthChanged?.();
       unlistenProcessExited?.();
+      unlistenOpenSettings?.();
     };
   }, [refreshAuth, rewrite]);
 
@@ -393,11 +478,66 @@ export default function App() {
   }
 
   async function chooseMode(mode: RewriteMode) {
-    const next = { ...settings, mode };
-    await saveSettings(next);
-    if (selection && !result && !isRewriting) {
-      void rewrite(mode, selection.token);
+    if (mode === settings.mode) {
+      return;
     }
+    const next = { ...settings, mode };
+    const saved = await saveSettings(next);
+    if (!saved) {
+      return;
+    }
+    modeRef.current = saved.mode;
+    targetLanguageRef.current = saved.translation.targetLanguage;
+    if (selection) {
+      const intent: RewriteIntentToken = {
+        ...selection.token,
+        mode: saved.mode,
+        targetLanguage:
+          saved.mode === "translate" ? saved.translation.targetLanguage : null,
+      };
+      currentIntentRef.current = intent;
+      resultIntentRef.current = null;
+      setResult(null);
+      setDraft("");
+      setStatus("Selection captured");
+      if (saved.autoRewrite) {
+        void rewrite(saved.mode, selection.token, saved.translation.targetLanguage);
+      }
+    }
+  }
+
+  async function chooseTargetLanguage(targetLanguage: TranslationTargetLanguage) {
+    const next = {
+      ...settings,
+      translation: { ...settings.translation, targetLanguage },
+    };
+    const saved = await saveSettings(next);
+    if (!saved) {
+      return;
+    }
+    targetLanguageRef.current = saved.translation.targetLanguage;
+    if (selection && saved.mode === "translate") {
+      const intent: RewriteIntentToken = {
+        ...selection.token,
+        mode: "translate",
+        targetLanguage: saved.translation.targetLanguage,
+      };
+      currentIntentRef.current = intent;
+      resultIntentRef.current = null;
+      setResult(null);
+      setDraft("");
+      setStatus("Translation target changed");
+      if (saved.autoRewrite) {
+        void rewrite("translate", selection.token, saved.translation.targetLanguage);
+      }
+    }
+  }
+
+  async function chooseApplyFormat(applyFormat: TranslationApplyFormat) {
+    await saveSettings({
+      ...settings,
+      translation: { ...settings.translation, applyFormat },
+    });
   }
 
   async function toggleRestoreClipboard() {
@@ -408,9 +548,88 @@ export default function App() {
     await saveSettings({ ...settings, autoRewrite: !settings.autoRewrite });
   }
 
+  async function submitShortcutCandidate(candidate: ShortcutCandidate) {
+    try {
+      const response = parseShortcutUpdateResponse(
+        await invoke<unknown>("update_primary_shortcut", { candidate }),
+      );
+      if (!response) {
+        setError("Shortcut update returned an invalid response.");
+        return;
+      }
+      setSettings((current) => ({
+        ...current,
+        shortcut: { primary: response.active },
+      }));
+      if (response.status === "applied" || response.status === "unchanged") {
+        setError(null);
+        setStatus(response.status === "applied" ? "Shortcut updated" : "Shortcut unchanged");
+      } else if (response.status === "conflict") {
+        setError("That shortcut is unavailable. The previous shortcut remains active.");
+        setStatus("Shortcut conflict");
+      } else if (response.status === "persistence_failed_rolled_back") {
+        setError("The shortcut could not be saved. The previous shortcut was restored.");
+        setStatus("Shortcut rolled back");
+      } else {
+        setError("That shortcut is invalid or could not be registered. The previous shortcut remains active.");
+        setStatus("Shortcut rejected");
+      }
+    } catch (nextError) {
+      setError(toErrorMessage(nextError));
+      setStatus("Shortcut update failed");
+    } finally {
+      setRecordingShortcut(false);
+    }
+  }
+
+  function recordShortcut(event: ReactKeyboardEvent<HTMLButtonElement>) {
+    if (!recordingShortcut) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const candidate = shortcutCandidateFromKeyEvent(event);
+    if (!candidate) {
+      return;
+    }
+    const label = [...candidate.modifiers, candidate.key].join("+");
+    setShortcutCandidateLabel(label);
+    void submitShortcutCandidate(candidate);
+  }
+
+  async function resetShortcut() {
+    try {
+      const response = parseShortcutUpdateResponse(
+        await invoke<unknown>("reset_primary_shortcut"),
+      );
+      if (!response) {
+        setError("Shortcut reset returned an invalid response.");
+        return;
+      }
+      setSettings((current) => ({
+        ...current,
+        shortcut: { primary: response.active },
+      }));
+      setShortcutCandidateLabel(null);
+      setError(
+        response.status === "applied" || response.status === "unchanged"
+          ? null
+          : "The default shortcut could not be restored. The previous shortcut remains active.",
+      );
+      setStatus(
+        response.status === "applied" || response.status === "unchanged"
+          ? "Default shortcut active"
+          : "Shortcut reset failed",
+      );
+    } catch (nextError) {
+      setError(toErrorMessage(nextError));
+    }
+  }
+
   async function applyReplacement() {
     const token = currentTokenRef.current;
-    if (!token || draft.length === 0) {
+    const intent = currentIntentRef.current;
+    if (!token || !intent || !sameRewriteIntent(resultIntentRef.current, intent) || draft.length === 0) {
       return;
     }
 
@@ -422,6 +641,8 @@ export default function App() {
         sessionId: token.sessionId,
         generation: token.generation,
         replacement: draft,
+        mode: intent.mode,
+        targetLanguage: intent.targetLanguage,
         restoreClipboard: settings.restoreClipboard,
       });
       if (!sameCaptureToken(currentTokenRef.current, token)) {
@@ -430,6 +651,8 @@ export default function App() {
       const outcome = parseApplyOutcome(rawOutcome);
       if (!outcome) {
         currentTokenRef.current = null;
+        currentIntentRef.current = null;
+        resultIntentRef.current = null;
         setSelection(null);
         setError("Apply returned an invalid response. Capture the selection again.");
         setStatus("Apply rejected");
@@ -437,12 +660,16 @@ export default function App() {
       }
       if (outcome.status === "applied") {
         currentTokenRef.current = null;
+        currentIntentRef.current = null;
+        resultIntentRef.current = null;
         setSelection(null);
         setStatus("Applied");
         return;
       }
       if (outcome.status === "copied_fallback") {
         currentTokenRef.current = null;
+        currentIntentRef.current = null;
+        resultIntentRef.current = null;
         setSelection(null);
         setStatus("Copied — paste manually");
         setError(
@@ -452,6 +679,8 @@ export default function App() {
       }
       if (outcome.status === "rejected_stale") {
         currentTokenRef.current = null;
+        currentIntentRef.current = null;
+        resultIntentRef.current = null;
         setSelection(null);
         setResult(null);
         setDraft("");
@@ -494,7 +723,9 @@ export default function App() {
   async function dismiss() {
     const token = currentTokenRef.current;
     currentTokenRef.current = null;
-    rewritingTokenRef.current = null;
+    currentIntentRef.current = null;
+    rewritingIntentRef.current = null;
+    resultIntentRef.current = null;
     applyingTokenRef.current = null;
     setSelection(null);
     setResult(null);
@@ -515,7 +746,14 @@ export default function App() {
   }
 
   const canRewrite = Boolean(selection && auth?.loggedIn && !isRewriting && !result);
-  const canApply = Boolean(selection && result && draft.length > 0 && !isApplying && !isRewriting);
+  const canApply = Boolean(
+    selection &&
+      result &&
+      sameRewriteIntent(resultIntentRef.current, currentIntentRef.current) &&
+      draft.length > 0 &&
+      !isApplying &&
+      !isRewriting,
+  );
   const loginStatusLabel =
     loginState === "starting"
       ? "Starting login"
@@ -542,12 +780,58 @@ export default function App() {
               <p>{auth?.loggedIn ? auth.accountLabel : "ChatGPT Codex login required"}</p>
             </div>
           </div>
-          <button className="icon-button" type="button" onClick={dismiss} aria-label="Close">
-            <X size={16} />
-          </button>
+          <div className="topbar-actions">
+            <button
+              className="icon-button"
+              type="button"
+              onClick={() => setSettingsOpen((current) => !current)}
+              aria-label="Settings"
+            >
+              <SettingsIcon size={16} />
+            </button>
+            <button className="icon-button" type="button" onClick={dismiss} aria-label="Close">
+              <X size={16} />
+            </button>
+          </div>
         </header>
 
-        {!auth?.loggedIn ? (
+        {settingsOpen ? (
+          <div className="settings-pane" aria-label="Settings">
+            <div className="settings-heading">
+              <div>
+                <h2>Settings</h2>
+                <p>One primary shortcut opens Codex Pencil.</p>
+              </div>
+              <Keyboard size={20} />
+            </div>
+            <label className="settings-field">
+              <span>Primary shortcut</span>
+              <button
+                className={recordingShortcut ? "shortcut-recorder recording" : "shortcut-recorder"}
+                type="button"
+                onClick={() => {
+                  setShortcutCandidateLabel(null);
+                  setRecordingShortcut(true);
+                }}
+                onBlur={() => setRecordingShortcut(false)}
+                onKeyDown={recordShortcut}
+              >
+                {recordingShortcut
+                  ? shortcutCandidateLabel ?? "Press a shortcut…"
+                  : settings.shortcut.primary.display}
+              </button>
+            </label>
+            <div className="settings-actions">
+              <button className="secondary-button" type="button" onClick={resetShortcut}>
+                <RotateCcw size={15} />
+                Reset Ctrl+Shift+G
+              </button>
+              <button className="primary-button" type="button" onClick={() => setSettingsOpen(false)}>
+                Done
+              </button>
+            </div>
+          </div>
+        ) : !auth?.loggedIn ? (
           <div className="login-pane">
             <div className="login-copy">
               {codexCheck && !codexCheck.available ? <AlertTriangle size={22} /> : <LogIn size={22} />}
@@ -594,11 +878,57 @@ export default function App() {
               <div className="status-copy">
                 <ClipboardCheck size={16} />
                 <span>
-                  {selection ? `${selection.charCount.toLocaleString()} characters selected` : "Press Ctrl+Shift+G"}
+                  {selection
+                    ? `${selection.charCount.toLocaleString()} characters selected`
+                    : `Press ${settings.shortcut.primary.display}`}
                 </span>
               </div>
               <span className="status-pill">{status}</span>
             </div>
+
+            {settings.mode === "translate" ? (
+              <div className="translation-controls">
+                <label className="translation-field">
+                  <span>Target language</span>
+                  <select
+                    value={settings.translation.targetLanguage}
+                    onChange={(event) =>
+                      chooseTargetLanguage(event.target.value as TranslationTargetLanguage)
+                    }
+                  >
+                    {TARGET_LANGUAGES.map((language) => (
+                      <option value={language.id} key={language.id}>
+                        {language.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <fieldset className="format-options">
+                  <legend>Apply format</legend>
+                  <label>
+                    <input
+                      type="radio"
+                      name="translation-format"
+                      checked={settings.translation.applyFormat === "translation_only"}
+                      onChange={() => chooseApplyFormat("translation_only")}
+                    />
+                    번역문만
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="translation-format"
+                      checked={settings.translation.applyFormat === "source_with_translation"}
+                      onChange={() => chooseApplyFormat("source_with_translation")}
+                    />
+                    원문 (번역문)
+                  </label>
+                </fieldset>
+                {settings.translation.applyFormat === "source_with_translation" ? (
+                  <p>The exact captured source is combined locally when you Apply.</p>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mode-grid" aria-label="Rewrite mode">
               {MODES.map((mode) => {

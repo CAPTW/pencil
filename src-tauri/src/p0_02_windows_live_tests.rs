@@ -4,6 +4,10 @@ use crate::apply_safety::{
 };
 use crate::capture_session::{CaptureSessionStore, SessionToken, WindowTarget};
 use crate::clipboard;
+use crate::settings::RewriteMode;
+use crate::translation::{
+    format_translation, RewriteIntent, TranslationApplyFormat, TranslationTargetLanguage,
+};
 use crate::windows_apply::{
     foreground_window_handle, request_foreground_window, wait_for_stage, window_is_valid,
     window_process_id,
@@ -95,6 +99,10 @@ struct WindowHarness {
 
 impl WindowHarness {
     fn spawn() -> Result<Self, &'static str> {
+        Self::spawn_with(EXPECTED_SOURCE, EXPECTED_REPLACEMENT)
+    }
+
+    fn spawn_with(source: &str, expected_replacement: &str) -> Result<Self, &'static str> {
         let script = r#"
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -403,8 +411,10 @@ public static class FocusEditorHarness
         uint senderPid;
         string senderDesktop = Environment.GetEnvironmentVariable("CODEX_PENCIL_TEST_SENDER_DESKTOP");
         if (!UInt32.TryParse(Environment.GetEnvironmentVariable("CODEX_PENCIL_TEST_SENDER_PID"), out senderPid)) senderPid = 0;
+        string source = Environment.GetEnvironmentVariable("CODEX_PENCIL_TEST_SOURCE") ?? "synthetic-target-start";
+        string replacement = Environment.GetEnvironmentVariable("CODEX_PENCIL_TEST_REPLACEMENT") ?? "synthetic-target-replaced";
         var widget = new FocusEditorForm("Synthetic Widget Guard", "synthetic-widget-guard", "synthetic-widget-guard", 80);
-        var target = new FocusEditorForm("Synthetic Apply Target", "synthetic-target-start", "synthetic-target-replaced", 540);
+        var target = new FocusEditorForm("Synthetic Apply Target", source, replacement, 540);
         widget.Show();
         target.Show();
         target.Activate();
@@ -435,6 +445,8 @@ public static class FocusEditorHarness
                 std::process::id().to_string(),
             )
             .env("CODEX_PENCIL_TEST_SENDER_DESKTOP", sender_desktop)
+            .env("CODEX_PENCIL_TEST_SOURCE", source)
+            .env("CODEX_PENCIL_TEST_REPLACEMENT", expected_replacement)
             .creation_flags(CREATE_NO_WINDOW)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -580,6 +592,7 @@ impl ModifierState {
 struct InjectionObservation {
     target_is_foreground: bool,
     expected_control_has_focus: bool,
+    nonempty_selection: bool,
     modifiers: ModifierState,
     unicode_text_available: bool,
     clipboard_matches_expected: bool,
@@ -691,6 +704,7 @@ impl ApplyPlatform for LiveApplyPlatform {
         self.injection = Some(InjectionObservation {
             target_is_foreground,
             expected_control_has_focus,
+            nonempty_selection: selection_is_nonempty(self.target_textbox),
             modifiers,
             unicode_text_available,
             clipboard_matches_expected,
@@ -760,6 +774,13 @@ fn selection_is_exact(hwnd: isize, expected_length: usize) -> bool {
     let start = packed & 0xffff;
     let end = (packed >> 16) & 0xffff;
     start == 0 && end == expected_length
+}
+
+fn selection_is_nonempty(hwnd: isize) -> bool {
+    let packed = unsafe { SendMessageW(hwnd as HWND, 0x00B0, 0, 0) } as usize;
+    let start = packed & 0xffff;
+    let end = (packed >> 16) & 0xffff;
+    end > start
 }
 
 fn reset_probe_state(harness: &WindowHarness) -> bool {
@@ -982,6 +1003,7 @@ fn current_injection_observation(
         target_is_foreground: foreground_window_handle() == harness.target_window,
         expected_control_has_focus: focused_window(harness.target_window)
             == Some(harness.target_textbox),
+        nonempty_selection: selection_is_nonempty(harness.target_textbox),
         modifiers: modifier_state(),
         unicode_text_available: unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT) != 0 },
         clipboard_matches_expected: clipboard::read_clipboard_text().ok().as_deref()
@@ -1091,6 +1113,7 @@ fn run_direct_window_paste_probe(run: usize) -> ProbeEvidence {
     let (harness, _target, control) = prepare_probe_harness();
     assert!(hide_widget_and_activate_target(&harness));
     assert!(clipboard::write_clipboard_text(EXPECTED_REPLACEMENT).is_ok());
+    wait_for_stage(WaitStage::BeforePaste);
     let injection = current_injection_observation(&harness, 0, 0, 0);
     unsafe {
         SendMessageW(harness.target_textbox as HWND, WM_PASTE, 0, 0);
@@ -1150,6 +1173,7 @@ fn assert_common_probe_preconditions(evidence: &ProbeEvidence) {
     if let Some(injection) = evidence.injection {
         assert!(injection.target_is_foreground);
         assert!(injection.expected_control_has_focus);
+        assert!(injection.nonempty_selection);
         assert!(!injection.modifiers.any_pressed());
         assert!(injection.unicode_text_available);
         assert!(injection.clipboard_matches_expected);
@@ -1365,4 +1389,147 @@ fn windows_live_target_bound_apply_acceptance() {
         target_was_replaced,
         "SendInput was accepted but the synthetic target did not consume the paste"
     );
+}
+
+fn prepare_translation_harness(source: &str, expected: &str) -> (WindowHarness, WindowTarget) {
+    let harness = WindowHarness::spawn_with(source, expected)
+        .unwrap_or_else(|_| panic!("translation helper did not start"));
+    assert!(activate_target_for_setup(&harness));
+    let mut capture_platform = WindowsForegroundTargetPlatform;
+    let target = capture_foreground_target(
+        &mut capture_platform,
+        harness.widget_window,
+        std::process::id(),
+    )
+    .unwrap_or_else(|_| panic!("translation target capture failed"));
+    request_foreground_window(harness.widget_window);
+    assert!(wait_until(Duration::from_secs(2), || {
+        foreground_window_handle() == harness.widget_window
+    }));
+    assert!(reset_probe_state(&harness));
+    (harness, target)
+}
+
+#[test]
+#[ignore = "requires an interactive Windows desktop"]
+fn p1_01_windows_live_translation_formats_acceptance() {
+    let clipboard_guard = ClipboardTextGuard::capture();
+    assert!(clipboard_guard.is_ok());
+    let _clipboard_guard = clipboard_guard.ok();
+    let cases = [
+        (
+            "synthetic Korean source",
+            "synthetic English translation",
+            TranslationApplyFormat::TranslationOnly,
+        ),
+        (
+            "synthetic source line",
+            "synthetic translated line",
+            TranslationApplyFormat::SourceWithTranslation,
+        ),
+        (
+            "synthetic first\r\nsynthetic second",
+            "translated first\r\ntranslated second",
+            TranslationApplyFormat::SourceWithTranslation,
+        ),
+    ];
+    let intent = RewriteIntent::new(RewriteMode::Translate, Some(TranslationTargetLanguage::En))
+        .unwrap_or_else(|_| panic!("translation intent fixture is invalid"));
+    let stale_intent =
+        RewriteIntent::new(RewriteMode::Translate, Some(TranslationTargetLanguage::Ja))
+            .unwrap_or_else(|_| panic!("stale intent fixture is invalid"));
+
+    for repetition in 0..2 {
+        for (case_index, (source, translated, format)) in cases.iter().enumerate() {
+            let expected = format_translation(source, translated, *format)
+                .unwrap_or_else(|_| panic!("translation format fixture failed"));
+            let (harness, target) = prepare_translation_harness(source, &expected);
+            assert_eq!(harness.same_session, Some(true));
+            assert_eq!(harness.same_input_desktop, Some(true));
+            assert_eq!(harness.sender_integrity, IntegrityRelation::Equal);
+            assert!(clipboard::write_clipboard_text("synthetic-translation-prior").is_ok());
+            let capture_sequence = clipboard::clipboard_sequence_number();
+            let mut store = CaptureSessionStore::default();
+            let token = store
+                .capture(
+                    format!("synthetic-translation-{repetition}-{case_index}"),
+                    (*source).to_string(),
+                    target,
+                    Some("synthetic-translation-prior".to_string()),
+                    Some(capture_sequence),
+                )
+                .unwrap_or_else(|_| panic!("translation capture fixture failed"));
+            assert!(store.begin_rewrite_for(&token, intent).is_ok());
+            assert!(store.finish_rewrite_success_for(&token, intent).is_ok());
+
+            let mut platform = LiveApplyPlatform::new(
+                harness.widget_window,
+                harness.target_window,
+                harness.target_textbox,
+            );
+            assert!(store.invalidate_intent(stale_intent).is_ok());
+            assert_eq!(
+                store.ready_source_for(&token, intent),
+                Err(crate::capture_session::SessionError::StaleIntent)
+            );
+            assert_eq!(platform.paste_calls, 0);
+            assert_eq!(platform.clipboard_writes, 0);
+            assert!(store.begin_rewrite_for(&token, intent).is_ok());
+            assert!(store.finish_rewrite_success_for(&token, intent).is_ok());
+
+            let backend_source = store
+                .ready_source_for(&token, intent)
+                .unwrap_or_else(|_| panic!("backend source fixture was unavailable"));
+            let final_replacement = format_translation(&backend_source, translated, *format)
+                .unwrap_or_else(|_| panic!("backend translation composition failed"));
+            assert_eq!(final_replacement, expected);
+            assert_eq!(
+                apply_current_session(&mut store, &token, &final_replacement, false, &mut platform,),
+                ApplyOutcome::Applied
+            );
+            assert_eq!(platform.paste_calls, 1);
+            assert!(wait_until(Duration::from_secs(2), || {
+                content_equals_expected(harness.target_window)
+            }));
+            assert!(content_equals_expected(harness.widget_window));
+            assert_eq!(event_count(&probe_events(harness.widget_window), 6), 0);
+
+            let fallback = store
+                .capture(
+                    format!("synthetic-translation-fallback-{repetition}-{case_index}"),
+                    (*source).to_string(),
+                    target,
+                    Some("synthetic-translation-prior".to_string()),
+                    Some(clipboard::clipboard_sequence_number()),
+                )
+                .unwrap_or_else(|_| panic!("fallback capture fixture failed"));
+            assert!(store.begin_rewrite_for(&fallback, intent).is_ok());
+            assert!(store.finish_rewrite_success_for(&fallback, intent).is_ok());
+            unsafe {
+                SendMessageW(harness.target_window as HWND, WM_CLOSE, 0, 0);
+            }
+            assert!(wait_until(Duration::from_secs(2), || {
+                !window_is_valid(harness.target_window)
+            }));
+            let paste_before_fallback = platform.paste_calls;
+            assert_eq!(
+                apply_current_session(
+                    &mut store,
+                    &fallback,
+                    &final_replacement,
+                    false,
+                    &mut platform,
+                ),
+                ApplyOutcome::CopiedFallback {
+                    reason: ApplyFallbackReason::TargetMissing,
+                }
+            );
+            assert_eq!(platform.paste_calls, paste_before_fallback);
+            assert_eq!(
+                clipboard::read_clipboard_text().ok().as_deref(),
+                Some(final_replacement.as_str())
+            );
+            assert!(content_equals_expected(harness.widget_window));
+        }
+    }
 }
