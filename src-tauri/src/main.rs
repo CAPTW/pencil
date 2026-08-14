@@ -7,6 +7,8 @@ mod codex_binary;
 mod codex_client;
 mod prerequisites;
 mod settings;
+mod shortcut;
+mod translation;
 mod windows_apply;
 mod windows_target;
 
@@ -16,28 +18,61 @@ mod p0_02_contract_tests;
 #[cfg(all(test, windows))]
 mod p0_02_windows_live_tests;
 
-use apply_safety::{apply_current_session, ApplyOutcome};
-use capture_session::{CaptureSessionStore, SessionToken};
+#[cfg(test)]
+mod p1_01_contract_tests;
+
+#[cfg(all(test, windows))]
+mod p1_01_windows_live_tests;
+
+use apply_safety::{apply_current_session, ApplyFailureReason, ApplyOutcome};
+use capture_session::{CaptureSessionStore, SessionError, SessionToken};
 use clipboard::CursorPoint;
 use codex_client::{AuthStatus, CodexClient, CodexClientCache, DeviceLogin, RewriteResult};
 use prerequisites::PrerequisiteReport;
 use serde::Serialize;
-use settings::{AppSettings, RewriteMode};
-use std::sync::Arc;
+use settings::{AppSettings, RewriteMode, SettingsRecoveryCode};
+use shortcut::{
+    dispatch_shortcut_trigger, PrimaryShortcut, ShortcutCandidate, ShortcutEventState,
+    ShortcutManager, ShortcutPersistence, ShortcutRegistrar, ShortcutRegistrarError,
+    ShortcutStartupStatus, ShortcutTriggerGate, ShortcutUpdateStatus,
+};
+use std::sync::{Arc, Mutex as StdMutex};
 use tauri::{
     menu::{Menu, MenuItem},
+    plugin::TauriPlugin,
     tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, PhysicalPosition, Position, State, WindowEvent,
 };
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tokio::sync::Mutex;
+use translation::{format_translation, RewriteIntent, TranslationTargetLanguage};
 use uuid::Uuid;
 use windows_apply::WindowsApplyPlatform;
 use windows_target::{capture_before_widget_focus, WindowsForegroundTargetPlatform};
 
+struct ConfigurationState {
+    settings: AppSettings,
+    shortcut: ShortcutManager,
+    recovery: Option<SettingsRecoveryCode>,
+}
+
+impl Default for ConfigurationState {
+    fn default() -> Self {
+        let settings = AppSettings::default();
+        Self {
+            shortcut: ShortcutManager::new(settings.shortcut.primary.clone()),
+            settings,
+            recovery: None,
+        }
+    }
+}
+
 struct AppState {
     codex: CodexClientCache,
     capture: Mutex<CaptureSessionStore>,
-    startup_notices: Mutex<Vec<String>>,
+    configuration: StdMutex<ConfigurationState>,
+    shortcut_trigger: StdMutex<ShortcutTriggerGate>,
+    startup_notices: StdMutex<Vec<String>>,
 }
 
 impl Default for AppState {
@@ -45,9 +80,18 @@ impl Default for AppState {
         Self {
             codex: CodexClientCache::default(),
             capture: Mutex::new(CaptureSessionStore::default()),
-            startup_notices: Mutex::new(Vec::new()),
+            configuration: StdMutex::new(ConfigurationState::default()),
+            shortcut_trigger: StdMutex::new(ShortcutTriggerGate::default()),
+            startup_notices: StdMutex::new(Vec::new()),
         }
     }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ShortcutUpdateResponse {
+    status: ShortcutUpdateStatus,
+    active: PrimaryShortcut,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -105,21 +149,37 @@ async fn rewrite_selected_text(
     session_id: String,
     generation: u64,
     mode: RewriteMode,
+    target_language: Option<TranslationTargetLanguage>,
     state: State<'_, AppState>,
 ) -> Result<RewriteResult, String> {
     let token = SessionToken {
         session_id,
         generation,
     };
+    let intent = RewriteIntent::new(mode, target_language).map_err(str::to_string)?;
+    {
+        let configuration = state
+            .configuration
+            .lock()
+            .map_err(|_| "configuration_unavailable".to_string())?;
+        if configuration
+            .settings
+            .rewrite_intent()
+            .map_err(str::to_string)?
+            != intent
+        {
+            return Err("stale_rewrite_intent".to_string());
+        }
+    }
     let selected_text = {
         let mut capture = state.capture.lock().await;
         capture
-            .begin_rewrite(&token)
+            .begin_rewrite_for(&token, intent)
             .map_err(|error| error.code().to_string())?
     };
 
     let rewrite = match ensure_codex(&state).await {
-        Ok(client) => client.rewrite(&selected_text, mode).await,
+        Ok(client) => client.rewrite(&selected_text, intent).await,
         Err(error) => Err(error),
     };
 
@@ -127,11 +187,11 @@ async fn rewrite_selected_text(
     match rewrite {
         Ok(result) => {
             capture
-                .finish_rewrite_success(&token)
+                .finish_rewrite_success_for(&token, intent)
                 .map_err(|error| error.code().to_string())?;
             Ok(result)
         }
-        Err(error) => match capture.finish_rewrite_failure(&token) {
+        Err(error) => match capture.finish_rewrite_failure_for(&token, intent) {
             Ok(()) => Err(error),
             Err(session_error) => Err(session_error.code().to_string()),
         },
@@ -143,6 +203,8 @@ async fn apply_replacement(
     session_id: String,
     generation: u64,
     replacement: String,
+    mode: RewriteMode,
+    target_language: Option<TranslationTargetLanguage>,
     restore_clipboard: bool,
     app: AppHandle,
     state: State<'_, AppState>,
@@ -151,25 +213,125 @@ async fn apply_replacement(
         session_id,
         generation,
     };
+    let intent = RewriteIntent::new(mode, target_language).map_err(str::to_string)?;
+    let (current_intent, apply_format) = {
+        let configuration = state
+            .configuration
+            .lock()
+            .map_err(|_| "configuration_unavailable".to_string())?;
+        (
+            configuration
+                .settings
+                .rewrite_intent()
+                .map_err(str::to_string)?,
+            configuration.settings.translation.apply_format,
+        )
+    };
+    if current_intent != intent {
+        return Ok(ApplyOutcome::RejectedStale);
+    }
     let mut capture = state.capture.lock().await;
+    if let Err(error) = capture.validate_ready_intent(&token, intent) {
+        return Ok(match error {
+            SessionError::StaleSession | SessionError::StaleIntent => ApplyOutcome::RejectedStale,
+            SessionError::InvalidState | SessionError::GenerationExhausted => {
+                ApplyOutcome::Failed {
+                    reason: ApplyFailureReason::InvalidSessionState,
+                }
+            }
+        });
+    }
+    let final_replacement = if intent.is_translation() {
+        let source = capture
+            .ready_source_for(&token, intent)
+            .map_err(|error| error.code().to_string())?;
+        match format_translation(&source, &replacement, apply_format) {
+            Ok(formatted) => formatted,
+            Err("empty_translation") => {
+                return Ok(ApplyOutcome::Failed {
+                    reason: ApplyFailureReason::EmptyReplacement,
+                })
+            }
+            Err(_) => {
+                return Ok(ApplyOutcome::Failed {
+                    reason: ApplyFailureReason::InvalidSessionState,
+                })
+            }
+        }
+    } else {
+        replacement
+    };
     let mut platform = WindowsApplyPlatform::new(app);
     Ok(apply_current_session(
         &mut capture,
         &token,
-        &replacement,
+        &final_replacement,
         restore_clipboard,
         &mut platform,
     ))
 }
 
 #[tauri::command]
-fn load_settings(app: AppHandle) -> Result<AppSettings, String> {
-    settings::load(&app)
+fn load_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
+    state
+        .configuration
+        .lock()
+        .map(|configuration| configuration.settings.clone())
+        .map_err(|_| "configuration_unavailable".to_string())
 }
 
 #[tauri::command]
-fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
-    settings::save(&app, &settings)
+async fn save_settings(
+    app: AppHandle,
+    settings: AppSettings,
+    state: State<'_, AppState>,
+) -> Result<AppSettings, String> {
+    settings.validate().map_err(str::to_string)?;
+    let (previous_intent, next_intent) = {
+        let mut configuration = state
+            .configuration
+            .lock()
+            .map_err(|_| "configuration_unavailable".to_string())?;
+        if settings.shortcut != configuration.settings.shortcut {
+            return Err("shortcut_update_requires_transaction".to_string());
+        }
+        let previous_intent = configuration
+            .settings
+            .rewrite_intent()
+            .map_err(str::to_string)?;
+        let next_intent = settings.rewrite_intent().map_err(str::to_string)?;
+        settings::save(&app, &settings)?;
+        configuration.settings = settings.clone();
+        configuration.recovery = None;
+        (previous_intent, next_intent)
+    };
+
+    if previous_intent != next_intent {
+        state
+            .capture
+            .lock()
+            .await
+            .invalidate_intent(next_intent)
+            .map_err(|error| error.code().to_string())?;
+    }
+    Ok(settings)
+}
+
+#[tauri::command]
+fn update_primary_shortcut(
+    candidate: ShortcutCandidate,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ShortcutUpdateResponse, String> {
+    change_primary_shortcut(candidate, &app, &state)
+}
+
+#[tauri::command]
+fn reset_primary_shortcut(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ShortcutUpdateResponse, String> {
+    change_primary_shortcut(PrimaryShortcut::default().candidate(), &app, &state)
 }
 
 #[tauri::command]
@@ -178,8 +340,11 @@ fn check_prerequisites() -> PrerequisiteReport {
 }
 
 #[tauri::command]
-async fn take_startup_notices(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let mut notices = state.startup_notices.lock().await;
+fn take_startup_notices(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let mut notices = state
+        .startup_notices
+        .lock()
+        .map_err(|_| "startup_notices_unavailable".to_string())?;
     Ok(std::mem::take(&mut *notices))
 }
 
@@ -206,14 +371,103 @@ async fn dismiss_window(
     hide_main_window(&app)
 }
 
+struct TauriShortcutRegistrar {
+    app: AppHandle,
+}
+
+impl ShortcutRegistrar for TauriShortcutRegistrar {
+    fn register(&mut self, shortcut: &PrimaryShortcut) -> Result<(), ShortcutRegistrarError> {
+        let parsed = shortcut
+            .registration_string()
+            .parse::<Shortcut>()
+            .map_err(|_| ShortcutRegistrarError::Failed)?;
+        self.app
+            .global_shortcut()
+            .register(parsed)
+            .map_err(|_| ShortcutRegistrarError::Conflict)
+    }
+
+    fn unregister(&mut self, shortcut: &PrimaryShortcut) -> Result<(), ShortcutRegistrarError> {
+        let parsed = shortcut
+            .registration_string()
+            .parse::<Shortcut>()
+            .map_err(|_| ShortcutRegistrarError::Failed)?;
+        self.app
+            .global_shortcut()
+            .unregister(parsed)
+            .map_err(|_| ShortcutRegistrarError::Failed)
+    }
+}
+
+struct AppShortcutPersistence<'a> {
+    app: &'a AppHandle,
+    base: AppSettings,
+    saved: Option<AppSettings>,
+}
+
+impl ShortcutPersistence for AppShortcutPersistence<'_> {
+    fn persist(&mut self, shortcut: &PrimaryShortcut) -> Result<(), ()> {
+        let mut next = self.base.clone();
+        next.shortcut.primary = shortcut.clone();
+        settings::save(self.app, &next).map_err(|_| ())?;
+        self.saved = Some(next);
+        Ok(())
+    }
+}
+
+fn change_primary_shortcut(
+    candidate: ShortcutCandidate,
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+) -> Result<ShortcutUpdateResponse, String> {
+    let response = {
+        let mut configuration = state
+            .configuration
+            .lock()
+            .map_err(|_| "configuration_unavailable".to_string())?;
+        let mut registrar = TauriShortcutRegistrar { app: app.clone() };
+        let mut persistence = AppShortcutPersistence {
+            app,
+            base: configuration.settings.clone(),
+            saved: None,
+        };
+        let outcome = configuration
+            .shortcut
+            .update(candidate, &mut registrar, &mut persistence);
+        if outcome.status == ShortcutUpdateStatus::Applied {
+            let saved = persistence
+                .saved
+                .take()
+                .ok_or_else(|| "shortcut_persistence_state_missing".to_string())?;
+            configuration.settings = saved;
+            configuration.recovery = None;
+        }
+        ShortcutUpdateResponse {
+            status: outcome.status,
+            active: configuration.shortcut.active().clone(),
+        }
+    };
+
+    if matches!(
+        response.status,
+        ShortcutUpdateStatus::Applied | ShortcutUpdateStatus::Unchanged
+    ) {
+        if let Ok(mut trigger) = state.shortcut_trigger.lock() {
+            let _ = trigger.handle(true, ShortcutEventState::Released);
+        }
+    }
+    Ok(response)
+}
+
 async fn ensure_codex(state: &State<'_, AppState>) -> Result<Arc<CodexClient>, String> {
     state.codex.get().await
 }
 
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(global_shortcut_plugin())
         .invoke_handler(tauri::generate_handler![
             apply_replacement,
             auth_status,
@@ -221,23 +475,23 @@ fn main() {
             check_prerequisites,
             dismiss_window,
             load_settings,
+            reset_primary_shortcut,
             rewrite_selected_text,
             save_settings,
             start_device_login,
-            take_startup_notices
+            take_startup_notices,
+            update_primary_shortcut
         ])
         .setup(|app| {
             create_tray(app)?;
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.hide();
             }
-            if let Err(message) = register_global_hotkey(app) {
-                let app_handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    let state = app_handle.state::<AppState>();
-                    state.startup_notices.lock().await.push(message);
-                    let _ = show_main_window(&app_handle, None);
-                });
+            match initialize_configuration(app) {
+                Ok(ShortcutStartupStatus::Failed) | Err(_) => {
+                    let _ = show_main_window(app.handle(), None);
+                }
+                Ok(_) => {}
             }
             Ok(())
         })
@@ -261,67 +515,161 @@ fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "Show Codex Pencil", true, None::<&str>)?;
     let hide = MenuItem::with_id(app, "hide", "Hide", true, None::<&str>)?;
     let account = MenuItem::with_id(app, "account", "Login / Account", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &hide, &account, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &hide, &account, &settings, &quit])?;
 
-    TrayIconBuilder::with_id("main")
-        .tooltip("Codex Pencil")
-        .icon(app.default_window_icon().unwrap().clone())
-        .menu(&menu)
+    let mut tray = TrayIconBuilder::with_id("main").tooltip("Codex Pencil");
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.menu(&menu)
         .show_menu_on_left_click(true)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => {
-                let _ = show_main_window(app, None);
-            }
-            "hide" => {
-                let _ = hide_main_window(app);
-                let app = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    let state = app.state::<AppState>();
-                    state.capture.lock().await.cancel_active();
-                });
-            }
-            "account" => {
-                let _ = show_main_window(app, None);
-            }
-            "quit" => app.exit(0),
-            _ => {}
-        })
+        .on_menu_event(|app, event| handle_tray_menu_action(app, event.id.as_ref()))
         .build(app)?;
 
     Ok(())
 }
 
-fn register_global_hotkey(app: &mut tauri::App) -> Result<(), String> {
-    use tauri_plugin_global_shortcut::{
-        Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
-    };
+fn handle_tray_menu_action(app: &AppHandle, action: &str) {
+    match action {
+        "show" => {
+            let _ = show_main_window(app, None);
+        }
+        "hide" => {
+            let _ = hide_main_window(app);
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let state = app.state::<AppState>();
+                state.capture.lock().await.cancel_active();
+            });
+        }
+        "account" => {
+            let _ = show_main_window(app, None);
+        }
+        "settings" => {
+            let _ = show_main_window(app, None);
+            let _ = app.emit("open-settings", ());
+        }
+        "quit" => app.exit(0),
+        _ => {}
+    }
+}
 
-    let hotkey = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyG);
-    let handler_hotkey = hotkey.clone();
-
-    app.handle()
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, shortcut, event| {
-                    if shortcut == &handler_hotkey && event.state() == ShortcutState::Pressed {
-                        let app = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            if let Err(message) = capture_from_hotkey(app.clone()).await {
-                                let _ = app.emit("capture-error", CaptureErrorEvent { message });
-                                let _ = show_main_window(&app, None);
-                            }
-                        });
-                    }
+fn global_shortcut_plugin() -> TauriPlugin<tauri::Wry> {
+    tauri_plugin_global_shortcut::Builder::new()
+        .with_handler(|app, shortcut, event| {
+            let state = app.state::<AppState>();
+            let is_active = state
+                .configuration
+                .lock()
+                .ok()
+                .and_then(|configuration| {
+                    configuration
+                        .shortcut
+                        .active()
+                        .registration_string()
+                        .parse::<Shortcut>()
+                        .ok()
                 })
-                .build(),
-        )
-        .map_err(|error| format!("Could not initialize global shortcut support: {error}"))?;
+                .is_some_and(|active| &active == shortcut);
+            let event_state = if event.state() == ShortcutState::Pressed {
+                ShortcutEventState::Pressed
+            } else {
+                ShortcutEventState::Released
+            };
+            let should_capture = state.shortcut_trigger.lock().is_ok_and(|mut trigger| {
+                dispatch_shortcut_trigger(&mut trigger, is_active, event_state, || {})
+            });
+            if should_capture {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(message) = capture_from_hotkey(app.clone()).await {
+                        let _ = app.emit("capture-error", CaptureErrorEvent { message });
+                        let _ = show_main_window(&app, None);
+                    }
+                });
+            }
+        })
+        .build()
+}
 
-    app.global_shortcut()
-        .register(hotkey)
-        .map_err(|error| format!("Ctrl+Shift+G could not be registered. Another app may already be using it. Details: {error}"))?;
-    Ok(())
+fn initialize_configuration(app: &mut tauri::App) -> Result<ShortcutStartupStatus, String> {
+    let app_handle = app.handle().clone();
+    let mut notices = Vec::new();
+    let loaded = match settings::load_state(&app_handle) {
+        Ok(loaded) => loaded,
+        Err(_) => {
+            notices.push("settings_recovered_to_defaults".to_string());
+            settings::SettingsLoad {
+                settings: AppSettings::default(),
+                recovery: Some(SettingsRecoveryCode::InvalidFields),
+            }
+        }
+    };
+    if let Some(recovery) = loaded.recovery {
+        notices.push(
+            match recovery {
+                SettingsRecoveryCode::Migrated => "settings_migrated",
+                SettingsRecoveryCode::InvalidFields => "settings_invalid_fields_recovered",
+                SettingsRecoveryCode::BackupRecovered => "settings_backup_recovered",
+            }
+            .to_string(),
+        );
+        if matches!(
+            recovery,
+            SettingsRecoveryCode::Migrated | SettingsRecoveryCode::BackupRecovered
+        ) && settings::save(&app_handle, &loaded.settings).is_err()
+        {
+            notices.push("settings_recovery_persist_failed".to_string());
+        }
+    }
+
+    let state = app_handle.state::<AppState>();
+    let startup = {
+        let mut configuration = state
+            .configuration
+            .lock()
+            .map_err(|_| "configuration_unavailable".to_string())?;
+        configuration.settings = loaded.settings;
+        configuration.recovery = loaded.recovery;
+        configuration.shortcut = ShortcutManager::new(PrimaryShortcut::default());
+        let saved_shortcut = configuration.settings.shortcut.primary.clone();
+        let mut registrar = TauriShortcutRegistrar {
+            app: app_handle.clone(),
+        };
+        let mut persistence = AppShortcutPersistence {
+            app: &app_handle,
+            base: configuration.settings.clone(),
+            saved: None,
+        };
+        let startup = configuration.shortcut.activate_startup(
+            saved_shortcut,
+            &mut registrar,
+            &mut persistence,
+        );
+        if let Some(saved) = persistence.saved {
+            configuration.settings = saved;
+        }
+        configuration.settings.shortcut.primary = configuration.shortcut.active().clone();
+        if startup == ShortcutStartupStatus::FallbackDefault {
+            configuration.recovery = Some(SettingsRecoveryCode::InvalidFields);
+        }
+        startup
+    };
+    match startup {
+        ShortcutStartupStatus::RegisteredSaved => {}
+        ShortcutStartupStatus::FallbackDefault => {
+            notices.push("shortcut_startup_fallback".to_string())
+        }
+        ShortcutStartupStatus::Failed => notices.push("shortcut_startup_failed".to_string()),
+    }
+    state
+        .startup_notices
+        .lock()
+        .map_err(|_| "startup_notices_unavailable".to_string())?
+        .extend(notices);
+    Ok(startup)
 }
 
 fn spawn_auth_notification_bridge(app: AppHandle, client: Arc<CodexClient>, login_id: String) {

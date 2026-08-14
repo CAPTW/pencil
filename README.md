@@ -16,11 +16,13 @@ Codex Pencil is a compact Windows tray/widget writing assistant built with Tauri
 |-- scripts
 |   |-- build-tauri.ps1
 |   |-- test-capture-contract.mjs
+|   |-- test-promptless-contract.mjs
 |   `-- verify-windows.ps1
 |-- src
 |   |-- App.tsx
 |   |-- captureContract.ts
 |   |-- main.tsx
+|   |-- promptlessContract.ts
 |   |-- styles.css
 |   `-- vite-env.d.ts
 `-- src-tauri
@@ -39,7 +41,9 @@ Codex Pencil is a compact Windows tray/widget writing assistant built with Tauri
     |   |-- codex_client.rs
     |   |-- main.rs
     |   |-- prerequisites.rs
+    |   |-- shortcut.rs
     |   |-- settings.rs
+    |   |-- translation.rs
     |   |-- windows_apply.rs
     |   `-- windows_target.rs
     `-- tauri.conf.json
@@ -108,6 +112,7 @@ cargo --version
 rustc --version
 npm run typecheck
 node scripts/test-capture-contract.mjs
+node scripts/test-promptless-contract.mjs
 npm run build:frontend
 npm run build
 ```
@@ -125,17 +130,21 @@ The helper prints Node/npm/Codex/Rust tool versions, runs the frontend checks, a
 ## Implementation Notes
 
 - The app runs as a Tauri tray app with one hidden floating window.
-- `Ctrl+Shift+G` is registered by the Rust global-shortcut plugin.
-- The tray menu includes Show, Hide, Login / Account, and Quit.
+- The Rust global-shortcut plugin registers one primary shortcut. Its default is `Ctrl+Shift+G`; Settings can transactionally replace it or reset it to the default.
+- A candidate shortcut is normalized and registered before the old binding is removed. Registration conflicts leave the old runtime binding and persisted setting unchanged; persistence failure attempts a bounded rollback to the old binding.
+- Saved settings use schema version 2 and recoverable same-directory temporary-file promotion with a previous-file backup. Legacy settings migrate to the canonical shortcut and translation defaults.
+- The tray menu includes Show, Hide, Login / Account, Settings, and Quit. Settings shows and focuses the existing widget and opens its focused settings view.
 - On hotkey press, Rust saves the current text clipboard when possible, writes a sentinel, sends `Ctrl+C`, reads the copied selection, then restores the previous text clipboard when possible.
 - Before the widget is shown or focused, Rust captures the foreground target window and its owning process for a backend-owned capture session. Raw target handles and process identifiers are never sent to React.
 - The full selected text is kept in Rust memory for the current capture and is not stored in settings or logged. React receives the selected text in the one-shot capture event only to derive the displayed character count, then retains the opaque session token rather than the source text. The local React preview receives the replacement, summary, confidence, and edit snippets (`before`/`after`/`reason`) returned by Codex so the user can review before applying.
-- Rewrite modes: `grammar`, `natural`, `concise`, `polite`, `translate_en`, `translate_ko`.
+- Rewrite modes: `grammar`, `natural`, `concise`, `polite`, and one promptless `translate` mode.
+- Translation infers the source language and supports exact targets `ko`, `en`, `ja`, `zh-Hans`, and `zh-Hant`. There is no free-form Prompt or chat input.
+- The model is instructed to return translated text only. Rust binds the result to the exact capture session, generation, mode, and target, then locally applies either `translation_only` or `source_with_translation` using the backend-owned exact source.
 - The Rust backend starts `codex app-server` with piped stdin/stdout/stderr. The default app-server transport is stdio, which is local to the child process.
 - The app must not be changed to launch Codex app-server with a websocket, TCP listener, or non-local network transport.
 - Rewrites use ephemeral Codex threads with `approvalPolicy: "never"` and a strict JSON schema requiring `{ replacement, changed, summary, confidence }`. Optional `edits` remain available for the existing review UI, and `additionalProperties` is `false`.
 - Applying a rewrite requires the exact current session identifier and generation. Rust validates lifecycle state, target-window validity, owning process, and actual foreground restoration before writing the replacement or sending one `Ctrl+V` sequence.
-- Settings are stored locally in the Tauri app config directory as `settings.json`.
+- Settings are stored locally in the Tauri app config directory as `settings.json`; they contain preferences only, not selected text, replacements, clipboard contents, or history.
 
 ## Codex Auth Model
 
@@ -180,6 +189,7 @@ The app does not implement custom OAuth, does not store or display tokens, does 
 
 - Each successful capture creates one in-memory lifecycle: `Captured -> Rewriting -> Ready -> Applying -> Completed`, with explicit retry/cancellation transitions for failures.
 - A new capture or dismiss invalidates the old token. An asynchronous rewrite completion is accepted only if its session identifier and generation are still current; stale completions cannot become `Ready`.
+- Translation additionally binds `Ready` and Apply to the exact mode and target language. A target/mode change invalidates an older result without changing the clipboard or sending input. Apply-format changes remain local and do not require another model request.
 - Stale or mismatched Apply requests are rejected before any clipboard write, widget action, or keyboard input.
 - A current `Ready` session first revalidates the captured window and process, hides the widget, performs bounded activation attempts, and verifies `GetForegroundWindow()` immediately before `SendInput`.
 - If a valid current target is missing, belongs to a different process, or cannot be proven foreground, the approved replacement is copied without `Ctrl+V`. The widget reports that the user must paste manually.
@@ -193,6 +203,15 @@ cargo test --manifest-path src-tauri/Cargo.toml p0_02_windows_live_tests::window
 ```
 
 The harness requires an interactive Windows desktop where `SendInput` is actually delivered to the verified foreground editor. An environment that accepts the input records but does not deliver them cannot be treated as live acceptance evidence.
+
+P1-01 ignored live checks use actual Windows global-hotkey registration, an actual Tauri tray/window runtime, and the existing target-bound editor harness with synthetic text only:
+
+```powershell
+$env:CARGO_TARGET_DIR = Join-Path $env:TEMP "grammar-p1-01-target"
+cargo test --manifest-path src-tauri/Cargo.toml p1_01_windows_live_tests::p1_01_windows_live_shortcut_registration_conflict_restart_and_reset -- --ignored --exact --test-threads=1
+cargo test --manifest-path src-tauri/Cargo.toml p1_01_windows_live_tests::p1_01_windows_live_tray_settings_action_shows_focuses_and_emits_settings_mode -- --ignored --exact --test-threads=1
+cargo test --manifest-path src-tauri/Cargo.toml p0_02_windows_live_tests::p1_01_windows_live_translation_formats_acceptance -- --ignored --exact --test-threads=1
+```
 
 ## Privacy Behavior
 
@@ -218,6 +237,7 @@ The harness requires an interactive Windows desktop where `SendInput` is actuall
 - Password-field detection is not reliable in the current MVP, so the app does not claim to detect password fields. Do not use the hotkey in password or secret fields.
 - Some apps block simulated `Ctrl+C` or `Ctrl+V`, run elevated, or use custom editors that do not expose selected text through the clipboard.
 - Codex CLI must be installed and authenticated-capable.
+- Superseded translation requests are discarded when they complete, but this gate does not interrupt an already-running Codex App Server turn.
 
 ## Runtime Smoke Test Checklist
 
@@ -234,9 +254,11 @@ cd D:\dev\repos\Grammar\src-tauri\target\release
 - After Quit, confirm no Codex Pencil-owned `codex app-server` child remains. Other Codex desktop app-server processes may exist separately.
 - If not logged in, click Start device login, confirm the browser opens, enter the displayed device code, and wait for the app to show the ChatGPT account.
 - Cancel a device login and confirm the UI shows Login cancelled.
-- Select text in Notepad or another text field and press `Ctrl+Shift+G`.
+- Select text in Notepad or another text field and press the currently displayed primary shortcut (default `Ctrl+Shift+G`).
+- Open Settings from the widget and tray, register a non-default shortcut, confirm the old shortcut stops firing, restart, and confirm the saved shortcut remains active. Reset and confirm `Ctrl+Shift+G` is active again.
 - Confirm the floating window appears near the cursor and does not show the full selected source text.
-- Verify each mode produces a non-empty replacement, summary, confidence, and optional local edit details.
+- Verify each rewrite mode produces a non-empty replacement, summary, confidence, and optional local edit details.
+- In Translate mode, verify all five targets, `translation_only`, and exact local `source_with_translation` composition for single-line and CRLF multiline source.
 - Confirm Apply is disabled until a rewrite result exists and remains disabled while a rewrite is pending.
 - Click Apply and confirm the selected text in the original app is replaced.
 - Close the captured target before Apply and confirm no automatic paste occurs, the replacement remains on the clipboard, and the widget instructs you to paste manually.
@@ -257,4 +279,4 @@ msiexec /i ".\msi\Codex Pencil_0.1.0_x64_en-US.msi"
 
 - Launch the installed app, confirm tray startup/login screen/quit behavior, confirm it can find `codex` on `PATH`, then verify the uninstall entry exists.
 
-`Ctrl+Shift+G` is fixed in the MVP. If registration fails because another app owns that shortcut, Codex Pencil shows a setup warning; shortcut customization is not implemented yet.
+If a saved shortcut cannot be registered at startup, Codex Pencil attempts the default `Ctrl+Shift+G`, exposes a content-free recovery warning, and keeps Settings reachable from the tray.

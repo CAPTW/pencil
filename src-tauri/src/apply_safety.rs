@@ -69,7 +69,9 @@ pub(crate) fn apply_current_session<P: ApplyPlatform>(
 
     let context = match store.begin_apply(token) {
         Ok(context) => context,
-        Err(SessionError::StaleSession) => return ApplyOutcome::RejectedStale,
+        Err(SessionError::StaleSession | SessionError::StaleIntent) => {
+            return ApplyOutcome::RejectedStale
+        }
         Err(SessionError::InvalidState | SessionError::GenerationExhausted) => {
             return ApplyOutcome::Failed {
                 reason: ApplyFailureReason::InvalidSessionState,
