@@ -3,17 +3,24 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Check,
+  BookOpen,
   ClipboardCheck,
+  Download,
+  Edit3,
   Languages,
   Loader2,
   LogIn,
   Keyboard,
+  Plus,
   RefreshCcw,
   RotateCcw,
+  Search,
   Settings as SettingsIcon,
   ShieldCheck,
   Sparkles,
   AlertTriangle,
+  Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import {
@@ -42,6 +49,23 @@ import {
   type TranslationApplyFormat,
   type TranslationTargetLanguage,
 } from "./promptlessContract";
+import {
+  entryAffectsRequests,
+  parseImportPlanPreview,
+  parseImportReport,
+  parseTerminologyRewriteResult,
+  parseTerminologyRuntimeSnapshot,
+  type ImportPlanPreview,
+  type TerminologyEntry,
+  type TerminologyEntryDraft,
+  type TerminologyEntryStatus,
+  type TerminologyEntryType,
+  type TerminologyEntrySort,
+  type TerminologyLanguage,
+  type TerminologyRewriteResult,
+  type TerminologyRuntimeSnapshot,
+  type TerminologySuggestion,
+} from "./terminologyContract";
 
 type AuthStatus = {
   loggedIn: boolean;
@@ -79,20 +103,7 @@ type PrerequisiteReport = {
   commands: CommandCheck[];
 };
 
-type RewriteEdit = {
-  before: string;
-  after: string;
-  reason: string;
-};
-
-type RewriteResult = {
-  replacement: string;
-  changed: boolean;
-  summary: string;
-  edits: RewriteEdit[];
-  confidence: number;
-  mode: RewriteMode;
-};
+type RewriteResult = TerminologyRewriteResult;
 
 type LoginState = "signed_out" | "starting" | "waiting" | "signed_in" | "failed" | "cancelled";
 
@@ -123,7 +134,7 @@ const TARGET_LANGUAGES: Array<{ id: TranslationTargetLanguage; label: string }> 
 ];
 
 const DEFAULT_SETTINGS: AppSettings = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   mode: "grammar",
   restoreClipboard: true,
   autoRewrite: true,
@@ -139,14 +150,79 @@ const DEFAULT_SETTINGS: AppSettings = {
     targetLanguage: "en",
     applyFormat: "translation_only",
   },
+  terminology: {
+    enabled: true,
+    activeProfileId: "general",
+    useApprovedTerminology: true,
+    suggestTerminology: true,
+    autoSaveSuggestions: false,
+  },
+};
+
+const EMPTY_ENTRY_DRAFT: TerminologyEntryDraft = {
+  profileId: "general",
+  type: "preferred",
+  status: "approved",
+  sourceText: "",
+  preferredText: "",
+  sourceLanguage: "any",
+  targetLanguage: "any",
+  aliases: [],
+  matchMode: "whole_phrase",
+  caseSensitive: false,
+  priority: 100,
+  usageCount: 0,
+  occurrenceCount: 0,
+  note: null,
 };
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function requireTerminologySnapshot(value: unknown): TerminologyRuntimeSnapshot {
+  const snapshot = parseTerminologyRuntimeSnapshot(value);
+  if (!snapshot) {
+    throw new Error("Terminology response was invalid. No local change was accepted.");
+  }
+  return snapshot;
+}
+
+function draftFromEntry(entry: TerminologyEntry): TerminologyEntryDraft {
+  return {
+    profileId: entry.profileId,
+    type: entry.type,
+    status: entry.status,
+    sourceText: entry.sourceText,
+    preferredText: entry.preferredText,
+    sourceLanguage: entry.sourceLanguage,
+    targetLanguage: entry.targetLanguage,
+    aliases: [...entry.aliases],
+    matchMode: "whole_phrase",
+    caseSensitive: entry.caseSensitive,
+    priority: entry.priority,
+    usageCount: entry.usageCount,
+    occurrenceCount: entry.occurrenceCount,
+    note: entry.note,
+  };
+}
+
 export default function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [terminology, setTerminology] = useState<TerminologyRuntimeSnapshot | null>(null);
+  const [terminologyQuery, setTerminologyQuery] = useState("");
+  const [terminologyTypeFilter, setTerminologyTypeFilter] = useState<TerminologyEntryType | "all">("all");
+  const [terminologyStatusFilter, setTerminologyStatusFilter] = useState<TerminologyEntryStatus | "all">("all");
+  const [terminologyProfileFilter, setTerminologyProfileFilter] = useState("all");
+  const [terminologySourceFilter, setTerminologySourceFilter] = useState<TerminologyLanguage | "all">("all");
+  const [terminologyTargetFilter, setTerminologyTargetFilter] = useState<TerminologyLanguage | "all">("all");
+  const [terminologySort, setTerminologySort] = useState<TerminologyEntrySort>("source_text");
+  const [profileNameDraft, setProfileNameDraft] = useState("");
+  const [entryDraft, setEntryDraft] = useState<TerminologyEntryDraft>(EMPTY_ENTRY_DRAFT);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [importText, setImportText] = useState("");
+  const [importFormat, setImportFormat] = useState<"json" | "csv">("json");
+  const [importPreview, setImportPreview] = useState<ImportPlanPreview | null>(null);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [prerequisites, setPrerequisites] = useState<PrerequisiteReport | null>(null);
   const [deviceLogin, setDeviceLogin] = useState<DeviceLogin | null>(null);
@@ -172,6 +248,7 @@ export default function App() {
   const rewritingIntentRef = useRef<RewriteIntentToken | null>(null);
   const resultIntentRef = useRef<RewriteIntentToken | null>(null);
   const applyingTokenRef = useRef<CaptureToken | null>(null);
+  const terminologyEpochRef = useRef(0);
 
   useEffect(() => {
     modeRef.current = settings.mode;
@@ -194,6 +271,14 @@ export default function App() {
       }
     } catch (nextError) {
       setLoginState("failed");
+      setError(toErrorMessage(nextError));
+    }
+  }, []);
+
+  const refreshTerminology = useCallback(async () => {
+    try {
+      setTerminology(requireTerminologySnapshot(await invoke<unknown>("terminology_state")));
+    } catch (nextError) {
       setError(toErrorMessage(nextError));
     }
   }, []);
@@ -226,6 +311,7 @@ export default function App() {
       mode,
       targetLanguage: mode === "translate" ? targetLanguage : null,
     };
+    const requestedTerminologyEpoch = terminologyEpochRef.current;
     if (sameRewriteIntent(rewritingIntentRef.current, requestedIntent)) {
       return;
     }
@@ -234,13 +320,19 @@ export default function App() {
     setError(null);
     setStatus("Rewriting with Codex");
     try {
-      const next = await invoke<RewriteResult>("rewrite_selected_text", {
+      const next = parseTerminologyRewriteResult(await invoke<unknown>("rewrite_selected_text", {
         sessionId: requestedToken.sessionId,
         generation: requestedToken.generation,
         mode,
         targetLanguage: requestedIntent.targetLanguage,
-      });
-      if (!sameRewriteIntent(currentIntentRef.current, requestedIntent)) {
+      }));
+      if (!next) {
+        throw new Error("Rewrite returned an invalid terminology contract.");
+      }
+      if (
+        terminologyEpochRef.current !== requestedTerminologyEpoch ||
+        !sameRewriteIntent(currentIntentRef.current, requestedIntent)
+      ) {
         return;
       }
       setResult(next);
@@ -248,7 +340,10 @@ export default function App() {
       setDraft(next.replacement);
       setStatus("Replacement ready");
     } catch (nextError) {
-      if (!sameRewriteIntent(currentIntentRef.current, requestedIntent)) {
+      if (
+        terminologyEpochRef.current !== requestedTerminologyEpoch ||
+        !sameRewriteIntent(currentIntentRef.current, requestedIntent)
+      ) {
         return;
       }
       setError(toErrorMessage(nextError));
@@ -297,7 +392,11 @@ export default function App() {
       .then((notices) => {
         if (notices.length > 0) {
           setError(
-            notices.includes("shortcut_startup_failed")
+            notices.includes("terminology_store_unrecoverable")
+              ? "The local terminology store and backup are invalid. Open Settings to reset it explicitly."
+              : notices.includes("terminology_backup_recovered")
+                ? "The local terminology store was recovered from its valid backup."
+                : notices.includes("shortcut_startup_failed")
               ? "The saved shortcut could not be registered. Open Settings to recover it."
               : notices.includes("shortcut_startup_fallback")
                 ? "The saved shortcut was unavailable. Ctrl+Shift+G is active."
@@ -309,6 +408,7 @@ export default function App() {
       .catch((nextError) => setError(toErrorMessage(nextError)));
 
     void refreshAuth();
+    void refreshTerminology();
 
     void listen<unknown>("selection-captured", (event) => {
       const payload = parseSelectionCaptured(event.payload);
@@ -404,6 +504,7 @@ export default function App() {
     void listen("open-settings", () => {
       setSettingsOpen(true);
       setRecordingShortcut(false);
+      void refreshTerminology();
     }).then((unlisten) => {
       unlistenOpenSettings = unlisten;
     });
@@ -416,7 +517,7 @@ export default function App() {
       unlistenProcessExited?.();
       unlistenOpenSettings?.();
     };
-  }, [refreshAuth, rewrite]);
+  }, [refreshAuth, refreshTerminology, rewrite]);
 
   useEffect(() => {
     if (!deviceLogin) {
@@ -439,6 +540,37 @@ export default function App() {
     () => prerequisites?.commands.find((command) => command.name === "codex") ?? null,
     [prerequisites],
   );
+
+  const terminologyStore = terminology?.status === "ready" ? terminology.store : null;
+  const filteredTerminologyEntries = useMemo(() => {
+    if (!terminologyStore) return [];
+    const query = terminologyQuery.normalize("NFC").trim().toLocaleLowerCase();
+    return terminologyStore.entries
+      .filter((entry) =>
+        (terminologyProfileFilter === "all" || entry.profileId === terminologyProfileFilter) &&
+        (terminologyTypeFilter === "all" || entry.type === terminologyTypeFilter) &&
+        (terminologyStatusFilter === "all" || entry.status === terminologyStatusFilter) &&
+        (terminologySourceFilter === "all" || entry.sourceLanguage === terminologySourceFilter) &&
+        (terminologyTargetFilter === "all" || entry.targetLanguage === terminologyTargetFilter) &&
+        (!query || [entry.sourceText, entry.preferredText ?? "", ...entry.aliases, entry.note ?? ""]
+          .some((value) => value.normalize("NFC").toLocaleLowerCase().includes(query))))
+      .sort((left, right) => {
+        const stable = left.id.localeCompare(right.id);
+        if (terminologySort === "priority") return right.priority - left.priority || stable;
+        if (terminologySort === "recently_updated") return right.updatedAtMs - left.updatedAtMs || stable;
+        if (terminologySort === "usage_count") return right.usageCount - left.usageCount || stable;
+        return left.sourceText.localeCompare(right.sourceText) || stable;
+      });
+  }, [
+    terminologyProfileFilter,
+    terminologyQuery,
+    terminologySort,
+    terminologySourceFilter,
+    terminologyStatusFilter,
+    terminologyStore,
+    terminologyTargetFilter,
+    terminologyTypeFilter,
+  ]);
 
   async function startDeviceLogin() {
     setIsStartingLogin(true);
@@ -626,6 +758,225 @@ export default function App() {
     }
   }
 
+  function invalidateTerminologyResult(message: string) {
+    terminologyEpochRef.current += 1;
+    resultIntentRef.current = null;
+    setResult(null);
+    setDraft("");
+    setImportPreview(null);
+    setStatus(message);
+  }
+
+  async function runTerminologyMutation(
+    command: string,
+    args: Record<string, unknown>,
+    message: string,
+  ): Promise<boolean> {
+    try {
+      const snapshot = requireTerminologySnapshot(await invoke<unknown>(command, args));
+      setTerminology(snapshot);
+      setError(null);
+      invalidateTerminologyResult(message);
+      return true;
+    } catch (nextError) {
+      setError(toErrorMessage(nextError));
+      setStatus("Terminology change rejected");
+      return false;
+    }
+  }
+
+  async function toggleTerminologySetting(
+    field: "enabled" | "useApprovedTerminology" | "suggestTerminology",
+  ) {
+    const saved = await saveSettings({
+      ...settings,
+      terminology: {
+        ...settings.terminology,
+        [field]: !settings.terminology[field],
+        autoSaveSuggestions: false,
+      },
+    });
+    if (saved) invalidateTerminologyResult("Terminology settings changed — rewrite again");
+  }
+
+  async function addProfile() {
+    if (!profileNameDraft.trim()) return;
+    if (await runTerminologyMutation(
+      "add_terminology_profile",
+      { name: profileNameDraft },
+      "Terminology profile added",
+    )) setProfileNameDraft("");
+  }
+
+  async function renameProfile(profileId: string, currentName: string) {
+    const name = window.prompt("Rename this local profile", currentName);
+    if (name === null || name === currentName) return;
+    await runTerminologyMutation(
+      "rename_terminology_profile",
+      { profileId, name },
+      "Terminology profile renamed",
+    );
+  }
+
+  async function toggleProfile(profileId: string, enabled: boolean) {
+    await runTerminologyMutation(
+      "set_terminology_profile_enabled",
+      { profileId, enabled: !enabled },
+      enabled ? "Terminology profile disabled" : "Terminology profile enabled",
+    );
+  }
+
+  async function chooseTerminologyProfile(profileId: string) {
+    try {
+      const saved = parseAppSettings(await invoke<unknown>("set_active_terminology_profile", { profileId }));
+      if (!saved) throw new Error("Active-profile response was invalid.");
+      setSettings(saved);
+      setEntryDraft((current) => ({ ...current, profileId }));
+      setError(null);
+      invalidateTerminologyResult("Active terminology profile changed — rewrite again");
+    } catch (nextError) {
+      setError(toErrorMessage(nextError));
+    }
+  }
+
+  async function submitTerminologyEntry() {
+    const draft: TerminologyEntryDraft = {
+      ...entryDraft,
+      preferredText: entryDraft.type === "protected" ? null : entryDraft.preferredText,
+      aliases: entryDraft.aliases.map((alias) => alias.trim()).filter(Boolean),
+    };
+    const command = editingEntryId ? "update_terminology_entry" : "add_terminology_entry";
+    const args = editingEntryId ? { entryId: editingEntryId, draft } : { draft };
+    if (await runTerminologyMutation(command, args, editingEntryId ? "Terminology entry updated" : "Terminology entry added")) {
+      setEditingEntryId(null);
+      setEntryDraft({ ...EMPTY_ENTRY_DRAFT, profileId: settings.terminology.activeProfileId });
+    }
+  }
+
+  async function setEntryStatus(entryId: string, status: TerminologyEntryStatus) {
+    await runTerminologyMutation(
+      status === "approved" ? "approve_terminology_suggestion" : "set_terminology_entry_status",
+      status === "approved" ? { entryId } : { entryId, status },
+      status === "approved" ? "Terminology entry approved" : "Terminology status changed",
+    );
+  }
+
+  async function deleteEntry(entryId: string) {
+    if (!window.confirm("Delete this local terminology entry?")) return;
+    await runTerminologyMutation(
+      "delete_terminology_entry",
+      { entryId },
+      "Terminology entry deleted",
+    );
+  }
+
+  async function saveSuggestion(suggestion: TerminologySuggestion) {
+    await runTerminologyMutation(
+      "save_terminology_suggestion",
+      { profileId: settings.terminology.activeProfileId, suggestion },
+      "Suggestion saved as suggested — approve it explicitly to activate",
+    );
+  }
+
+  function dismissSuggestion(index: number) {
+    setResult((current) => current ? {
+      ...current,
+      terminologySuggestions: current.terminologySuggestions.filter((_, itemIndex) => itemIndex !== index),
+    } : current);
+  }
+
+  function openSuggestionForm(suggestion: TerminologySuggestion) {
+    setEntryDraft({
+      ...EMPTY_ENTRY_DRAFT,
+      profileId: settings.terminology.activeProfileId,
+      type: suggestion.type,
+      status: "suggested",
+      sourceText: suggestion.sourceText,
+      preferredText: suggestion.preferredText,
+      sourceLanguage: suggestion.sourceLanguage,
+      targetLanguage: suggestion.targetLanguage,
+      occurrenceCount: 1,
+    });
+    setEditingEntryId(null);
+    setSettingsOpen(true);
+  }
+
+  async function exportTerminology(format: "json" | "csv") {
+    try {
+      const content = await invoke<unknown>("export_terminology", { format });
+      if (typeof content !== "string") throw new Error("Terminology export response was invalid.");
+      const blob = new Blob([content], { type: format === "json" ? "application/json" : "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `codex-pencil-terminology.${format}`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setStatus(`Terminology ${format.toUpperCase()} exported locally`);
+    } catch (nextError) {
+      setError(toErrorMessage(nextError));
+    }
+  }
+
+  async function dryRunImport() {
+    try {
+      const preview = parseImportPlanPreview(await invoke<unknown>("dry_run_terminology_import", {
+        format: importFormat,
+        text: importText,
+      }));
+      if (!preview) throw new Error("Import dry-run response was invalid.");
+      setImportPreview(preview);
+      setError(null);
+      setStatus("Import dry run ready — no data changed");
+    } catch (nextError) {
+      setError(toErrorMessage(nextError));
+    }
+  }
+
+  async function selectImportFile(file: File | undefined) {
+    setImportPreview(null);
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setError("Terminology import exceeds the 2 MiB local limit.");
+      return;
+    }
+    try {
+      const bytes = await file.arrayBuffer();
+      setImportText(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+      setImportFormat(file.name.toLocaleLowerCase().endsWith(".csv") ? "csv" : "json");
+      setError(null);
+      setStatus("Terminology import loaded locally — run dry run before apply");
+    } catch {
+      setError("The terminology import could not be read as UTF-8 text.");
+    }
+  }
+
+  async function applyImport() {
+    if (!importPreview) return;
+    try {
+      const report = parseImportReport(await invoke<unknown>("apply_terminology_import", {
+        planId: importPreview.planId,
+      }));
+      if (!report) throw new Error("Import apply response was invalid.");
+      await refreshTerminology();
+      setImportPreview(null);
+      setImportText("");
+      invalidateTerminologyResult("Terminology import applied — conflicts remained skipped");
+    } catch (nextError) {
+      setError(toErrorMessage(nextError));
+    }
+  }
+
+  async function resetTerminologyStore() {
+    if (!window.confirm("Reset the unrecoverable local terminology store?")) return;
+    if (await runTerminologyMutation("reset_terminology_store", {}, "Terminology store reset")) {
+      setSettings((current) => ({
+        ...current,
+        terminology: { ...current.terminology, activeProfileId: "general" },
+      }));
+    }
+  }
+
   async function applyReplacement() {
     const token = currentTokenRef.current;
     const intent = currentIntentRef.current;
@@ -664,6 +1015,7 @@ export default function App() {
         resultIntentRef.current = null;
         setSelection(null);
         setStatus("Applied");
+        void refreshTerminology();
         return;
       }
       if (outcome.status === "copied_fallback") {
@@ -672,6 +1024,7 @@ export default function App() {
         resultIntentRef.current = null;
         setSelection(null);
         setStatus("Copied — paste manually");
+        void refreshTerminology();
         setError(
           "The captured target could not be proven safe. The approved replacement is on the clipboard; paste it manually.",
         );
@@ -821,6 +1174,248 @@ export default function App() {
                   : settings.shortcut.primary.display}
               </button>
             </label>
+            <section className="terminology-settings" aria-label="개인 사전">
+              <div className="terminology-heading">
+                <div>
+                  <h3>개인 사전</h3>
+                  <p>로컬에만 저장됩니다. 선택문과 함께 모델로 전송되는 것은 일치한 approved 항목뿐입니다.</p>
+                </div>
+                <BookOpen size={18} />
+              </div>
+              <div className="terminology-toggles">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.terminology.enabled}
+                    onChange={() => toggleTerminologySetting("enabled")}
+                  />
+                  Enable
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.terminology.useApprovedTerminology}
+                    onChange={() => toggleTerminologySetting("useApprovedTerminology")}
+                  />
+                  Use approved
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.terminology.suggestTerminology}
+                    onChange={() => toggleTerminologySetting("suggestTerminology")}
+                  />
+                  Show suggestions
+                </label>
+              </div>
+
+              {terminology?.status === "uninitialized" ? (
+                <div className="terminology-recovery">
+                  <span>{terminology.reason}</span>
+                  <p>The local app-data path is unavailable. Reset and import stay disabled until the app can initialize that path.</p>
+                </div>
+              ) : terminology?.status === "unrecoverable" ? (
+                <div className="terminology-recovery">
+                  <span>{terminology.reason}</span>
+                  <div className="export-actions">
+                    <button className="secondary-button" type="button" onClick={resetTerminologyStore}>
+                      <RotateCcw size={14} /> Reset local store
+                    </button>
+                    <label className="file-button"><Upload size={14} /> Import recovery<input type="file" accept=".json,.csv,application/json,text/csv" onChange={(event) => void selectImportFile(event.target.files?.[0])} /></label>
+                  </div>
+                  {importText ? (
+                    <div className="import-plan">
+                      <span>{importFormat.toUpperCase()} loaded locally ({new Blob([importText]).size.toLocaleString()} bytes)</span>
+                      <button className="secondary-button" type="button" onClick={dryRunImport}>Dry run</button>
+                      {importPreview ? (
+                        <div>
+                          <span>{importPreview.report.newProfiles} profiles · {importPreview.report.newEntries} entries · {importPreview.report.idConflicts + importPreview.report.semanticKeyConflicts} conflict</span>
+                          <button className="primary-button" type="button" onClick={applyImport}>Recover from non-conflicting data</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : terminologyStore ? (
+                <>
+                  <label className="settings-field">
+                    <span>Active non-global profile</span>
+                    <select
+                      value={settings.terminology.activeProfileId}
+                      onChange={(event) => chooseTerminologyProfile(event.target.value)}
+                    >
+                      {terminologyStore.profiles
+                        .filter((profile) => profile.id !== "global" && profile.enabled)
+                        .map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+                    </select>
+                  </label>
+                  <div className="inline-form">
+                    <input
+                      value={profileNameDraft}
+                      onChange={(event) => setProfileNameDraft(event.target.value)}
+                      placeholder="New profile name"
+                      maxLength={128}
+                    />
+                    <button className="secondary-button" type="button" onClick={addProfile}>
+                      <Plus size={14} /> Profile
+                    </button>
+                  </div>
+                  <div className="profile-list">
+                    {terminologyStore.profiles.map((profile) => (
+                      <div className="profile-row" key={profile.id}>
+                        <span>{profile.name}</span>
+                        <div className="badge-row">
+                          {profile.id === "global" ? <small>global · always active</small> : null}
+                          {profile.id === settings.terminology.activeProfileId ? <small>active</small> : null}
+                        </div>
+                        {profile.id !== "global" ? (
+                          <div className="row-actions">
+                            <button type="button" onClick={() => renameProfile(profile.id, profile.name)} aria-label="Rename profile"><Edit3 size={13} /></button>
+                            <button type="button" onClick={() => toggleProfile(profile.id, profile.enabled)} disabled={profile.id === settings.terminology.activeProfileId}>
+                              {profile.enabled ? "Disable" : "Enable"}
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="terminology-search">
+                    <Search size={14} />
+                    <input
+                      value={terminologyQuery}
+                      onChange={(event) => setTerminologyQuery(event.target.value)}
+                      placeholder="Search source, preferred, alias, note"
+                    />
+                    <select value={terminologyTypeFilter} onChange={(event) => setTerminologyTypeFilter(event.target.value as TerminologyEntryType | "all")}>
+                      <option value="all">All types</option>
+                      <option value="translation">translation</option>
+                      <option value="preferred">preferred</option>
+                      <option value="protected">protected</option>
+                    </select>
+                    <select value={terminologyStatusFilter} onChange={(event) => setTerminologyStatusFilter(event.target.value as TerminologyEntryStatus | "all")}>
+                      <option value="all">All states</option>
+                      <option value="approved">approved</option>
+                      <option value="suggested">suggested</option>
+                      <option value="disabled">disabled</option>
+                    </select>
+                    <select value={terminologyProfileFilter} onChange={(event) => setTerminologyProfileFilter(event.target.value)}>
+                      <option value="all">All profiles</option>
+                      {terminologyStore.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+                    </select>
+                    <select value={terminologySourceFilter} onChange={(event) => setTerminologySourceFilter(event.target.value as TerminologyLanguage | "all")}>
+                      <option value="all">All source languages</option>
+                      {(["any", "ko", "en", "ja", "zh-Hans", "zh-Hant"] as TerminologyLanguage[]).map((language) => <option key={language} value={language}>source: {language}</option>)}
+                    </select>
+                    <select value={terminologyTargetFilter} onChange={(event) => setTerminologyTargetFilter(event.target.value as TerminologyLanguage | "all")}>
+                      <option value="all">All target languages</option>
+                      {(["any", "ko", "en", "ja", "zh-Hans", "zh-Hant"] as TerminologyLanguage[]).map((language) => <option key={language} value={language}>target: {language}</option>)}
+                    </select>
+                    <select value={terminologySort} onChange={(event) => setTerminologySort(event.target.value as TerminologyEntrySort)}>
+                      <option value="source_text">Sort: source</option>
+                      <option value="priority">Sort: priority</option>
+                      <option value="recently_updated">Sort: updated</option>
+                      <option value="usage_count">Sort: usage</option>
+                    </select>
+                  </div>
+
+                  <div className="entry-form">
+                    <div className="entry-form-heading">
+                      <strong>{editingEntryId ? "Edit entry" : "Add entry"}</strong>
+                      {editingEntryId ? <button type="button" onClick={() => { setEditingEntryId(null); setEntryDraft({ ...EMPTY_ENTRY_DRAFT, profileId: settings.terminology.activeProfileId }); }}>Cancel</button> : null}
+                    </div>
+                    <div className="entry-form-grid">
+                      <select value={entryDraft.profileId} onChange={(event) => setEntryDraft((current) => ({ ...current, profileId: event.target.value }))}>
+                        {terminologyStore.profiles.filter((profile) => profile.enabled).map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+                      </select>
+                      <select value={entryDraft.type} onChange={(event) => setEntryDraft((current) => ({ ...current, type: event.target.value as TerminologyEntryType }))}>
+                        <option value="translation">translation</option>
+                        <option value="preferred">preferred</option>
+                        <option value="protected">protected</option>
+                      </select>
+                      <select value={entryDraft.status} onChange={(event) => setEntryDraft((current) => ({ ...current, status: event.target.value as TerminologyEntryStatus }))}>
+                        <option value="approved">approved</option>
+                        <option value="suggested">suggested</option>
+                        <option value="disabled">disabled</option>
+                      </select>
+                      <input value={entryDraft.sourceText} maxLength={256} onChange={(event) => setEntryDraft((current) => ({ ...current, sourceText: event.target.value }))} placeholder="Source term" />
+                      {entryDraft.type !== "protected" ? <input value={entryDraft.preferredText ?? ""} maxLength={512} onChange={(event) => setEntryDraft((current) => ({ ...current, preferredText: event.target.value }))} placeholder="Preferred term" /> : null}
+                      <textarea value={entryDraft.aliases.join("\n")} onChange={(event) => setEntryDraft((current) => ({ ...current, aliases: event.target.value.split(/\r?\n/) }))} placeholder="Aliases, one per line" rows={2} />
+                      <select value={entryDraft.sourceLanguage} onChange={(event) => setEntryDraft((current) => ({ ...current, sourceLanguage: event.target.value as TerminologyLanguage }))}>
+                        {(["any", "ko", "en", "ja", "zh-Hans", "zh-Hant"] as TerminologyLanguage[]).map((language) => <option key={language} value={language}>source: {language}</option>)}
+                      </select>
+                      <select value={entryDraft.targetLanguage} onChange={(event) => setEntryDraft((current) => ({ ...current, targetLanguage: event.target.value as TerminologyLanguage }))}>
+                        {(["any", "ko", "en", "ja", "zh-Hans", "zh-Hant"] as TerminologyLanguage[]).map((language) => <option key={language} value={language}>target: {language}</option>)}
+                      </select>
+                      <input type="number" min={0} max={1000} value={entryDraft.priority} onChange={(event) => setEntryDraft((current) => ({ ...current, priority: Number(event.target.value) }))} aria-label="Priority" />
+                      <input value={entryDraft.note ?? ""} maxLength={1024} onChange={(event) => setEntryDraft((current) => ({ ...current, note: event.target.value || null }))} placeholder="Local note (optional)" />
+                    </div>
+                    <label className="case-toggle"><input type="checkbox" checked={entryDraft.caseSensitive} onChange={(event) => setEntryDraft((current) => ({ ...current, caseSensitive: event.target.checked }))} /> Case sensitive</label>
+                    <button className="primary-button" type="button" onClick={submitTerminologyEntry}>
+                      <Check size={14} /> {editingEntryId ? "Save entry" : "Add entry"}
+                    </button>
+                  </div>
+
+                  <div className="entry-list">
+                    {filteredTerminologyEntries.map((entry) => {
+                      const profileEnabled = terminologyStore.profiles
+                        .some((profile) => profile.id === entry.profileId && profile.enabled);
+                      const requestEligible = settings.terminology.enabled &&
+                        settings.terminology.useApprovedTerminology &&
+                        entryAffectsRequests(entry) && profileEnabled &&
+                        (entry.profileId === "global" || entry.profileId === settings.terminology.activeProfileId);
+                      return <article className="entry-row" key={entry.id}>
+                        <div className="entry-copy">
+                          <strong>{entry.sourceText}</strong>
+                          <span>{entry.preferredText ?? "Protected exactly"}</span>
+                          <div className="badge-row">
+                            <small>{entry.type}</small><small>{entry.status}</small>
+                            {!requestEligible ? <small>inert</small> : null}
+                          </div>
+                        </div>
+                        <div className="row-actions">
+                          <button type="button" onClick={() => { setEditingEntryId(entry.id); setEntryDraft(draftFromEntry(entry)); }} aria-label="Edit entry"><Edit3 size={13} /></button>
+                          {entry.status === "approved" ? <button type="button" onClick={() => setEntryStatus(entry.id, "disabled")}>Disable</button> : null}
+                          {entry.status === "suggested" ? <><button type="button" onClick={() => setEntryStatus(entry.id, "approved")}>Approve</button><button type="button" onClick={() => setEntryStatus(entry.id, "disabled")}>Disable</button></> : null}
+                          {entry.status === "disabled" ? <button type="button" onClick={() => setEntryStatus(entry.id, "approved")}>Re-enable</button> : null}
+                          <button type="button" onClick={() => deleteEntry(entry.id)} aria-label="Delete entry"><Trash2 size={13} /></button>
+                        </div>
+                      </article>;
+                    })}
+                  </div>
+
+                  <div className="import-export">
+                    <div className="export-actions">
+                      <button className="secondary-button" type="button" onClick={() => exportTerminology("json")}><Download size={14} /> JSON</button>
+                      <button className="secondary-button" type="button" onClick={() => exportTerminology("csv")}><Download size={14} /> CSV</button>
+                      <label className="file-button"><Upload size={14} /> Import<input type="file" accept=".json,.csv,application/json,text/csv" onChange={(event) => void selectImportFile(event.target.files?.[0])} /></label>
+                    </div>
+                    {importText ? (
+                      <div className="import-plan">
+                        <span>{importFormat.toUpperCase()} loaded locally ({new Blob([importText]).size.toLocaleString()} bytes)</span>
+                        <button className="secondary-button" type="button" onClick={dryRunImport}>Dry run</button>
+                        {importPreview ? (
+                          <div>
+                            <span>{importPreview.report.newProfiles} profiles · {importPreview.report.newEntries} entries · {importPreview.report.identicalDuplicates} duplicate · {importPreview.report.idConflicts + importPreview.report.semanticKeyConflicts} conflict · {importPreview.report.invalidRows} invalid · {importPreview.report.skippedRows} skipped</span>
+                            {importPreview.report.conflicts.length ? (
+                              <ul className="import-conflict-list">
+                                {importPreview.report.conflicts.slice(0, 50).map((conflict, index) => (
+                                  <li key={`${conflict.kind}-${conflict.incomingId ?? "none"}-${index}`}>
+                                    {conflict.kind} · incoming {conflict.incomingId ?? "n/a"} · existing {conflict.existingId ?? "n/a"}{conflict.rowNumber === null ? "" : ` · row ${conflict.rowNumber}`}
+                                  </li>
+                                ))}
+                                {importPreview.report.conflicts.length > 50 ? <li>{importPreview.report.conflicts.length - 50} more conflicts</li> : null}
+                              </ul>
+                            ) : null}
+                            <button className="primary-button" type="button" onClick={applyImport}>Apply non-conflicting</button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              ) : <div className="loading-state"><Loader2 className="spin" size={16} /> Loading local terminology</div>}
+            </section>
             <div className="settings-actions">
               <button className="secondary-button" type="button" onClick={resetShortcut}>
                 <RotateCcw size={15} />
@@ -987,7 +1582,7 @@ export default function App() {
               <div className="rewrite-details">
                 <div className="rewrite-summary">
                   <span>{result.summary}</span>
-                  <strong>{Math.round(result.confidence * 100)}%</strong>
+                  <strong>{Math.round(result.confidence * 100)}% · {result.terminologyMatchCount} terms</strong>
                 </div>
                 {result.edits.length ? (
                   <ul className="edit-list">
@@ -997,6 +1592,28 @@ export default function App() {
                       </li>
                     ))}
                   </ul>
+                ) : null}
+                {result.terminologyWarnings.length ? (
+                  <div className="terminology-warnings" role="status">
+                    {result.terminologyWarnings.map((warning, index) => (
+                      <span key={`${warning.code}-${index}`}>{warning.code.replace(/_/g, " ")}</span>
+                    ))}
+                    <small>Warnings never auto-correct or auto-Apply the result.</small>
+                  </div>
+                ) : null}
+                {result.terminologySuggestions.length ? (
+                  <div className="suggestion-list">
+                    {result.terminologySuggestions.map((suggestion, index) => (
+                      <article key={`${suggestion.sourceText}-${index}`}>
+                        <div><strong>{suggestion.sourceText}</strong><span>{suggestion.preferredText}</span><small>{suggestion.reason.replace(/_/g, " ")} · ephemeral</small></div>
+                        <div className="row-actions">
+                          <button type="button" onClick={() => dismissSuggestion(index)}>Dismiss</button>
+                          <button type="button" onClick={() => openSuggestionForm(suggestion)}>Review</button>
+                          <button type="button" onClick={() => saveSuggestion(suggestion)}>Save suggested</button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
                 ) : null}
               </div>
             ) : null}

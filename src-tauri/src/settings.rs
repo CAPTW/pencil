@@ -57,6 +57,7 @@ pub struct AppSettings {
     pub auto_rewrite: bool,
     pub shortcut: ShortcutSettings,
     pub translation: TranslationSettings,
+    pub terminology: TerminologySettings,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -87,6 +88,28 @@ impl Default for TranslationSettings {
             source_language: "auto".to_string(),
             target_language: TranslationTargetLanguage::default(),
             apply_format: TranslationApplyFormat::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminologySettings {
+    pub enabled: bool,
+    pub active_profile_id: String,
+    pub use_approved_terminology: bool,
+    pub suggest_terminology: bool,
+    pub auto_save_suggestions: bool,
+}
+
+impl Default for TerminologySettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            active_profile_id: crate::terminology::GENERAL_PROFILE_ID.to_string(),
+            use_approved_terminology: true,
+            suggest_terminology: true,
+            auto_save_suggestions: false,
         }
     }
 }
@@ -123,7 +146,7 @@ pub(crate) fn decode_settings(text: &str) -> SettingsLoad {
     let mut migrated = value
         .get("schemaVersion")
         .and_then(serde_json::Value::as_u64)
-        != Some(2);
+        != Some(3);
     let mut invalid = false;
 
     if let Some(mode) = value.get("mode") {
@@ -224,6 +247,56 @@ pub(crate) fn decode_settings(text: &str) -> SettingsLoad {
         migrated = true;
     }
 
+    if let Some(terminology) = value.get("terminology") {
+        let Some(terminology) = terminology.as_object() else {
+            return SettingsLoad {
+                settings,
+                recovery: Some(SettingsRecoveryCode::InvalidFields),
+            };
+        };
+
+        match terminology.get("enabled") {
+            Some(enabled) => match enabled.as_bool() {
+                Some(enabled) => settings.terminology.enabled = enabled,
+                None => invalid = true,
+            },
+            None => migrated = true,
+        }
+        match terminology
+            .get("activeProfileId")
+            .and_then(serde_json::Value::as_str)
+        {
+            Some(profile_id) if valid_profile_id(profile_id) => {
+                settings.terminology.active_profile_id = profile_id.to_string();
+            }
+            Some(_) => invalid = true,
+            None => migrated = true,
+        }
+        match terminology.get("useApprovedTerminology") {
+            Some(enabled) => match enabled.as_bool() {
+                Some(enabled) => settings.terminology.use_approved_terminology = enabled,
+                None => invalid = true,
+            },
+            None => migrated = true,
+        }
+        match terminology.get("suggestTerminology") {
+            Some(enabled) => match enabled.as_bool() {
+                Some(enabled) => settings.terminology.suggest_terminology = enabled,
+                None => invalid = true,
+            },
+            None => migrated = true,
+        }
+        match terminology.get("autoSaveSuggestions") {
+            Some(enabled) => match enabled.as_bool() {
+                Some(false) => {}
+                Some(true) | None => invalid = true,
+            },
+            None => migrated = true,
+        }
+    } else {
+        migrated = true;
+    }
+
     SettingsLoad {
         settings,
         recovery: if invalid {
@@ -239,19 +312,20 @@ pub(crate) fn decode_settings(text: &str) -> SettingsLoad {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            schema_version: 2,
+            schema_version: 3,
             mode: RewriteMode::Grammar,
             restore_clipboard: true,
             auto_rewrite: true,
             shortcut: ShortcutSettings::default(),
             translation: TranslationSettings::default(),
+            terminology: TerminologySettings::default(),
         }
     }
 }
 
 impl AppSettings {
     pub(crate) fn validate(&self) -> Result<(), &'static str> {
-        if self.schema_version != 2 {
+        if self.schema_version != 3 {
             return Err("settings_schema_unsupported");
         }
         let normalized = PrimaryShortcut::from_candidate(crate::shortcut::ShortcutCandidate {
@@ -264,6 +338,12 @@ impl AppSettings {
         }
         if self.translation.source_language != "auto" {
             return Err("translation_source_must_be_auto");
+        }
+        if !valid_profile_id(&self.terminology.active_profile_id) {
+            return Err("terminology_active_profile_invalid");
+        }
+        if self.terminology.auto_save_suggestions {
+            return Err("terminology_auto_save_must_be_false");
         }
         Ok(())
     }
@@ -278,6 +358,14 @@ impl AppSettings {
             },
         )
     }
+}
+
+fn valid_profile_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
 }
 
 pub(crate) fn load_state(app: &AppHandle) -> Result<SettingsLoad, String> {

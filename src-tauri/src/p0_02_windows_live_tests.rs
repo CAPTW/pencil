@@ -1,10 +1,12 @@
+use crate::apply_current_terminology_bound;
 use crate::apply_safety::{
     apply_current_session, ApplyFailureReason, ApplyFallbackReason, ApplyOutcome, ApplyPlatform,
     WaitStage,
 };
+use crate::capture_session::{BoundRewriteIntent, TerminologyIntent};
 use crate::capture_session::{CaptureSessionStore, SessionToken, WindowTarget};
 use crate::clipboard;
-use crate::settings::RewriteMode;
+use crate::settings::{RewriteMode, TerminologySettings};
 use crate::translation::{
     format_translation, RewriteIntent, TranslationApplyFormat, TranslationTargetLanguage,
 };
@@ -1532,4 +1534,138 @@ fn p1_01_windows_live_translation_formats_acceptance() {
             assert!(content_equals_expected(harness.widget_window));
         }
     }
+}
+
+pub(crate) fn run_p1_02_live_target_bound_terminology_apply() {
+    let clipboard_guard = ClipboardTextGuard::capture();
+    assert!(clipboard_guard.is_ok());
+    let _clipboard_guard = clipboard_guard.ok();
+    let source = "자유수면효과 CargoMax";
+    let replacement = "free surface effect CargoMax";
+    let (harness, target) = prepare_translation_harness(source, replacement);
+    assert_eq!(harness.same_session, Some(true));
+    assert_eq!(harness.same_input_desktop, Some(true));
+    assert_eq!(harness.sender_integrity, IntegrityRelation::Equal);
+
+    assert!(clipboard::write_clipboard_text("synthetic-terminology-prior").is_ok());
+    let mut store = CaptureSessionStore::default();
+    let intent = RewriteIntent::new(RewriteMode::Translate, Some(TranslationTargetLanguage::En))
+        .unwrap_or_else(|_| panic!("terminology translation intent fixture is invalid"));
+    let settings = TerminologySettings {
+        active_profile_id: "maritime".to_string(),
+        ..TerminologySettings::default()
+    };
+    let bound = BoundRewriteIntent::new(
+        intent,
+        TerminologyIntent {
+            enabled: true,
+            use_approved_terminology: true,
+            suggest_terminology: true,
+            active_profile_id: "maritime".to_string(),
+            store_revision: 7,
+            matched_entry_ids: vec![
+                "entry-live-protected".to_string(),
+                "entry-live-translation".to_string(),
+            ],
+        },
+    );
+    let token = store
+        .capture(
+            "synthetic-terminology-live-1".to_string(),
+            source.to_string(),
+            target,
+            Some("synthetic-terminology-prior".to_string()),
+            Some(clipboard::clipboard_sequence_number()),
+        )
+        .unwrap_or_else(|_| panic!("terminology capture fixture failed"));
+    assert!(store.begin_rewrite_bound(&token, bound.clone()).is_ok());
+    assert!(store.finish_rewrite_success_bound(&token, &bound).is_ok());
+    let mut platform = LiveApplyPlatform::new(
+        harness.widget_window,
+        harness.target_window,
+        harness.target_textbox,
+    );
+
+    assert_eq!(
+        apply_current_terminology_bound(
+            &mut store,
+            &token,
+            &bound,
+            intent,
+            &settings,
+            Some(8),
+            replacement,
+            false,
+            &mut platform,
+        ),
+        ApplyOutcome::RejectedStale
+    );
+    assert_eq!(platform.clipboard_writes, 0);
+    assert_eq!(platform.paste_calls, 0);
+
+    assert_eq!(
+        apply_current_terminology_bound(
+            &mut store,
+            &token,
+            &bound,
+            intent,
+            &settings,
+            Some(7),
+            replacement,
+            false,
+            &mut platform,
+        ),
+        ApplyOutcome::Applied
+    );
+    assert_eq!(platform.paste_calls, 1);
+    assert!(wait_until(Duration::from_secs(2), || {
+        content_equals_expected(harness.target_window)
+    }));
+    assert!(content_equals_expected(harness.widget_window));
+    assert_eq!(event_count(&probe_events(harness.widget_window), 6), 0);
+
+    let fallback_token = store
+        .capture(
+            "synthetic-terminology-live-2".to_string(),
+            source.to_string(),
+            target,
+            Some("synthetic-terminology-prior".to_string()),
+            Some(clipboard::clipboard_sequence_number()),
+        )
+        .unwrap_or_else(|_| panic!("fallback terminology capture fixture failed"));
+    assert!(store
+        .begin_rewrite_bound(&fallback_token, bound.clone())
+        .is_ok());
+    assert!(store
+        .finish_rewrite_success_bound(&fallback_token, &bound)
+        .is_ok());
+    unsafe {
+        SendMessageW(harness.target_window as HWND, WM_CLOSE, 0, 0);
+    }
+    assert!(wait_until(Duration::from_secs(2), || {
+        !window_is_valid(harness.target_window)
+    }));
+    let paste_before_fallback = platform.paste_calls;
+    assert_eq!(
+        apply_current_terminology_bound(
+            &mut store,
+            &fallback_token,
+            &bound,
+            intent,
+            &settings,
+            Some(7),
+            replacement,
+            false,
+            &mut platform,
+        ),
+        ApplyOutcome::CopiedFallback {
+            reason: ApplyFallbackReason::TargetMissing,
+        }
+    );
+    assert_eq!(platform.paste_calls, paste_before_fallback);
+    assert_eq!(
+        clipboard::read_clipboard_text().ok().as_deref(),
+        Some(replacement)
+    );
+    assert!(content_equals_expected(harness.widget_window));
 }
