@@ -104,6 +104,21 @@ src-tauri\target\release\bundle\msi\Codex Pencil_0.1.0_x64_en-US.msi
 src-tauri\target\release\bundle\nsis\Codex Pencil_0.1.0_x64-setup.exe
 ```
 
+### Private portable personal bundle
+
+The P2-01 personal-use deliverable is the reproducible portable ZIP, not the developer bundle output above. It is unsigned, has no updater or public publication step, and keeps exact `codex-cli 0.144.6` as an external prerequisite. Packaging uses existing locked dependencies only; do not run an install or update command as part of this workflow.
+
+After the packaging workflow source commit exists and the worktree is clean:
+
+```powershell
+$packagingHead = (git rev-parse HEAD).Trim()
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-personal-bundle.ps1 `
+  -ExpectedSourceCommit $packagingHead `
+  -OutputBase 'D:\dev\artifacts\Codex-Pencil\P2-01'
+```
+
+The script rejects an existing commit-bound output root, builds frontend and Rust release outputs externally with Cargo offline and locked, emits the portable directory and ZIP, and verifies both. See [`docs/PERSONAL_BUNDLE.md`](docs/PERSONAL_BUNDLE.md) for the artifact layout, verification command, private-use limitations, and content-free troubleshooting codes.
+
 If the app cannot find `codex`, set an explicit path before running:
 
 ```powershell
