@@ -16,7 +16,8 @@ const moduleUrl = `data:text/javascript;base64,${Buffer.from(outputText).toStrin
 const contract = await import(moduleUrl);
 
 const settings = contract.parseAppSettings({
-  schemaVersion: 3,
+  schemaVersion: 4,
+  cloudProcessingAcknowledgementVersion: 0,
   mode: "translate",
   restoreClipboard: true,
   autoRewrite: true,

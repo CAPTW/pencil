@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Check,
   BookOpen,
@@ -50,6 +49,13 @@ import {
   type TranslationTargetLanguage,
 } from "./promptlessContract";
 import {
+  CLOUD_PROCESSING_DISCLOSURE_VERSION,
+  contentLimitMessage,
+  isBackendContentLimitError,
+  userFacingRuntimeErrorMessage,
+  validateFrontendTextLimit,
+} from "./mvpContract";
+import {
   entryAffectsRequests,
   parseImportPlanPreview,
   parseImportReport,
@@ -76,7 +82,6 @@ type AuthStatus = {
 
 type DeviceLogin = {
   loginId: string;
-  verificationUrl: string;
   userCode: string;
 };
 
@@ -134,7 +139,8 @@ const TARGET_LANGUAGES: Array<{ id: TranslationTargetLanguage; label: string }> 
 ];
 
 const DEFAULT_SETTINGS: AppSettings = {
-  schemaVersion: 3,
+  schemaVersion: 4,
+  cloudProcessingAcknowledgementVersion: 0,
   mode: "grammar",
   restoreClipboard: true,
   autoRewrite: true,
@@ -177,7 +183,7 @@ const EMPTY_ENTRY_DRAFT: TerminologyEntryDraft = {
 };
 
 function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return userFacingRuntimeErrorMessage(error);
 }
 
 function requireTerminologySnapshot(value: unknown): TerminologyRuntimeSnapshot {
@@ -243,6 +249,9 @@ export default function App() {
     DEFAULT_SETTINGS.translation.targetLanguage,
   );
   const autoRewriteRef = useRef(DEFAULT_SETTINGS.autoRewrite);
+  const cloudAcknowledgementRef = useRef(
+    DEFAULT_SETTINGS.cloudProcessingAcknowledgementVersion,
+  );
   const currentTokenRef = useRef<CaptureToken | null>(null);
   const currentIntentRef = useRef<RewriteIntentToken | null>(null);
   const rewritingIntentRef = useRef<RewriteIntentToken | null>(null);
@@ -254,6 +263,7 @@ export default function App() {
     modeRef.current = settings.mode;
     targetLanguageRef.current = settings.translation.targetLanguage;
     autoRewriteRef.current = settings.autoRewrite;
+    cloudAcknowledgementRef.current = settings.cloudProcessingAcknowledgementVersion;
   }, [settings]);
 
   const refreshAuth = useCallback(async () => {
@@ -306,6 +316,10 @@ export default function App() {
     if (!requestedToken) {
       return;
     }
+    if (cloudAcknowledgementRef.current < CLOUD_PROCESSING_DISCLOSURE_VERSION) {
+      setStatus("Cloud processing review required");
+      return;
+    }
     const requestedIntent: RewriteIntentToken = {
       ...requestedToken,
       mode,
@@ -328,6 +342,10 @@ export default function App() {
       }));
       if (!next) {
         throw new Error("Rewrite returned an invalid terminology contract.");
+      }
+      const replacementLimit = validateFrontendTextLimit("model_replacement", next.replacement);
+      if (replacementLimit) {
+        throw new Error(contentLimitMessage(replacementLimit));
       }
       if (
         terminologyEpochRef.current !== requestedTerminologyEpoch ||
@@ -374,6 +392,7 @@ export default function App() {
         modeRef.current = next.mode;
         targetLanguageRef.current = next.translation.targetLanguage;
         autoRewriteRef.current = next.autoRewrite;
+        cloudAcknowledgementRef.current = next.cloudProcessingAcknowledgementVersion;
       })
       .catch((nextError) => setError(toErrorMessage(nextError)));
 
@@ -448,8 +467,17 @@ export default function App() {
       setIsApplying(false);
       setError(null);
       setStatus("Selection captured");
-      if (autoRewriteRef.current) {
+      const sourceLimit = validateFrontendTextLimit("source", payload.selectedText);
+      if (sourceLimit) {
+        setError(contentLimitMessage(sourceLimit));
+        setStatus("Selection too large");
+      } else if (
+        autoRewriteRef.current &&
+        cloudAcknowledgementRef.current >= CLOUD_PROCESSING_DISCLOSURE_VERSION
+      ) {
         void rewrite(modeRef.current, token, targetLanguageRef.current);
+      } else if (cloudAcknowledgementRef.current < CLOUD_PROCESSING_DISCLOSURE_VERSION) {
+        setStatus("Cloud processing review required");
       }
     }).then((unlisten) => {
       unlistenSelection = unlisten;
@@ -580,7 +608,7 @@ export default function App() {
     try {
       const next = await invoke<DeviceLogin>("start_device_login");
       setDeviceLogin(next);
-      await openUrl(next.verificationUrl);
+      await invoke("open_device_login_page", { loginId: next.loginId });
       setLoginState("waiting");
       setStatus("Waiting for ChatGPT login");
     } catch (nextError) {
@@ -589,6 +617,31 @@ export default function App() {
       setStatus("Login failed");
     } finally {
       setIsStartingLogin(false);
+    }
+  }
+
+  async function openDeviceLoginPage() {
+    if (!deviceLogin) return;
+    try {
+      await invoke("open_device_login_page", { loginId: deviceLogin.loginId });
+    } catch (nextError) {
+      setError(toErrorMessage(nextError));
+      setStatus("Login page unavailable");
+    }
+  }
+
+  async function acknowledgeCloudProcessing() {
+    const saved = await saveSettings({
+      ...settings,
+      cloudProcessingAcknowledgementVersion: CLOUD_PROCESSING_DISCLOSURE_VERSION,
+    });
+    if (!saved) return;
+    cloudAcknowledgementRef.current = saved.cloudProcessingAcknowledgementVersion;
+    const token = currentTokenRef.current;
+    if (token && saved.autoRewrite) {
+      await rewrite(saved.mode, token, saved.translation.targetLanguage);
+    } else {
+      setStatus("Selection captured");
     }
   }
 
@@ -983,6 +1036,12 @@ export default function App() {
     if (!token || !intent || !sameRewriteIntent(resultIntentRef.current, intent) || draft.length === 0) {
       return;
     }
+    const draftLimit = validateFrontendTextLimit("final_apply", draft);
+    if (draftLimit) {
+      setError(contentLimitMessage(draftLimit));
+      setStatus("Replacement too large");
+      return;
+    }
 
     applyingTokenRef.current = token;
     setIsApplying(true);
@@ -1061,8 +1120,10 @@ export default function App() {
       if (!sameCaptureToken(currentTokenRef.current, token)) {
         return;
       }
-      currentTokenRef.current = null;
-      setSelection(null);
+      if (!isBackendContentLimitError(nextError)) {
+        currentTokenRef.current = null;
+        setSelection(null);
+      }
       setError(toErrorMessage(nextError));
       setStatus("Apply failed safely");
     } finally {
@@ -1283,35 +1344,36 @@ export default function App() {
                   <div className="terminology-search">
                     <Search size={14} />
                     <input
+                      aria-label="Terminology search"
                       value={terminologyQuery}
                       onChange={(event) => setTerminologyQuery(event.target.value)}
                       placeholder="Search source, preferred, alias, note"
                     />
-                    <select value={terminologyTypeFilter} onChange={(event) => setTerminologyTypeFilter(event.target.value as TerminologyEntryType | "all")}>
+                    <select aria-label="Terminology type filter" value={terminologyTypeFilter} onChange={(event) => setTerminologyTypeFilter(event.target.value as TerminologyEntryType | "all")}>
                       <option value="all">All types</option>
                       <option value="translation">translation</option>
                       <option value="preferred">preferred</option>
                       <option value="protected">protected</option>
                     </select>
-                    <select value={terminologyStatusFilter} onChange={(event) => setTerminologyStatusFilter(event.target.value as TerminologyEntryStatus | "all")}>
+                    <select aria-label="Terminology status filter" value={terminologyStatusFilter} onChange={(event) => setTerminologyStatusFilter(event.target.value as TerminologyEntryStatus | "all")}>
                       <option value="all">All states</option>
                       <option value="approved">approved</option>
                       <option value="suggested">suggested</option>
                       <option value="disabled">disabled</option>
                     </select>
-                    <select value={terminologyProfileFilter} onChange={(event) => setTerminologyProfileFilter(event.target.value)}>
+                    <select aria-label="Terminology profile filter" value={terminologyProfileFilter} onChange={(event) => setTerminologyProfileFilter(event.target.value)}>
                       <option value="all">All profiles</option>
                       {terminologyStore.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
                     </select>
-                    <select value={terminologySourceFilter} onChange={(event) => setTerminologySourceFilter(event.target.value as TerminologyLanguage | "all")}>
+                    <select aria-label="Terminology source-language filter" value={terminologySourceFilter} onChange={(event) => setTerminologySourceFilter(event.target.value as TerminologyLanguage | "all")}>
                       <option value="all">All source languages</option>
                       {(["any", "ko", "en", "ja", "zh-Hans", "zh-Hant"] as TerminologyLanguage[]).map((language) => <option key={language} value={language}>source: {language}</option>)}
                     </select>
-                    <select value={terminologyTargetFilter} onChange={(event) => setTerminologyTargetFilter(event.target.value as TerminologyLanguage | "all")}>
+                    <select aria-label="Terminology target-language filter" value={terminologyTargetFilter} onChange={(event) => setTerminologyTargetFilter(event.target.value as TerminologyLanguage | "all")}>
                       <option value="all">All target languages</option>
                       {(["any", "ko", "en", "ja", "zh-Hans", "zh-Hant"] as TerminologyLanguage[]).map((language) => <option key={language} value={language}>target: {language}</option>)}
                     </select>
-                    <select value={terminologySort} onChange={(event) => setTerminologySort(event.target.value as TerminologyEntrySort)}>
+                    <select aria-label="Terminology sort order" value={terminologySort} onChange={(event) => setTerminologySort(event.target.value as TerminologyEntrySort)}>
                       <option value="source_text">Sort: source</option>
                       <option value="priority">Sort: priority</option>
                       <option value="recently_updated">Sort: updated</option>
@@ -1319,43 +1381,12 @@ export default function App() {
                     </select>
                   </div>
 
-                  <div className="entry-form">
-                    <div className="entry-form-heading">
-                      <strong>{editingEntryId ? "Edit entry" : "Add entry"}</strong>
-                      {editingEntryId ? <button type="button" onClick={() => { setEditingEntryId(null); setEntryDraft({ ...EMPTY_ENTRY_DRAFT, profileId: settings.terminology.activeProfileId }); }}>Cancel</button> : null}
-                    </div>
-                    <div className="entry-form-grid">
-                      <select value={entryDraft.profileId} onChange={(event) => setEntryDraft((current) => ({ ...current, profileId: event.target.value }))}>
-                        {terminologyStore.profiles.filter((profile) => profile.enabled).map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
-                      </select>
-                      <select value={entryDraft.type} onChange={(event) => setEntryDraft((current) => ({ ...current, type: event.target.value as TerminologyEntryType }))}>
-                        <option value="translation">translation</option>
-                        <option value="preferred">preferred</option>
-                        <option value="protected">protected</option>
-                      </select>
-                      <select value={entryDraft.status} onChange={(event) => setEntryDraft((current) => ({ ...current, status: event.target.value as TerminologyEntryStatus }))}>
-                        <option value="approved">approved</option>
-                        <option value="suggested">suggested</option>
-                        <option value="disabled">disabled</option>
-                      </select>
-                      <input value={entryDraft.sourceText} maxLength={256} onChange={(event) => setEntryDraft((current) => ({ ...current, sourceText: event.target.value }))} placeholder="Source term" />
-                      {entryDraft.type !== "protected" ? <input value={entryDraft.preferredText ?? ""} maxLength={512} onChange={(event) => setEntryDraft((current) => ({ ...current, preferredText: event.target.value }))} placeholder="Preferred term" /> : null}
-                      <textarea value={entryDraft.aliases.join("\n")} onChange={(event) => setEntryDraft((current) => ({ ...current, aliases: event.target.value.split(/\r?\n/) }))} placeholder="Aliases, one per line" rows={2} />
-                      <select value={entryDraft.sourceLanguage} onChange={(event) => setEntryDraft((current) => ({ ...current, sourceLanguage: event.target.value as TerminologyLanguage }))}>
-                        {(["any", "ko", "en", "ja", "zh-Hans", "zh-Hant"] as TerminologyLanguage[]).map((language) => <option key={language} value={language}>source: {language}</option>)}
-                      </select>
-                      <select value={entryDraft.targetLanguage} onChange={(event) => setEntryDraft((current) => ({ ...current, targetLanguage: event.target.value as TerminologyLanguage }))}>
-                        {(["any", "ko", "en", "ja", "zh-Hans", "zh-Hant"] as TerminologyLanguage[]).map((language) => <option key={language} value={language}>target: {language}</option>)}
-                      </select>
-                      <input type="number" min={0} max={1000} value={entryDraft.priority} onChange={(event) => setEntryDraft((current) => ({ ...current, priority: Number(event.target.value) }))} aria-label="Priority" />
-                      <input value={entryDraft.note ?? ""} maxLength={1024} onChange={(event) => setEntryDraft((current) => ({ ...current, note: event.target.value || null }))} placeholder="Local note (optional)" />
-                    </div>
-                    <label className="case-toggle"><input type="checkbox" checked={entryDraft.caseSensitive} onChange={(event) => setEntryDraft((current) => ({ ...current, caseSensitive: event.target.checked }))} /> Case sensitive</label>
-                    <button className="primary-button" type="button" onClick={submitTerminologyEntry}>
-                      <Check size={14} /> {editingEntryId ? "Save entry" : "Add entry"}
-                    </button>
+                  <div className="entry-list-heading">
+                    <strong>Saved entries ({filteredTerminologyEntries.length})</strong>
+                    {filteredTerminologyEntries.length !== terminologyStore.entries.length ? (
+                      <small>{terminologyStore.entries.length} total · reset filters to show hidden entries</small>
+                    ) : null}
                   </div>
-
                   <div className="entry-list">
                     {filteredTerminologyEntries.map((entry) => {
                       const profileEnabled = terminologyStore.profiles
@@ -1382,6 +1413,43 @@ export default function App() {
                         </div>
                       </article>;
                     })}
+                  </div>
+
+                  <div className="entry-form">
+                    <div className="entry-form-heading">
+                      <strong>{editingEntryId ? "Edit entry" : "Add entry"}</strong>
+                      {editingEntryId ? <button type="button" onClick={() => { setEditingEntryId(null); setEntryDraft({ ...EMPTY_ENTRY_DRAFT, profileId: settings.terminology.activeProfileId }); }}>Cancel</button> : null}
+                    </div>
+                    <div className="entry-form-grid">
+                      <select aria-label="Terminology entry profile" value={entryDraft.profileId} onChange={(event) => setEntryDraft((current) => ({ ...current, profileId: event.target.value }))}>
+                        {terminologyStore.profiles.filter((profile) => profile.enabled).map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+                      </select>
+                      <select aria-label="Terminology entry type" value={entryDraft.type} onChange={(event) => setEntryDraft((current) => ({ ...current, type: event.target.value as TerminologyEntryType }))}>
+                        <option value="translation">translation</option>
+                        <option value="preferred">preferred</option>
+                        <option value="protected">protected</option>
+                      </select>
+                      <select aria-label="Terminology entry status" value={entryDraft.status} onChange={(event) => setEntryDraft((current) => ({ ...current, status: event.target.value as TerminologyEntryStatus }))}>
+                        <option value="approved">approved</option>
+                        <option value="suggested">suggested</option>
+                        <option value="disabled">disabled</option>
+                      </select>
+                      <input value={entryDraft.sourceText} maxLength={256} onChange={(event) => setEntryDraft((current) => ({ ...current, sourceText: event.target.value }))} placeholder="Source term" />
+                      {entryDraft.type !== "protected" ? <input value={entryDraft.preferredText ?? ""} maxLength={512} onChange={(event) => setEntryDraft((current) => ({ ...current, preferredText: event.target.value }))} placeholder="Preferred term" /> : null}
+                      <textarea value={entryDraft.aliases.join("\n")} onChange={(event) => setEntryDraft((current) => ({ ...current, aliases: event.target.value.split(/\r?\n/) }))} placeholder="Aliases, one per line" rows={2} />
+                      <select aria-label="Terminology entry source language" value={entryDraft.sourceLanguage} onChange={(event) => setEntryDraft((current) => ({ ...current, sourceLanguage: event.target.value as TerminologyLanguage }))}>
+                        {(["any", "ko", "en", "ja", "zh-Hans", "zh-Hant"] as TerminologyLanguage[]).map((language) => <option key={language} value={language}>source: {language}</option>)}
+                      </select>
+                      <select aria-label="Terminology entry target language" value={entryDraft.targetLanguage} onChange={(event) => setEntryDraft((current) => ({ ...current, targetLanguage: event.target.value as TerminologyLanguage }))}>
+                        {(["any", "ko", "en", "ja", "zh-Hans", "zh-Hant"] as TerminologyLanguage[]).map((language) => <option key={language} value={language}>target: {language}</option>)}
+                      </select>
+                      <input type="number" min={0} max={1000} value={entryDraft.priority} onChange={(event) => setEntryDraft((current) => ({ ...current, priority: Number(event.target.value) }))} aria-label="Priority" />
+                      <input value={entryDraft.note ?? ""} maxLength={1024} onChange={(event) => setEntryDraft((current) => ({ ...current, note: event.target.value || null }))} placeholder="Local note (optional)" />
+                    </div>
+                    <label className="case-toggle"><input type="checkbox" checked={entryDraft.caseSensitive} onChange={(event) => setEntryDraft((current) => ({ ...current, caseSensitive: event.target.checked }))} /> Case sensitive</label>
+                    <button className="primary-button" type="button" onClick={submitTerminologyEntry}>
+                      <Check size={14} /> {editingEntryId ? "Save entry" : "Add entry"}
+                    </button>
                   </div>
 
                   <div className="import-export">
@@ -1447,7 +1515,7 @@ export default function App() {
                 <span>Device code</span>
                 <strong>{deviceLogin.userCode}</strong>
                 <div className="device-actions">
-                  <button type="button" onClick={() => openUrl(deviceLogin.verificationUrl)}>
+                  <button type="button" onClick={openDeviceLoginPage}>
                     Open login page
                   </button>
                   <button type="button" onClick={cancelDeviceLogin}>
@@ -1466,6 +1534,31 @@ export default function App() {
               {isStartingLogin ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}
               Start device login
             </button>
+          </div>
+        ) : selection &&
+          settings.cloudProcessingAcknowledgementVersion < CLOUD_PROCESSING_DISCLOSURE_VERSION ? (
+          <div className="disclosure-pane" role="dialog" aria-labelledby="cloud-disclosure-title">
+            <div className="login-copy">
+              <ShieldCheck size={22} />
+              <div>
+                <h2 id="cloud-disclosure-title">AI 클라우드 처리 안내</h2>
+                <p>전송 전에 내용을 확인해 주세요.</p>
+              </div>
+            </div>
+            <ul className="disclosure-list">
+              <li>선택한 텍스트와 현재 선택에 일치한 승인 용어만 Codex/ChatGPT로 전송되어 AI 처리될 수 있습니다.</li>
+              <li>전체 용어 사전, 이전 문서, 화면 이미지, 문서 기록은 이 앱이 전송하지 않습니다.</li>
+              <li>용어 관리는 로컬에서 동작하지만 AI 교정·번역은 오프라인 모델이 아닙니다.</li>
+              <li>취소하면 현재 선택은 전송되지 않습니다.</li>
+            </ul>
+            <div className="device-actions">
+              <button className="primary-button" type="button" onClick={acknowledgeCloudProcessing}>
+                동의하고 계속
+              </button>
+              <button className="secondary-button" type="button" onClick={dismiss}>
+                취소
+              </button>
+            </div>
           </div>
         ) : (
           <>

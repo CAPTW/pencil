@@ -1,4 +1,4 @@
-use crate::translation::RewriteIntent;
+use crate::{active_turn::ActiveTurn, translation::RewriteIntent};
 use std::time::Instant;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -117,6 +117,7 @@ struct CaptureSession {
     previous_clipboard_text: Option<String>,
     capture_clipboard_sequence: Option<u32>,
     rewrite_intent: Option<BoundRewriteIntent>,
+    active_turn: Option<ActiveTurn>,
     _created_at: Instant,
 }
 
@@ -157,6 +158,7 @@ impl CaptureSessionStore {
             previous_clipboard_text,
             capture_clipboard_sequence,
             rewrite_intent: None,
+            active_turn: None,
             _created_at: Instant::now(),
         });
         Ok(token)
@@ -190,6 +192,7 @@ impl CaptureSessionStore {
         let current = self.current_mut(token)?;
         Self::require_state(current, CaptureLifecycle::Captured)?;
         current.rewrite_intent = Some(intent);
+        current.active_turn = None;
         current.lifecycle = CaptureLifecycle::Rewriting;
         Ok(current.selected_text.clone())
     }
@@ -219,7 +222,11 @@ impl CaptureSessionStore {
         intent: &BoundRewriteIntent,
     ) -> Result<(), SessionError> {
         self.require_bound_intent(token, intent)?;
-        self.transition(token, CaptureLifecycle::Rewriting, CaptureLifecycle::Ready)
+        let current = self.current_mut(token)?;
+        Self::require_state(current, CaptureLifecycle::Rewriting)?;
+        current.active_turn = None;
+        current.lifecycle = CaptureLifecycle::Ready;
+        Ok(())
     }
 
     #[cfg(test)]
@@ -251,38 +258,74 @@ impl CaptureSessionStore {
         intent: &BoundRewriteIntent,
     ) -> Result<(), SessionError> {
         self.require_bound_intent(token, intent)?;
-        self.transition(
-            token,
-            CaptureLifecycle::Rewriting,
-            CaptureLifecycle::Captured,
-        )
+        let current = self.current_mut(token)?;
+        Self::require_state(current, CaptureLifecycle::Rewriting)?;
+        current.active_turn = None;
+        current.lifecycle = CaptureLifecycle::Captured;
+        Ok(())
+    }
+
+    pub(crate) fn bind_active_turn(
+        &mut self,
+        token: &SessionToken,
+        intent: &BoundRewriteIntent,
+        active_turn: ActiveTurn,
+    ) -> Result<(), SessionError> {
+        self.require_bound_intent(token, intent)?;
+        let current = self.current_mut(token)?;
+        Self::require_state(current, CaptureLifecycle::Rewriting)?;
+        if current.active_turn.is_some() {
+            return Err(SessionError::InvalidState);
+        }
+        current.active_turn = Some(active_turn);
+        Ok(())
+    }
+
+    pub(crate) fn validate_rewriting_bound_intent(
+        &self,
+        token: &SessionToken,
+        intent: &BoundRewriteIntent,
+    ) -> Result<(), SessionError> {
+        self.require_bound_intent(token, intent)?;
+        Self::require_state(self.current(token)?, CaptureLifecycle::Rewriting)
     }
 
     pub(crate) fn invalidate_intent(&mut self, next: RewriteIntent) -> Result<(), SessionError> {
+        self.invalidate_intent_with_active_turn(next).map(|_| ())
+    }
+
+    pub(crate) fn invalidate_intent_with_active_turn(
+        &mut self,
+        next: RewriteIntent,
+    ) -> Result<Option<ActiveTurn>, SessionError> {
         let Some(current) = self.current.as_mut() else {
-            return Ok(());
+            return Ok(None);
         };
         if current
             .rewrite_intent
             .as_ref()
             .is_some_and(|intent| intent.rewrite == next)
         {
-            return Ok(());
+            return Ok(None);
         }
         match current.lifecycle {
             CaptureLifecycle::Captured | CaptureLifecycle::Rewriting | CaptureLifecycle::Ready => {
                 current.lifecycle = CaptureLifecycle::Captured;
                 current.rewrite_intent = None;
-                Ok(())
+                Ok(current.active_turn.take())
             }
-            CaptureLifecycle::Completed | CaptureLifecycle::Cancelled => Ok(()),
+            CaptureLifecycle::Completed | CaptureLifecycle::Cancelled => Ok(None),
             CaptureLifecycle::Applying => Err(SessionError::InvalidState),
         }
     }
 
     pub(crate) fn invalidate_terminology_intent(&mut self) {
+        let _ = self.invalidate_terminology_intent_with_active_turn();
+    }
+
+    pub(crate) fn invalidate_terminology_intent_with_active_turn(&mut self) -> Option<ActiveTurn> {
         let Some(current) = self.current.as_mut() else {
-            return;
+            return None;
         };
         if matches!(
             current.lifecycle,
@@ -290,7 +333,9 @@ impl CaptureSessionStore {
         ) {
             current.lifecycle = CaptureLifecycle::Captured;
             current.rewrite_intent = None;
+            return current.active_turn.take();
         }
+        None
     }
 
     pub(crate) fn validate_ready_intent(
@@ -399,6 +444,13 @@ impl CaptureSessionStore {
     }
 
     pub(crate) fn cancel(&mut self, token: &SessionToken) -> Result<(), SessionError> {
+        self.cancel_with_active_turn(token).map(|_| ())
+    }
+
+    pub(crate) fn cancel_with_active_turn(
+        &mut self,
+        token: &SessionToken,
+    ) -> Result<Option<ActiveTurn>, SessionError> {
         let current = self.current_mut(token)?;
         match current.lifecycle {
             CaptureLifecycle::Completed | CaptureLifecycle::Cancelled => {
@@ -406,20 +458,22 @@ impl CaptureSessionStore {
             }
             _ => {
                 current.lifecycle = CaptureLifecycle::Cancelled;
-                Ok(())
+                Ok(current.active_turn.take())
             }
         }
     }
 
-    pub(crate) fn cancel_active(&mut self) {
+    pub(crate) fn cancel_active_with_turn(&mut self) -> Option<ActiveTurn> {
         if let Some(current) = self.current.as_mut() {
             if !matches!(
                 current.lifecycle,
                 CaptureLifecycle::Completed | CaptureLifecycle::Cancelled
             ) {
                 current.lifecycle = CaptureLifecycle::Cancelled;
+                return current.active_turn.take();
             }
         }
+        None
     }
 
     pub(crate) fn has_active(&self) -> bool {

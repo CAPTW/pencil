@@ -85,7 +85,11 @@ fn default_settings_serialize_the_versioned_promptless_contract() {
     let serialized = serde_json::to_value(AppSettings::default())
         .expect("default settings should be serializable");
 
-    assert_eq!(serialized.get("schemaVersion"), Some(&json!(3)));
+    assert_eq!(serialized.get("schemaVersion"), Some(&json!(4)));
+    assert_eq!(
+        serialized.get("cloudProcessingAcknowledgementVersion"),
+        Some(&json!(0))
+    );
     assert_eq!(
         serialized.pointer("/shortcut/primary/display"),
         Some(&Value::String("Ctrl+Shift+G".to_string()))
@@ -246,7 +250,8 @@ fn legacy_settings_migrate_without_losing_existing_supported_values() {
         decode_settings(r#"{"mode":"translate_ko","restoreClipboard":false,"autoRewrite":false}"#);
 
     assert_eq!(loaded.recovery, Some(SettingsRecoveryCode::Migrated));
-    assert_eq!(loaded.settings.schema_version, 3);
+    assert_eq!(loaded.settings.schema_version, 4);
+    assert_eq!(loaded.settings.cloud_processing_acknowledgement_version, 0);
     assert_eq!(loaded.settings.mode, RewriteMode::Translate);
     assert!(!loaded.settings.restore_clipboard);
     assert!(!loaded.settings.auto_rewrite);
@@ -568,7 +573,7 @@ fn every_translation_target_is_named_in_the_internal_prompt() {
 #[test]
 fn unknown_settings_fields_follow_the_existing_ignore_policy() {
     let loaded = decode_settings(
-        r#"{"schemaVersion":3,"mode":"grammar","restoreClipboard":true,"autoRewrite":true,"shortcut":{"primary":{"modifiers":["CTRL","SHIFT"],"key":"G","display":"Ctrl+Shift+G"}},"translation":{"sourceLanguage":"auto","targetLanguage":"en","applyFormat":"translation_only"},"terminology":{"enabled":true,"activeProfileId":"general","useApprovedTerminology":true,"suggestTerminology":true,"autoSaveSuggestions":false},"futureIgnored":{"synthetic":true}}"#,
+        r#"{"schemaVersion":4,"cloudProcessingAcknowledgementVersion":0,"mode":"grammar","restoreClipboard":true,"autoRewrite":true,"shortcut":{"primary":{"modifiers":["CTRL","SHIFT"],"key":"G","display":"Ctrl+Shift+G"}},"translation":{"sourceLanguage":"auto","targetLanguage":"en","applyFormat":"translation_only"},"terminology":{"enabled":true,"activeProfileId":"general","useApprovedTerminology":true,"suggestTerminology":true,"autoSaveSuggestions":false},"futureIgnored":{"synthetic":true}}"#,
     );
 
     assert_eq!(loaded.recovery, None);
@@ -684,7 +689,7 @@ fn injected_save_failure_after_backup_recovery_keeps_a_valid_recovery_source() {
 #[test]
 fn settings_validation_rejects_noncanonical_or_future_contracts() {
     let mut future = AppSettings::default();
-    future.schema_version = 4;
+    future.schema_version = 5;
     assert_eq!(future.validate(), Err("settings_schema_unsupported"));
 
     let mut forged_display = AppSettings::default();
