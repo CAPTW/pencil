@@ -1,11 +1,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod active_turn;
 mod apply_safety;
 mod capture_session;
 mod clipboard;
 mod codex_binary;
 mod codex_client;
+mod codex_home;
+mod content_limits;
+mod device_login;
 mod prerequisites;
+#[cfg(windows)]
+mod process_job;
+mod runtime_isolation;
 mod settings;
 mod shortcut;
 mod terminology;
@@ -30,18 +37,27 @@ mod p1_01_contract_tests;
 #[cfg(test)]
 mod p1_02_contract_tests;
 
+#[cfg(test)]
+mod p1_03_contract_tests;
+
 #[cfg(all(test, windows))]
 mod p1_02_windows_live_tests;
 
 #[cfg(all(test, windows))]
 mod p1_01_windows_live_tests;
 
+#[cfg(all(test, windows))]
+mod p1_03_windows_live_tests;
+
+use active_turn::ActiveTurn;
 use apply_safety::{apply_current_session, ApplyFailureReason, ApplyOutcome, ApplyPlatform};
 use capture_session::{
     BoundRewriteIntent, CaptureSessionStore, SessionError, SessionToken, TerminologyIntent,
 };
 use clipboard::CursorPoint;
-use codex_client::{AuthStatus, CodexClient, CodexClientCache, DeviceLogin, RewriteResult};
+use codex_client::{AuthStatus, CodexClient, CodexClientCache, RewriteResult};
+use content_limits::{validate_text_limit, ContentLimitKind};
+use device_login::ValidatedDeviceLoginUrl;
 use prerequisites::PrerequisiteReport;
 use serde::Serialize;
 use settings::{AppSettings, RewriteMode, SettingsRecoveryCode, TerminologySettings};
@@ -52,7 +68,10 @@ use shortcut::{
 };
 use std::{
     collections::HashSet,
-    sync::{Arc, Mutex as StdMutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex as StdMutex,
+    },
 };
 use tauri::{
     menu::{Menu, MenuItem},
@@ -61,6 +80,7 @@ use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, Position, State, WindowEvent,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri_plugin_opener::OpenerExt;
 use terminology::{
     infer_source_language, target_scope_for_mode, EntryStatus, TerminologyEntryDraft,
 };
@@ -100,9 +120,11 @@ struct AppState {
     codex: CodexClientCache,
     capture: Mutex<CaptureSessionStore>,
     configuration: StdMutex<ConfigurationState>,
+    pending_device_login: StdMutex<Option<PendingDeviceLogin>>,
     terminology: StdMutex<TerminologyRuntime>,
     shortcut_trigger: StdMutex<ShortcutTriggerGate>,
     startup_notices: StdMutex<Vec<String>>,
+    shutdown_started: AtomicBool,
 }
 
 impl Default for AppState {
@@ -111,9 +133,11 @@ impl Default for AppState {
             codex: CodexClientCache::default(),
             capture: Mutex::new(CaptureSessionStore::default()),
             configuration: StdMutex::new(ConfigurationState::default()),
+            pending_device_login: StdMutex::new(None),
             terminology: StdMutex::new(TerminologyRuntime::default()),
             shortcut_trigger: StdMutex::new(ShortcutTriggerGate::default()),
             startup_notices: StdMutex::new(Vec::new()),
+            shutdown_started: AtomicBool::new(false),
         }
     }
 }
@@ -154,6 +178,19 @@ struct CodexProcessEvent {
     message: String,
 }
 
+#[derive(Clone)]
+struct PendingDeviceLogin {
+    login_id: String,
+    url: ValidatedDeviceLoginUrl,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceLoginResponse {
+    login_id: String,
+    user_code: String,
+}
+
 #[tauri::command]
 async fn auth_status(state: State<'_, AppState>) -> Result<AuthStatus, String> {
     ensure_codex(&state).await?.auth_status().await
@@ -163,16 +200,69 @@ async fn auth_status(state: State<'_, AppState>) -> Result<AuthStatus, String> {
 async fn start_device_login(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<DeviceLogin, String> {
+) -> Result<DeviceLoginResponse, String> {
     let client = ensure_codex(&state).await?;
     let login = client.start_device_login().await?;
+    let validated_url = match ValidatedDeviceLoginUrl::parse(&login.verification_url) {
+        Ok(url) => url,
+        Err(code) => {
+            let _ = client.cancel_login(login.login_id).await;
+            return Err(code.to_string());
+        }
+    };
+    *state
+        .pending_device_login
+        .lock()
+        .map_err(|_| "device_login_state_unavailable".to_string())? = Some(PendingDeviceLogin {
+        login_id: login.login_id.clone(),
+        url: validated_url,
+    });
     spawn_auth_notification_bridge(app, client, login.login_id.clone());
-    Ok(login)
+    Ok(DeviceLoginResponse {
+        login_id: login.login_id,
+        user_code: login.user_code,
+    })
 }
 
 #[tauri::command]
 async fn cancel_device_login(login_id: String, state: State<'_, AppState>) -> Result<(), String> {
-    ensure_codex(&state).await?.cancel_login(login_id).await
+    ensure_codex(&state)
+        .await?
+        .cancel_login(login_id.clone())
+        .await?;
+    let mut pending = state
+        .pending_device_login
+        .lock()
+        .map_err(|_| "device_login_state_unavailable".to_string())?;
+    if pending
+        .as_ref()
+        .is_some_and(|current| current.login_id == login_id)
+    {
+        *pending = None;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn open_device_login_page(
+    login_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let url = {
+        let pending = state
+            .pending_device_login
+            .lock()
+            .map_err(|_| "device_login_state_unavailable".to_string())?;
+        let pending = pending
+            .as_ref()
+            .filter(|pending| pending.login_id == login_id)
+            .ok_or_else(|| "device_login_stale".to_string())?;
+        pending.url.clone()
+    };
+    app.opener()
+        .open_url(url.as_str(), None::<&str>)
+        .map_err(|_| "device_login_open_failed".to_string())
 }
 
 #[tauri::command]
@@ -188,11 +278,22 @@ async fn rewrite_selected_text(
         generation,
     };
     let intent = RewriteIntent::new(mode, target_language).map_err(str::to_string)?;
+    let disclosure_version = state
+        .configuration
+        .lock()
+        .map_err(|_| "configuration_unavailable".to_string())?
+        .settings
+        .cloud_processing_acknowledgement_version;
+    if disclosure_version < settings::CLOUD_PROCESSING_DISCLOSURE_VERSION {
+        return Err("cloud_processing_disclosure_required".to_string());
+    }
     let (selected_text, bound_intent, match_result, request_constraints) = {
         let mut capture = state.capture.lock().await;
         let selected_text = capture
             .captured_source(&token)
             .map_err(|error| error.code().to_string())?;
+        validate_text_limit(ContentLimitKind::Source, &selected_text)
+            .map_err(|error| error.to_string())?;
         let settings = state
             .configuration
             .lock()
@@ -260,11 +361,39 @@ async fn rewrite_selected_text(
     };
 
     let rewrite = match ensure_codex(&state).await {
-        Ok(client) => {
-            client
-                .rewrite_with_terminology(&selected_text, intent, &request_constraints)
-                .await
-        }
+        Ok(client) => match client
+            .prepare_rewrite_with_terminology(&selected_text, intent, &request_constraints)
+            .await
+        {
+            Ok(prepared) => {
+                let still_current = state
+                    .capture
+                    .lock()
+                    .await
+                    .validate_rewriting_bound_intent(&token, &bound_intent);
+                if let Err(error) = still_current {
+                    return Err(error.code().to_string());
+                }
+                match client.start_prepared_rewrite(prepared).await {
+                    Ok(pending) => {
+                        let active_turn = pending.active_turn();
+                        let bound = state.capture.lock().await.bind_active_turn(
+                            &token,
+                            &bound_intent,
+                            active_turn.clone(),
+                        );
+                        if let Err(error) = bound {
+                            let _ = client.interrupt_turn(&active_turn).await;
+                            Err(error.code().to_string())
+                        } else {
+                            client.complete_rewrite(pending).await
+                        }
+                    }
+                    Err(error) => Err(error),
+                }
+            }
+            Err(error) => Err(error),
+        },
         Err(error) => Err(error),
     };
 
@@ -274,6 +403,12 @@ async fn rewrite_selected_text(
             if !terminology_environment_matches(&state, &bound_intent)? {
                 capture.invalidate_terminology_intent();
                 return Err("stale_rewrite_intent".to_string());
+            }
+            if !rewrite_preserves_line_structure(&selected_text, &result.replacement) {
+                return match capture.finish_rewrite_failure_bound(&token, &bound_intent) {
+                    Ok(()) => Err("rewrite_line_structure_changed".to_string()),
+                    Err(error) => Err(error.code().to_string()),
+                };
             }
             capture
                 .finish_rewrite_success_bound(&token, &bound_intent)
@@ -311,6 +446,41 @@ async fn rewrite_selected_text(
             Err(session_error) => Err(session_error.code().to_string()),
         },
     }
+}
+
+pub(crate) fn rewrite_preserves_line_structure(source: &str, replacement: &str) -> bool {
+    logical_line_break_runs(source) == logical_line_break_runs(replacement)
+}
+
+fn logical_line_break_runs(value: &str) -> Vec<usize> {
+    let mut runs = Vec::new();
+    let mut current_run = 0usize;
+    let mut characters = value.chars().peekable();
+
+    while let Some(character) = characters.next() {
+        let is_line_break = match character {
+            '\r' => {
+                if characters.peek() == Some(&'\n') {
+                    characters.next();
+                }
+                true
+            }
+            '\n' | '\u{2028}' | '\u{2029}' => true,
+            _ => false,
+        };
+
+        if is_line_break {
+            current_run += 1;
+        } else if current_run > 0 {
+            runs.push(current_run);
+            current_run = 0;
+        }
+    }
+
+    if current_run > 0 {
+        runs.push(current_run);
+    }
+    runs
 }
 
 fn terminology_environment_matches(
@@ -379,6 +549,8 @@ async fn apply_replacement(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<ApplyOutcome, String> {
+    validate_text_limit(ContentLimitKind::FinalApply, &replacement)
+        .map_err(|error| error.to_string())?;
     let token = SessionToken {
         session_id,
         generation,
@@ -434,6 +606,8 @@ async fn apply_replacement(
     } else {
         replacement
     };
+    validate_text_limit(ContentLimitKind::FinalApply, &final_replacement)
+        .map_err(|error| error.to_string())?;
     let mut platform = WindowsApplyPlatform::new(app);
     let outcome = apply_current_terminology_bound(
         &mut capture,
@@ -535,7 +709,7 @@ async fn set_terminology_profile_enabled(
             .map_err(|error| error.code().to_string())?;
         terminology.snapshot()
     };
-    state.capture.lock().await.invalidate_terminology_intent();
+    invalidate_terminology_capture(&state).await;
     Ok(snapshot)
 }
 
@@ -565,7 +739,7 @@ async fn set_active_terminology_profile(
         configuration.recovery = None;
         next
     };
-    state.capture.lock().await.invalidate_terminology_intent();
+    invalidate_terminology_capture(&state).await;
     Ok(saved)
 }
 
@@ -673,7 +847,7 @@ async fn apply_terminology_import(
             .apply_import(&plan_id, now_ms())
             .map_err(|error| error.code().to_string())?
     };
-    state.capture.lock().await.invalidate_terminology_intent();
+    invalidate_terminology_capture(&state).await;
     Ok(report)
 }
 
@@ -707,7 +881,7 @@ async fn mutate_terminology(
         mutation(&mut terminology).map_err(|error| error.code().to_string())?;
         terminology.snapshot()
     };
-    state.capture.lock().await.invalidate_terminology_intent();
+    invalidate_terminology_capture(state).await;
     Ok(snapshot)
 }
 
@@ -746,17 +920,24 @@ async fn save_settings(
         (previous_intent, next_intent, terminology_changed)
     };
 
-    if previous_intent != next_intent || terminology_changed {
+    let active_turn = if previous_intent != next_intent || terminology_changed {
         let mut capture = state.capture.lock().await;
-        if previous_intent != next_intent {
+        let mut active_turn = if previous_intent != next_intent {
             capture
-                .invalidate_intent(next_intent)
-                .map_err(|error| error.code().to_string())?;
-        }
+                .invalidate_intent_with_active_turn(next_intent)
+                .map_err(|error| error.code().to_string())?
+        } else {
+            None
+        };
         if terminology_changed {
-            capture.invalidate_terminology_intent();
+            active_turn =
+                active_turn.or_else(|| capture.invalidate_terminology_intent_with_active_turn());
         }
-    }
+        active_turn
+    } else {
+        None
+    };
+    interrupt_active_turn(state.inner(), active_turn).await;
     Ok(settings)
 }
 
@@ -798,19 +979,20 @@ async fn dismiss_window(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    {
+    let active_turn = {
         let mut capture = state.capture.lock().await;
         match (session_id, generation) {
             (Some(session_id), Some(generation)) => capture
-                .cancel(&SessionToken {
+                .cancel_with_active_turn(&SessionToken {
                     session_id,
                     generation,
                 })
                 .map_err(|error| error.code().to_string())?,
-            (None, None) if !capture.has_active() => {}
+            (None, None) if !capture.has_active() => None,
             _ => return Err("session_token_required".to_string()),
         }
-    }
+    };
+    interrupt_active_turn(&state, active_turn).await;
     hide_main_window(&app)
 }
 
@@ -906,8 +1088,27 @@ async fn ensure_codex(state: &State<'_, AppState>) -> Result<Arc<CodexClient>, S
     state.codex.get().await
 }
 
+async fn interrupt_active_turn(state: &AppState, active_turn: Option<ActiveTurn>) {
+    let Some(active_turn) = active_turn else {
+        return;
+    };
+    let Some(client) = state.codex.current_healthy().await else {
+        return;
+    };
+    let _ = client.interrupt_turn(&active_turn).await;
+}
+
+async fn invalidate_terminology_capture(state: &State<'_, AppState>) {
+    let active_turn = state
+        .capture
+        .lock()
+        .await
+        .invalidate_terminology_intent_with_active_turn();
+    interrupt_active_turn(state.inner(), active_turn).await;
+}
+
 fn main() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(AppState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(global_shortcut_plugin())
@@ -925,6 +1126,7 @@ fn main() {
             dry_run_terminology_import,
             export_terminology,
             load_settings,
+            open_device_login_page,
             query_terminology_entries,
             rename_terminology_profile,
             reset_primary_shortcut,
@@ -961,13 +1163,29 @@ fn main() {
                 let _ = window.hide();
                 tauri::async_runtime::spawn(async move {
                     let state = app.state::<AppState>();
-                    let mut capture = state.capture.lock().await;
-                    capture.cancel_active();
+                    let active_turn = state.capture.lock().await.cancel_active_with_turn();
+                    interrupt_active_turn(state.inner(), active_turn).await;
                 });
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Codex Pencil");
+        .build(tauri::generate_context!())
+        .expect("error while building Codex Pencil");
+    app.run(|app, event| {
+        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            let state = app.state::<AppState>();
+            if !state.shutdown_started.swap(true, Ordering::SeqCst) {
+                api.prevent_exit();
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state = app.state::<AppState>();
+                    let active_turn = state.capture.lock().await.cancel_active_with_turn();
+                    interrupt_active_turn(state.inner(), active_turn).await;
+                    state.codex.shutdown().await;
+                    app.exit(0);
+                });
+            }
+        }
+    });
 }
 
 fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
@@ -1000,7 +1218,8 @@ fn handle_tray_menu_action(app: &AppHandle, action: &str) {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
-                state.capture.lock().await.cancel_active();
+                let active_turn = state.capture.lock().await.cancel_active_with_turn();
+                interrupt_active_turn(state.inner(), active_turn).await;
             });
         }
         "account" => {
@@ -1010,7 +1229,15 @@ fn handle_tray_menu_action(app: &AppHandle, action: &str) {
             let _ = show_main_window(app, None);
             let _ = app.emit("open-settings", ());
         }
-        "quit" => app.exit(0),
+        "quit" => {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let state = app.state::<AppState>();
+                let active_turn = state.capture.lock().await.cancel_active_with_turn();
+                interrupt_active_turn(state.inner(), active_turn).await;
+                app.exit(0);
+            });
+        }
         _ => {}
     }
 }
@@ -1201,6 +1428,14 @@ fn spawn_auth_notification_bridge(app: AppHandle, client: Arc<CodexClient>, logi
                         .get("error")
                         .and_then(serde_json::Value::as_str)
                         .map(ToOwned::to_owned);
+                    if let Ok(mut pending) = app.state::<AppState>().pending_device_login.lock() {
+                        if pending
+                            .as_ref()
+                            .is_some_and(|pending| pending.login_id == login_id)
+                        {
+                            *pending = None;
+                        }
+                    }
 
                     let _ = app.emit(
                         "login-completed",
@@ -1217,6 +1452,9 @@ fn spawn_auth_notification_bridge(app: AppHandle, client: Arc<CodexClient>, logi
                     let _ = app.emit("auth-changed", AuthChangedEvent {});
                 }
                 "codex/process/exited" => {
+                    if let Ok(mut pending) = app.state::<AppState>().pending_device_login.lock() {
+                        *pending = None;
+                    }
                     let message = params
                         .get("message")
                         .and_then(serde_json::Value::as_str)
@@ -1240,7 +1478,14 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
 
     {
         let state = app.state::<AppState>();
-        state.capture.lock().await.cancel_active();
+        let active_turn = state.capture.lock().await.cancel_active_with_turn();
+        if active_turn.is_some() {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let state = app.state::<AppState>();
+                interrupt_active_turn(state.inner(), active_turn).await;
+            });
+        }
     }
 
     let window = app
@@ -1296,7 +1541,14 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
         },
     ) {
         let state = app.state::<AppState>();
-        let _ = state.capture.lock().await.cancel(&token);
+        let active_turn = state
+            .capture
+            .lock()
+            .await
+            .cancel_with_active_turn(&token)
+            .ok()
+            .flatten();
+        interrupt_active_turn(state.inner(), active_turn).await;
         return Err(format!("Could not notify window: {error}"));
     }
 

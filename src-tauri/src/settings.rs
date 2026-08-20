@@ -10,6 +10,9 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 
+pub(crate) const SETTINGS_SCHEMA_VERSION: u32 = 4;
+pub(crate) const CLOUD_PROCESSING_DISCLOSURE_VERSION: u32 = 1;
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RewriteMode {
@@ -52,6 +55,7 @@ impl RewriteMode {
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub schema_version: u32,
+    pub cloud_processing_acknowledgement_version: u32,
     pub mode: RewriteMode,
     pub restore_clipboard: bool,
     pub auto_rewrite: bool,
@@ -146,7 +150,7 @@ pub(crate) fn decode_settings(text: &str) -> SettingsLoad {
     let mut migrated = value
         .get("schemaVersion")
         .and_then(serde_json::Value::as_u64)
-        != Some(3);
+        != Some(SETTINGS_SCHEMA_VERSION as u64);
     let mut invalid = false;
 
     if let Some(mode) = value.get("mode") {
@@ -183,6 +187,16 @@ pub(crate) fn decode_settings(text: &str) -> SettingsLoad {
         } else {
             invalid = true;
         }
+    }
+    match value
+        .get("cloudProcessingAcknowledgementVersion")
+        .and_then(serde_json::Value::as_u64)
+    {
+        Some(version) if version <= CLOUD_PROCESSING_DISCLOSURE_VERSION as u64 => {
+            settings.cloud_processing_acknowledgement_version = version as u32;
+        }
+        Some(_) => invalid = true,
+        None => migrated = true,
     }
 
     if let Some(primary) = value
@@ -312,7 +326,8 @@ pub(crate) fn decode_settings(text: &str) -> SettingsLoad {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            schema_version: 3,
+            schema_version: SETTINGS_SCHEMA_VERSION,
+            cloud_processing_acknowledgement_version: 0,
             mode: RewriteMode::Grammar,
             restore_clipboard: true,
             auto_rewrite: true,
@@ -325,8 +340,11 @@ impl Default for AppSettings {
 
 impl AppSettings {
     pub(crate) fn validate(&self) -> Result<(), &'static str> {
-        if self.schema_version != 3 {
+        if self.schema_version != SETTINGS_SCHEMA_VERSION {
             return Err("settings_schema_unsupported");
+        }
+        if self.cloud_processing_acknowledgement_version > CLOUD_PROCESSING_DISCLOSURE_VERSION {
+            return Err("cloud_processing_acknowledgement_unsupported");
         }
         let normalized = PrimaryShortcut::from_candidate(crate::shortcut::ShortcutCandidate {
             modifiers: self.shortcut.primary.modifiers.clone(),

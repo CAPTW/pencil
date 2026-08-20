@@ -4,7 +4,6 @@
   "description": "Main Codex Pencil window capability.",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "opener:default"
+    "core:default"
   ]
 }

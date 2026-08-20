@@ -1,5 +1,11 @@
+use std::future::Future;
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
+
+const UNSUPPORTED_NON_TEXT_CLIPBOARD: &str = "unsupported_non_text_clipboard";
+const MODIFIER_RELEASE_ERROR: &str = "shortcut_modifiers_still_pressed";
+const MODIFIER_RELEASE_CHECKS: usize = 81;
+const MODIFIER_RELEASE_POLL: Duration = Duration::from_millis(20);
 
 #[derive(Clone, Debug)]
 pub struct CursorPoint {
@@ -16,8 +22,9 @@ pub struct ClipboardCapture {
 }
 
 pub async fn capture_selected_text() -> Result<ClipboardCapture, String> {
+    wait_for_capture_modifiers_released().await?;
+    let previous_text = supported_text_snapshot_before_capture()?;
     let cursor = current_cursor_position()?;
-    let previous_text = read_clipboard_text().ok();
     let sentinel = format!("__CODEX_PENCIL_SENTINEL_{}__", Uuid::new_v4());
 
     // This is intentionally a one-shot clipboard workflow. The app never
@@ -61,6 +68,175 @@ pub async fn capture_selected_text() -> Result<ClipboardCapture, String> {
         owned_sequence,
         cursor,
     })
+}
+
+async fn wait_for_capture_modifiers_released() -> Result<(), String> {
+    wait_for_modifier_release_with(
+        any_user_modifier_down,
+        || sleep(MODIFIER_RELEASE_POLL),
+        MODIFIER_RELEASE_CHECKS,
+    )
+    .await
+    .map_err(str::to_string)
+}
+
+async fn wait_for_modifier_release_with<C, P, F>(
+    mut any_modifier_down: C,
+    mut pause: P,
+    max_checks: usize,
+) -> Result<(), &'static str>
+where
+    C: FnMut() -> bool,
+    P: FnMut() -> F,
+    F: Future<Output = ()>,
+{
+    for check in 0..max_checks {
+        if !any_modifier_down() {
+            return Ok(());
+        }
+        if check + 1 < max_checks {
+            pause().await;
+        }
+    }
+    Err(MODIFIER_RELEASE_ERROR)
+}
+
+#[cfg(windows)]
+fn any_user_modifier_down() -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+    };
+
+    [VK_CONTROL, VK_SHIFT, VK_MENU, VK_LWIN, VK_RWIN]
+        .into_iter()
+        .any(|key| unsafe { GetAsyncKeyState(key as i32) as u16 & 0x8000 != 0 })
+}
+
+#[cfg(not(windows))]
+fn any_user_modifier_down() -> bool {
+    false
+}
+
+#[cfg(windows)]
+fn supported_text_snapshot_before_capture() -> Result<Option<String>, String> {
+    use windows_sys::Win32::System::DataExchange::{
+        CountClipboardFormats, IsClipboardFormatAvailable,
+    };
+    const CF_UNICODETEXT: u32 = 13;
+
+    let format_count = unsafe { CountClipboardFormats() };
+    let unicode_text_available = unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT) } != 0;
+    classify_supported_clipboard(format_count, unicode_text_available, || {
+        read_clipboard_text().ok()
+    })
+}
+
+#[cfg(not(windows))]
+fn supported_text_snapshot_before_capture() -> Result<Option<String>, String> {
+    Ok(read_clipboard_text().ok())
+}
+
+fn classify_supported_clipboard<F>(
+    format_count: i32,
+    unicode_text_available: bool,
+    read_text: F,
+) -> Result<Option<String>, String>
+where
+    F: FnOnce() -> Option<String>,
+{
+    if unicode_text_available {
+        return read_text()
+            .map(Some)
+            .ok_or_else(|| "clipboard_text_unreadable".to_string());
+    }
+    if format_count > 0 {
+        return Err(UNSUPPORTED_NON_TEXT_CLIPBOARD.to_string());
+    }
+    Ok(None)
+}
+
+#[cfg(test)]
+mod clipboard_policy_tests {
+    use super::*;
+    use std::cell::{Cell, RefCell};
+    use std::collections::VecDeque;
+    use std::future::ready;
+
+    #[test]
+    fn empty_clipboard_needs_no_snapshot_or_mutation() {
+        let read = Cell::new(false);
+        let result = classify_supported_clipboard(0, false, || {
+            read.set(true);
+            None
+        });
+        assert_eq!(result, Ok(None));
+        assert!(!read.get());
+    }
+
+    #[test]
+    fn readable_unicode_text_is_the_supported_restore_snapshot_even_when_mixed() {
+        let result = classify_supported_clipboard(4, true, || Some("synthetic text".to_string()));
+        assert_eq!(result, Ok(Some("synthetic text".to_string())));
+    }
+
+    #[test]
+    fn unreadable_advertised_text_and_pure_non_text_both_fail_closed() {
+        assert_eq!(
+            classify_supported_clipboard(2, true, || None),
+            Err("clipboard_text_unreadable".to_string())
+        );
+        assert_eq!(
+            classify_supported_clipboard(1, false, || {
+                panic!("pure non-text classification must not attempt a text read")
+            }),
+            Err(UNSUPPORTED_NON_TEXT_CLIPBOARD.to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn capture_waits_for_physical_modifiers_before_copy_injection() {
+        let samples = RefCell::new(VecDeque::from([true, true, false]));
+        let waits = Cell::new(0usize);
+        let copy_injections = Cell::new(0usize);
+
+        wait_for_modifier_release_with(
+            || samples.borrow_mut().pop_front().unwrap_or(false),
+            || {
+                waits.set(waits.get() + 1);
+                ready(())
+            },
+            4,
+        )
+        .await
+        .expect("the bounded synthetic modifier sequence should release");
+        copy_injections.set(copy_injections.get() + 1);
+
+        assert_eq!(waits.get(), 2);
+        assert_eq!(copy_injections.get(), 1);
+    }
+
+    #[tokio::test]
+    async fn held_modifiers_fail_closed_before_copy_injection() {
+        let waits = Cell::new(0usize);
+        let copy_injections = Cell::new(0usize);
+
+        let result = wait_for_modifier_release_with(
+            || true,
+            || {
+                waits.set(waits.get() + 1);
+                ready(())
+            },
+            3,
+        )
+        .await;
+        if result.is_ok() {
+            copy_injections.set(copy_injections.get() + 1);
+        }
+
+        assert_eq!(result, Err("shortcut_modifiers_still_pressed"));
+        assert_eq!(waits.get(), 2);
+        assert_eq!(copy_injections.get(), 0);
+    }
 }
 
 pub(crate) fn read_clipboard_text() -> Result<String, String> {

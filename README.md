@@ -41,8 +41,13 @@ Codex Pencil is a compact Windows tray/widget writing assistant built with Tauri
     |   |-- capture_session.rs
     |   |-- clipboard.rs
     |   |-- codex_client.rs
+    |   |-- codex_home.rs
+    |   |-- content_limits.rs
+    |   |-- device_login.rs
     |   |-- main.rs
+    |   |-- process_job.rs
     |   |-- prerequisites.rs
+    |   |-- runtime_isolation.rs
     |   |-- shortcut.rs
     |   |-- settings.rs
     |   |-- terminology.rs
@@ -141,7 +146,7 @@ The helper prints Node/npm/Codex/Rust tool versions, runs the frontend checks, a
 - The app runs as a Tauri tray app with one hidden floating window.
 - The Rust global-shortcut plugin registers one primary shortcut. Its default is `Ctrl+Shift+G`; Settings can transactionally replace it or reset it to the default.
 - A candidate shortcut is normalized and registered before the old binding is removed. Registration conflicts leave the old runtime binding and persisted setting unchanged; persistence failure attempts a bounded rollback to the old binding.
-- Saved settings use schema version 3 and recoverable same-directory temporary-file promotion with a previous-file backup. Schema version 2 migrates without changing the shortcut, mode, translation target/format, clipboard restore, or auto-rewrite preferences. Terminology defaults to enabled with `general` active, approved matches and suggestions enabled, and `autoSaveSuggestions` fixed to `false`.
+- Saved settings use schema version 4 and recoverable same-directory temporary-file promotion with a previous-file backup. Earlier schemas migrate without changing the shortcut, mode, translation target/format, clipboard restore, or terminology preferences. The only new persisted privacy field is the version number of the user's cloud-processing acknowledgement; selected text, results, and acknowledgement content are not stored. Terminology defaults to enabled with `general` active, approved matches and suggestions enabled, and `autoSaveSuggestions` fixed to `false`.
 - The tray menu includes Show, Hide, Login / Account, Settings, and Quit. Settings shows and focuses the existing widget and opens its focused settings view.
 - On hotkey press, Rust saves the current text clipboard when possible, writes a sentinel, sends `Ctrl+C`, reads the copied selection, then restores the previous text clipboard when possible.
 - Before the widget is shown or focused, Rust captures the foreground target window and its owning process for a backend-owned capture session. Raw target handles and process identifiers are never sent to React.
@@ -149,9 +154,11 @@ The helper prints Node/npm/Codex/Rust tool versions, runs the frontend checks, a
 - Rewrite modes: `grammar`, `natural`, `concise`, `polite`, and one promptless `translate` mode.
 - Translation infers the source language and supports exact targets `ko`, `en`, `ja`, `zh-Hans`, and `zh-Hant`. There is no free-form Prompt or chat input.
 - The model is instructed to return translated text only. Rust binds the result to the exact capture session, generation, mode, and target, then locally applies either `translation_only` or `source_with_translation` using the backend-owned exact source.
-- The Rust backend starts `codex app-server` with piped stdin/stdout/stderr. The default app-server transport is stdio, which is local to the child process.
+- The Rust backend starts `codex app-server` with piped stdin/stdout/stderr. The default app-server transport is stdio, which is local to the child process. On Windows, the launcher and every npm/native descendant are assigned to an app-owned Job Object so shutdown and reconnect terminate the complete process tree.
 - The app must not be changed to launch Codex app-server with a websocket, TCP listener, or non-local network transport.
-- Rewrites use ephemeral Codex threads with `approvalPolicy: "never"` and a strict JSON schema requiring `{ replacement, changed, summary, confidence }`. Optional `edits` remain available for the existing review UI, and `additionalProperties` is `false`.
+- App Server uses a marked, empty, per-client working directory under `%TEMP%\codex-pencil-runtime-v1`. It is never the repository, Documents, Desktop, OneDrive, or a user project, and it is removed after bounded process shutdown. A separate app-owned `%LOCALAPPDATA%\com.local.codexpencil\codex-home-v1` isolates Codex Pencil authentication from the user's general Codex config, MCP servers, plugins, skills, and hooks. Codex itself owns the credential payload; Codex Pencil neither reads nor copies token values. A `config.toml` in this dedicated home is rejected fail-closed.
+- Rewrites use ephemeral Codex threads with `approvalPolicy: "never"`, the pinned stable `readOnly` sandbox policy with tool network disabled, and a strict JSON schema requiring `{ replacement, changed, summary, confidence }`. Optional `edits` remain available for the existing review UI, and `additionalProperties` is `false`. Shell, MCP, plugin, skill, browser, image, multi-agent, history, analytics, and telemetry surfaces are disabled at child startup; unexpected tool, approval, permission, or dynamic activity fails the turn.
+- Source text is rejected before client/thread acquisition above 12,000 Unicode scalars or 48 KiB UTF-8. Model replacement is rejected above 24,000 scalars or 96 KiB, and locally formatted final Apply text is rejected before clipboard/input mutation above 36,000 scalars or 144 KiB. Text is never truncated or silently coerced.
 - Applying a rewrite requires the exact current session identifier and generation. Rust validates lifecycle state, target-window validity, owning process, and actual foreground restoration before writing the replacement or sending one `Ctrl+V` sequence.
 - Settings are stored locally in the Tauri app config directory as `settings.json`; they contain preferences only, not selected text, replacements, clipboard contents, or history.
 
@@ -175,11 +182,11 @@ Codex Pencil uses Codex managed auth through the local app-server protocol:
 }
 ```
 
-6. Codex returns `loginId`, `verificationUrl`, and `userCode`.
-7. The UI displays `userCode` and provides a button to open `verificationUrl`.
+6. Codex returns `loginId`, `verificationUrl`, and `userCode`. Rust accepts only the exact pinned `https://auth.openai.com/codex/device` URL and keeps it in backend memory.
+7. The UI receives only the opaque `loginId` and `userCode`. Opening the login page requires the matching backend-held validated login; arbitrary frontend URLs are not accepted.
 8. The app listens for `account/login/completed` and `account/updated` notifications, and also polls `account/read` while waiting.
 
-Requests are rejected locally until the handshake completes. A closed stdout stream, unwritable stdin, malformed protocol JSON, or child-process exit invalidates the cached client and fails pending requests. The next user request performs at most one clean reconnect; an in-flight request is not silently replayed.
+The app-specific Codex home is intentionally separate from the user's normal Codex CLI home, so the first production run may require one device login even when the general CLI is already authenticated. Requests are rejected locally until the handshake completes. A closed stdout stream, unwritable stdin, malformed protocol JSON, or child-process exit invalidates the cached client and fails pending requests. The next user request performs at most one clean reconnect; an in-flight request is not silently replayed.
 
 ## Codex App Server Protocol Authority
 
@@ -230,6 +237,7 @@ The personal dictionary is local product configuration, not document or rewrite 
 - The store is `terminology.v1.json` under Tauri `app_data_dir`; `terminology.v1.json.bak` retains a valid recovery source. Writes validate the complete next store, sync a same-directory temporary file, and promote it without partially updating in-memory state.
 - A new store contains reserved `global` and `general` profiles. `global` is always enabled and implicitly active; settings select exactly one enabled non-global profile.
 - Entry types are `translation`, `preferred`, and `protected`; states are `approved`, `suggested`, and `disabled`. Suggested and disabled entries are inert. Suggestions require an explicit Save as suggested action and a later explicit Approve action before matching.
+- Settings shows the filtered saved-entry count and entry cards before the add/edit form. Filter and form controls have distinct accessible labels, and a hidden-entry hint appears when active filters exclude stored entries.
 - Automatic matching is local, NFC-normalized, exact `whole_phrase` matching with aliases and deterministic profile/language/length/priority/time/ID precedence. It does not use fuzzy matching, embeddings, document scanning, or a database.
 - Only approved entries from `global` and the active profile that actually match the backend-owned selected text are serialized as request constraints. The subset is capped at 50 entries and 16 KiB. Notes, profile names, usage counters, timestamps, unmatched entries, suggested/disabled entries, UI search text, and the full dictionary are not sent.
 - Selected text and terminology constraints are encoded as untrusted JSON data in the existing stdio App Server request. Protected terms are preserve-exact constraints; translation and preferred entries carry only the matched source and preferred form.
@@ -260,7 +268,8 @@ cargo test --manifest-path src-tauri/Cargo.toml p1_02_windows_live_tests::p1_02_
 - No continuous clipboard monitoring.
 - No rewrite history storage.
 - No document, clipboard, Prompt, or terminology-request history storage. Dictionary exports contain only local profiles and terminology entries.
-- Selected text is sent to Codex only after the user presses `Ctrl+Shift+G` and the app performs a rewrite.
+- Before the first inference, the app explains that the selected text and only matched approved terminology are processed by Codex/ChatGPT in the cloud. Cancelling invalidates the capture and sends no model request; acknowledgement persists only as a versioned preference.
+- Selected text is sent to Codex only after the user presses the configured shortcut, accepts the cloud disclosure, and the app performs a rewrite.
 - The local preview UI may receive and display replacement text plus short edit metadata. Edit metadata can include snippets from the selected text.
 - Prompts and selected text should not be logged. Codex app-server stderr is drained and discarded by the app.
 - Rewrite application is always user-confirmed through the Apply button.
@@ -280,7 +289,8 @@ cargo test --manifest-path src-tauri/Cargo.toml p1_02_windows_live_tests::p1_02_
 - Password-field detection is not reliable in the current MVP, so the app does not claim to detect password fields. Do not use the hotkey in password or secret fields.
 - Some apps block simulated `Ctrl+C` or `Ctrl+V`, run elevated, or use custom editors that do not expose selected text through the clipboard.
 - Codex CLI must be installed and authenticated-capable.
-- Superseded translation requests are discarded when they complete, but this gate does not interrupt an already-running Codex App Server turn.
+- Cancel, dismiss, recapture, mode/target/profile/revision changes, and application exit issue at most one bounded `turn/interrupt` for the exact active turn. A timeout or process failure still relies on the existing stale-result backstop; the app never retries an uncertain old turn or applies its completion.
+- The pinned `codex-cli 0.144.6` `readOnly` schema exposes `networkAccess` but no stable custom readable-root list. Codex Pencil therefore combines the narrowest schema-valid sandbox with an empty isolated cwd, a dedicated config-free Codex home, disabled tool surfaces, and fail-closed event inspection. Supporting a newer CLI requires a new versioned schema authority and fresh acceptance.
 - Terminology matching is intentionally exact and deterministic. This MVP has one active non-global profile, no automatic app/document profile switching, no fuzzy or semantic matching, and no cloud synchronization.
 - The terminology backup is a recovery source, not a journal. Recovery can roll back the most recent semantic mutation if the newest main file becomes invalid.
 - CSV is an entry-oriented interchange format: its fixed columns do not encode profile enablement or profiles with no entries. New CSV-only profiles are imported enabled but never become active automatically; use JSON for a full-fidelity local profile/store backup.

@@ -15,7 +15,8 @@ export type PrimaryShortcut = ShortcutCandidate &
   }>;
 
 export type AppSettings = Readonly<{
-  schemaVersion: 3;
+  schemaVersion: 4;
+  cloudProcessingAcknowledgementVersion: number;
   mode: RewriteMode;
   restoreClipboard: boolean;
   autoRewrite: boolean;
@@ -123,6 +124,7 @@ export function parseAppSettings(value: unknown): AppSettings | null {
     !isRecord(value) ||
     !hasExactKeys(value, [
       "schemaVersion",
+      "cloudProcessingAcknowledgementVersion",
       "mode",
       "restoreClipboard",
       "autoRewrite",
@@ -130,7 +132,11 @@ export function parseAppSettings(value: unknown): AppSettings | null {
       "translation",
       "terminology",
     ]) ||
-    value.schemaVersion !== 3 ||
+    value.schemaVersion !== 4 ||
+    typeof value.cloudProcessingAcknowledgementVersion !== "number" ||
+    !Number.isSafeInteger(value.cloudProcessingAcknowledgementVersion) ||
+    value.cloudProcessingAcknowledgementVersion < 0 ||
+    value.cloudProcessingAcknowledgementVersion > 1 ||
     typeof value.mode !== "string" ||
     !MODES.has(value.mode as RewriteMode) ||
     typeof value.restoreClipboard !== "boolean" ||
@@ -170,7 +176,8 @@ export function parseAppSettings(value: unknown): AppSettings | null {
     return null;
   }
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
+    cloudProcessingAcknowledgementVersion: value.cloudProcessingAcknowledgementVersion,
     mode: value.mode as RewriteMode,
     restoreClipboard: value.restoreClipboard,
     autoRewrite: value.autoRewrite,
