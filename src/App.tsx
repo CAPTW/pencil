@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   Check,
   BookOpen,
@@ -29,6 +30,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   parseApplyOutcome,
@@ -72,6 +74,7 @@ import {
   type TerminologyRuntimeSnapshot,
   type TerminologySuggestion,
 } from "./terminologyContract";
+import { startWindowDrag } from "./windowChromeContract";
 
 type AuthStatus = {
   loggedIn: boolean;
@@ -1134,6 +1137,10 @@ export default function App() {
     }
   }
 
+  function beginWindowDrag(event: ReactMouseEvent<HTMLElement>) {
+    void startWindowDrag(event, getCurrentWindow()).catch(() => undefined);
+  }
+
   async function dismiss() {
     const token = currentTokenRef.current;
     currentTokenRef.current = null;
@@ -1184,7 +1191,7 @@ export default function App() {
   return (
     <main className="shell">
       <section className="panel">
-        <header className="topbar">
+        <header className="topbar" onMouseDown={beginWindowDrag}>
           <div className="brand">
             <div className="brand-mark">
               <Sparkles size={16} strokeWidth={2.2} />

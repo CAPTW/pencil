@@ -8,6 +8,7 @@
     "build": "powershell -ExecutionPolicy Bypass -File scripts/build-tauri.ps1",
     "dev:frontend": "vite --host 127.0.0.1 --port 1420",
     "build:frontend": "tsc && vite build",
+    "test:window-chrome": "node scripts/test-window-chrome-contract.mjs",
     "typecheck": "tsc --noEmit",
     "verify:windows": "powershell -ExecutionPolicy Bypass -File scripts/verify-windows.ps1"
   },
