@@ -729,11 +729,12 @@ pub(crate) fn target_scope_for_mode(
     if mode != RewriteMode::Translate {
         return None;
     }
-    target.map(|target| match target {
-        crate::translation::TranslationTargetLanguage::Ko => LanguageScope::Ko,
-        crate::translation::TranslationTargetLanguage::En => LanguageScope::En,
-        crate::translation::TranslationTargetLanguage::Ja => LanguageScope::Ja,
-        crate::translation::TranslationTargetLanguage::ZhHans => LanguageScope::ZhHans,
-        crate::translation::TranslationTargetLanguage::ZhHant => LanguageScope::ZhHant,
-    })
+    match target? {
+        crate::translation::TranslationTargetLanguage::Auto => None,
+        crate::translation::TranslationTargetLanguage::Ko => Some(LanguageScope::Ko),
+        crate::translation::TranslationTargetLanguage::En => Some(LanguageScope::En),
+        crate::translation::TranslationTargetLanguage::Ja => Some(LanguageScope::Ja),
+        crate::translation::TranslationTargetLanguage::ZhHans => Some(LanguageScope::ZhHans),
+        crate::translation::TranslationTargetLanguage::ZhHant => Some(LanguageScope::ZhHant),
+    }
 }

@@ -48,6 +48,7 @@ import {
   type RewriteMode,
   type ShortcutCandidate,
   type TranslationApplyFormat,
+  type TranslationReferenceLanguage,
   type TranslationTargetLanguage,
 } from "./promptlessContract";
 import {
@@ -134,6 +135,7 @@ const MODES: Array<{ id: RewriteMode; label: string; icon: "sparkles" | "languag
 ];
 
 const TARGET_LANGUAGES: Array<{ id: TranslationTargetLanguage; label: string }> = [
+  { id: "auto", label: "Auto" },
   { id: "ko", label: "Korean" },
   { id: "en", label: "English" },
   { id: "ja", label: "Japanese" },
@@ -141,8 +143,32 @@ const TARGET_LANGUAGES: Array<{ id: TranslationTargetLanguage; label: string }> 
   { id: "zh-Hant", label: "Traditional Chinese" },
 ];
 
+const REFERENCE_LANGUAGES: Array<{ id: TranslationReferenceLanguage; label: string }> =
+  TARGET_LANGUAGES.filter(
+    (language): language is { id: TranslationReferenceLanguage; label: string } =>
+      language.id !== "auto",
+  );
+
+function autoReferenceForIntent(
+  mode: RewriteMode,
+  targetLanguage: TranslationTargetLanguage,
+  referenceLanguage: TranslationReferenceLanguage,
+): TranslationReferenceLanguage | null {
+  return mode === "translate" && targetLanguage === "auto" ? referenceLanguage : null;
+}
+
+function referenceLanguageLabel(language: TranslationReferenceLanguage): string {
+  return REFERENCE_LANGUAGES.find((candidate) => candidate.id === language)?.label ?? language;
+}
+
+function automaticFallbackLanguage(
+  referenceLanguage: TranslationReferenceLanguage,
+): TranslationReferenceLanguage {
+  return referenceLanguage === "en" ? "ko" : "en";
+}
+
 const DEFAULT_SETTINGS: AppSettings = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   cloudProcessingAcknowledgementVersion: 0,
   mode: "grammar",
   restoreClipboard: true,
@@ -157,6 +183,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   translation: {
     sourceLanguage: "auto",
     targetLanguage: "en",
+    autoReferenceLanguage: "ko",
     applyFormat: "translation_only",
   },
   terminology: {
@@ -251,6 +278,9 @@ export default function App() {
   const targetLanguageRef = useRef<TranslationTargetLanguage>(
     DEFAULT_SETTINGS.translation.targetLanguage,
   );
+  const autoReferenceLanguageRef = useRef<TranslationReferenceLanguage>(
+    DEFAULT_SETTINGS.translation.autoReferenceLanguage,
+  );
   const autoRewriteRef = useRef(DEFAULT_SETTINGS.autoRewrite);
   const cloudAcknowledgementRef = useRef(
     DEFAULT_SETTINGS.cloudProcessingAcknowledgementVersion,
@@ -265,6 +295,7 @@ export default function App() {
   useEffect(() => {
     modeRef.current = settings.mode;
     targetLanguageRef.current = settings.translation.targetLanguage;
+    autoReferenceLanguageRef.current = settings.translation.autoReferenceLanguage;
     autoRewriteRef.current = settings.autoRewrite;
     cloudAcknowledgementRef.current = settings.cloudProcessingAcknowledgementVersion;
   }, [settings]);
@@ -315,6 +346,7 @@ export default function App() {
     mode: RewriteMode = modeRef.current,
     requestedToken: CaptureToken | null = currentTokenRef.current,
     targetLanguage: TranslationTargetLanguage = targetLanguageRef.current,
+    autoReferenceLanguage: TranslationReferenceLanguage = autoReferenceLanguageRef.current,
   ) => {
     if (!requestedToken) {
       return;
@@ -327,6 +359,11 @@ export default function App() {
       ...requestedToken,
       mode,
       targetLanguage: mode === "translate" ? targetLanguage : null,
+      autoReferenceLanguage: autoReferenceForIntent(
+        mode,
+        targetLanguage,
+        autoReferenceLanguage,
+      ),
     };
     const requestedTerminologyEpoch = terminologyEpochRef.current;
     if (sameRewriteIntent(rewritingIntentRef.current, requestedIntent)) {
@@ -342,6 +379,7 @@ export default function App() {
         generation: requestedToken.generation,
         mode,
         targetLanguage: requestedIntent.targetLanguage,
+        autoReferenceLanguage: requestedIntent.autoReferenceLanguage,
       }));
       if (!next) {
         throw new Error("Rewrite returned an invalid terminology contract.");
@@ -394,6 +432,7 @@ export default function App() {
         setSettings(next);
         modeRef.current = next.mode;
         targetLanguageRef.current = next.translation.targetLanguage;
+        autoReferenceLanguageRef.current = next.translation.autoReferenceLanguage;
         autoRewriteRef.current = next.autoRewrite;
         cloudAcknowledgementRef.current = next.cloudProcessingAcknowledgementVersion;
       })
@@ -458,6 +497,11 @@ export default function App() {
         ...token,
         mode: modeRef.current,
         targetLanguage: modeRef.current === "translate" ? targetLanguageRef.current : null,
+        autoReferenceLanguage: autoReferenceForIntent(
+          modeRef.current,
+          targetLanguageRef.current,
+          autoReferenceLanguageRef.current,
+        ),
       };
       currentIntentRef.current = intent;
       rewritingIntentRef.current = null;
@@ -676,12 +720,18 @@ export default function App() {
     }
     modeRef.current = saved.mode;
     targetLanguageRef.current = saved.translation.targetLanguage;
+    autoReferenceLanguageRef.current = saved.translation.autoReferenceLanguage;
     if (selection) {
       const intent: RewriteIntentToken = {
         ...selection.token,
         mode: saved.mode,
         targetLanguage:
           saved.mode === "translate" ? saved.translation.targetLanguage : null,
+        autoReferenceLanguage: autoReferenceForIntent(
+          saved.mode,
+          saved.translation.targetLanguage,
+          saved.translation.autoReferenceLanguage,
+        ),
       };
       currentIntentRef.current = intent;
       resultIntentRef.current = null;
@@ -704,11 +754,17 @@ export default function App() {
       return;
     }
     targetLanguageRef.current = saved.translation.targetLanguage;
+    autoReferenceLanguageRef.current = saved.translation.autoReferenceLanguage;
     if (selection && saved.mode === "translate") {
       const intent: RewriteIntentToken = {
         ...selection.token,
         mode: "translate",
         targetLanguage: saved.translation.targetLanguage,
+        autoReferenceLanguage: autoReferenceForIntent(
+          "translate",
+          saved.translation.targetLanguage,
+          saved.translation.autoReferenceLanguage,
+        ),
       };
       currentIntentRef.current = intent;
       resultIntentRef.current = null;
@@ -717,6 +773,44 @@ export default function App() {
       setStatus("Translation target changed");
       if (saved.autoRewrite) {
         void rewrite("translate", selection.token, saved.translation.targetLanguage);
+      }
+    }
+  }
+
+  async function chooseAutoReferenceLanguage(
+    autoReferenceLanguage: TranslationReferenceLanguage,
+  ) {
+    const saved = await saveSettings({
+      ...settings,
+      translation: { ...settings.translation, autoReferenceLanguage },
+    });
+    if (!saved) {
+      return;
+    }
+    autoReferenceLanguageRef.current = saved.translation.autoReferenceLanguage;
+    if (
+      selection &&
+      saved.mode === "translate" &&
+      saved.translation.targetLanguage === "auto"
+    ) {
+      const intent: RewriteIntentToken = {
+        ...selection.token,
+        mode: "translate",
+        targetLanguage: "auto",
+        autoReferenceLanguage: saved.translation.autoReferenceLanguage,
+      };
+      currentIntentRef.current = intent;
+      resultIntentRef.current = null;
+      setResult(null);
+      setDraft("");
+      setStatus("Auto reference language changed");
+      if (saved.autoRewrite) {
+        void rewrite(
+          "translate",
+          selection.token,
+          "auto",
+          saved.translation.autoReferenceLanguage,
+        );
       }
     }
   }
@@ -1056,6 +1150,7 @@ export default function App() {
         replacement: draft,
         mode: intent.mode,
         targetLanguage: intent.targetLanguage,
+        autoReferenceLanguage: intent.autoReferenceLanguage,
         restoreClipboard: settings.restoreClipboard,
       });
       if (!sameCaptureToken(currentTokenRef.current, token)) {
@@ -1242,6 +1337,37 @@ export default function App() {
                   : settings.shortcut.primary.display}
               </button>
             </label>
+            <section className="translation-settings" aria-label="Automatic translation settings">
+              <div className="translation-settings-heading">
+                <div>
+                  <h3>Translation</h3>
+                  <p>Choose the language Auto treats as your primary reading language.</p>
+                </div>
+                <Languages size={18} />
+              </div>
+              <label className="settings-field">
+                <span>Auto reference language</span>
+                <select
+                  value={settings.translation.autoReferenceLanguage}
+                  onChange={(event) =>
+                    chooseAutoReferenceLanguage(
+                      event.target.value as TranslationReferenceLanguage,
+                    )
+                  }
+                >
+                  {REFERENCE_LANGUAGES.map((language) => (
+                    <option key={language.id} value={language.id}>
+                      {language.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="translation-direction">
+                Other languages → {referenceLanguageLabel(settings.translation.autoReferenceLanguage)}.
+                {" "}{referenceLanguageLabel(settings.translation.autoReferenceLanguage)} text → {referenceLanguageLabel(automaticFallbackLanguage(settings.translation.autoReferenceLanguage))}.
+                Mixed or unclear text uses the reference language.
+              </p>
+            </section>
             <section className="terminology-settings" aria-label="개인 사전">
               <div className="terminology-heading">
                 <div>
@@ -1593,7 +1719,9 @@ export default function App() {
                   >
                     {TARGET_LANGUAGES.map((language) => (
                       <option value={language.id} key={language.id}>
-                        {language.label}
+                        {language.id === "auto"
+                          ? `Auto · ${referenceLanguageLabel(settings.translation.autoReferenceLanguage)} reference`
+                          : language.label}
                       </option>
                     ))}
                   </select>
@@ -1622,6 +1750,13 @@ export default function App() {
                 {settings.translation.applyFormat === "source_with_translation" ? (
                   <p>The exact captured source is combined locally when you Apply.</p>
                 ) : null}
+                {settings.translation.targetLanguage === "auto" ? (
+                  <p>
+                    Auto direction: other languages → {referenceLanguageLabel(settings.translation.autoReferenceLanguage)};
+                    {" "}{referenceLanguageLabel(settings.translation.autoReferenceLanguage)} → {referenceLanguageLabel(automaticFallbackLanguage(settings.translation.autoReferenceLanguage))}.
+                    Change the reference language in Settings.
+                  </p>
+                ) : null}
               </div>
             ) : null}
 
@@ -1631,7 +1766,9 @@ export default function App() {
                 const Icon = mode.icon === "languages" ? Languages : Sparkles;
                 return (
                   <button
-                    className={isActive ? "mode-button active" : "mode-button"}
+                    className={`${isActive ? "mode-button active" : "mode-button"}${
+                      mode.id === "translate" ? " translate-mode" : ""
+                    }`}
                     type="button"
                     key={mode.id}
                     onClick={() => chooseMode(mode.id)}
@@ -1662,72 +1799,90 @@ export default function App() {
               </label>
             </div>
 
-            <div className="result-area">
-              {isRewriting ? (
-                <div className="loading-state">
-                  <Loader2 className="spin" size={18} />
-                  <span>Working locally through Codex</span>
+            <section className="result-card" aria-label="Editable rewrite result">
+              <div className="result-heading">
+                <div>
+                  <strong>{settings.mode === "translate" ? "Translation" : "Replacement"}</strong>
+                  <span>Edit the text before applying it.</span>
                 </div>
-              ) : (
-                <textarea
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  placeholder="Replacement will appear here"
-                  spellCheck={false}
-                />
-              )}
-            </div>
-
-            {result ? (
-              <div className="rewrite-details">
-                <div className="rewrite-summary">
-                  <span>{result.summary}</span>
-                  <strong>{Math.round(result.confidence * 100)}% · {result.terminologyMatchCount} terms</strong>
-                </div>
-                {result.edits.length ? (
-                  <ul className="edit-list">
-                    {result.edits.map((item, index) => (
-                      <li key={`${item.before}-${item.after}-${index}`}>
-                        <span>{item.reason}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {result.terminologyWarnings.length ? (
-                  <div className="terminology-warnings" role="status">
-                    {result.terminologyWarnings.map((warning, index) => (
-                      <span key={`${warning.code}-${index}`}>{warning.code.replace(/_/g, " ")}</span>
-                    ))}
-                    <small>Warnings never auto-correct or auto-Apply the result.</small>
-                  </div>
-                ) : null}
-                {result.terminologySuggestions.length ? (
-                  <div className="suggestion-list">
-                    {result.terminologySuggestions.map((suggestion, index) => (
-                      <article key={`${suggestion.sourceText}-${index}`}>
-                        <div><strong>{suggestion.sourceText}</strong><span>{suggestion.preferredText}</span><small>{suggestion.reason.replace(/_/g, " ")} · ephemeral</small></div>
-                        <div className="row-actions">
-                          <button type="button" onClick={() => dismissSuggestion(index)}>Dismiss</button>
-                          <button type="button" onClick={() => openSuggestionForm(suggestion)}>Review</button>
-                          <button type="button" onClick={() => saveSuggestion(suggestion)}>Save suggested</button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
+                {result ? (
+                  <strong className="confidence-badge">
+                    {Math.round(result.confidence * 100)}% · {result.terminologyMatchCount} terms
+                  </strong>
                 ) : null}
               </div>
-            ) : null}
 
-            <footer className="actions">
-              <button className="secondary-button" type="button" onClick={() => rewrite()} disabled={!canRewrite}>
-                <RefreshCcw size={16} />
-                Rewrite
-              </button>
-              <button className="primary-button" type="button" onClick={applyReplacement} disabled={!canApply}>
-                {isApplying ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
-                Apply
-              </button>
-            </footer>
+              <div className="result-area">
+                {isRewriting ? (
+                  <div className="loading-state">
+                    <Loader2 className="spin" size={18} />
+                    <span>Working locally through Codex</span>
+                  </div>
+                ) : (
+                  <textarea
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    placeholder={
+                      settings.mode === "translate"
+                        ? "Translation will appear here"
+                        : "Replacement will appear here"
+                    }
+                    aria-label="Editable rewrite result text"
+                    spellCheck={false}
+                  />
+                )}
+              </div>
+
+              {result ? (
+                <div className="rewrite-details">
+                  <div className="rewrite-summary">
+                    <span>{result.summary}</span>
+                  </div>
+                  {result.edits.length ? (
+                    <ul className="edit-list">
+                      {result.edits.map((item, index) => (
+                        <li key={`${item.before}-${item.after}-${index}`}>
+                          <span>{item.reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {result.terminologyWarnings.length ? (
+                    <div className="terminology-warnings" role="status">
+                      {result.terminologyWarnings.map((warning, index) => (
+                        <span key={`${warning.code}-${index}`}>{warning.code.replace(/_/g, " ")}</span>
+                      ))}
+                      <small>Warnings never auto-correct or auto-Apply the result.</small>
+                    </div>
+                  ) : null}
+                  {result.terminologySuggestions.length ? (
+                    <div className="suggestion-list">
+                      {result.terminologySuggestions.map((suggestion, index) => (
+                        <article key={`${suggestion.sourceText}-${index}`}>
+                          <div><strong>{suggestion.sourceText}</strong><span>{suggestion.preferredText}</span><small>{suggestion.reason.replace(/_/g, " ")} · ephemeral</small></div>
+                          <div className="row-actions">
+                            <button type="button" onClick={() => dismissSuggestion(index)}>Dismiss</button>
+                            <button type="button" onClick={() => openSuggestionForm(suggestion)}>Review</button>
+                            <button type="button" onClick={() => saveSuggestion(suggestion)}>Save suggested</button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="result-actions">
+                <button className="secondary-button" type="button" onClick={() => rewrite()} disabled={!canRewrite}>
+                  <RefreshCcw size={16} />
+                  Rewrite
+                </button>
+                <button className="primary-button" type="button" onClick={applyReplacement} disabled={!canApply}>
+                  {isApplying ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
+                  Apply
+                </button>
+              </div>
+            </section>
           </>
         )}
 

@@ -1292,8 +1292,33 @@ pub(crate) fn rewrite_prompt_with_terminology(
     let terminology_data = serde_json::to_string(terminology)
         .map_err(|_| "terminology_request_serialize_failed".to_string())?;
     let mode = intent.mode();
-    let intent_instruction = if let Some(target) = intent.target_language() {
-        format!(
+    let intent_instruction = match (
+        intent.target_language(),
+        intent.auto_reference_language(),
+    ) {
+        (Some(crate::translation::TranslationTargetLanguage::Auto), Some(reference)) => {
+            let fallback = if reference == crate::translation::TranslationTargetLanguage::En {
+                crate::translation::TranslationTargetLanguage::Ko
+            } else {
+                crate::translation::TranslationTargetLanguage::En
+            };
+            format!(
+                "Automatically choose the translation direction for the untrusted selected data.\n\
+                 Infer the source language from the selected data.\n\
+                 Reference language: {} ({})\n\
+                 Fallback language: {} ({})\n\
+                 If the selected data is already clearly written in {}, translate it into the fallback language.\n\
+                 Otherwise, translate it into the reference language. For mixed or uncertain source-language text, use the reference language.\n\
+                 Return translated text only in the replacement field. Do not combine the source and translation.\n\
+                 Preserve meaning, numbers, units, dates, proper names, abbreviations, URLs, code, list structure, and line breaks where semantically possible.",
+                reference.instruction_name(),
+                reference.code(),
+                fallback.instruction_name(),
+                fallback.code(),
+                reference.instruction_name(),
+            )
+        }
+        (Some(target), None) => format!(
             "Translate the untrusted selected data into the target language.\n\
              Infer the source language from the selected data.\n\
              Target language: {} ({})\n\
@@ -1301,9 +1326,8 @@ pub(crate) fn rewrite_prompt_with_terminology(
              Preserve meaning, numbers, units, dates, proper names, abbreviations, URLs, code, list structure, and line breaks where semantically possible.",
             target.instruction_name(),
             target.code()
-        )
-    } else {
-        mode.instruction().to_string()
+        ),
+        _ => mode.instruction().to_string(),
     };
 
     Ok(format!(
