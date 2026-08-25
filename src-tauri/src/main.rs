@@ -271,13 +271,16 @@ async fn rewrite_selected_text(
     generation: u64,
     mode: RewriteMode,
     target_language: Option<TranslationTargetLanguage>,
+    auto_reference_language: Option<TranslationTargetLanguage>,
     state: State<'_, AppState>,
 ) -> Result<RewriteResult, String> {
     let token = SessionToken {
         session_id,
         generation,
     };
-    let intent = RewriteIntent::new(mode, target_language).map_err(str::to_string)?;
+    let intent =
+        RewriteIntent::new_with_auto_reference(mode, target_language, auto_reference_language)
+            .map_err(str::to_string)?;
     let disclosure_version = state
         .configuration
         .lock()
@@ -545,6 +548,7 @@ async fn apply_replacement(
     replacement: String,
     mode: RewriteMode,
     target_language: Option<TranslationTargetLanguage>,
+    auto_reference_language: Option<TranslationTargetLanguage>,
     restore_clipboard: bool,
     app: AppHandle,
     state: State<'_, AppState>,
@@ -555,7 +559,9 @@ async fn apply_replacement(
         session_id,
         generation,
     };
-    let intent = RewriteIntent::new(mode, target_language).map_err(str::to_string)?;
+    let intent =
+        RewriteIntent::new_with_auto_reference(mode, target_language, auto_reference_language)
+            .map_err(str::to_string)?;
     let mut capture = state.capture.lock().await;
     let bound_intent = match capture.ready_bound_intent_for(&token, intent) {
         Ok(bound) => bound,

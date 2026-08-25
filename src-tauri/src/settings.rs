@@ -10,7 +10,7 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 
-pub(crate) const SETTINGS_SCHEMA_VERSION: u32 = 4;
+pub(crate) const SETTINGS_SCHEMA_VERSION: u32 = 5;
 pub(crate) const CLOUD_PROCESSING_DISCLOSURE_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -83,6 +83,7 @@ impl Default for ShortcutSettings {
 pub struct TranslationSettings {
     pub source_language: String,
     pub target_language: TranslationTargetLanguage,
+    pub auto_reference_language: TranslationTargetLanguage,
     pub apply_format: TranslationApplyFormat,
 }
 
@@ -91,6 +92,7 @@ impl Default for TranslationSettings {
         Self {
             source_language: "auto".to_string(),
             target_language: TranslationTargetLanguage::default(),
+            auto_reference_language: TranslationTargetLanguage::Ko,
             apply_format: TranslationApplyFormat::default(),
         }
     }
@@ -248,6 +250,17 @@ pub(crate) fn decode_settings(text: &str) -> SettingsLoad {
             }
             None => migrated = true,
         }
+        match translation.get("autoReferenceLanguage") {
+            Some(reference) => {
+                match serde_json::from_value::<TranslationTargetLanguage>(reference.clone()) {
+                    Ok(reference) if !reference.is_auto() => {
+                        settings.translation.auto_reference_language = reference
+                    }
+                    Ok(_) | Err(_) => invalid = true,
+                }
+            }
+            None => migrated = true,
+        }
         match translation.get("applyFormat") {
             Some(format) => {
                 match serde_json::from_value::<TranslationApplyFormat>(format.clone()) {
@@ -357,6 +370,9 @@ impl AppSettings {
         if self.translation.source_language != "auto" {
             return Err("translation_source_must_be_auto");
         }
+        if self.translation.auto_reference_language.is_auto() {
+            return Err("translation_auto_reference_invalid");
+        }
         if !valid_profile_id(&self.terminology.active_profile_id) {
             return Err("terminology_active_profile_invalid");
         }
@@ -367,10 +383,17 @@ impl AppSettings {
     }
 
     pub(crate) fn rewrite_intent(&self) -> Result<RewriteIntent, &'static str> {
-        RewriteIntent::new(
+        RewriteIntent::new_with_auto_reference(
             self.mode,
             if self.mode == RewriteMode::Translate {
                 Some(self.translation.target_language)
+            } else {
+                None
+            },
+            if self.mode == RewriteMode::Translate
+                && self.translation.target_language == TranslationTargetLanguage::Auto
+            {
+                Some(self.translation.auto_reference_language)
             } else {
                 None
             },

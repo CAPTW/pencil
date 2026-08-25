@@ -16,7 +16,7 @@ const moduleUrl = `data:text/javascript;base64,${Buffer.from(outputText).toStrin
 const contract = await import(moduleUrl);
 
 const settings = contract.parseAppSettings({
-  schemaVersion: 4,
+  schemaVersion: 5,
   cloudProcessingAcknowledgementVersion: 0,
   mode: "translate",
   restoreClipboard: true,
@@ -30,7 +30,8 @@ const settings = contract.parseAppSettings({
   },
   translation: {
     sourceLanguage: "auto",
-    targetLanguage: "zh-Hant",
+    targetLanguage: "auto",
+    autoReferenceLanguage: "zh-Hant",
     applyFormat: "source_with_translation",
   },
   terminology: {
@@ -42,7 +43,8 @@ const settings = contract.parseAppSettings({
   },
 });
 assert.ok(settings);
-assert.equal(settings.translation.targetLanguage, "zh-Hant");
+assert.equal(settings.translation.targetLanguage, "auto");
+assert.equal(settings.translation.autoReferenceLanguage, "zh-Hant");
 assert.equal(settings.terminology.autoSaveSuggestions, false);
 assert.equal(
   contract.parseAppSettings({
@@ -55,6 +57,13 @@ assert.equal(
   contract.parseAppSettings({
     ...settings,
     translation: { ...settings.translation, targetLanguage: "unsupported" },
+  }),
+  null,
+);
+assert.equal(
+  contract.parseAppSettings({
+    ...settings,
+    translation: { ...settings.translation, autoReferenceLanguage: "auto" },
   }),
   null,
 );
@@ -97,11 +106,19 @@ const currentIntent = {
   sessionId: "synthetic-session",
   generation: 3,
   mode: "translate",
-  targetLanguage: "ja",
+  targetLanguage: "auto",
+  autoReferenceLanguage: "ja",
 };
 assert.equal(contract.sameRewriteIntent(currentIntent, { ...currentIntent }), true);
 assert.equal(
   contract.sameRewriteIntent(currentIntent, { ...currentIntent, targetLanguage: "en" }),
+  false,
+);
+assert.equal(
+  contract.sameRewriteIntent(currentIntent, {
+    ...currentIntent,
+    autoReferenceLanguage: "ko",
+  }),
   false,
 );
 assert.equal(

@@ -1,7 +1,8 @@
 import type { CaptureToken } from "./captureContract";
 
 export type RewriteMode = "grammar" | "natural" | "concise" | "polite" | "translate";
-export type TranslationTargetLanguage = "ko" | "en" | "ja" | "zh-Hans" | "zh-Hant";
+export type TranslationReferenceLanguage = "ko" | "en" | "ja" | "zh-Hans" | "zh-Hant";
+export type TranslationTargetLanguage = "auto" | TranslationReferenceLanguage;
 export type TranslationApplyFormat = "translation_only" | "source_with_translation";
 
 export type ShortcutCandidate = Readonly<{
@@ -15,7 +16,7 @@ export type PrimaryShortcut = ShortcutCandidate &
   }>;
 
 export type AppSettings = Readonly<{
-  schemaVersion: 4;
+  schemaVersion: 5;
   cloudProcessingAcknowledgementVersion: number;
   mode: RewriteMode;
   restoreClipboard: boolean;
@@ -24,6 +25,7 @@ export type AppSettings = Readonly<{
   translation: Readonly<{
     sourceLanguage: "auto";
     targetLanguage: TranslationTargetLanguage;
+    autoReferenceLanguage: TranslationReferenceLanguage;
     applyFormat: TranslationApplyFormat;
   }>;
   terminology: Readonly<{
@@ -39,6 +41,7 @@ export type RewriteIntentToken = CaptureToken &
   Readonly<{
     mode: RewriteMode;
     targetLanguage: TranslationTargetLanguage | null;
+    autoReferenceLanguage: TranslationReferenceLanguage | null;
   }>;
 
 export type ShortcutUpdateStatus =
@@ -65,6 +68,14 @@ export type ShortcutKeyEvent = Readonly<{
 
 const MODES = new Set<RewriteMode>(["grammar", "natural", "concise", "polite", "translate"]);
 const TARGET_LANGUAGES = new Set<TranslationTargetLanguage>([
+  "auto",
+  "ko",
+  "en",
+  "ja",
+  "zh-Hans",
+  "zh-Hant",
+]);
+const REFERENCE_LANGUAGES = new Set<TranslationReferenceLanguage>([
   "ko",
   "en",
   "ja",
@@ -132,7 +143,7 @@ export function parseAppSettings(value: unknown): AppSettings | null {
       "translation",
       "terminology",
     ]) ||
-    value.schemaVersion !== 4 ||
+    value.schemaVersion !== 5 ||
     typeof value.cloudProcessingAcknowledgementVersion !== "number" ||
     !Number.isSafeInteger(value.cloudProcessingAcknowledgementVersion) ||
     value.cloudProcessingAcknowledgementVersion < 0 ||
@@ -144,7 +155,12 @@ export function parseAppSettings(value: unknown): AppSettings | null {
     !isRecord(value.shortcut) ||
     !hasExactKeys(value.shortcut, ["primary"]) ||
     !isRecord(value.translation) ||
-    !hasExactKeys(value.translation, ["sourceLanguage", "targetLanguage", "applyFormat"]) ||
+    !hasExactKeys(value.translation, [
+      "sourceLanguage",
+      "targetLanguage",
+      "autoReferenceLanguage",
+      "applyFormat",
+    ]) ||
     !isRecord(value.terminology) ||
     !hasExactKeys(value.terminology, [
       "enabled",
@@ -162,6 +178,10 @@ export function parseAppSettings(value: unknown): AppSettings | null {
     value.translation.sourceLanguage !== "auto" ||
     typeof value.translation.targetLanguage !== "string" ||
     !TARGET_LANGUAGES.has(value.translation.targetLanguage as TranslationTargetLanguage) ||
+    typeof value.translation.autoReferenceLanguage !== "string" ||
+    !REFERENCE_LANGUAGES.has(
+      value.translation.autoReferenceLanguage as TranslationReferenceLanguage,
+    ) ||
     typeof value.translation.applyFormat !== "string" ||
     !APPLY_FORMATS.has(value.translation.applyFormat as TranslationApplyFormat) ||
     typeof value.terminology.enabled !== "boolean" ||
@@ -176,7 +196,7 @@ export function parseAppSettings(value: unknown): AppSettings | null {
     return null;
   }
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     cloudProcessingAcknowledgementVersion: value.cloudProcessingAcknowledgementVersion,
     mode: value.mode as RewriteMode,
     restoreClipboard: value.restoreClipboard,
@@ -185,6 +205,8 @@ export function parseAppSettings(value: unknown): AppSettings | null {
     translation: {
       sourceLanguage: "auto",
       targetLanguage: value.translation.targetLanguage as TranslationTargetLanguage,
+      autoReferenceLanguage:
+        value.translation.autoReferenceLanguage as TranslationReferenceLanguage,
       applyFormat: value.translation.applyFormat as TranslationApplyFormat,
     },
     terminology: {
@@ -226,7 +248,8 @@ export function sameRewriteIntent(
       left.sessionId === right.sessionId &&
       left.generation === right.generation &&
       left.mode === right.mode &&
-      left.targetLanguage === right.targetLanguage,
+      left.targetLanguage === right.targetLanguage &&
+      left.autoReferenceLanguage === right.autoReferenceLanguage,
   );
 }
 

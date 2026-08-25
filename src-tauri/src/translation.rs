@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) enum TranslationTargetLanguage {
+    #[serde(rename = "auto")]
+    Auto,
     #[serde(rename = "ko")]
     Ko,
     #[serde(rename = "en")]
@@ -17,10 +19,12 @@ pub(crate) enum TranslationTargetLanguage {
 
 impl TranslationTargetLanguage {
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 5] = [Self::Ko, Self::En, Self::Ja, Self::ZhHans, Self::ZhHant];
+    pub(crate) const CONCRETE: [Self; 5] =
+        [Self::Ko, Self::En, Self::Ja, Self::ZhHans, Self::ZhHant];
 
     pub(crate) fn code(self) -> &'static str {
         match self {
+            Self::Auto => "auto",
             Self::Ko => "ko",
             Self::En => "en",
             Self::Ja => "ja",
@@ -31,12 +35,17 @@ impl TranslationTargetLanguage {
 
     pub(crate) fn instruction_name(self) -> &'static str {
         match self {
+            Self::Auto => "Automatic",
             Self::Ko => "Korean",
             Self::En => "English",
             Self::Ja => "Japanese",
             Self::ZhHans => "Simplified Chinese",
             Self::ZhHant => "Traditional Chinese",
         }
+    }
+
+    pub(crate) const fn is_auto(self) -> bool {
+        matches!(self, Self::Auto)
     }
 }
 
@@ -50,24 +59,54 @@ impl Default for TranslationTargetLanguage {
 pub(crate) struct RewriteIntent {
     mode: RewriteMode,
     target_language: Option<TranslationTargetLanguage>,
+    auto_reference_language: Option<TranslationTargetLanguage>,
 }
 
 impl RewriteIntent {
+    #[cfg(test)]
     pub(crate) fn new(
         mode: RewriteMode,
         target_language: Option<TranslationTargetLanguage>,
     ) -> Result<Self, &'static str> {
-        match mode {
-            RewriteMode::Translate => target_language
-                .map(|target_language| Self {
+        Self::new_with_auto_reference(mode, target_language, None)
+    }
+
+    pub(crate) fn new_with_auto_reference(
+        mode: RewriteMode,
+        target_language: Option<TranslationTargetLanguage>,
+        auto_reference_language: Option<TranslationTargetLanguage>,
+    ) -> Result<Self, &'static str> {
+        match (mode, target_language, auto_reference_language) {
+            (RewriteMode::Translate, Some(TranslationTargetLanguage::Auto), Some(reference))
+                if !reference.is_auto() =>
+            {
+                Ok(Self {
                     mode,
-                    target_language: Some(target_language),
+                    target_language: Some(TranslationTargetLanguage::Auto),
+                    auto_reference_language: Some(reference),
                 })
-                .ok_or("translation_target_required"),
-            _ if target_language.is_some() => Err("translation_target_not_allowed"),
+            }
+            (RewriteMode::Translate, Some(TranslationTargetLanguage::Auto), None) => {
+                Err("translation_auto_reference_required")
+            }
+            (RewriteMode::Translate, Some(TranslationTargetLanguage::Auto), Some(_)) => {
+                Err("translation_auto_reference_invalid")
+            }
+            (RewriteMode::Translate, Some(target_language), None) => Ok(Self {
+                mode,
+                target_language: Some(target_language),
+                auto_reference_language: None,
+            }),
+            (RewriteMode::Translate, Some(_), Some(_)) => {
+                Err("translation_auto_reference_not_allowed")
+            }
+            (RewriteMode::Translate, None, _) => Err("translation_target_required"),
+            (_, Some(_), _) => Err("translation_target_not_allowed"),
+            (_, None, Some(_)) => Err("translation_auto_reference_not_allowed"),
             _ => Ok(Self {
                 mode,
                 target_language: None,
+                auto_reference_language: None,
             }),
         }
     }
@@ -77,6 +116,7 @@ impl RewriteIntent {
         Self {
             mode: RewriteMode::Grammar,
             target_language: None,
+            auto_reference_language: None,
         }
     }
 
@@ -86,6 +126,10 @@ impl RewriteIntent {
 
     pub(crate) fn target_language(self) -> Option<TranslationTargetLanguage> {
         self.target_language
+    }
+
+    pub(crate) fn auto_reference_language(self) -> Option<TranslationTargetLanguage> {
+        self.auto_reference_language
     }
 
     pub(crate) fn is_translation(self) -> bool {

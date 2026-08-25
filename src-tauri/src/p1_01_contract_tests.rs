@@ -85,7 +85,7 @@ fn default_settings_serialize_the_versioned_promptless_contract() {
     let serialized = serde_json::to_value(AppSettings::default())
         .expect("default settings should be serializable");
 
-    assert_eq!(serialized.get("schemaVersion"), Some(&json!(4)));
+    assert_eq!(serialized.get("schemaVersion"), Some(&json!(5)));
     assert_eq!(
         serialized.get("cloudProcessingAcknowledgementVersion"),
         Some(&json!(0))
@@ -103,6 +103,10 @@ fn default_settings_serialize_the_versioned_promptless_contract() {
         Some(&Value::String("en".to_string()))
     );
     assert_eq!(
+        serialized.pointer("/translation/autoReferenceLanguage"),
+        Some(&Value::String("ko".to_string()))
+    );
+    assert_eq!(
         serialized.pointer("/translation/applyFormat"),
         Some(&Value::String("translation_only".to_string()))
     );
@@ -118,6 +122,26 @@ fn default_settings_serialize_the_versioned_promptless_contract() {
     for forbidden in ["selectedText", "replacement", "history", "clipboardData"] {
         assert!(!serialized_text.contains(forbidden));
     }
+}
+
+#[test]
+fn settings_schema_five_accepts_auto_target_and_user_reference_language() {
+    let loaded = decode_settings(
+        r#"{"schemaVersion":5,"cloudProcessingAcknowledgementVersion":0,"mode":"translate","restoreClipboard":true,"autoRewrite":true,"shortcut":{"primary":{"modifiers":["CTRL","SHIFT"],"key":"G","display":"Ctrl+Shift+G"}},"translation":{"sourceLanguage":"auto","targetLanguage":"auto","autoReferenceLanguage":"ko","applyFormat":"translation_only"},"terminology":{"enabled":true,"activeProfileId":"general","useApprovedTerminology":true,"suggestTerminology":true,"autoSaveSuggestions":false}}"#,
+    );
+
+    assert_eq!(loaded.recovery, None);
+    let serialized = serde_json::to_value(loaded.settings)
+        .expect("auto translation settings should be serializable");
+    assert_eq!(serialized.get("schemaVersion"), Some(&json!(5)));
+    assert_eq!(
+        serialized.pointer("/translation/targetLanguage"),
+        Some(&json!("auto"))
+    );
+    assert_eq!(
+        serialized.pointer("/translation/autoReferenceLanguage"),
+        Some(&json!("ko"))
+    );
 }
 
 #[test]
@@ -250,7 +274,7 @@ fn legacy_settings_migrate_without_losing_existing_supported_values() {
         decode_settings(r#"{"mode":"translate_ko","restoreClipboard":false,"autoRewrite":false}"#);
 
     assert_eq!(loaded.recovery, Some(SettingsRecoveryCode::Migrated));
-    assert_eq!(loaded.settings.schema_version, 4);
+    assert_eq!(loaded.settings.schema_version, 5);
     assert_eq!(loaded.settings.cloud_processing_acknowledgement_version, 0);
     assert_eq!(loaded.settings.mode, RewriteMode::Translate);
     assert!(!loaded.settings.restore_clipboard);
@@ -284,9 +308,9 @@ fn invalid_new_settings_recover_to_safe_defaults_with_a_typed_state() {
 }
 
 #[test]
-fn translation_target_contract_contains_exactly_five_languages() {
+fn translation_reference_contract_contains_exactly_five_concrete_languages() {
     assert_eq!(
-        TranslationTargetLanguage::ALL,
+        TranslationTargetLanguage::CONCRETE,
         [
             TranslationTargetLanguage::Ko,
             TranslationTargetLanguage::En,
@@ -294,6 +318,24 @@ fn translation_target_contract_contains_exactly_five_languages() {
             TranslationTargetLanguage::ZhHans,
             TranslationTargetLanguage::ZhHant,
         ]
+    );
+}
+
+#[test]
+fn schema_four_settings_migrate_without_changing_the_manual_target() {
+    let loaded = decode_settings(
+        r#"{"schemaVersion":4,"cloudProcessingAcknowledgementVersion":0,"mode":"translate","restoreClipboard":true,"autoRewrite":true,"shortcut":{"primary":{"modifiers":["CTRL","SHIFT"],"key":"G","display":"Ctrl+Shift+G"}},"translation":{"sourceLanguage":"auto","targetLanguage":"ja","applyFormat":"translation_only"},"terminology":{"enabled":true,"activeProfileId":"general","useApprovedTerminology":true,"suggestTerminology":true,"autoSaveSuggestions":false}}"#,
+    );
+
+    assert_eq!(loaded.recovery, Some(SettingsRecoveryCode::Migrated));
+    assert_eq!(loaded.settings.schema_version, 5);
+    assert_eq!(
+        loaded.settings.translation.target_language,
+        TranslationTargetLanguage::Ja
+    );
+    assert_eq!(
+        loaded.settings.translation.auto_reference_language,
+        TranslationTargetLanguage::Ko
     );
 }
 
@@ -542,6 +584,31 @@ fn translation_intent_is_bound_to_session_mode_and_target() {
 }
 
 #[test]
+fn automatic_translation_reference_is_part_of_the_bound_intent() {
+    let korean_reference = RewriteIntent::new_with_auto_reference(
+        RewriteMode::Translate,
+        Some(TranslationTargetLanguage::Auto),
+        Some(TranslationTargetLanguage::Ko),
+    )
+    .expect("automatic translation intent should be valid");
+    let japanese_reference = RewriteIntent::new_with_auto_reference(
+        RewriteMode::Translate,
+        Some(TranslationTargetLanguage::Auto),
+        Some(TranslationTargetLanguage::Ja),
+    )
+    .expect("automatic translation intent should be valid");
+
+    assert_ne!(korean_reference, japanese_reference);
+    assert_eq!(
+        RewriteIntent::new(
+            RewriteMode::Translate,
+            Some(TranslationTargetLanguage::Auto),
+        ),
+        Err("translation_auto_reference_required")
+    );
+}
+
+#[test]
 fn translation_prompt_names_target_and_treats_selected_text_only_as_untrusted_data() {
     let intent = RewriteIntent::new(RewriteMode::Translate, Some(TranslationTargetLanguage::Ja))
         .expect("translation intent should be valid");
@@ -560,8 +627,34 @@ fn translation_prompt_names_target_and_treats_selected_text_only_as_untrusted_da
 }
 
 #[test]
+fn automatic_translation_prompt_binds_the_user_reference_and_fallback_languages() {
+    let korean_reference = RewriteIntent::new_with_auto_reference(
+        RewriteMode::Translate,
+        Some(TranslationTargetLanguage::Auto),
+        Some(TranslationTargetLanguage::Ko),
+    )
+    .expect("automatic translation intent should be valid");
+    let english_reference = RewriteIntent::new_with_auto_reference(
+        RewriteMode::Translate,
+        Some(TranslationTargetLanguage::Auto),
+        Some(TranslationTargetLanguage::En),
+    )
+    .expect("automatic translation intent should be valid");
+
+    let korean_prompt = rewrite_prompt("synthetic source", korean_reference);
+    assert!(korean_prompt.contains("Reference language: Korean (ko)"));
+    assert!(korean_prompt.contains("already clearly written in Korean"));
+    assert!(korean_prompt.contains("Fallback language: English (en)"));
+    assert!(korean_prompt.contains("mixed or uncertain"));
+
+    let english_prompt = rewrite_prompt("synthetic source", english_reference);
+    assert!(english_prompt.contains("Reference language: English (en)"));
+    assert!(english_prompt.contains("Fallback language: Korean (ko)"));
+}
+
+#[test]
 fn every_translation_target_is_named_in_the_internal_prompt() {
-    for target in TranslationTargetLanguage::ALL {
+    for target in TranslationTargetLanguage::CONCRETE {
         let intent = RewriteIntent::new(RewriteMode::Translate, Some(target))
             .expect("target should form a valid intent");
         let prompt = rewrite_prompt("synthetic source", intent);
@@ -573,7 +666,7 @@ fn every_translation_target_is_named_in_the_internal_prompt() {
 #[test]
 fn unknown_settings_fields_follow_the_existing_ignore_policy() {
     let loaded = decode_settings(
-        r#"{"schemaVersion":4,"cloudProcessingAcknowledgementVersion":0,"mode":"grammar","restoreClipboard":true,"autoRewrite":true,"shortcut":{"primary":{"modifiers":["CTRL","SHIFT"],"key":"G","display":"Ctrl+Shift+G"}},"translation":{"sourceLanguage":"auto","targetLanguage":"en","applyFormat":"translation_only"},"terminology":{"enabled":true,"activeProfileId":"general","useApprovedTerminology":true,"suggestTerminology":true,"autoSaveSuggestions":false},"futureIgnored":{"synthetic":true}}"#,
+        r#"{"schemaVersion":5,"cloudProcessingAcknowledgementVersion":0,"mode":"grammar","restoreClipboard":true,"autoRewrite":true,"shortcut":{"primary":{"modifiers":["CTRL","SHIFT"],"key":"G","display":"Ctrl+Shift+G"}},"translation":{"sourceLanguage":"auto","targetLanguage":"en","autoReferenceLanguage":"ko","applyFormat":"translation_only"},"terminology":{"enabled":true,"activeProfileId":"general","useApprovedTerminology":true,"suggestTerminology":true,"autoSaveSuggestions":false},"futureIgnored":{"synthetic":true}}"#,
     );
 
     assert_eq!(loaded.recovery, None);
@@ -689,7 +782,7 @@ fn injected_save_failure_after_backup_recovery_keeps_a_valid_recovery_source() {
 #[test]
 fn settings_validation_rejects_noncanonical_or_future_contracts() {
     let mut future = AppSettings::default();
-    future.schema_version = 5;
+    future.schema_version = 6;
     assert_eq!(future.validate(), Err("settings_schema_unsupported"));
 
     let mut forged_display = AppSettings::default();
@@ -701,6 +794,13 @@ fn settings_validation_rejects_noncanonical_or_future_contracts() {
     assert_eq!(
         invalid_source.validate(),
         Err("translation_source_must_be_auto")
+    );
+
+    let mut invalid_reference = AppSettings::default();
+    invalid_reference.translation.auto_reference_language = TranslationTargetLanguage::Auto;
+    assert_eq!(
+        invalid_reference.validate(),
+        Err("translation_auto_reference_invalid")
     );
 }
 
