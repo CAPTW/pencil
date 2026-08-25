@@ -16,9 +16,11 @@
         "title": "Codex Pencil",
         "width": 420,
         "height": 460,
+        "minWidth": 360,
+        "minHeight": 320,
         "decorations": false,
         "transparent": true,
-        "resizable": false,
+        "resizable": true,
         "visible": false,
         "alwaysOnTop": true,
         "skipTaskbar": true

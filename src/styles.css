@@ -71,6 +71,12 @@ button {
 .topbar {
   justify-content: space-between;
   min-height: 38px;
+  cursor: grab;
+  user-select: none;
+}
+
+.topbar:active {
+  cursor: grabbing;
 }
 
 .topbar-actions,

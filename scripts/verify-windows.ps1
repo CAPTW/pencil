@@ -87,6 +87,7 @@ if (-not $codexOk) {
 }
 
 Write-Section "Frontend Checks"
+Invoke-Step "npm run test:window-chrome" { npm run test:window-chrome }
 Invoke-Step "npm run typecheck" { npm run typecheck }
 Invoke-Step "npm run build:frontend" { npm run build:frontend }
 
