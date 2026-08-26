@@ -6,9 +6,10 @@ use crate::{
         RewriteMode, SaveFailurePoint, SettingsRecoveryCode,
     },
     shortcut::{
-        PrimaryShortcut, ShortcutCandidate, ShortcutEventState, ShortcutManager,
-        ShortcutPersistence, ShortcutRegistrar, ShortcutRegistrarError, ShortcutStartupStatus,
-        ShortcutTriggerGate, ShortcutUpdateStatus,
+        route_shortcut_activation, PrimaryShortcut, ShortcutActivation, ShortcutCandidate,
+        ShortcutEventState, ShortcutManager, ShortcutPersistence, ShortcutRegistrar,
+        ShortcutRegistrarError, ShortcutStartupStatus, ShortcutTriggerGate, ShortcutUpdateStatus,
+        WidgetVisibility,
     },
     translation::{
         format_translation, RewriteIntent, TranslationApplyFormat, TranslationTargetLanguage,
@@ -542,6 +543,39 @@ fn shortcut_trigger_gate_accepts_one_press_and_no_repeat_or_release() {
     assert!(!gate.handle(true, ShortcutEventState::Released));
     assert!(gate.handle(true, ShortcutEventState::Pressed));
     assert!(!gate.handle(false, ShortcutEventState::Pressed));
+}
+
+#[test]
+fn active_shortcut_toggles_from_visible_widget_to_hidden_widget() {
+    let mut gate = ShortcutTriggerGate::default();
+
+    assert_eq!(
+        route_shortcut_activation(
+            &mut gate,
+            true,
+            ShortcutEventState::Pressed,
+            WidgetVisibility::Visible,
+        ),
+        Some(ShortcutActivation::HideWidget)
+    );
+    assert_eq!(
+        route_shortcut_activation(
+            &mut gate,
+            true,
+            ShortcutEventState::Released,
+            WidgetVisibility::Visible,
+        ),
+        None
+    );
+    assert_eq!(
+        route_shortcut_activation(
+            &mut gate,
+            true,
+            ShortcutEventState::Pressed,
+            WidgetVisibility::Hidden,
+        ),
+        Some(ShortcutActivation::CaptureSelection)
+    );
 }
 
 #[test]

@@ -1,6 +1,11 @@
 :root {
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --text-recommended: #17201b;
+  --text-instruction: #6a7770;
+  --text-guidance: #35634f;
+  --text-warning: #865a16;
+  --text-danger: #923b32;
   color: #17201b;
   background: transparent;
   font-synthesis: none;
@@ -51,6 +56,10 @@ button {
   border-radius: 8px;
   background: rgba(252, 253, 250, 0.98);
   box-shadow: 0 18px 48px rgba(20, 31, 27, 0.18), 0 3px 12px rgba(20, 31, 27, 0.1);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .topbar,
@@ -510,8 +519,14 @@ h1 {
 
 .terminology-warnings small {
   width: 100%;
-  color: #735f31;
+  color: var(--text-warning);
   font-size: 9px;
+  line-height: 1.35;
+}
+
+.terminology-warnings span {
+  color: var(--text-warning);
+  background: #fff0c8;
 }
 
 .suggestion-list article {
@@ -650,6 +665,8 @@ h1 {
 
 .translation-controls p {
   grid-column: 1 / -1;
+  color: var(--text-instruction);
+  font-size: 10px;
 }
 
 .format-options {
@@ -731,14 +748,14 @@ h1 {
 
 .result-card {
   display: flex;
-  flex: 1;
+  flex: 1 0 auto;
   flex-direction: column;
   gap: 10px;
-  min-height: 0;
-  padding: 11px;
-  border: 1px solid #d5ded7;
+  min-height: 252px;
+  padding: 12px;
+  border: 1px solid #c6d2ca;
   border-radius: 10px;
-  background: #f7faf6;
+  background: #f5f8f4;
 }
 
 .result-heading {
@@ -759,8 +776,9 @@ h1 {
 }
 
 .result-heading > div > span {
-  color: #68756e;
+  color: var(--text-instruction);
   font-size: 10px;
+  line-height: 1.35;
 }
 
 .confidence-badge {
@@ -773,8 +791,8 @@ h1 {
 }
 
 .result-area {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 132px;
+  min-height: 132px;
 }
 
 .result-area textarea {
@@ -783,14 +801,16 @@ h1 {
   min-height: 132px;
   resize: none;
   padding: 13px 14px;
-  border: 1px solid #cfd8d1;
+  border: 1px solid #aebdb3;
   border-radius: 8px;
   outline: none;
-  color: #17201b;
-  font-size: 15px;
-  line-height: 1.6;
+  color: var(--text-recommended);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.55;
   letter-spacing: 0.005em;
   background: #ffffff;
+  box-shadow: inset 0 1px 2px rgba(23, 32, 27, 0.05);
 }
 
 .result-area textarea:focus {
@@ -833,6 +853,8 @@ h1 {
 .rewrite-details {
   display: grid;
   gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #d8e1da;
 }
 
 .rewrite-summary {
@@ -840,8 +862,8 @@ h1 {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  color: #506058;
-  font-size: 11px;
+  color: var(--text-guidance);
+  font-size: 10px;
   line-height: 1.3;
 }
 
@@ -854,8 +876,11 @@ h1 {
 
 .result-actions {
   display: grid;
+  flex: 0 0 auto;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #cbd6ce;
 }
 
 .result-actions button {
@@ -868,8 +893,8 @@ h1 {
   max-height: 52px;
   margin: 0;
   padding: 0 0 0 17px;
-  color: #506058;
-  font-size: 11px;
+  color: var(--text-instruction);
+  font-size: 10px;
   line-height: 1.3;
   overflow: auto;
 }
@@ -917,12 +942,13 @@ h1 {
 }
 
 .error-row {
+  flex: 0 0 auto;
   gap: 6px;
   padding: 8px 9px;
   border: 1px solid #e6c6c3;
   border-radius: 7px;
-  color: #8b332b;
-  font-size: 11px;
+  color: var(--text-danger);
+  font-size: 10px;
   line-height: 1.3;
   background: #fff4f2;
 }

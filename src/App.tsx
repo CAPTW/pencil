@@ -1173,6 +1173,7 @@ export default function App() {
         setSelection(null);
         setStatus("Applied");
         void refreshTerminology();
+        await dismiss();
         return;
       }
       if (outcome.status === "copied_fallback") {
