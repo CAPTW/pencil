@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "codex-pencil://instant-selection/corpus.schema.v1",
+  "title": "Codex Pencil Instant Selection synthetic corpus case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "caseId",
+    "category",
+    "language",
+    "mode",
+    "source",
+    "sourceSha256",
+    "expectedSuggestions",
+    "allowedAlternatives",
+    "expectedOutputs",
+    "protectedSpansUtf16",
+    "preserveLiterals",
+    "tags"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "caseId": { "type": "string", "minLength": 1 },
+    "category": {
+      "enum": [
+        "KO_SPACING",
+        "KO_TYPO",
+        "KO_BASIC_GRAMMAR",
+        "EN_SPELLING",
+        "EN_BASIC_GRAMMAR",
+        "MIXED_LANGUAGE",
+        "PROTECTED_TERMINOLOGY",
+        "STRUCTURE_PRESERVATION",
+        "NO_CHANGE",
+        "ADVERSARIAL_PROMPT_LIKE"
+      ]
+    },
+    "language": { "enum": ["ko", "en", "mixed"] },
+    "mode": { "const": "correction" },
+    "source": { "type": "string", "minLength": 1, "maxLength": 12000 },
+    "sourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "expectedSuggestions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/expectedSuggestion" }
+    },
+    "allowedAlternatives": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/allowedAlternative" }
+    },
+    "expectedOutputs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "protectedSpansUtf16": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/protectedSpan" }
+    },
+    "preserveLiterals": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "tags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "expectedSuggestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startUtf16", "endUtf16", "replacement", "kind", "ruleCode"],
+      "properties": {
+        "startUtf16": { "type": "integer", "minimum": 0 },
+        "endUtf16": { "type": "integer", "minimum": 1 },
+        "replacement": { "type": "string" },
+        "kind": { "enum": ["spelling", "spacing", "basic_grammar", "punctuation"] },
+        "ruleCode": { "type": "string", "minLength": 1 }
+      }
+    },
+    "allowedAlternative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["suggestionIndex", "replacement", "expectedOutput"],
+      "properties": {
+        "suggestionIndex": { "type": "integer", "minimum": 0 },
+        "replacement": { "type": "string" },
+        "expectedOutput": { "type": "string" }
+      }
+    },
+    "protectedSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startUtf16", "endUtf16", "label"],
+      "properties": {
+        "startUtf16": { "type": "integer", "minimum": 0 },
+        "endUtf16": { "type": "integer", "minimum": 1 },
+        "label": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

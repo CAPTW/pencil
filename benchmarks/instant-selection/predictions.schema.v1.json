@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "codex-pencil://instant-selection/predictions.schema.v1",
+  "title": "Codex Pencil Instant Selection benchmark predictions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "engine", "cases"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "engine": { "$ref": "#/$defs/engine" },
+    "cases": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/casePrediction" }
+    }
+  },
+  "$defs": {
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "kind",
+        "coldStartMs",
+        "peakRssMiB",
+        "artifactBytes",
+        "networkUsed",
+        "persistentCacheUsed"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "coldStartMs": { "type": "number", "minimum": 0 },
+        "peakRssMiB": { "type": "number", "minimum": 0 },
+        "artifactBytes": { "type": "integer", "minimum": 0 },
+        "networkUsed": { "const": false },
+        "persistentCacheUsed": { "const": false }
+      }
+    },
+    "casePrediction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "sourceSha256", "latencyMs", "suggestions"],
+      "properties": {
+        "caseId": { "type": "string", "minLength": 1 },
+        "sourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "latencyMs": { "type": "number", "minimum": 0 },
+        "suggestions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/suggestion" }
+        }
+      }
+    },
+    "suggestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "suggestionId",
+        "startUtf16",
+        "endUtf16",
+        "replacement",
+        "kind",
+        "ruleCode",
+        "engineVersion"
+      ],
+      "properties": {
+        "suggestionId": { "type": "string", "minLength": 1 },
+        "startUtf16": { "type": "integer", "minimum": 0 },
+        "endUtf16": { "type": "integer", "minimum": 1 },
+        "replacement": { "type": "string" },
+        "kind": { "enum": ["spelling", "spacing", "basic_grammar", "punctuation"] },
+        "ruleCode": { "type": "string", "minLength": 1 },
+        "engineVersion": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
