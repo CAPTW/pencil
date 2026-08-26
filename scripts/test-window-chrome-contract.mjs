@@ -78,3 +78,23 @@ assert.ok(
   appSource.includes("startWindowDrag(event, getCurrentWindow())"),
   "drag handler must call the tested policy with the current Tauri window",
 );
+
+const appliedBranch = appSource.match(
+  /if \(outcome\.status === "applied"\) \{(?<body>[\s\S]*?)\n\s*\}/,
+);
+assert.ok(appliedBranch?.groups?.body, "successful Apply branch must exist");
+assert.match(
+  appliedBranch.groups.body,
+  /await dismiss\(\)/,
+  "successful Apply must automatically hide and clear the Widget through the normal dismiss path",
+);
+
+const copiedFallbackBranch = appSource.match(
+  /if \(outcome\.status === "copied_fallback"\) \{(?<body>[\s\S]*?)\n\s*\}/,
+);
+assert.ok(copiedFallbackBranch?.groups?.body, "copied fallback branch must exist");
+assert.doesNotMatch(
+  copiedFallbackBranch.groups.body,
+  /dismiss\(/,
+  "manual-paste fallback must remain visible so the warning cannot be lost",
+);

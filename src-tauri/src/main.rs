@@ -62,9 +62,10 @@ use prerequisites::PrerequisiteReport;
 use serde::Serialize;
 use settings::{AppSettings, RewriteMode, SettingsRecoveryCode, TerminologySettings};
 use shortcut::{
-    dispatch_shortcut_trigger, PrimaryShortcut, ShortcutCandidate, ShortcutEventState,
-    ShortcutManager, ShortcutPersistence, ShortcutRegistrar, ShortcutRegistrarError,
-    ShortcutStartupStatus, ShortcutTriggerGate, ShortcutUpdateStatus,
+    route_shortcut_activation, PrimaryShortcut, ShortcutActivation, ShortcutCandidate,
+    ShortcutEventState, ShortcutManager, ShortcutPersistence, ShortcutRegistrar,
+    ShortcutRegistrarError, ShortcutStartupStatus, ShortcutTriggerGate, ShortcutUpdateStatus,
+    WidgetVisibility,
 };
 use std::{
     collections::HashSet,
@@ -1270,17 +1271,38 @@ fn global_shortcut_plugin() -> TauriPlugin<tauri::Wry> {
             } else {
                 ShortcutEventState::Released
             };
-            let should_capture = state.shortcut_trigger.lock().is_ok_and(|mut trigger| {
-                dispatch_shortcut_trigger(&mut trigger, is_active, event_state, || {})
+            let widget_visibility = if app
+                .get_webview_window("main")
+                .and_then(|window| window.is_visible().ok())
+                .unwrap_or(false)
+            {
+                WidgetVisibility::Visible
+            } else {
+                WidgetVisibility::Hidden
+            };
+            let activation = state.shortcut_trigger.lock().ok().and_then(|mut trigger| {
+                route_shortcut_activation(&mut trigger, is_active, event_state, widget_visibility)
             });
-            if should_capture {
-                let app = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(message) = capture_from_hotkey(app.clone()).await {
-                        let _ = app.emit("capture-error", CaptureErrorEvent { message });
-                        let _ = show_main_window(&app, None);
-                    }
-                });
+            match activation {
+                Some(ShortcutActivation::CaptureSelection) => {
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(message) = capture_from_hotkey(app.clone()).await {
+                            let _ = app.emit("capture-error", CaptureErrorEvent { message });
+                            let _ = show_main_window(&app, None);
+                        }
+                    });
+                }
+                Some(ShortcutActivation::HideWidget) => {
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let state = app.state::<AppState>();
+                        let active_turn = state.capture.lock().await.cancel_active_with_turn();
+                        interrupt_active_turn(state.inner(), active_turn).await;
+                        let _ = hide_main_window(&app);
+                    });
+                }
+                None => {}
             }
         })
         .build()

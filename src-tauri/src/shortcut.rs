@@ -193,6 +193,18 @@ pub(crate) enum ShortcutEventState {
     Released,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ShortcutActivation {
+    CaptureSelection,
+    HideWidget,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WidgetVisibility {
+    Hidden,
+    Visible,
+}
+
 #[derive(Default)]
 pub(crate) struct ShortcutTriggerGate {
     pressed: bool,
@@ -213,6 +225,23 @@ impl ShortcutTriggerGate {
             }
         }
     }
+}
+
+pub(crate) fn route_shortcut_activation(
+    gate: &mut ShortcutTriggerGate,
+    is_active: bool,
+    state: ShortcutEventState,
+    widget_visibility: WidgetVisibility,
+) -> Option<ShortcutActivation> {
+    if !dispatch_shortcut_trigger(gate, is_active, state, || {}) {
+        return None;
+    }
+
+    Some(if widget_visibility == WidgetVisibility::Visible {
+        ShortcutActivation::HideWidget
+    } else {
+        ShortcutActivation::CaptureSelection
+    })
 }
 
 pub(crate) fn dispatch_shortcut_trigger(
