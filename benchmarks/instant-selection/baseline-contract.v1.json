@@ -1,0 +1,370 @@
+{
+  "schemaVersion": 1,
+  "taskId": "GRAMMAR-P3-01-INSTANT-SELECTION-ENGINE-ARCHITECTURE-PRIVACY-AND-BENCHMARK-BASELINE",
+  "currentImplementationAuthority": "fb988fe810bbb09804a59e40161e6d1aef1bca8b",
+  "currentProductAcceptanceAuthority": "PASS_GRAMMAR_P1_03_PERSONAL_MVP_ACCEPTANCE",
+  "threeCommitProductAcceptance": "NOT_INFERRED",
+  "p2_02CurrentImplementationPresence": "COMMITTED_POST_CLOSURE",
+  "p2_02CurrentAcceptance": "NOT_INDEPENDENTLY_ACCEPTED",
+  "historicalP2_02Disposition": "DEFERRED_NOT_ACCEPTED_NOT_COMMITTED",
+  "projectSourceStatus": "HISTORICALLY_VALID_BUT_STALE_FOR_CURRENT_IMPLEMENTATION",
+  "triggerContract": {
+    "flow": "USER_SELECTS_TEXT_THEN_EXPLICIT_SHORTCUT_THEN_CURRENT_CAPTURE",
+    "userSelectedTextOnly": true,
+    "explicitShortcutOnly": true,
+    "continuousMonitoring": false,
+    "clipboardPolling": false,
+    "keystrokeStreamMonitoring": false,
+    "documentSubscription": false,
+    "backgroundDocumentScan": false,
+    "inlineAssistAuthorized": false,
+    "editorAdaptersAuthorized": false
+  },
+  "modeCapabilityMatrix": {
+    "correction": "INSTANT_PLUS_DEEP",
+    "natural": "DEEP_ONLY",
+    "professional": "DEEP_ONLY",
+    "concise": "DEEP_ONLY",
+    "summary": "DEEP_ONLY",
+    "translation": "DEEP_ONLY"
+  },
+  "rangeContract": {
+    "unit": "UTF16_CODE_UNIT",
+    "interval": "HALF_OPEN",
+    "fields": {
+      "start": "startUtf16",
+      "end": "endUtf16"
+    },
+    "validity": "0 <= startUtf16 < endUtf16 <= source.length",
+    "surrogatePairSplitAllowed": false,
+    "overlapAllowed": false,
+    "applyOrder": "DESCENDING_START_UTF16",
+    "sourceIdentityRequired": true,
+    "rustConversion": "CHECKED_UTF16_TO_UTF8_BOUNDARY_CONVERSION"
+  },
+  "sourceIdentityContract": {
+    "fields": [
+      "sessionId",
+      "generation",
+      "intentRevision",
+      "terminologyRevision",
+      "sourceSha256",
+      "analyzerId",
+      "analyzerVersion",
+      "mode"
+    ],
+    "allFieldsMustMatch": true,
+    "mismatchDisposition": "STALE_NO_PROMOTION_NO_APPLY_NO_MUTATION"
+  },
+  "suggestionContract": {
+    "fields": [
+      "suggestionId",
+      "sourceIdentity",
+      "kind",
+      "startUtf16",
+      "endUtf16",
+      "replacement",
+      "messageCode",
+      "ruleCode",
+      "confidenceBand",
+      "engineId",
+      "engineVersion"
+    ],
+    "allowedInitialKinds": [
+      "spelling",
+      "spacing",
+      "basic_grammar",
+      "punctuation"
+    ],
+    "freeFormExplanationRequired": false,
+    "automaticApplyAllowed": false
+  },
+  "cacheContract": {
+    "persistence": "MEMORY_ONLY",
+    "scope": "ACTIVE_CAPTURE_SESSION_ONLY",
+    "diskPersistence": false,
+    "settingsPersistence": false,
+    "telemetryPersistence": false,
+    "maxActiveSourceIdentities": 1,
+    "maxInstantResultSets": 1,
+    "maxOptionalDeepCandidates": 1,
+    "reuseAcrossSessions": false,
+    "clearOn": [
+      "RECAPTURE",
+      "CANCEL",
+      "DISMISS",
+      "SUCCESSFUL_APPLY",
+      "APP_SHUTDOWN"
+    ],
+    "invalidateOn": [
+      "MODE_CHANGE",
+      "TARGET_LANGUAGE_CHANGE",
+      "ACTIVE_PROFILE_CHANGE",
+      "TERMINOLOGY_REVISION_CHANGE",
+      "USER_SOURCE_CHANGE",
+      "SOURCE_IDENTITY_CHANGE"
+    ]
+  },
+  "reconciliationContract": {
+    "states": [
+      "Captured",
+      "InstantAnalyzing",
+      "InstantReady",
+      "DeepAnalyzing",
+      "DeepReady",
+      "UserEdited",
+      "Applied",
+      "Cancelled",
+      "Stale"
+    ],
+    "instantMayBeFirstReviewableCandidate": true,
+    "deepMaySilentlyReplaceInstant": false,
+    "deepMaySilentlyReplaceUserEdit": false,
+    "deepAfterUserEdit": "OPTIONAL_ALTERNATE_ONLY",
+    "switchToDeepRequiresExplicitUserAction": true,
+    "applyRequiresExplicitUserAction": true,
+    "staleResultMutationAllowed": false,
+    "deepConcurrencyRequiresExistingDisclosure": true,
+    "currentDeepAnalyzer": "CODEX_APP_SERVER_STDIO_PRESERVED"
+  },
+  "userEditProtectionContract": {
+    "dirtyStateRequired": true,
+    "draftRevisionRequired": true,
+    "deepMayOverwriteUserEdit": false,
+    "deepAfterUserEdit": "OPTIONAL_ALTERNATE_ONLY",
+    "candidateSwitchRequiresExplicitUserAction": true,
+    "candidateSwitchMustPreserveRecoverableUserDraft": true
+  },
+  "privacyContract": {
+    "allowedInstantInputs": [
+      "EXACT_CURRENT_SELECTED_SOURCE",
+      "SOURCE_IDENTITY",
+      "CORRECTION_MODE",
+      "ALREADY_AVAILABLE_SOURCE_LANGUAGE_HINT",
+      "MATCHED_APPROVED_TERMINOLOGY_NEEDED_FOR_SELECTED_SOURCE",
+      "CONTENT_FREE_ANALYZER_SETTINGS"
+    ],
+    "forbiddenInstantInputs": [
+      "FULL_TERMINOLOGY_DICTIONARY",
+      "SUGGESTED_OR_DISABLED_TERMS",
+      "PROFILE_NOTES",
+      "PRIOR_SELECTIONS",
+      "DOCUMENT_HISTORY",
+      "SURROUNDING_UNSELECTED_TEXT",
+      "HWND_OR_PID_WITHOUT_FUTURE_PROVEN_NEED",
+      "CLIPBOARD_HISTORY",
+      "AUTH_DATA",
+      "CODEX_STATE",
+      "USER_ACCOUNT_DATA"
+    ],
+    "continuousCollection": false,
+    "screenshot": false,
+    "ocr": false,
+    "screenRecording": false,
+    "browserDomScraping": false,
+    "officeOrHwpDocumentScraping": false
+  },
+  "networkContract": {
+    "instantAnalyzerNetworkAllowed": false,
+    "listenerAllowed": false,
+    "deepAnalyzerCloudPathPreserved": true,
+    "deepAnalyzerDisclosurePreserved": true,
+    "deepTransport": "CODEX_APP_SERVER_STDIO"
+  },
+  "loggingContract": {
+    "contentPersistenceAllowed": false,
+    "selectedTextLoggingAllowed": false,
+    "replacementLoggingAllowed": false,
+    "promptLoggingAllowed": false,
+    "terminologyValueLoggingAllowed": false,
+    "authLoggingAllowed": false,
+    "allowedDiagnostics": [
+      "ENUM_CODES",
+      "COUNTS",
+      "BOOLEANS",
+      "BOUNDED_TIMINGS",
+      "CONTENT_FREE_HASHES"
+    ]
+  },
+  "benchmarkContract": {
+    "corpus": "SYNTHETIC_ONLY",
+    "caseCount": 120,
+    "rangeUnit": "UTF16_CODE_UNIT",
+    "evaluator": "DETERMINISTIC_NODE_BUILTINS_ONLY",
+    "networkAllowed": false,
+    "modelInvocationAllowed": false,
+    "productEngineBenchmark": "NOT_EXECUTED",
+    "perfectOracleIsProductEvidence": false,
+    "metricFamilies": [
+      "SAFETY",
+      "QUALITY",
+      "LATENCY",
+      "RESOURCE"
+    ]
+  },
+  "provisionalThresholds": {
+    "safety": {
+      "invalidSuggestionCount": 0,
+      "overlapViolationCount": 0,
+      "sourceIdentityMismatchCount": 0,
+      "protectedSpanViolationCount": 0,
+      "preserveLiteralViolationCount": 0,
+      "networkUsed": false,
+      "persistentCacheUsed": false
+    },
+    "quality": {
+      "exactPrecisionMin": 0.98,
+      "exactRecallMin": 0.6,
+      "exactF1Min": 0.74,
+      "caseOutputExactRateMin": 0.7,
+      "noChangeFalsePositiveRateMax": 0.01
+    },
+    "latency": {
+      "utf16_1_512_p95MsMax": 250,
+      "utf16_513_2048_p95MsMax": 500,
+      "utf16_2049_12000_p95MsMax": 750,
+      "coldStartMsMax": 1000
+    },
+    "resources": {
+      "peakRssMiBMax": 384,
+      "additionalArtifactBytesMax": 314572800
+    }
+  },
+  "engineCandidateMatrix": [
+    {
+      "id": "DETERMINISTIC_IN_REPOSITORY_RULE_ENGINE",
+      "scores": {
+        "privacyFit": 5,
+        "offlineGuarantee": 5,
+        "startupLatency": 5,
+        "perRequestLatency": 5,
+        "conservativePrecisionPotential": 5,
+        "koreanCoverage": 2,
+        "englishCoverage": 2,
+        "mixedLanguageCoverage": 2,
+        "protectedTerminologyControl": 5,
+        "deterministicOutput": 5,
+        "dependencyImpact": 5,
+        "binaryArtifactSize": 5,
+        "memoryFootprint": 5,
+        "integrationComplexity": 4,
+        "licensingProvenanceRisk": 5,
+        "maintenanceCost": 3,
+        "testability": 5,
+        "rollbackSimplicity": 5
+      },
+      "sourceBasis": "CURRENT_REPOSITORY_SUPPORTS_DEPENDENCY_FREE_DETERMINISTIC_RUST_AND_NODE_CONTRACTS",
+      "unknowns": []
+    },
+    {
+      "id": "WINDOWS_SPELL_CHECKING_API_ADAPTER",
+      "scores": {
+        "privacyFit": 4,
+        "offlineGuarantee": 3,
+        "startupLatency": 4,
+        "perRequestLatency": 4,
+        "conservativePrecisionPotential": 4,
+        "koreanCoverage": 2,
+        "englishCoverage": 4,
+        "mixedLanguageCoverage": 2,
+        "protectedTerminologyControl": 3,
+        "deterministicOutput": 3,
+        "dependencyImpact": 3,
+        "binaryArtifactSize": 5,
+        "memoryFootprint": 4,
+        "integrationComplexity": 2,
+        "licensingProvenanceRisk": 4,
+        "maintenanceCost": 3,
+        "testability": 2,
+        "rollbackSimplicity": 4
+      },
+      "sourceBasis": "WINDOWS_ONLY_PRODUCT_BOUNDARY_IS_SOURCE_BACKED",
+      "unknowns": [
+        "UNVERIFIED_REQUIRES_SEPARATE_RESEARCH"
+      ]
+    },
+    {
+      "id": "HYBRID_RULE_AND_WINDOWS_API",
+      "scores": {
+        "privacyFit": 4,
+        "offlineGuarantee": 3,
+        "startupLatency": 4,
+        "perRequestLatency": 4,
+        "conservativePrecisionPotential": 5,
+        "koreanCoverage": 3,
+        "englishCoverage": 4,
+        "mixedLanguageCoverage": 3,
+        "protectedTerminologyControl": 5,
+        "deterministicOutput": 3,
+        "dependencyImpact": 3,
+        "binaryArtifactSize": 4,
+        "memoryFootprint": 4,
+        "integrationComplexity": 1,
+        "licensingProvenanceRisk": 4,
+        "maintenanceCost": 2,
+        "testability": 3,
+        "rollbackSimplicity": 3
+      },
+      "sourceBasis": "RULE_PORTION_SOURCE_BACKED_WINDOWS_PORTION_UNVERIFIED",
+      "unknowns": [
+        "UNVERIFIED_REQUIRES_SEPARATE_RESEARCH"
+      ]
+    },
+    {
+      "id": "EMBEDDED_SMALL_LOCAL_MODEL",
+      "scores": {
+        "privacyFit": 4,
+        "offlineGuarantee": 4,
+        "startupLatency": 1,
+        "perRequestLatency": 2,
+        "conservativePrecisionPotential": 3,
+        "koreanCoverage": 3,
+        "englishCoverage": 3,
+        "mixedLanguageCoverage": 3,
+        "protectedTerminologyControl": 2,
+        "deterministicOutput": 1,
+        "dependencyImpact": 1,
+        "binaryArtifactSize": 1,
+        "memoryFootprint": 1,
+        "integrationComplexity": 1,
+        "licensingProvenanceRisk": 1,
+        "maintenanceCost": 1,
+        "testability": 2,
+        "rollbackSimplicity": 2
+      },
+      "sourceBasis": "NO_MODEL_OR_RUNTIME_EXISTS_IN_CURRENT_REPOSITORY",
+      "unknowns": [
+        "UNVERIFIED_REQUIRES_SEPARATE_RESEARCH"
+      ]
+    },
+    {
+      "id": "CURRENT_CLOUD_DEEP_ANALYZER_ONLY",
+      "scores": {
+        "privacyFit": 3,
+        "offlineGuarantee": 1,
+        "startupLatency": 1,
+        "perRequestLatency": 1,
+        "conservativePrecisionPotential": 4,
+        "koreanCoverage": 4,
+        "englishCoverage": 4,
+        "mixedLanguageCoverage": 4,
+        "protectedTerminologyControl": 4,
+        "deterministicOutput": 2,
+        "dependencyImpact": 5,
+        "binaryArtifactSize": 5,
+        "memoryFootprint": 4,
+        "integrationComplexity": 5,
+        "licensingProvenanceRisk": 4,
+        "maintenanceCost": 4,
+        "testability": 3,
+        "rollbackSimplicity": 5
+      },
+      "sourceBasis": "CURRENT_CODEX_APP_SERVER_STDIO_IMPLEMENTATION",
+      "unknowns": []
+    }
+  ],
+  "recommendedP3_02Strategy": "DETERMINISTIC_RULE_ENGINE_FIRST",
+  "provisionalNextTask": "GRAMMAR-P3-02-INSTANT-SELECTION-ENGINE-FOUNDATION-IMPLEMENTATION-AND-QUALIFICATION",
+  "productEngineBenchmarkExecuted": false,
+  "automaticNextTask": null
+}

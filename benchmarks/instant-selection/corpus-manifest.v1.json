@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "taskId": "GRAMMAR-P3-01-INSTANT-SELECTION-ENGINE-ARCHITECTURE-PRIVACY-AND-BENCHMARK-BASELINE",
+  "generatorPath": "scripts/generate-instant-selection-corpus.mjs",
+  "generatorSha256": "1e6219e82e139d9bf020a47f67b5a06040d124b84cca9a25e43506e53b279c35",
+  "schemaPath": "benchmarks/instant-selection/corpus.schema.v1.json",
+  "schemaSha256": "9620bc70ba087867f116b5a4275ccc17f77b5405cf4d7679c4eb9ac5bc563ed4",
+  "corpusPath": "benchmarks/instant-selection/corpus.synthetic.v1.jsonl",
+  "corpusBytes": 75957,
+  "corpusSha256": "a321a4e6b0f1356c0f1ab0271f94fbd38bff3743f2dda917ed2b9b358297766c",
+  "caseCount": 120,
+  "categoryCounts": {
+    "ADVERSARIAL_PROMPT_LIKE": 12,
+    "EN_BASIC_GRAMMAR": 12,
+    "EN_SPELLING": 12,
+    "KO_BASIC_GRAMMAR": 12,
+    "KO_SPACING": 16,
+    "KO_TYPO": 12,
+    "MIXED_LANGUAGE": 8,
+    "NO_CHANGE": 12,
+    "PROTECTED_TERMINOLOGY": 12,
+    "STRUCTURE_PRESERVATION": 12
+  },
+  "languageCounts": {
+    "en": 30,
+    "ko": 82,
+    "mixed": 8
+  },
+  "noChangeCount": 12,
+  "syntheticOnly": true,
+  "externalSourceCount": 0,
+  "containsUserContent": false,
+  "containsProductionContent": false,
+  "containsClipboardContent": false,
+  "lineEnding": "LF",
+  "bom": false,
+  "finalLf": true
+}
