@@ -1,5 +1,6 @@
 use crate::provider::{ProviderKind, ProviderSnapshot};
 use crate::settings::{AppSettings, ONBOARDING_VERSION, SETTINGS_SCHEMA_VERSION};
+use crate::writing_contract::WRITING_CONTRACT_VERSION;
 use serde::Serialize;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -50,6 +51,7 @@ pub struct DiagnosticSnapshotV1 {
     pub providers: Vec<ProviderDiagnostic>,
     pub cloud_disclosure_version_acknowledged: u32,
     pub instant_engine_available: bool,
+    pub writing_contract_version: u32,
     pub current_app_process_id: u32,
     pub feature_flags: Vec<String>,
     pub diagnostic_id: String,
@@ -141,9 +143,12 @@ pub fn build_snapshot(
             .collect(),
         cloud_disclosure_version_acknowledged: settings.cloud_processing_acknowledgement_version,
         instant_engine_available: true,
+        writing_contract_version: WRITING_CONTRACT_VERSION,
         current_app_process_id: std::process::id(),
         feature_flags: vec![
             format!("onboarding_version={ONBOARDING_VERSION}"),
+            format!("writing_contract={WRITING_CONTRACT_VERSION}"),
+            "result_review=1".to_string(),
             "p3b_not_implemented".to_string(),
         ],
         diagnostic_id: Uuid::new_v4().to_string(),
@@ -185,5 +190,6 @@ mod tests {
         assert!(!json.contains("replacement"));
         assert!(!json.contains("USERPROFILE"));
         assert!(!json.contains("selectedText"));
+        assert!(json.contains("writingContractVersion"));
     }
 }

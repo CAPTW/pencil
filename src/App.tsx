@@ -5,6 +5,7 @@ import {
   Check,
   BookOpen,
   ClipboardCheck,
+  Copy,
   Download,
   Edit3,
   Languages,
@@ -95,6 +96,7 @@ import {
   type TerminologySuggestion,
 } from "./terminologyContract";
 import { startWindowDrag } from "./windowChromeContract";
+import { reviewChangeCount, reviewDiff } from "./resultReview";
 
 type AuthStatus = {
   loggedIn: boolean;
@@ -111,6 +113,7 @@ type DeviceLogin = {
 type ActiveSelection = {
   token: CaptureToken;
   charCount: number;
+  sourceText: string;
 };
 
 type CaptureError = {
@@ -309,6 +312,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [recordingShortcut, setRecordingShortcut] = useState(false);
   const [shortcutCandidateLabel, setShortcutCandidateLabel] = useState<string | null>(null);
+  const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const modeRef = useRef<RewriteMode>(DEFAULT_SETTINGS.mode);
   const providerRef = useRef<ProviderKind>(DEFAULT_SETTINGS.activeProvider);
   const providerAckRef = useRef(0);
@@ -467,7 +471,13 @@ export default function App() {
       ) {
         return;
       }
-      setError(toErrorMessage(nextError));
+      const message = toErrorMessage(nextError);
+      if (/cancel|interrupt/i.test(message)) {
+        setError(null);
+        setStatus("Rewrite cancelled");
+        return;
+      }
+      setError(message);
       setStatus("Rewrite failed");
     } finally {
       if (sameRewriteIntent(rewritingIntentRef.current, requestedIntent)) {
@@ -476,6 +486,33 @@ export default function App() {
       }
     }
   }, []);
+
+  const cancelRewrite = useCallback(async () => {
+    try {
+      await invoke("cancel_rewrite");
+      setStatus("Rewrite cancelled");
+    } catch (nextError) {
+      setError(toErrorMessage(nextError));
+    }
+  }, []);
+
+  const copyResult = useCallback(async () => {
+    if (!draft) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(draft);
+      setStatus("Result copied");
+    } catch (nextError) {
+      setError(toErrorMessage(nextError));
+    }
+  }, [draft]);
+
+  useEffect(() => {
+    if (!settingsOpen && !isRewriting && (result || instantRuntime.instant)) {
+      resultHeadingRef.current?.focus();
+    }
+  }, [result, instantRuntime.instant, isRewriting, settingsOpen]);
 
   useEffect(() => {
     let unlistenSelection: UnlistenFn | undefined;
@@ -602,7 +639,11 @@ export default function App() {
       rewritingIntentRef.current = null;
       resultIntentRef.current = null;
       applyingTokenRef.current = null;
-      setSelection({ token, charCount: Array.from(payload.selectedText).length });
+      setSelection({
+        token,
+        charCount: Array.from(payload.selectedText).length,
+        sourceText: payload.selectedText,
+      });
       setInstantRuntime(captureReset(EMPTY_INSTANT_RUNTIME_STATE, token.sessionId, token.generation));
       setResult(null);
       setDraft("");
@@ -1245,7 +1286,10 @@ export default function App() {
   async function applyReplacement() {
     const token = currentTokenRef.current;
     const intent = currentIntentRef.current;
-    if (!token || !intent || !sameRewriteIntent(resultIntentRef.current, intent) || draft.length === 0) {
+    if (!token || !intent || draft.length === 0) {
+      return;
+    }
+    if (result && !sameRewriteIntent(resultIntentRef.current, intent)) {
       return;
     }
     const draftLimit = validateFrontendTextLimit("final_apply", draft);
@@ -1379,7 +1423,14 @@ export default function App() {
 
   const activeProviderStatus = providerSnapshot?.statuses.find((item) => item.kind === settings.activeProvider) ?? null;
   const providerReady = activeProviderStatus?.state === "ready" || (settings.activeProvider === "codex" && auth?.loggedIn === true);
-  const canRewrite = Boolean(selection && providerReady && !isRewriting && !result);
+  const canRunDeep = Boolean(selection && providerReady && !isRewriting && !isApplying);
+  const canCopy = Boolean(draft.length > 0 && !isRewriting);
+  const canCancel = isRewriting;
+  const canDismissResult = Boolean(selection && !isApplying);
+  const reviewSpans = useMemo(
+    () => (selection && draft ? reviewDiff(selection.sourceText, draft) : []),
+    [selection, draft],
+  );
   const canApply = Boolean(
     selection &&
       (result || instantRuntime.activeKind === "instant") &&
@@ -1981,7 +2032,9 @@ export default function App() {
                     : `Press ${settings.shortcut.primary.display}`}
                 </span>
               </div>
-              <span className="status-pill">{status}</span>
+              <span className="status-pill" role="status" aria-live="polite">
+                {status}
+              </span>
             </div>
 
             {settings.mode === "translate" ? (
@@ -2076,10 +2129,21 @@ export default function App() {
               </label>
             </div>
 
-            <section className="result-card" aria-label="Editable rewrite result">
+            <section
+              className="result-card"
+              aria-label="Editable rewrite result"
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && isRewriting) {
+                  event.preventDefault();
+                  void cancelRewrite();
+                }
+              }}
+            >
               <div className="result-heading">
                 <div>
-                  <strong>{settings.mode === "translate" ? "Translation" : "Replacement"}</strong>
+                  <h2 ref={resultHeadingRef} tabIndex={-1} className="result-title">
+                    {settings.mode === "translate" ? "Translation" : "Replacement"}
+                  </h2>
                   <span>
                     {instantRuntime.activeKind === "instant"
                       ? "Instant local candidate"
@@ -2205,14 +2269,77 @@ export default function App() {
                 </div>
               ) : null}
 
+              {selection && draft && reviewChangeCount(reviewSpans) > 0 ? (
+                <div className="result-review" data-testid="result-review" aria-label="Source and result review">
+                  <small>
+                    {reviewChangeCount(reviewSpans)} in-memory change
+                    {reviewChangeCount(reviewSpans) === 1 ? "" : "s"}
+                  </small>
+                  <p className="result-review-source">
+                    {reviewSpans.map((span, index) => (
+                      <span key={`${span.op}-${index}`} className={`review-${span.op}`}>
+                        {span.text}
+                      </span>
+                    ))}
+                  </p>
+                </div>
+              ) : null}
+
               <div className="result-actions">
-                <button className="secondary-button" type="button" onClick={() => rewrite()} disabled={!canRewrite}>
-                  <RefreshCcw size={16} />
-                  Rewrite
-                </button>
-                <button className="primary-button" type="button" onClick={applyReplacement} disabled={!canApply}>
+                <button
+                  className="primary-button"
+                  type="button"
+                  data-testid="apply-result"
+                  aria-label="Apply result"
+                  onClick={applyReplacement}
+                  disabled={!canApply}
+                >
                   {isApplying ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
                   Apply
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  data-testid="copy-result"
+                  aria-label="Copy result"
+                  onClick={() => void copyResult()}
+                  disabled={!canCopy}
+                >
+                  <Copy size={16} />
+                  Copy
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  data-testid="run-deep"
+                  aria-label="Run Deep"
+                  onClick={() => void rewrite()}
+                  disabled={!canRunDeep}
+                >
+                  <RefreshCcw size={16} />
+                  Run Deep
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  data-testid="cancel-rewrite"
+                  aria-label="Cancel rewrite"
+                  onClick={() => void cancelRewrite()}
+                  disabled={!canCancel}
+                >
+                  <RotateCcw size={16} />
+                  Cancel
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  data-testid="dismiss-result"
+                  aria-label="Dismiss result"
+                  onClick={() => void dismiss()}
+                  disabled={!canDismissResult}
+                >
+                  <X size={16} />
+                  Dismiss
                 </button>
               </div>
             </section>

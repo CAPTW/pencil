@@ -121,21 +121,11 @@ fn parse_agy_result(stdout: &str, mode: RewriteMode) -> Result<RewriteResult, Pr
 }
 
 fn parse_payload(text: &str, mode: RewriteMode) -> Result<RewriteResult, ProviderError> {
-    let trimmed = text.trim();
-    let json_slice = if let (Some(start), Some(end)) = (trimmed.find('{'), trimmed.rfind('}')) {
-        &trimmed[start..=end]
-    } else {
-        return Err(ProviderError::MalformedOutput);
-    };
-    let value: Value = serde_json::from_str(json_slice).map_err(|_| ProviderError::MalformedOutput)?;
-    let replacement = value
-        .get("replacement")
-        .and_then(Value::as_str)
-        .ok_or(ProviderError::MalformedOutput)?
-        .to_string();
-    if replacement.is_empty() {
-        return Err(ProviderError::MalformedOutput);
-    }
+    let extracted = crate::writing_contract::extract_json_object(text)
+        .map_err(|_| ProviderError::MalformedOutput)?;
+    let replacement = crate::writing_contract::replacement_from_payload(&extracted)
+        .map_err(|_| ProviderError::MalformedOutput)?;
+    let value = extracted.value;
     Ok(RewriteResult {
         replacement,
         changed: value.get("changed").and_then(Value::as_bool).unwrap_or(true),

@@ -55,6 +55,11 @@ Each rule has at least two positive tests, two negative tests, one or more off-c
 | `MIXED_EN_SUCCESSFUL` | spelling | Correct the English whole-word typo in English or mixed text. | ASCII whole-word match only. |
 | `KO_SPACING_STABLE` | spacing | Join the reusable Korean adverbial construction. | Exact adverbial phrase and lexical end boundary. |
 | `KO_SPACING_MODIFY` | spacing | Join the reusable Korean modification predicate. | Exact predicate phrase and lexical end boundary. |
+| `EN_SUBJECT_VERB_THIS_ARE` | basic grammar | Correct exact `this are` agreement. | Whole-word demonstrative pair only. |
+| `EN_DEMONSTRATIVE_THESE_VESSEL` | basic grammar | Correct exact `these vessel` to `this vessel`. | Singular vessel only; `these vessels` excluded. |
+| `EN_DUPLICATE_WORD` | spelling | Drop an adjacent duplicated ASCII word. | Length >= 3; all-caps codes skipped. |
+| `KO_TYPO_DONE_DA` | spelling | Correct complete token `됬다`. | Complete token only. |
+| `KO_TYPO_DOE_YO` | spelling | Correct complete token `되요`. | Complete token only. |
 
 No rule reads benchmark files, case IDs, source hashes, complete cases, environment variables, current time, random state, filesystem state, locale ordering, subprocesses, OS proofing services, network services, or models.
 
@@ -74,7 +79,7 @@ The engine performs no I/O and emits no logs. Its diagnostics are content-free: 
 
 ## Tests and product benchmark
 
-Focused Rust tests cover the descriptor, correction-only enforcement, identity/hash validation, UTF-16 boundaries, surrogate rejection, overlap/duplicate/no-op rejection, protected suppression, descending construction, exact no-change behavior, every retained rule, 24 off-corpus cases, prompt-like data, cache isolation/invalidation, reconciliation, and user-edit protection.
+Focused Rust tests cover the descriptor, correction-only enforcement, identity/hash validation, UTF-16 boundaries, surrogate rejection, overlap/duplicate/no-op rejection, protected suppression, descending construction, exact no-change behavior, every retained rule, 39 off-corpus cases, prompt-like data, cache isolation/invalidation, reconciliation, and user-edit protection.
 
 The PowerShell runner compiles the integration target once into an external Cargo target, then starts that same executable in three fresh processes. The ignored Rust benchmark writer calls `InstantSelectionEngine::analyze`, loads only the immutable synthetic corpus, and writes predictions and a deterministic semantic projection under an external task-owned output root. Each predictions file is evaluated by the immutable P3-01 evaluator. Engine timing surrounds construction and analysis only; compilation and process startup are excluded. Peak process RSS and executable bytes are measured content-free by the runner.
 
