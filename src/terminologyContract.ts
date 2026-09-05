@@ -105,6 +105,7 @@ export type TerminologyRewriteResult = Readonly<{
   terminologySuggestions: TerminologySuggestion[];
   terminologyMatchCount: number;
   terminologyWarnings: TerminologyWarning[];
+  providerUsed: "codex" | "antigravity" | "claude";
 }>;
 
 export type ImportConflict = Readonly<{
@@ -326,6 +327,7 @@ export function parseTerminologyRewriteResult(value: unknown): TerminologyRewrit
     !hasExactKeys(value, [
       "replacement", "changed", "summary", "edits", "confidence", "mode",
       "usedTerminologyIds", "terminologySuggestions", "terminologyMatchCount", "terminologyWarnings",
+      "providerUsed",
     ]) ||
     typeof value.replacement !== "string" ||
     value.replacement.length === 0 ||
@@ -344,7 +346,8 @@ export function parseTerminologyRewriteResult(value: unknown): TerminologyRewrit
     new Set(value.usedTerminologyIds).size !== value.usedTerminologyIds.length ||
     !Array.isArray(value.terminologySuggestions) || value.terminologySuggestions.length > 5 ||
     !isCount(value.terminologyMatchCount) || value.terminologyMatchCount > 50 ||
-    !Array.isArray(value.terminologyWarnings) || value.terminologyWarnings.length > 128
+    !Array.isArray(value.terminologyWarnings) || value.terminologyWarnings.length > 128 ||
+    (value.providerUsed !== "codex" && value.providerUsed !== "antigravity" && value.providerUsed !== "claude")
   ) return null;
   const suggestions = value.terminologySuggestions.map(parseSuggestion);
   const warnings = value.terminologyWarnings.map((warning): TerminologyWarning | null => {
@@ -365,6 +368,7 @@ export function parseTerminologyRewriteResult(value: unknown): TerminologyRewrit
     terminologySuggestions: suggestions as TerminologySuggestion[],
     terminologyMatchCount: value.terminologyMatchCount,
     terminologyWarnings: warnings as TerminologyWarning[],
+    providerUsed: value.providerUsed,
   };
 }
 

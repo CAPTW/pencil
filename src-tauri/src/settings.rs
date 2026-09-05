@@ -1,4 +1,5 @@
 use crate::{
+    provider::ProviderKind,
     shortcut::PrimaryShortcut,
     translation::{RewriteIntent, TranslationApplyFormat, TranslationTargetLanguage},
 };
@@ -10,7 +11,7 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 
-pub(crate) const SETTINGS_SCHEMA_VERSION: u32 = 5;
+pub(crate) const SETTINGS_SCHEMA_VERSION: u32 = 6;
 pub(crate) const CLOUD_PROCESSING_DISCLOSURE_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -62,6 +63,9 @@ pub struct AppSettings {
     pub shortcut: ShortcutSettings,
     pub translation: TranslationSettings,
     pub terminology: TerminologySettings,
+    pub active_provider: ProviderKind,
+    pub antigravity_cloud_acknowledgement_version: u32,
+    pub claude_cloud_acknowledgement_version: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -324,6 +328,34 @@ pub(crate) fn decode_settings(text: &str) -> SettingsLoad {
         migrated = true;
     }
 
+    match value.get("activeProvider").and_then(serde_json::Value::as_str) {
+        Some("codex") => settings.active_provider = ProviderKind::Codex,
+        Some("antigravity") => settings.active_provider = ProviderKind::Antigravity,
+        Some("claude") => settings.active_provider = ProviderKind::Claude,
+        Some(_) => invalid = true,
+        None => migrated = true,
+    }
+    match value
+        .get("antigravityCloudAcknowledgementVersion")
+        .and_then(serde_json::Value::as_u64)
+    {
+        Some(version) if version <= CLOUD_PROCESSING_DISCLOSURE_VERSION as u64 => {
+            settings.antigravity_cloud_acknowledgement_version = version as u32;
+        }
+        Some(_) => invalid = true,
+        None => migrated = true,
+    }
+    match value
+        .get("claudeCloudAcknowledgementVersion")
+        .and_then(serde_json::Value::as_u64)
+    {
+        Some(version) if version <= CLOUD_PROCESSING_DISCLOSURE_VERSION as u64 => {
+            settings.claude_cloud_acknowledgement_version = version as u32;
+        }
+        Some(_) => invalid = true,
+        None => migrated = true,
+    }
+
     SettingsLoad {
         settings,
         recovery: if invalid {
@@ -347,6 +379,9 @@ impl Default for AppSettings {
             shortcut: ShortcutSettings::default(),
             translation: TranslationSettings::default(),
             terminology: TerminologySettings::default(),
+            active_provider: ProviderKind::Codex,
+            antigravity_cloud_acknowledgement_version: 0,
+            claude_cloud_acknowledgement_version: 0,
         }
     }
 }

@@ -4,6 +4,7 @@ use crate::{
     codex_home::CodexHome,
     content_limits::{validate_text_limit, ContentLimitKind},
     process_job::ProcessJob,
+    provider::ProviderKind,
     runtime_isolation::RuntimeWorkspace,
     settings::RewriteMode,
     terminology_matcher::TerminologyConstraint,
@@ -312,6 +313,8 @@ pub struct RewriteResult {
     pub terminology_suggestions: Vec<TerminologySuggestion>,
     pub terminology_match_count: usize,
     pub terminology_warnings: Vec<TerminologyWarning>,
+    #[serde(default)]
+    pub provider_used: ProviderKind,
 }
 
 pub(crate) struct PreparedRewrite {
@@ -1667,6 +1670,7 @@ pub(crate) fn parse_rewrite_result(text: &str, mode: RewriteMode) -> Result<Rewr
         terminology_suggestions,
         terminology_match_count: 0,
         terminology_warnings: Vec::new(),
+        provider_used: ProviderKind::Codex,
     })
 }
 

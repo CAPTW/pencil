@@ -15,8 +15,10 @@ export type PrimaryShortcut = ShortcutCandidate &
     display: string;
   }>;
 
+export type ProviderKind = "codex" | "antigravity" | "claude";
+
 export type AppSettings = Readonly<{
-  schemaVersion: 5;
+  schemaVersion: 6;
   cloudProcessingAcknowledgementVersion: number;
   mode: RewriteMode;
   restoreClipboard: boolean;
@@ -35,6 +37,9 @@ export type AppSettings = Readonly<{
     suggestTerminology: boolean;
     autoSaveSuggestions: false;
   }>;
+  activeProvider: ProviderKind;
+  antigravityCloudAcknowledgementVersion: number;
+  claudeCloudAcknowledgementVersion: number;
 }>;
 
 export type RewriteIntentToken = CaptureToken &
@@ -86,6 +91,7 @@ const APPLY_FORMATS = new Set<TranslationApplyFormat>([
   "translation_only",
   "source_with_translation",
 ]);
+const PROVIDERS = new Set<ProviderKind>(["codex", "antigravity", "claude"]);
 const SHORTCUT_STATUSES = new Set<ShortcutUpdateStatus>([
   "applied",
   "unchanged",
@@ -142,8 +148,11 @@ export function parseAppSettings(value: unknown): AppSettings | null {
       "shortcut",
       "translation",
       "terminology",
+      "activeProvider",
+      "antigravityCloudAcknowledgementVersion",
+      "claudeCloudAcknowledgementVersion",
     ]) ||
-    value.schemaVersion !== 5 ||
+    value.schemaVersion !== 6 ||
     typeof value.cloudProcessingAcknowledgementVersion !== "number" ||
     !Number.isSafeInteger(value.cloudProcessingAcknowledgementVersion) ||
     value.cloudProcessingAcknowledgementVersion < 0 ||
@@ -191,12 +200,22 @@ export function parseAppSettings(value: unknown): AppSettings | null {
     !/^[A-Za-z0-9_.-]+$/.test(value.terminology.activeProfileId) ||
     typeof value.terminology.useApprovedTerminology !== "boolean" ||
     typeof value.terminology.suggestTerminology !== "boolean" ||
-    value.terminology.autoSaveSuggestions !== false
+    value.terminology.autoSaveSuggestions !== false ||
+    typeof value.activeProvider !== "string" ||
+    !PROVIDERS.has(value.activeProvider as ProviderKind) ||
+    typeof value.antigravityCloudAcknowledgementVersion !== "number" ||
+    !Number.isSafeInteger(value.antigravityCloudAcknowledgementVersion) ||
+    value.antigravityCloudAcknowledgementVersion < 0 ||
+    value.antigravityCloudAcknowledgementVersion > 1 ||
+    typeof value.claudeCloudAcknowledgementVersion !== "number" ||
+    !Number.isSafeInteger(value.claudeCloudAcknowledgementVersion) ||
+    value.claudeCloudAcknowledgementVersion < 0 ||
+    value.claudeCloudAcknowledgementVersion > 1
   ) {
     return null;
   }
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     cloudProcessingAcknowledgementVersion: value.cloudProcessingAcknowledgementVersion,
     mode: value.mode as RewriteMode,
     restoreClipboard: value.restoreClipboard,
@@ -216,6 +235,9 @@ export function parseAppSettings(value: unknown): AppSettings | null {
       suggestTerminology: value.terminology.suggestTerminology,
       autoSaveSuggestions: false,
     },
+    activeProvider: value.activeProvider as ProviderKind,
+    antigravityCloudAcknowledgementVersion: value.antigravityCloudAcknowledgementVersion,
+    claudeCloudAcknowledgementVersion: value.claudeCloudAcknowledgementVersion,
   };
 }
 

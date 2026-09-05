@@ -16,7 +16,7 @@ const moduleUrl = `data:text/javascript;base64,${Buffer.from(outputText).toStrin
 const contract = await import(moduleUrl);
 
 const settings = contract.parseAppSettings({
-  schemaVersion: 5,
+  schemaVersion: 6,
   cloudProcessingAcknowledgementVersion: 0,
   mode: "translate",
   restoreClipboard: true,
@@ -41,6 +41,9 @@ const settings = contract.parseAppSettings({
     suggestTerminology: true,
     autoSaveSuggestions: false,
   },
+  activeProvider: "codex",
+  antigravityCloudAcknowledgementVersion: 0,
+  claudeCloudAcknowledgementVersion: 0,
 });
 assert.ok(settings);
 assert.equal(settings.translation.targetLanguage, "auto");

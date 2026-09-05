@@ -151,6 +151,7 @@ const rewrite = contract.parseTerminologyRewriteResult({
   terminologyWarnings: [
     { code: "terminology_usage_unverified", entryIds: ["entry-synthetic"] },
   ],
+  providerUsed: "codex",
 });
 assert.ok(rewrite);
 assert.equal(rewrite.terminologySuggestions.length, 1);
