@@ -1,0 +1,268 @@
+use super::{
+    cli::{resolve_named_executable, run_args, run_version, run_writing, ActiveCliProcess},
+    types::{ProviderCapabilities, ProviderError, ProviderKind, ProviderLifecycleState, ProviderStatus},
+};
+use crate::{
+    codex_client::{rewrite_prompt_with_terminology, RewriteEdit, RewriteResult},
+    settings::RewriteMode,
+    terminology_matcher::TerminologyConstraint,
+    translation::RewriteIntent,
+};
+use serde_json::Value;
+use std::{
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+use tokio::sync::Mutex;
+
+pub(crate) fn resolve_claude() -> Option<PathBuf> {
+    resolve_named_executable(
+        std::env::var("CODEX_PENCIL_CLAUDE_BIN").ok().as_deref(),
+        &["claude.cmd", "claude.exe", "claude"],
+    )
+}
+
+pub(crate) async fn probe() -> ProviderStatus {
+    let Some(path) = resolve_claude() else {
+        return ProviderStatus::unavailable(
+            ProviderKind::Claude,
+            "Claude Code CLI was not found on PATH.",
+            "Install Claude Code and ensure `claude` is available, then Refresh status.",
+        );
+    };
+    let version = run_version(&path).await.ok();
+    let auth = run_args(
+        &path,
+        &["auth".to_string(), "status".to_string()],
+        Duration::from_secs(12),
+    )
+    .await;
+    match auth {
+        Ok(captured) if captured.exit_code == Some(0) => {
+            let logged_in = serde_json::from_str::<Value>(captured.stdout.trim())
+                .ok()
+                .and_then(|value| value.get("loggedIn").and_then(Value::as_bool))
+                .unwrap_or(true);
+            if logged_in {
+                ProviderStatus {
+                    kind: ProviderKind::Claude,
+                    display_name: ProviderKind::Claude.display_name(),
+                    state: ProviderLifecycleState::Ready,
+                    available: true,
+                    executable_path: Some(path.display().to_string()),
+                    version,
+                    account_label: Some("Claude account".to_string()),
+                    reason: None,
+                    setup_requirement: None,
+                    capabilities: ProviderCapabilities {
+                        writing: true,
+                        official_sign_in: true,
+                        official_sign_out: true,
+                        cancellation: true,
+                    },
+                }
+            } else {
+                signed_out(path, version)
+            }
+        }
+        Ok(_) => signed_out(path, version),
+        Err(error) => ProviderStatus {
+            kind: ProviderKind::Claude,
+            display_name: ProviderKind::Claude.display_name(),
+            state: ProviderLifecycleState::Faulted,
+            available: true,
+            executable_path: Some(path.display().to_string()),
+            version,
+            account_label: None,
+            reason: Some(error),
+            setup_requirement: Some("Retry Refresh status after Claude Code is responding.".to_string()),
+            capabilities: ProviderCapabilities {
+                writing: true,
+                official_sign_in: true,
+                official_sign_out: true,
+                cancellation: true,
+            },
+        },
+    }
+}
+
+fn signed_out(path: PathBuf, version: Option<String>) -> ProviderStatus {
+    ProviderStatus {
+        kind: ProviderKind::Claude,
+        display_name: ProviderKind::Claude.display_name(),
+        state: ProviderLifecycleState::SignedOut,
+        available: true,
+        executable_path: Some(path.display().to_string()),
+        version,
+        account_label: None,
+        reason: Some("Claude Code is installed but not signed in.".to_string()),
+        setup_requirement: Some("Use Sign in to open the official Claude login.".to_string()),
+        capabilities: ProviderCapabilities {
+            writing: true,
+            official_sign_in: true,
+            official_sign_out: true,
+            cancellation: true,
+        },
+    }
+}
+
+pub(crate) async fn start_login() -> Result<(), String> {
+    let path = resolve_claude().ok_or_else(|| "Claude Code CLI was not found on PATH.".to_string())?;
+    let _ = std::process::Command::new(&path)
+        .args(["auth", "login"])
+        .stdin(std::process::Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Could not start Claude login: {error}"))?;
+    Ok(())
+}
+
+pub(crate) async fn sign_out() -> Result<(), String> {
+    let path = resolve_claude().ok_or_else(|| "Claude Code CLI was not found on PATH.".to_string())?;
+    let captured = run_args(
+        &path,
+        &["auth".to_string(), "logout".to_string()],
+        Duration::from_secs(20),
+    )
+    .await?;
+    if captured.exit_code.unwrap_or(1) == 0 {
+        Ok(())
+    } else {
+        Err("Claude sign-out did not complete.".to_string())
+    }
+}
+
+pub(crate) async fn rewrite(
+    selected_text: &str,
+    intent: RewriteIntent,
+    terminology: &[TerminologyConstraint],
+    cancel: Arc<AtomicBool>,
+    slot: Arc<Mutex<Option<ActiveCliProcess>>>,
+) -> Result<RewriteResult, ProviderError> {
+    let path = resolve_claude().ok_or_else(|| {
+        ProviderError::Unavailable("Claude Code CLI was not found on PATH.".to_string())
+    })?;
+    let prompt = rewrite_prompt_with_terminology(selected_text, intent, terminology)
+        .map_err(|error| ProviderError::Faulted(error))?;
+    let args = vec![
+        "-p".to_string(),
+        prompt,
+        "--output-format".to_string(),
+        "json".to_string(),
+        "--permission-mode".to_string(),
+        "dontAsk".to_string(),
+        "--permission-prompts".to_string(),
+        "none".to_string(),
+    ];
+    let captured = run_writing(
+        &path,
+        &args,
+        Duration::from_secs(120),
+        cancel.clone(),
+        slot,
+    )
+    .await
+    .map_err(ProviderError::Faulted)?;
+    if captured.cancelled || cancel.load(Ordering::SeqCst) {
+        return Err(ProviderError::Cancelled);
+    }
+    if captured.exit_code != Some(0) {
+        let combined = format!("{} {}", captured.stdout, captured.stderr).to_lowercase();
+        if combined.contains("not logged in") || combined.contains("authentication") {
+            return Err(ProviderError::SignedOut(
+                "Claude Code is signed out.".to_string(),
+            ));
+        }
+        return Err(ProviderError::NonzeroExit(captured.exit_code.unwrap_or(1)));
+    }
+    parse_claude_result(&captured.stdout, intent.mode())
+}
+
+fn parse_claude_result(stdout: &str, mode: RewriteMode) -> Result<RewriteResult, ProviderError> {
+    let value: Value = serde_json::from_str(stdout.trim()).map_err(|_| ProviderError::MalformedOutput)?;
+    let text = value
+        .get("result")
+        .and_then(Value::as_str)
+        .ok_or(ProviderError::MalformedOutput)?;
+    parse_rewrite_payload(text, mode)
+}
+
+pub(crate) fn parse_rewrite_payload(text: &str, mode: RewriteMode) -> Result<RewriteResult, ProviderError> {
+    let trimmed = text.trim();
+    let json_slice = if let (Some(start), Some(end)) = (trimmed.find('{'), trimmed.rfind('}')) {
+        &trimmed[start..=end]
+    } else {
+        return Err(ProviderError::MalformedOutput);
+    };
+    let value: Value = serde_json::from_str(json_slice).map_err(|_| ProviderError::MalformedOutput)?;
+    let replacement = value
+        .get("replacement")
+        .and_then(Value::as_str)
+        .ok_or(ProviderError::MalformedOutput)?
+        .to_string();
+    if replacement.is_empty() {
+        return Err(ProviderError::MalformedOutput);
+    }
+    Ok(RewriteResult {
+        replacement,
+        changed: value.get("changed").and_then(Value::as_bool).unwrap_or(true),
+        summary: value
+            .get("summary")
+            .and_then(Value::as_str)
+            .unwrap_or("Updated by Claude")
+            .to_string(),
+        edits: value
+            .get("edits")
+            .and_then(Value::as_array)
+            .map(|edits| {
+                edits
+                    .iter()
+                    .filter_map(|edit| {
+                        Some(RewriteEdit {
+                            before: edit.get("before")?.as_str()?.to_string(),
+                            after: edit.get("after")?.as_str()?.to_string(),
+                            reason: edit.get("reason")?.as_str()?.to_string(),
+                        })
+                    })
+                    .take(8)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        confidence: value.get("confidence").and_then(Value::as_f64).unwrap_or(0.5),
+        mode,
+        used_terminology_ids: Vec::new(),
+        terminology_suggestions: Vec::new(),
+        terminology_match_count: 0,
+        terminology_warnings: Vec::new(),
+        provider_used: ProviderKind::Claude,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_json_result_without_leaking_provider_switch() {
+        let result = parse_rewrite_payload(
+            "{\"replacement\":\"Hello.\",\"changed\":true,\"summary\":\"fixed\",\"confidence\":0.8}",
+            RewriteMode::Grammar,
+        )
+        .unwrap();
+        assert_eq!(result.replacement, "Hello.");
+        assert_eq!(result.provider_used, ProviderKind::Claude);
+        assert_ne!(result.provider_used, ProviderKind::Codex);
+    }
+
+    #[test]
+    fn rejects_empty_replacement() {
+        assert!(parse_rewrite_payload(
+            "{\"replacement\":\"\",\"changed\":false}",
+            RewriteMode::Grammar
+        )
+        .is_err());
+    }
+}

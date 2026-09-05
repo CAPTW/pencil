@@ -39,11 +39,24 @@ import {
   type CaptureToken,
 } from "./captureContract";
 import {
+  cancelSwitch,
+  captureReset,
+  confirmSwitch,
+  editDraft,
+  EMPTY_INSTANT_RUNTIME_STATE,
+  lateCandidate,
+  requestSwitch,
+  visibleChoices,
+  type InstantRuntimeState,
+  type RuntimeCandidate,
+} from "./instantSelectionRuntime";
+import {
   parseAppSettings,
   parseShortcutUpdateResponse,
   sameRewriteIntent,
   shortcutCandidateFromKeyEvent,
   type AppSettings,
+  type ProviderKind,
   type RewriteIntentToken,
   type RewriteMode,
   type ShortcutCandidate,
@@ -51,6 +64,12 @@ import {
   type TranslationReferenceLanguage,
   type TranslationTargetLanguage,
 } from "./promptlessContract";
+import {
+  parseProviderSnapshot,
+  providerDisplayName,
+  type ProviderSnapshot,
+  type ProviderStatus,
+} from "./providerContract";
 import {
   CLOUD_PROCESSING_DISCLOSURE_VERSION,
   contentLimitMessage,
@@ -167,8 +186,14 @@ function automaticFallbackLanguage(
   return referenceLanguage === "en" ? "ko" : "en";
 }
 
+function cloudAckFor(settings: AppSettings, kind: ProviderKind): number {
+  if (kind === "codex") return settings.cloudProcessingAcknowledgementVersion;
+  if (kind === "antigravity") return settings.antigravityCloudAcknowledgementVersion;
+  return settings.claudeCloudAcknowledgementVersion;
+}
+
 const DEFAULT_SETTINGS: AppSettings = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   cloudProcessingAcknowledgementVersion: 0,
   mode: "grammar",
   restoreClipboard: true,
@@ -193,6 +218,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     suggestTerminology: true,
     autoSaveSuggestions: false,
   },
+  activeProvider: "codex",
+  antigravityCloudAcknowledgementVersion: 0,
+  claudeCloudAcknowledgementVersion: 0,
 };
 
 const EMPTY_ENTRY_DRAFT: TerminologyEntryDraft = {
@@ -260,11 +288,13 @@ export default function App() {
   const [importFormat, setImportFormat] = useState<"json" | "csv">("json");
   const [importPreview, setImportPreview] = useState<ImportPlanPreview | null>(null);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
+  const [providerSnapshot, setProviderSnapshot] = useState<ProviderSnapshot | null>(null);
   const [prerequisites, setPrerequisites] = useState<PrerequisiteReport | null>(null);
   const [deviceLogin, setDeviceLogin] = useState<DeviceLogin | null>(null);
   const [selection, setSelection] = useState<ActiveSelection | null>(null);
   const [result, setResult] = useState<RewriteResult | null>(null);
   const [draft, setDraft] = useState("");
+  const [instantRuntime, setInstantRuntime] = useState<InstantRuntimeState>(EMPTY_INSTANT_RUNTIME_STATE);
   const [status, setStatus] = useState("Ready");
   const [loginState, setLoginState] = useState<LoginState>("signed_out");
   const [error, setError] = useState<string | null>(null);
@@ -275,6 +305,8 @@ export default function App() {
   const [recordingShortcut, setRecordingShortcut] = useState(false);
   const [shortcutCandidateLabel, setShortcutCandidateLabel] = useState<string | null>(null);
   const modeRef = useRef<RewriteMode>(DEFAULT_SETTINGS.mode);
+  const providerRef = useRef<ProviderKind>(DEFAULT_SETTINGS.activeProvider);
+  const providerAckRef = useRef(0);
   const targetLanguageRef = useRef<TranslationTargetLanguage>(
     DEFAULT_SETTINGS.translation.targetLanguage,
   );
@@ -294,6 +326,8 @@ export default function App() {
 
   useEffect(() => {
     modeRef.current = settings.mode;
+    providerRef.current = settings.activeProvider;
+    providerAckRef.current = cloudAckFor(settings, settings.activeProvider);
     targetLanguageRef.current = settings.translation.targetLanguage;
     autoReferenceLanguageRef.current = settings.translation.autoReferenceLanguage;
     autoRewriteRef.current = settings.autoRewrite;
@@ -315,6 +349,17 @@ export default function App() {
       }
     } catch (nextError) {
       setLoginState("failed");
+      setError(toErrorMessage(nextError));
+    }
+  }, []);
+
+  const refreshProviders = useCallback(async () => {
+    try {
+      const next = parseProviderSnapshot(await invoke<unknown>("refresh_providers"));
+      if (next) {
+        setProviderSnapshot(next);
+      }
+    } catch (nextError) {
       setError(toErrorMessage(nextError));
     }
   }, []);
@@ -372,7 +417,7 @@ export default function App() {
     rewritingIntentRef.current = requestedIntent;
     setIsRewriting(true);
     setError(null);
-    setStatus("Rewriting with Codex");
+    setStatus(`Rewriting with ${providerDisplayName(providerRef.current)}`);
     try {
       const next = parseTerminologyRewriteResult(await invoke<unknown>("rewrite_selected_text", {
         sessionId: requestedToken.sessionId,
@@ -396,7 +441,19 @@ export default function App() {
       }
       setResult(next);
       resultIntentRef.current = requestedIntent;
-      setDraft(next.replacement);
+      const deepCandidate: RuntimeCandidate = {
+        kind: "deep",
+        text: next.replacement,
+        sessionId: requestedToken.sessionId,
+        generation: requestedToken.generation,
+      };
+      setInstantRuntime((current) => {
+        const nextState = lateCandidate(current, deepCandidate);
+        if (!current.dirty && current.draft.length === 0) {
+          setDraft(nextState.draft);
+        }
+        return nextState;
+      });
       setStatus("Replacement ready");
     } catch (nextError) {
       if (
@@ -422,6 +479,7 @@ export default function App() {
     let unlistenAuthChanged: UnlistenFn | undefined;
     let unlistenProcessExited: UnlistenFn | undefined;
     let unlistenOpenSettings: UnlistenFn | undefined;
+    let unlistenInstant: UnlistenFn | undefined;
 
     void invoke<unknown>("load_settings")
       .then((value) => {
@@ -469,7 +527,36 @@ export default function App() {
       .catch((nextError) => setError(toErrorMessage(nextError)));
 
     void refreshAuth();
+    void refreshProviders();
     void refreshTerminology();
+
+    void listen<unknown>("instant-candidate", (event) => {
+      const payload = event.payload as {
+        sessionId?: string;
+        generation?: number;
+        noChange?: boolean;
+        candidateText?: string | null;
+      };
+      if (!payload.sessionId || typeof payload.generation !== "number" || payload.noChange || !payload.candidateText) {
+        return;
+      }
+      const candidate: RuntimeCandidate = {
+        kind: "instant",
+        text: payload.candidateText,
+        sessionId: payload.sessionId,
+        generation: payload.generation,
+      };
+      setInstantRuntime((current) => {
+        const nextState = lateCandidate(current, candidate);
+        if (!current.dirty && current.draft.length === 0) {
+          setDraft(nextState.draft);
+          setStatus("Instant candidate ready");
+        }
+        return nextState;
+      });
+    }).then((unlisten) => {
+      unlistenInstant = unlisten;
+    });
 
     void listen<unknown>("selection-captured", (event) => {
       const payload = parseSelectionCaptured(event.payload);
@@ -508,6 +595,7 @@ export default function App() {
       resultIntentRef.current = null;
       applyingTokenRef.current = null;
       setSelection({ token, charCount: Array.from(payload.selectedText).length });
+      setInstantRuntime(captureReset(EMPTY_INSTANT_RUNTIME_STATE, token.sessionId, token.generation));
       setResult(null);
       setDraft("");
       setIsRewriting(false);
@@ -520,7 +608,7 @@ export default function App() {
         setStatus("Selection too large");
       } else if (
         autoRewriteRef.current &&
-        cloudAcknowledgementRef.current >= CLOUD_PROCESSING_DISCLOSURE_VERSION
+        providerAckRef.current >= CLOUD_PROCESSING_DISCLOSURE_VERSION
       ) {
         void rewrite(modeRef.current, token, targetLanguageRef.current);
       } else if (cloudAcknowledgementRef.current < CLOUD_PROCESSING_DISCLOSURE_VERSION) {
@@ -591,8 +679,9 @@ export default function App() {
       unlistenAuthChanged?.();
       unlistenProcessExited?.();
       unlistenOpenSettings?.();
+      unlistenInstant?.();
     };
-  }, [refreshAuth, refreshTerminology, rewrite]);
+  }, [refreshAuth, refreshProviders, refreshTerminology, rewrite]);
 
   useEffect(() => {
     if (!deviceLogin) {
@@ -678,12 +767,19 @@ export default function App() {
   }
 
   async function acknowledgeCloudProcessing() {
+    const kind = settings.activeProvider;
     const saved = await saveSettings({
       ...settings,
-      cloudProcessingAcknowledgementVersion: CLOUD_PROCESSING_DISCLOSURE_VERSION,
+      cloudProcessingAcknowledgementVersion:
+        kind === "codex" ? CLOUD_PROCESSING_DISCLOSURE_VERSION : settings.cloudProcessingAcknowledgementVersion,
+      antigravityCloudAcknowledgementVersion:
+        kind === "antigravity" ? CLOUD_PROCESSING_DISCLOSURE_VERSION : settings.antigravityCloudAcknowledgementVersion,
+      claudeCloudAcknowledgementVersion:
+        kind === "claude" ? CLOUD_PROCESSING_DISCLOSURE_VERSION : settings.claudeCloudAcknowledgementVersion,
     });
     if (!saved) return;
     cloudAcknowledgementRef.current = saved.cloudProcessingAcknowledgementVersion;
+    providerAckRef.current = cloudAckFor(saved, saved.activeProvider);
     const token = currentTokenRef.current;
     if (token && saved.autoRewrite) {
       await rewrite(saved.mode, token, saved.translation.targetLanguage);
@@ -1262,14 +1358,16 @@ export default function App() {
     }
   }
 
-  const canRewrite = Boolean(selection && auth?.loggedIn && !isRewriting && !result);
+  const activeProviderStatus = providerSnapshot?.statuses.find((item) => item.kind === settings.activeProvider) ?? null;
+  const providerReady = activeProviderStatus?.state === "ready" || (settings.activeProvider === "codex" && auth?.loggedIn === true);
+  const canRewrite = Boolean(selection && providerReady && !isRewriting && !result);
   const canApply = Boolean(
     selection &&
-      result &&
-      sameRewriteIntent(resultIntentRef.current, currentIntentRef.current) &&
+      (result || instantRuntime.activeKind === "instant") &&
       draft.length > 0 &&
       !isApplying &&
-      !isRewriting,
+      !isRewriting &&
+      (result ? sameRewriteIntent(resultIntentRef.current, currentIntentRef.current) : true),
   );
   const loginStatusLabel =
     loginState === "starting"
@@ -1294,7 +1392,10 @@ export default function App() {
             </div>
             <div>
               <h1>Codex Pencil</h1>
-              <p>{auth?.loggedIn ? auth.accountLabel : "ChatGPT Codex login required"}</p>
+              <p>
+                {providerDisplayName(settings.activeProvider)}
+                {activeProviderStatus ? ` · ${activeProviderStatus.state.replace(/_/g, " ")}` : ""}
+              </p>
             </div>
           </div>
           <div className="topbar-actions">
@@ -1338,6 +1439,84 @@ export default function App() {
                   : settings.shortcut.primary.display}
               </button>
             </label>
+            <section className="provider-settings" aria-label="Providers">
+              <div className="translation-settings-heading">
+                <div>
+                  <h3>Providers</h3>
+                  <p>One Provider is used for each cloud request. Instant stays local.</p>
+                </div>
+              </div>
+              {(providerSnapshot?.statuses ?? [
+                { kind: "codex", displayName: "Codex", state: "signed_out" },
+                { kind: "antigravity", displayName: "Google Antigravity", state: "unavailable" },
+                { kind: "claude", displayName: "Claude", state: "signed_out" },
+              ] as Pick<ProviderStatus, "kind" | "displayName" | "state">[]).map((item) => {
+                const status = providerSnapshot?.statuses.find((entry) => entry.kind === item.kind);
+                const selected = settings.activeProvider === item.kind;
+                const busy = Boolean(providerSnapshot?.busyKind);
+                return (
+                  <article className="provider-card" key={item.kind}>
+                    <label className="provider-select">
+                      <input
+                        type="radio"
+                        name="active-provider"
+                        checked={selected}
+                        disabled={busy}
+                        onChange={() => {
+                          void saveSettings({ ...settings, activeProvider: item.kind });
+                        }}
+                      />
+                      <strong>{item.displayName}</strong>
+                      <small>{(status?.state ?? item.state).replace(/_/g, " ")}</small>
+                    </label>
+                    {status?.reason ? <p>{status.reason}</p> : null}
+                    {status?.setupRequirement ? <p>{status.setupRequirement}</p> : null}
+                    <p className="provider-disclosure">
+                      {item.kind === "codex"
+                        ? "Codex sends selected text and matched approved terms through the official Codex app-server."
+                        : item.kind === "antigravity"
+                          ? "Google Antigravity sends selected text through the official `agy` CLI using your local Google session."
+                          : "Claude sends selected text through official Claude Code CLI print mode using your Claude account."}
+                    </p>
+                    <div className="row-actions">
+                      {status?.capabilities.officialSignIn || item.kind === "codex" ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            if (item.kind === "codex") {
+                              void startDeviceLogin();
+                            } else {
+                              void invoke("start_provider_login", { kind: item.kind })
+                                .then(() => refreshProviders())
+                                .catch((nextError) => setError(toErrorMessage(nextError)));
+                            }
+                          }}
+                        >
+                          {item.kind === "codex" ? "Connect Codex" : "Sign in"}
+                        </button>
+                      ) : null}
+                      {status?.capabilities.officialSignOut ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            void invoke("sign_out_provider", { kind: item.kind })
+                              .then(() => refreshProviders())
+                              .catch((nextError) => setError(toErrorMessage(nextError)));
+                          }}
+                        >
+                          Sign out
+                        </button>
+                      ) : null}
+                      <button type="button" onClick={() => void refreshProviders()}>
+                        Refresh status
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
             <section className="translation-settings" aria-label="Automatic translation settings">
               <div className="translation-settings-heading">
                 <div>
@@ -1628,7 +1807,7 @@ export default function App() {
               </button>
             </div>
           </div>
-        ) : !auth?.loggedIn ? (
+        ) : settings.activeProvider === "codex" && !auth?.loggedIn && !selection ? (
           <div className="login-pane">
             <div className="login-copy">
               {codexCheck && !codexCheck.available ? <AlertTriangle size={22} /> : <LogIn size={22} />}
@@ -1670,7 +1849,7 @@ export default function App() {
             </button>
           </div>
         ) : selection &&
-          settings.cloudProcessingAcknowledgementVersion < CLOUD_PROCESSING_DISCLOSURE_VERSION ? (
+          cloudAckFor(settings, settings.activeProvider) < CLOUD_PROCESSING_DISCLOSURE_VERSION ? (
           <div className="disclosure-pane" role="dialog" aria-labelledby="cloud-disclosure-title">
             <div className="login-copy">
               <ShieldCheck size={22} />
@@ -1680,7 +1859,7 @@ export default function App() {
               </div>
             </div>
             <ul className="disclosure-list">
-              <li>선택한 텍스트와 현재 선택에 일치한 승인 용어만 Codex/ChatGPT로 전송되어 AI 처리될 수 있습니다.</li>
+              <li>선택한 텍스트와 현재 선택에 일치한 승인 용어만 {providerDisplayName(settings.activeProvider)}로 전송되어 AI 처리될 수 있습니다. 다른 Provider로 자동 전환되지 않습니다.</li>
               <li>전체 용어 사전, 이전 문서, 화면 이미지, 문서 기록은 이 앱이 전송하지 않습니다.</li>
               <li>용어 관리는 로컬에서 동작하지만 AI 교정·번역은 오프라인 모델이 아닙니다.</li>
               <li>취소하면 현재 선택은 전송되지 않습니다.</li>
@@ -1804,7 +1983,13 @@ export default function App() {
               <div className="result-heading">
                 <div>
                   <strong>{settings.mode === "translate" ? "Translation" : "Replacement"}</strong>
-                  <span>Edit the text before applying it.</span>
+                  <span>
+                    {instantRuntime.activeKind === "instant"
+                      ? "Instant local candidate"
+                      : result
+                        ? `Deep · ${providerDisplayName(result.providerUsed)}`
+                        : "Edit the text before applying it."}
+                  </span>
                 </div>
                 {result ? (
                   <strong className="confidence-badge">
@@ -1817,12 +2002,16 @@ export default function App() {
                 {isRewriting ? (
                   <div className="loading-state">
                     <Loader2 className="spin" size={18} />
-                    <span>Working locally through Codex</span>
+                    <span>Working through {providerDisplayName(settings.activeProvider)}</span>
                   </div>
                 ) : (
                   <textarea
                     value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
+                    onChange={(event) => {
+                      const text = event.target.value;
+                      setDraft(text);
+                      setInstantRuntime((current) => editDraft(current, text));
+                    }}
                     placeholder={
                       settings.mode === "translate"
                         ? "Translation will appear here"
@@ -1834,6 +2023,52 @@ export default function App() {
                 )}
               </div>
 
+              {settings.mode === "grammar" && visibleChoices(instantRuntime).length > 0 ? (
+                <div className="candidate-choices" role="list" aria-label="Instant and Deep candidates">
+                  {visibleChoices(instantRuntime).map((choice) => (
+                    <button
+                      key={`${choice.kind}-${choice.generation}`}
+                      type="button"
+                      role="listitem"
+                      aria-pressed={instantRuntime.activeKind === choice.kind}
+                      onClick={() => {
+                        setInstantRuntime((current) => {
+                          const nextState = requestSwitch(current, choice);
+                          if (!current.dirty) {
+                            setDraft(choice.text);
+                          }
+                          return nextState;
+                        });
+                      }}
+                    >
+                      {choice.kind === "instant" ? "Instant" : "Deep"}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {instantRuntime.pendingSwitch ? (
+                <div className="candidate-confirm" role="dialog" aria-label="Discard edited draft">
+                  <p>Replace the edited draft with the selected candidate?</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInstantRuntime((current) => {
+                        const nextState = confirmSwitch(current);
+                        setDraft(nextState.draft);
+                        return nextState;
+                      });
+                    }}
+                  >
+                    Replace draft
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInstantRuntime((current) => cancelSwitch(current))}
+                  >
+                    Keep edit
+                  </button>
+                </div>
+              ) : null}
               {result ? (
                 <div className="rewrite-details">
                   <div className="rewrite-summary">

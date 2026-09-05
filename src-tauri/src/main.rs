@@ -9,7 +9,9 @@ mod codex_client;
 mod codex_home;
 mod content_limits;
 mod device_login;
+mod p3_03_runtime;
 mod prerequisites;
+mod provider;
 #[cfg(windows)]
 mod process_job;
 mod runtime_isolation;
@@ -59,6 +61,7 @@ use codex_client::{AuthStatus, CodexClient, CodexClientCache, RewriteResult};
 use content_limits::{validate_text_limit, ContentLimitKind};
 use device_login::ValidatedDeviceLoginUrl;
 use prerequisites::PrerequisiteReport;
+use provider::{ProviderKind, ProviderManager, ProviderSnapshot};
 use serde::Serialize;
 use settings::{AppSettings, RewriteMode, SettingsRecoveryCode, TerminologySettings};
 use shortcut::{
@@ -126,6 +129,8 @@ struct AppState {
     shortcut_trigger: StdMutex<ShortcutTriggerGate>,
     startup_notices: StdMutex<Vec<String>>,
     shutdown_started: AtomicBool,
+    instant: StdMutex<p3_03_runtime::InstantRuntimeState>,
+    providers: Mutex<ProviderManager>,
 }
 
 impl Default for AppState {
@@ -139,6 +144,8 @@ impl Default for AppState {
             shortcut_trigger: StdMutex::new(ShortcutTriggerGate::default()),
             startup_notices: StdMutex::new(Vec::new()),
             shutdown_started: AtomicBool::new(false),
+            instant: StdMutex::new(p3_03_runtime::InstantRuntimeState::new()),
+            providers: Mutex::new(ProviderManager::default()),
         }
     }
 }
@@ -195,6 +202,49 @@ struct DeviceLoginResponse {
 #[tauri::command]
 async fn auth_status(state: State<'_, AppState>) -> Result<AuthStatus, String> {
     ensure_codex(&state).await?.auth_status().await
+}
+
+#[tauri::command]
+async fn provider_snapshot(state: State<'_, AppState>) -> Result<ProviderSnapshot, String> {
+    Ok(state.providers.lock().await.snapshot())
+}
+
+#[tauri::command]
+async fn refresh_providers(state: State<'_, AppState>) -> Result<ProviderSnapshot, String> {
+    let active = state
+        .configuration
+        .lock()
+        .map_err(|_| "configuration_unavailable".to_string())?
+        .settings
+        .active_provider;
+    let mut providers = state.providers.lock().await;
+    let _ = providers.set_active(active);
+    providers.refresh(&state.codex).await;
+    Ok(providers.snapshot())
+}
+
+#[tauri::command]
+async fn start_provider_login(kind: ProviderKind) -> Result<(), String> {
+    match kind {
+        ProviderKind::Claude => provider::claude::start_login().await,
+        ProviderKind::Antigravity => Err(
+            "Run `agy` once in a terminal to complete official Google sign-in, then Refresh status."
+                .to_string(),
+        ),
+        ProviderKind::Codex => {
+            Err("Use the Codex ChatGPT device login control.".to_string())
+        }
+    }
+}
+
+#[tauri::command]
+async fn sign_out_provider(kind: ProviderKind) -> Result<(), String> {
+    match kind {
+        ProviderKind::Claude => provider::claude::sign_out().await,
+        ProviderKind::Antigravity | ProviderKind::Codex => {
+            Err("Official in-app sign-out is not available for this Provider.".to_string())
+        }
+    }
 }
 
 #[tauri::command]
@@ -282,12 +332,17 @@ async fn rewrite_selected_text(
     let intent =
         RewriteIntent::new_with_auto_reference(mode, target_language, auto_reference_language)
             .map_err(str::to_string)?;
-    let disclosure_version = state
+    let settings_snapshot = state
         .configuration
         .lock()
         .map_err(|_| "configuration_unavailable".to_string())?
         .settings
-        .cloud_processing_acknowledgement_version;
+        .clone();
+    let disclosure_version = match settings_snapshot.active_provider {
+        ProviderKind::Codex => settings_snapshot.cloud_processing_acknowledgement_version,
+        ProviderKind::Antigravity => settings_snapshot.antigravity_cloud_acknowledgement_version,
+        ProviderKind::Claude => settings_snapshot.claude_cloud_acknowledgement_version,
+    };
     if disclosure_version < settings::CLOUD_PROCESSING_DISCLOSURE_VERSION {
         return Err("cloud_processing_disclosure_required".to_string());
     }
@@ -356,6 +411,9 @@ async fn rewrite_selected_text(
         capture
             .begin_rewrite_bound(&token, bound_intent.clone())
             .map_err(|error| error.code().to_string())?;
+        if let Ok(instant) = state.instant.lock() {
+            instant.note_deep_request();
+        }
         (
             selected_text,
             bound_intent,
@@ -364,41 +422,60 @@ async fn rewrite_selected_text(
         )
     };
 
-    let rewrite = match ensure_codex(&state).await {
-        Ok(client) => match client
-            .prepare_rewrite_with_terminology(&selected_text, intent, &request_constraints)
-            .await
-        {
-            Ok(prepared) => {
-                let still_current = state
-                    .capture
-                    .lock()
-                    .await
-                    .validate_rewriting_bound_intent(&token, &bound_intent);
-                if let Err(error) = still_current {
-                    return Err(error.code().to_string());
-                }
-                match client.start_prepared_rewrite(prepared).await {
-                    Ok(pending) => {
-                        let active_turn = pending.active_turn();
-                        let bound = state.capture.lock().await.bind_active_turn(
-                            &token,
-                            &bound_intent,
-                            active_turn.clone(),
-                        );
-                        if let Err(error) = bound {
-                            let _ = client.interrupt_turn(&active_turn).await;
-                            Err(error.code().to_string())
-                        } else {
-                            client.complete_rewrite(pending).await
-                        }
+    let rewrite = match settings_snapshot.active_provider {
+        ProviderKind::Codex => match ensure_codex(&state).await {
+            Ok(client) => match client
+                .prepare_rewrite_with_terminology(&selected_text, intent, &request_constraints)
+                .await
+            {
+                Ok(prepared) => {
+                    let still_current = state
+                        .capture
+                        .lock()
+                        .await
+                        .validate_rewriting_bound_intent(&token, &bound_intent);
+                    if let Err(error) = still_current {
+                        return Err(error.code().to_string());
                     }
-                    Err(error) => Err(error),
+                    match client.start_prepared_rewrite(prepared).await {
+                        Ok(pending) => {
+                            let active_turn = pending.active_turn();
+                            let bound = state.capture.lock().await.bind_active_turn(
+                                &token,
+                                &bound_intent,
+                                active_turn.clone(),
+                            );
+                            if let Err(error) = bound {
+                                let _ = client.interrupt_turn(&active_turn).await;
+                                Err(error.code().to_string())
+                            } else {
+                                client.complete_rewrite(pending).await
+                            }
+                        }
+                        Err(error) => Err(error),
+                    }
                 }
-            }
+                Err(error) => Err(error),
+            },
             Err(error) => Err(error),
         },
-        Err(error) => Err(error),
+        kind => {
+            let mut providers = state.providers.lock().await;
+            let _ = providers.set_active(kind);
+            match providers
+                .rewrite(
+                    kind,
+                    &selected_text,
+                    intent,
+                    &request_constraints,
+                    &state.codex,
+                )
+                .await
+            {
+                Ok(result) => Ok(result),
+                Err(error) => Err(error.to_string()),
+            }
+        }
     };
 
     let mut capture = state.capture.lock().await;
@@ -417,6 +494,24 @@ async fn rewrite_selected_text(
             capture
                 .finish_rewrite_success_bound(&token, &bound_intent)
                 .map_err(|error| error.code().to_string())?;
+            if mode == RewriteMode::Grammar {
+                if let Ok(mut instant) = state.instant.lock() {
+                    let identity = p3_03_runtime::source_identity_for_capture(
+                        &token.session_id,
+                        token.generation,
+                        1,
+                        bound_intent.terminology().store_revision,
+                        &selected_text,
+                    );
+                    let _ = p3_03_runtime::store_candidate(
+                        instant.cache_mut(),
+                        p3_03_runtime::deep_candidate_from_text(
+                            identity,
+                            result.replacement.clone(),
+                        ),
+                    );
+                }
+            }
             let matched_ids = match_result
                 .matches
                 .iter()
@@ -566,18 +661,22 @@ async fn apply_replacement(
     let mut capture = state.capture.lock().await;
     let bound_intent = match capture.ready_bound_intent_for(&token, intent) {
         Ok(bound) => bound,
-        Err(error) => {
-            return Ok(match error {
-                SessionError::StaleSession | SessionError::StaleIntent => {
-                    ApplyOutcome::RejectedStale
-                }
-                SessionError::InvalidState | SessionError::GenerationExhausted => {
-                    ApplyOutcome::Failed {
-                        reason: ApplyFailureReason::InvalidSessionState,
+        Err(error) => match promote_instant_candidate(&state, &mut capture, &token, intent, &replacement)
+        {
+            Ok(bound) => bound,
+            Err(_) => {
+                return Ok(match error {
+                    SessionError::StaleSession | SessionError::StaleIntent => {
+                        ApplyOutcome::RejectedStale
                     }
-                }
-            })
-        }
+                    SessionError::InvalidState | SessionError::GenerationExhausted => {
+                        ApplyOutcome::Failed {
+                            reason: ApplyFailureReason::InvalidSessionState,
+                        }
+                    }
+                })
+            }
+        },
     };
     let configuration = state
         .configuration
@@ -633,6 +732,12 @@ async fn apply_replacement(
     ) {
         let _ =
             terminology.increment_usage(&bound_intent.terminology().matched_entry_ids, now_ms());
+        if let Ok(mut instant) = state.instant.lock() {
+            p3_03_runtime::invalidate_cache(
+                instant.cache_mut(),
+                p3_03_runtime::InstantInvalidationReason::SuccessfulApply,
+            );
+        }
     }
     Ok(outcome)
 }
@@ -889,6 +994,12 @@ async fn mutate_terminology(
         terminology.snapshot()
     };
     invalidate_terminology_capture(state).await;
+    if let Ok(mut instant) = state.instant.lock() {
+        p3_03_runtime::invalidate_cache(
+            instant.cache_mut(),
+            p3_03_runtime::InstantInvalidationReason::TerminologyRevisionChange,
+        );
+    }
     Ok(snapshot)
 }
 
@@ -899,7 +1010,20 @@ async fn save_settings(
     state: State<'_, AppState>,
 ) -> Result<AppSettings, String> {
     settings.validate().map_err(str::to_string)?;
-    let (previous_intent, next_intent, terminology_changed) = {
+    {
+        let previous_provider = state
+            .configuration
+            .lock()
+            .map_err(|_| "configuration_unavailable".to_string())?
+            .settings
+            .active_provider;
+        if settings.active_provider != previous_provider
+            && state.providers.lock().await.snapshot().busy_kind.is_some()
+        {
+            return Err("provider_busy".to_string());
+        }
+    }
+    let (previous_intent, next_intent, terminology_changed, language_changed, provider_changed, active_provider) = {
         let mut configuration = state
             .configuration
             .lock()
@@ -921,10 +1045,22 @@ async fn save_settings(
             .map_err(str::to_string)?;
         let next_intent = settings.rewrite_intent().map_err(str::to_string)?;
         let terminology_changed = configuration.settings.terminology != settings.terminology;
+        let language_changed = configuration.settings.translation.target_language
+            != settings.translation.target_language
+            || configuration.settings.translation.auto_reference_language
+                != settings.translation.auto_reference_language;
+        let provider_changed = configuration.settings.active_provider != settings.active_provider;
         settings::save(&app, &settings)?;
         configuration.settings = settings.clone();
         configuration.recovery = None;
-        (previous_intent, next_intent, terminology_changed)
+        (
+            previous_intent,
+            next_intent,
+            terminology_changed,
+            language_changed,
+            provider_changed,
+            settings.active_provider,
+        )
     };
 
     let active_turn = if previous_intent != next_intent || terminology_changed {
@@ -945,6 +1081,36 @@ async fn save_settings(
         None
     };
     interrupt_active_turn(state.inner(), active_turn).await;
+    if previous_intent != next_intent {
+        if let Ok(mut instant) = state.instant.lock() {
+            p3_03_runtime::invalidate_cache(
+                instant.cache_mut(),
+                p3_03_runtime::InstantInvalidationReason::ModeChange,
+            );
+        }
+    }
+    if terminology_changed {
+        if let Ok(mut instant) = state.instant.lock() {
+            p3_03_runtime::invalidate_cache(
+                instant.cache_mut(),
+                p3_03_runtime::InstantInvalidationReason::ProfileChange,
+            );
+        }
+    }
+    if language_changed {
+        if let Ok(mut instant) = state.instant.lock() {
+            p3_03_runtime::invalidate_cache(
+                instant.cache_mut(),
+                p3_03_runtime::InstantInvalidationReason::LanguageChange,
+            );
+        }
+    }
+    if provider_changed {
+        let mut providers = state.providers.lock().await;
+        providers
+            .set_active(active_provider)
+            .map_err(|error| error.to_string())?;
+    }
     Ok(settings)
 }
 
@@ -1000,6 +1166,12 @@ async fn dismiss_window(
         }
     };
     interrupt_active_turn(&state, active_turn).await;
+    if let Ok(mut instant) = state.instant.lock() {
+        p3_03_runtime::invalidate_cache(
+            instant.cache_mut(),
+            p3_03_runtime::InstantInvalidationReason::Dismiss,
+        );
+    }
     hide_main_window(&app)
 }
 
@@ -1091,11 +1263,102 @@ fn change_primary_shortcut(
     Ok(response)
 }
 
+fn promote_instant_candidate(
+    state: &State<'_, AppState>,
+    capture: &mut CaptureSessionStore,
+    token: &SessionToken,
+    intent: RewriteIntent,
+    replacement: &str,
+) -> Result<BoundRewriteIntent, String> {
+    let instant_text = state
+        .instant
+        .lock()
+        .map_err(|_| "instant_unavailable".to_string())?
+        .instant_text_for(&token.session_id, token.generation);
+    let Some(instant_text) = instant_text else {
+        return Err("instant_candidate_missing".to_string());
+    };
+    if instant_text != replacement {
+        return Err("instant_candidate_mismatch".to_string());
+    }
+    let selected_text = capture
+        .captured_source(token)
+        .map_err(|error| error.code().to_string())?;
+    let settings = state
+        .configuration
+        .lock()
+        .map_err(|_| "configuration_unavailable".to_string())?
+        .settings
+        .clone();
+    if settings.rewrite_intent().map_err(str::to_string)? != intent {
+        return Err("stale_rewrite_intent".to_string());
+    }
+    let terminology = state
+        .terminology
+        .lock()
+        .map_err(|_| "terminology_store_unavailable".to_string())?;
+    let (store_revision, match_result) =
+        if settings.terminology.enabled && settings.terminology.use_approved_terminology {
+            terminology
+                .validate_active_profile(&settings.terminology.active_profile_id)
+                .map_err(|error| error.code().to_string())?;
+            let store = terminology
+                .store()
+                .map_err(|error| error.code().to_string())?;
+            let context = MatchContext::new(
+                intent.mode(),
+                target_scope_for_mode(
+                    intent.mode(),
+                    (intent.mode() == RewriteMode::Translate).then_some(settings.translation.target_language),
+                ),
+                infer_source_language(&selected_text),
+                settings.terminology.active_profile_id.clone(),
+            );
+            (
+                store.revision,
+                match_terminology(store, &selected_text, &context),
+            )
+        } else {
+            (
+                terminology.store().map(|store| store.revision).unwrap_or(0),
+                MatchResult::default(),
+            )
+        };
+    let bound_intent = BoundRewriteIntent::new(
+        intent,
+        TerminologyIntent {
+            enabled: settings.terminology.enabled,
+            use_approved_terminology: settings.terminology.use_approved_terminology,
+            suggest_terminology: settings.terminology.suggest_terminology,
+            active_profile_id: settings.terminology.active_profile_id,
+            store_revision,
+            matched_entry_ids: match_result
+                .matches
+                .iter()
+                .map(|matched| matched.entry_id.clone())
+                .collect(),
+        },
+    );
+    capture
+        .begin_rewrite_bound(token, bound_intent.clone())
+        .map_err(|error| error.code().to_string())?;
+    capture
+        .finish_rewrite_success_bound(token, &bound_intent)
+        .map_err(|error| error.code().to_string())?;
+    Ok(bound_intent)
+}
+
 async fn ensure_codex(state: &State<'_, AppState>) -> Result<Arc<CodexClient>, String> {
     state.codex.get().await
 }
 
 async fn interrupt_active_turn(state: &AppState, active_turn: Option<ActiveTurn>) {
+    {
+        let mut providers = state.providers.lock().await;
+        if providers.snapshot().busy_kind.is_some() {
+            providers.cancel_active().await;
+        }
+    }
     let Some(active_turn) = active_turn else {
         return;
     };
@@ -1134,13 +1397,17 @@ fn main() {
             export_terminology,
             load_settings,
             open_device_login_page,
+            provider_snapshot,
             query_terminology_entries,
+            refresh_providers,
             rename_terminology_profile,
             reset_primary_shortcut,
             reset_terminology_store,
             rewrite_selected_text,
             save_terminology_suggestion,
             save_settings,
+            sign_out_provider,
+            start_provider_login,
             set_active_terminology_profile,
             set_terminology_entry_status,
             set_terminology_profile_enabled,
@@ -1187,6 +1454,12 @@ fn main() {
                     let state = app.state::<AppState>();
                     let active_turn = state.capture.lock().await.cancel_active_with_turn();
                     interrupt_active_turn(state.inner(), active_turn).await;
+                    if let Ok(mut instant) = state.instant.lock() {
+                        p3_03_runtime::invalidate_cache(
+                            instant.cache_mut(),
+                            p3_03_runtime::InstantInvalidationReason::AppShutdown,
+                        );
+                    }
                     state.codex.shutdown().await;
                     app.exit(0);
                 });
@@ -1560,12 +1833,21 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
     .await?;
 
     let token = prepared.token.clone();
+    {
+        let state = app.state::<AppState>();
+        if let Ok(mut instant) = state.instant.lock() {
+            p3_03_runtime::invalidate_cache(
+                instant.cache_mut(),
+                p3_03_runtime::InstantInvalidationReason::Recapture,
+            );
+        };
+    }
     if let Err(error) = app.emit(
         "selection-captured",
         SelectionCapturedEvent {
-            session_id: prepared.token.session_id,
+            session_id: prepared.token.session_id.clone(),
             generation: prepared.token.generation,
-            selected_text: prepared.selected_text,
+            selected_text: prepared.selected_text.clone(),
         },
     ) {
         let state = app.state::<AppState>();
@@ -1580,7 +1862,91 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
         return Err(format!("Could not notify window: {error}"));
     }
 
+    spawn_instant_for_capture(app.clone(), token, prepared.selected_text);
     Ok(())
+}
+
+fn spawn_instant_for_capture(app: AppHandle, token: SessionToken, source: String) {
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        let mode = match state.configuration.lock() {
+            Ok(configuration) => configuration.settings.mode,
+            Err(_) => return,
+        };
+        if p3_03_runtime::analysis_mode_for_rewrite(mode).is_none() {
+            return;
+        }
+        let (terminology_revision, spans) = {
+            let settings = match state.configuration.lock() {
+                Ok(configuration) => configuration.settings.clone(),
+                Err(_) => return,
+            };
+            let terminology = match state.terminology.lock() {
+                Ok(terminology) => terminology,
+                Err(_) => return,
+            };
+            let (revision, match_result) =
+                if settings.terminology.enabled && settings.terminology.use_approved_terminology {
+                    if terminology
+                        .validate_active_profile(&settings.terminology.active_profile_id)
+                        .is_err()
+                    {
+                        (0, terminology_matcher::MatchResult::default())
+                    } else if let Ok(store) = terminology.store() {
+                        let context = MatchContext::new(
+                            mode,
+                            target_scope_for_mode(
+                                mode,
+                                (mode == RewriteMode::Translate)
+                                    .then_some(settings.translation.target_language),
+                            ),
+                            infer_source_language(&source),
+                            settings.terminology.active_profile_id.clone(),
+                        );
+                        (store.revision, match_terminology(store, &source, &context))
+                    } else {
+                        (0, terminology_matcher::MatchResult::default())
+                    }
+                } else {
+                    (
+                        terminology.store().map(|store| store.revision).unwrap_or(0),
+                        terminology_matcher::MatchResult::default(),
+                    )
+                };
+            let spans = p3_03_runtime::protected_spans_from_matches(&source, &match_result.matches)
+                .unwrap_or_default();
+            (revision, spans)
+        };
+        if let Ok(instant) = state.instant.lock() {
+            instant.note_instant_invocation();
+        }
+        let outcome = match p3_03_runtime::analyze_correction_source_off_ui(
+            token.session_id.clone(),
+            token.generation,
+            1,
+            terminology_revision,
+            source.clone(),
+            spans,
+        )
+        .await
+        {
+            Ok(outcome) => outcome,
+            Err(_) => return,
+        };
+        {
+            let capture = state.capture.lock().await;
+            if capture.captured_source(&token).ok().as_deref() != Some(source.as_str()) {
+                return;
+            }
+        }
+        if let Ok(mut instant) = state.instant.lock() {
+            let _ = p3_03_runtime::store_candidate(instant.cache_mut(), outcome.candidate.clone());
+        }
+        let _ = app.emit(
+            "instant-candidate",
+            p3_03_runtime::event_from_outcome(token.session_id, token.generation, &outcome),
+        );
+    });
 }
 
 fn show_main_window(app: &AppHandle, cursor: Option<&CursorPoint>) -> Result<(), String> {

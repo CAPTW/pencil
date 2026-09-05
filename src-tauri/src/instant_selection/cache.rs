@@ -76,6 +76,15 @@ impl SessionCandidateCache {
         }
     }
 
+    pub fn instant_text_for(&self, session_id: &str, generation: u64) -> Option<&str> {
+        let identity = self.active_identity.as_ref()?;
+        if identity.session_id == session_id && identity.generation == generation {
+            self.instant.as_ref().map(|candidate| candidate.text.as_str())
+        } else {
+            None
+        }
+    }
+
     pub fn active_identity(&self) -> Option<&SourceIdentity> {
         self.active_identity.as_ref()
     }

@@ -734,7 +734,7 @@ fn schema_two_settings_migrate_to_fixed_false_terminology_defaults() {
     );
 
     assert_eq!(loaded.recovery, Some(SettingsRecoveryCode::Migrated));
-    assert_eq!(loaded.settings.schema_version, 5);
+    assert_eq!(loaded.settings.schema_version, 6);
     assert_eq!(loaded.settings.cloud_processing_acknowledgement_version, 0);
     assert_eq!(loaded.settings.shortcut.primary.key, "H");
     assert_eq!(
