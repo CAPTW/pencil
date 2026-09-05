@@ -154,8 +154,6 @@ pub(crate) async fn rewrite(
         "json".to_string(),
         "--permission-mode".to_string(),
         "dontAsk".to_string(),
-        "--permission-prompts".to_string(),
-        "none".to_string(),
     ];
     let captured = run_writing(
         &path,
@@ -169,9 +167,17 @@ pub(crate) async fn rewrite(
     if captured.cancelled || cancel.load(Ordering::SeqCst) {
         return Err(ProviderError::Cancelled);
     }
+    let combined = format!("{} {}", captured.stdout, captured.stderr).to_lowercase();
+    if combined.contains("not logged in") || combined.contains("please run /login") {
+        return Err(ProviderError::SignedOut(
+            "Claude Code is signed out.".to_string(),
+        ));
+    }
     if captured.exit_code != Some(0) {
-        let combined = format!("{} {}", captured.stdout, captured.stderr).to_lowercase();
-        if combined.contains("not logged in") || combined.contains("authentication") {
+        if combined.contains("unknown option") {
+            return Err(ProviderError::Faulted(captured.stderr));
+        }
+        if combined.contains("authentication") {
             return Err(ProviderError::SignedOut(
                 "Claude Code is signed out.".to_string(),
             ));
@@ -183,6 +189,25 @@ pub(crate) async fn rewrite(
 
 fn parse_claude_result(stdout: &str, mode: RewriteMode) -> Result<RewriteResult, ProviderError> {
     let value: Value = serde_json::from_str(stdout.trim()).map_err(|_| ProviderError::MalformedOutput)?;
+    if value.get("is_error").and_then(Value::as_bool) == Some(true) {
+        let message = value
+            .get("result")
+            .and_then(Value::as_str)
+            .unwrap_or("Claude request failed")
+            .to_lowercase();
+        if message.contains("not logged in") || message.contains("/login") {
+            return Err(ProviderError::SignedOut(
+                "Claude Code is signed out.".to_string(),
+            ));
+        }
+        return Err(ProviderError::Faulted(
+            value
+                .get("result")
+                .and_then(Value::as_str)
+                .unwrap_or("Claude request failed")
+                .to_string(),
+        ));
+    }
     let text = value
         .get("result")
         .and_then(Value::as_str)
@@ -264,5 +289,14 @@ mod tests {
             RewriteMode::Grammar
         )
         .is_err());
+    }
+
+    #[test]
+    fn login_required_json_is_signed_out() {
+        let stdout = r#"{"type":"result","is_error":true,"result":"Not logged in · Please run /login"}"#;
+        assert!(matches!(
+            parse_claude_result(stdout, RewriteMode::Grammar),
+            Err(ProviderError::SignedOut(_))
+        ));
     }
 }
