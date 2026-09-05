@@ -191,4 +191,24 @@ mod tests {
             Err(ProviderError::SignedOut(_))
         ));
     }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_adapter_synthetic_grammar() {
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let slot = std::sync::Arc::new(tokio::sync::Mutex::new(None));
+        let result = rewrite(
+            "This are a synthetic provider integration test.",
+            crate::translation::RewriteIntent::grammar(),
+            &[],
+            cancel,
+            slot,
+        )
+        .await
+        .expect("agy adapter live rewrite");
+        assert_eq!(result.provider_used, ProviderKind::Antigravity);
+        assert!(!result.replacement.is_empty());
+        assert_ne!(result.provider_used, ProviderKind::Codex);
+        assert_ne!(result.provider_used, ProviderKind::Claude);
+    }
 }
