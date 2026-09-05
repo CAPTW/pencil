@@ -51,6 +51,21 @@ pub enum ProviderLifecycleState {
     SignedOutPendingCleanup,
 }
 
+impl ProviderLifecycleState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unavailable => "unavailable",
+            Self::SignedOut => "signed_out",
+            Self::Authenticating => "authenticating",
+            Self::Ready => "ready",
+            Self::Busy => "busy",
+            Self::Cancelling => "cancelling",
+            Self::Faulted => "faulted",
+            Self::SignedOutPendingCleanup => "signed_out_pending_cleanup",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderCapabilities {
@@ -103,6 +118,17 @@ pub struct ProviderSnapshot {
     pub active: ProviderKind,
     pub busy_kind: Option<ProviderKind>,
     pub statuses: Vec<ProviderStatus>,
+    pub last_self_tests: Vec<SelfTestRecord>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfTestRecord {
+    pub kind: ProviderKind,
+    pub classification: crate::diagnostics::SelfTestClassification,
+    pub started_utc: String,
+    pub duration_ms: u64,
+    pub error_code: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

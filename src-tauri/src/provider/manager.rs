@@ -1,8 +1,12 @@
 use super::{
     antigravity, claude,
     cli::ActiveCliProcess,
-    types::{ProviderError, ProviderKind, ProviderLifecycleState, ProviderSnapshot, ProviderStatus},
+    types::{
+        ProviderError, ProviderKind, ProviderLifecycleState, ProviderSnapshot, ProviderStatus,
+        SelfTestRecord,
+    },
 };
+use crate::diagnostics::{SelfTestClassification, SELF_TEST_SOURCE};
 use crate::{
     codex_client::{CodexClientCache, RewriteResult},
     terminology_matcher::TerminologyConstraint,
@@ -20,6 +24,7 @@ pub(crate) struct ProviderManager {
     cancel: Arc<AtomicBool>,
     cli_slot: Arc<Mutex<Option<ActiveCliProcess>>>,
     statuses: Vec<ProviderStatus>,
+    last_self_tests: Vec<SelfTestRecord>,
 }
 
 impl Default for ProviderManager {
@@ -33,6 +38,7 @@ impl Default for ProviderManager {
                 .iter()
                 .map(|kind| ProviderStatus::unavailable(*kind, "Status not probed yet.", "Refresh status."))
                 .collect(),
+            last_self_tests: Vec::new(),
         }
     }
 }
@@ -55,7 +61,12 @@ impl ProviderManager {
             active: self.active,
             busy_kind: self.busy,
             statuses: self.statuses.clone(),
+            last_self_tests: self.last_self_tests.clone(),
         }
+    }
+
+    pub(crate) fn last_self_tests(&self) -> &[SelfTestRecord] {
+        &self.last_self_tests
     }
 
     pub(crate) async fn refresh(&mut self, codex: &CodexClientCache) {
@@ -153,6 +164,76 @@ impl ProviderManager {
             }
             Err(error) => Err(error),
         }
+    }
+
+    pub(crate) async fn run_self_test(
+        &mut self,
+        kind: ProviderKind,
+        intent: RewriteIntent,
+        codex: &CodexClientCache,
+    ) -> SelfTestRecord {
+        let started = std::time::Instant::now();
+        let started_utc = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_secs().to_string())
+            .unwrap_or_else(|_| "0".to_string());
+        if self.busy.is_some() {
+            return SelfTestRecord {
+                kind,
+                classification: SelfTestClassification::ProductFailure,
+                started_utc,
+                duration_ms: started.elapsed().as_millis() as u64,
+                error_code: Some("provider_busy".to_string()),
+            };
+        }
+        self.busy = Some(kind);
+        self.cancel.store(false, Ordering::SeqCst);
+        let result = match kind {
+            ProviderKind::Codex => rewrite_codex(codex, SELF_TEST_SOURCE, intent, &[]).await,
+            ProviderKind::Claude => {
+                claude::rewrite(
+                    SELF_TEST_SOURCE,
+                    intent,
+                    &[],
+                    self.cancel.clone(),
+                    self.cli_slot.clone(),
+                )
+                .await
+            }
+            ProviderKind::Antigravity => {
+                antigravity::rewrite(
+                    SELF_TEST_SOURCE,
+                    intent,
+                    &[],
+                    self.cancel.clone(),
+                    self.cli_slot.clone(),
+                )
+                .await
+            }
+        };
+        self.clear_busy();
+        let record = SelfTestRecord {
+            kind,
+            classification: match &result {
+                Ok(value) if value.provider_used == kind => SelfTestClassification::Success,
+                Ok(_) => SelfTestClassification::ProductFailure,
+                Err(ProviderError::SignedOut(_) | ProviderError::AuthRequired) => {
+                    SelfTestClassification::SignedOut
+                }
+                Err(ProviderError::Unavailable(_)) => SelfTestClassification::Unavailable,
+                Err(ProviderError::Cancelled) => SelfTestClassification::Cancelled,
+                Err(ProviderError::Faulted(_) | ProviderError::NonzeroExit(_)) => {
+                    SelfTestClassification::ExternalFailure
+                }
+                Err(_) => SelfTestClassification::ProductFailure,
+            },
+            started_utc,
+            duration_ms: started.elapsed().as_millis() as u64,
+            error_code: result.err().map(|error| error.code().to_string()),
+        };
+        self.last_self_tests.retain(|existing| existing.kind != kind);
+        self.last_self_tests.push(record.clone());
+        record
     }
 }
 
@@ -268,6 +349,28 @@ mod tests {
     }
 
     #[test]
+    fn self_test_busy_does_not_start_another_provider() {
+        let mut manager = ProviderManager::default();
+        manager.busy = Some(ProviderKind::Codex);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let cache = CodexClientCache::default();
+        let record = runtime.block_on(manager.run_self_test(
+            ProviderKind::Claude,
+            RewriteIntent::grammar(),
+            &cache,
+        ));
+        assert_eq!(record.kind, ProviderKind::Claude);
+        assert_eq!(
+            record.classification,
+            crate::diagnostics::SelfTestClassification::ProductFailure
+        );
+        assert_eq!(record.error_code.as_deref(), Some("provider_busy"));
+    }
+
+    #[test]
     fn other_provider_cannot_be_used_as_fallback() {
         let mut manager = ProviderManager::default();
         manager.active = ProviderKind::Codex;
@@ -284,5 +387,25 @@ mod tests {
             &cache,
         ));
         assert!(matches!(error, Err(ProviderError::SilentFallbackRejected)));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_self_test_antigravity_is_not_apply_ready() {
+        let mut manager = ProviderManager::default();
+        let cache = CodexClientCache::default();
+        let record = manager
+            .run_self_test(
+                ProviderKind::Antigravity,
+                RewriteIntent::grammar(),
+                &cache,
+            )
+            .await;
+        assert_eq!(record.kind, ProviderKind::Antigravity);
+        assert_eq!(
+            record.classification,
+            crate::diagnostics::SelfTestClassification::Success
+        );
+        assert!(manager.snapshot().busy_kind.is_none());
     }
 }

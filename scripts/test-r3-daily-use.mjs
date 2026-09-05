@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const app = readFileSync(join(root, "src/App.tsx"), "utf8");
+const main = readFileSync(join(root, "src-tauri/src/main.rs"), "utf8");
+const diagnostics = readFileSync(join(root, "src-tauri/src/diagnostics.rs"), "utf8");
+assert.match(app, /Test connection/);
+assert.match(app, /Copy diagnostics/);
+assert.match(app, /Start hidden to tray/);
+assert.match(app, /Welcome to Grammar/);
+assert.match(app, /test_provider_connection/);
+assert.doesNotMatch(app, /Apply self-test|applySelfTest/);
+assert.match(main, /Show Grammar/);
+assert.match(main, /Provider Status/);
+assert.match(main, /test_provider_connection/);
+assert.match(main, /diagnostic_snapshot/);
+assert.match(diagnostics, /<USER_PROFILE>/);
+assert.match(diagnostics, /SELF_TEST_SOURCE/);
+assert.doesNotMatch(diagnostics, /--permission-prompts/);
+console.log("PASS r3 daily-use wiring");

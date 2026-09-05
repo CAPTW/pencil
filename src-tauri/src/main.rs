@@ -9,6 +9,7 @@ mod codex_client;
 mod codex_home;
 mod content_limits;
 mod device_login;
+mod diagnostics;
 mod p3_03_runtime;
 mod prerequisites;
 mod provider;
@@ -61,7 +62,8 @@ use codex_client::{AuthStatus, CodexClient, CodexClientCache, RewriteResult};
 use content_limits::{validate_text_limit, ContentLimitKind};
 use device_login::ValidatedDeviceLoginUrl;
 use prerequisites::PrerequisiteReport;
-use provider::{ProviderKind, ProviderManager, ProviderSnapshot};
+use diagnostics::{build_snapshot, DiagnosticSnapshotV1};
+use provider::{ProviderKind, ProviderManager, ProviderSnapshot, SelfTestRecord};
 use serde::Serialize;
 use settings::{AppSettings, RewriteMode, SettingsRecoveryCode, TerminologySettings};
 use shortcut::{
@@ -207,6 +209,53 @@ async fn auth_status(state: State<'_, AppState>) -> Result<AuthStatus, String> {
 #[tauri::command]
 async fn provider_snapshot(state: State<'_, AppState>) -> Result<ProviderSnapshot, String> {
     Ok(state.providers.lock().await.snapshot())
+}
+
+#[tauri::command]
+async fn test_provider_connection(
+    kind: ProviderKind,
+    state: State<'_, AppState>,
+) -> Result<SelfTestRecord, String> {
+    let intent = RewriteIntent::new_with_auto_reference(RewriteMode::Grammar, None, None)
+        .map_err(str::to_string)?;
+    let mut providers = state.providers.lock().await;
+    let record = providers
+        .run_self_test(kind, intent, &state.codex)
+        .await;
+    providers.refresh(&state.codex).await;
+    Ok(record)
+}
+
+#[tauri::command]
+async fn diagnostic_snapshot(state: State<'_, AppState>) -> Result<DiagnosticSnapshotV1, String> {
+    let settings = state
+        .configuration
+        .lock()
+        .map_err(|_| "configuration_unavailable".to_string())?
+        .settings
+        .clone();
+    let providers = state.providers.lock().await;
+    Ok(build_snapshot(
+        &settings,
+        &providers.snapshot(),
+        providers.last_self_tests(),
+        "registered",
+    ))
+}
+
+#[tauri::command]
+async fn complete_onboarding(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<AppSettings, String> {
+    let mut settings = state
+        .configuration
+        .lock()
+        .map_err(|_| "configuration_unavailable".to_string())?
+        .settings
+        .clone();
+    settings.onboarding_version = settings::ONBOARDING_VERSION;
+    save_settings(app, settings, state).await
 }
 
 #[tauri::command]
@@ -1391,6 +1440,8 @@ fn main() {
             auth_status,
             cancel_device_login,
             check_prerequisites,
+            complete_onboarding,
+            diagnostic_snapshot,
             delete_terminology_entry,
             dismiss_window,
             dry_run_terminology_import,
@@ -1413,6 +1464,7 @@ fn main() {
             set_terminology_profile_enabled,
             start_device_login,
             take_startup_notices,
+            test_provider_connection,
             terminology_state,
             update_terminology_entry,
             update_primary_shortcut
@@ -1426,7 +1478,22 @@ fn main() {
                 Ok(ShortcutStartupStatus::Failed) | Err(_) => {
                     let _ = show_main_window(app.handle(), None);
                 }
-                Ok(_) => {}
+                Ok(_) => {
+                    let settings = app
+                        .state::<AppState>()
+                        .configuration
+                        .lock()
+                        .ok()
+                        .map(|configuration| configuration.settings.clone());
+                    if let Some(settings) = settings {
+                        if settings.needs_onboarding() || !settings.start_hidden_to_tray {
+                            let _ = show_main_window(app.handle(), None);
+                            if settings.needs_onboarding() {
+                                let _ = app.handle().emit("open-onboarding", ());
+                            }
+                        }
+                    }
+                }
             }
             Ok(())
         })
@@ -1469,12 +1536,12 @@ fn main() {
 }
 
 fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, "show", "Show Codex Pencil", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "Show Grammar", true, None::<&str>)?;
     let hide = MenuItem::with_id(app, "hide", "Hide", true, None::<&str>)?;
-    let account = MenuItem::with_id(app, "account", "Login / Account", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+    let providers = MenuItem::with_id(app, "providers", "Provider Status", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &hide, &account, &settings, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &hide, &settings, &providers, &quit])?;
 
     let mut tray = TrayIconBuilder::with_id("main").tooltip("Codex Pencil");
     if let Some(icon) = app.default_window_icon() {
@@ -1502,12 +1569,13 @@ fn handle_tray_menu_action(app: &AppHandle, action: &str) {
                 interrupt_active_turn(state.inner(), active_turn).await;
             });
         }
-        "account" => {
-            let _ = show_main_window(app, None);
-        }
         "settings" => {
             let _ = show_main_window(app, None);
             let _ = app.emit("open-settings", ());
+        }
+        "providers" => {
+            let _ = show_main_window(app, None);
+            let _ = app.emit("open-provider-status", ());
         }
         "quit" => {
             let app = app.clone();
