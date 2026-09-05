@@ -25,6 +25,7 @@ mod terminology_service;
 mod terminology_store;
 mod terminology_validation;
 mod translation;
+mod writing_contract;
 mod windows_apply;
 mod windows_target;
 
@@ -1224,6 +1225,13 @@ async fn dismiss_window(
     hide_main_window(&app)
 }
 
+#[tauri::command]
+async fn cancel_rewrite(state: State<'_, AppState>) -> Result<(), String> {
+    let active_turn = state.capture.lock().await.cancel_active_with_turn();
+    interrupt_active_turn(&state, active_turn).await;
+    Ok(())
+}
+
 struct TauriShortcutRegistrar {
     app: AppHandle,
 }
@@ -1439,6 +1447,7 @@ fn main() {
             approve_terminology_suggestion,
             auth_status,
             cancel_device_login,
+            cancel_rewrite,
             check_prerequisites,
             complete_onboarding,
             diagnostic_snapshot,

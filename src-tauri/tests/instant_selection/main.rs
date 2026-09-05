@@ -339,7 +339,7 @@ fn candidate_construction_applies_adjacent_ranges_descending_and_preserves_struc
 
 #[test]
 fn retained_rules_have_stable_inventory_false_positive_boundaries_and_coverage() {
-    assert_eq!(RETAINED_RULES.len(), 8);
+    assert_eq!(RETAINED_RULES.len(), 13);
     let unique = RETAINED_RULES
         .iter()
         .map(|rule| rule.id)
@@ -349,7 +349,7 @@ fn retained_rules_have_stable_inventory_false_positive_boundaries_and_coverage()
         .iter()
         .all(|rule| { !rule.id.is_empty() && !rule.false_positive_boundary.is_empty() }));
 
-    let positive_cases: [(&str, [&str; 2]); 8] = [
+    let positive_cases: [(&str, [&str; 2]); 13] = [
         (
             "KO_SPACING_CONFIRM",
             ["서류를 확인 해 주세요.", "내용을 확인 해 보세요."],
@@ -388,6 +388,26 @@ fn retained_rules_have_stable_inventory_false_positive_boundaries_and_coverage()
             "KO_SPACING_MODIFY",
             ["문장을 수정 할 수 있다.", "값을 수정 할 필요가 있다."],
         ),
+        (
+            "EN_SUBJECT_VERB_THIS_ARE",
+            ["This are ready.", "Confirm this are complete."],
+        ),
+        (
+            "EN_DEMONSTRATIVE_THESE_VESSEL",
+            ["Inspect these vessel now.", "These vessel stayed sealed."],
+        ),
+        (
+            "EN_DUPLICATE_WORD",
+            ["Keep the the record.", "Review this this draft."],
+        ),
+        (
+            "KO_TYPO_DONE_DA",
+            ["작업이 됬다.", "검토가 됬다."],
+        ),
+        (
+            "KO_TYPO_DOE_YO",
+            ["이제 되요.", "그렇게 되요."],
+        ),
     ];
     for (rule, cases) in positive_cases {
         for source in cases {
@@ -398,7 +418,7 @@ fn retained_rules_have_stable_inventory_false_positive_boundaries_and_coverage()
         }
     }
 
-    let negative_cases: [(&str, [&str; 2]); 8] = [
+    let negative_cases: [(&str, [&str; 2]); 13] = [
         (
             "KO_SPACING_CONFIRM",
             ["서류를 확인해 주세요.", "확인하여 제출하세요."],
@@ -443,6 +463,26 @@ fn retained_rules_have_stable_inventory_false_positive_boundaries_and_coverage()
             "KO_SPACING_MODIFY",
             ["문장을 수정할 수 있다.", "수정 할당량은 별도 명사구다."],
         ),
+        (
+            "EN_SUBJECT_VERB_THIS_ARE",
+            ["This area is ready.", "These are complete."],
+        ),
+        (
+            "EN_DEMONSTRATIVE_THESE_VESSEL",
+            ["Inspect these vessels now.", "This vessel stayed sealed."],
+        ),
+        (
+            "EN_DUPLICATE_WORD",
+            ["Keep the theory.", "LNG LNG must stay."],
+        ),
+        (
+            "KO_TYPO_DONE_DA",
+            ["작업이 됐다.", "됬다는합성토큰이다."],
+        ),
+        (
+            "KO_TYPO_DOE_YO",
+            ["이제 돼요.", "되요양합성토큰이다."],
+        ),
     ];
     for (rule, cases) in negative_cases {
         for source in cases {
@@ -484,8 +524,23 @@ fn at_least_twenty_four_synthetic_off_corpus_cases_cover_every_retained_rule() {
         ("오류를 수정 할 계획이다.", "KO_SPACING_MODIFY"),
         ("설정을 수정 할 권한이 있다.", "KO_SPACING_MODIFY"),
         ("초안을 수정 할 예정이다.", "KO_SPACING_MODIFY"),
+        ("This are bounded.", "EN_SUBJECT_VERB_THIS_ARE"),
+        ("Mark this are done.", "EN_SUBJECT_VERB_THIS_ARE"),
+        ("Close this are out.", "EN_SUBJECT_VERB_THIS_ARE"),
+        ("Seal these vessel today.", "EN_DEMONSTRATIVE_THESE_VESSEL"),
+        ("Move these vessel aside.", "EN_DEMONSTRATIVE_THESE_VESSEL"),
+        ("Hold these vessel closed.", "EN_DEMONSTRATIVE_THESE_VESSEL"),
+        ("Save the the file.", "EN_DUPLICATE_WORD"),
+        ("Open that that folder.", "EN_DUPLICATE_WORD"),
+        ("Write each each note.", "EN_DUPLICATE_WORD"),
+        ("배포가 됬다.", "KO_TYPO_DONE_DA"),
+        ("저장이 됬다.", "KO_TYPO_DONE_DA"),
+        ("전송이 됬다.", "KO_TYPO_DONE_DA"),
+        ("지금은 되요.", "KO_TYPO_DOE_YO"),
+        ("바로 되요.", "KO_TYPO_DOE_YO"),
+        ("나중에 되요.", "KO_TYPO_DOE_YO"),
     ];
-    assert_eq!(cases.len(), 24);
+    assert_eq!(cases.len(), 39);
     let mut covered = BTreeSet::new();
     for (source, rule) in cases {
         assert!(

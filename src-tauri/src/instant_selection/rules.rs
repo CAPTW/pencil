@@ -1,6 +1,7 @@
 use super::{
     utf16::byte_range_to_utf16_range, ConfidenceBand, RuleDescriptor, SuggestionKind, Utf16Range,
 };
+use std::borrow::Cow;
 
 pub static RETAINED_RULES: &[RuleDescriptor] = &[
     RuleDescriptor {
@@ -43,12 +44,37 @@ pub static RETAINED_RULES: &[RuleDescriptor] = &[
         kind: SuggestionKind::Spacing,
         false_positive_boundary: "predicate construction with a lexical end boundary",
     },
+    RuleDescriptor {
+        id: "EN_SUBJECT_VERB_THIS_ARE",
+        kind: SuggestionKind::BasicGrammar,
+        false_positive_boundary: "exact demonstrative this plus are as whole words only",
+    },
+    RuleDescriptor {
+        id: "EN_DEMONSTRATIVE_THESE_VESSEL",
+        kind: SuggestionKind::BasicGrammar,
+        false_positive_boundary: "exact these vessel singular pair; these vessels is excluded",
+    },
+    RuleDescriptor {
+        id: "EN_DUPLICATE_WORD",
+        kind: SuggestionKind::Spelling,
+        false_positive_boundary: "adjacent ASCII alphabetic duplicates length >= 3; all-caps codes skipped",
+    },
+    RuleDescriptor {
+        id: "KO_TYPO_DONE_DA",
+        kind: SuggestionKind::Spelling,
+        false_positive_boundary: "complete Korean token 됬다 only",
+    },
+    RuleDescriptor {
+        id: "KO_TYPO_DOE_YO",
+        kind: SuggestionKind::Spelling,
+        false_positive_boundary: "complete Korean token 되요 only",
+    },
 ];
 
 #[derive(Clone, Debug)]
 pub(crate) struct ProposedEdit {
     pub(crate) range: Utf16Range,
-    pub(crate) replacement: &'static str,
+    pub(crate) replacement: Cow<'static, str>,
     pub(crate) kind: SuggestionKind,
     pub(crate) rule_code: &'static str,
     pub(crate) message_code: &'static str,
@@ -94,7 +120,7 @@ fn push_literal_matches(
         if let Ok(range) = byte_range_to_utf16_range(source, start, end) {
             output.push(ProposedEdit {
                 range,
-                replacement,
+                replacement: Cow::Borrowed(replacement),
                 kind,
                 rule_code,
                 message_code,
@@ -130,7 +156,7 @@ fn push_tense_matches(source: &str, output: &mut Vec<ProposedEdit>) {
         if let Ok(range) = byte_range_to_utf16_range(source, start, end) {
             output.push(ProposedEdit {
                 range,
-                replacement: "작성했다",
+                replacement: Cow::Borrowed("작성했다"),
                 kind: SuggestionKind::BasicGrammar,
                 rule_code: "KO_TENSE_AGREEMENT",
                 message_code: "LOCAL_TENSE_AGREEMENT",
@@ -152,7 +178,7 @@ fn push_results_agreement(source: &str, output: &mut Vec<ProposedEdit>) {
         if let Ok(range) = byte_range_to_utf16_range(source, verb_start, end) {
             output.push(ProposedEdit {
                 range,
-                replacement: "are",
+                replacement: Cow::Borrowed("are"),
                 kind: SuggestionKind::BasicGrammar,
                 rule_code: "EN_SUBJECT_VERB_RESULTS",
                 message_code: "LOCAL_SUBJECT_VERB_AGREEMENT",
@@ -227,7 +253,7 @@ pub(crate) fn collect_proposals(source: &str) -> Vec<ProposedEdit> {
         true,
         &mut output,
     );
-    push_literal_matches(
+        push_literal_matches(
         source,
         "수정 할",
         "수정할",
@@ -239,5 +265,146 @@ pub(crate) fn collect_proposals(source: &str) -> Vec<ProposedEdit> {
         true,
         &mut output,
     );
+    push_cased_phrase(
+        source,
+        "this are",
+        "this is",
+        "This is",
+        SuggestionKind::BasicGrammar,
+        "EN_SUBJECT_VERB_THIS_ARE",
+        "LOCAL_SUBJECT_VERB_AGREEMENT",
+        8,
+        &mut output,
+    );
+    push_cased_phrase(
+        source,
+        "these vessel",
+        "this vessel",
+        "This vessel",
+        SuggestionKind::BasicGrammar,
+        "EN_DEMONSTRATIVE_THESE_VESSEL",
+        "LOCAL_DEMONSTRATIVE_AGREEMENT",
+        9,
+        &mut output,
+    );
+    push_duplicate_words(source, &mut output);
+    push_literal_matches(
+        source,
+        "됬다",
+        "됐다",
+        SuggestionKind::Spelling,
+        "KO_TYPO_DONE_DA",
+        "LOCAL_KO_SPELLING",
+        11,
+        true,
+        false,
+        &mut output,
+    );
+    push_literal_matches(
+        source,
+        "되요",
+        "돼요",
+        SuggestionKind::Spelling,
+        "KO_TYPO_DOE_YO",
+        "LOCAL_KO_SPELLING",
+        12,
+        true,
+        false,
+        &mut output,
+    );
     output
+}
+
+fn push_cased_phrase(
+    source: &str,
+    needle: &str,
+    lower_replacement: &'static str,
+    title_replacement: &'static str,
+    kind: SuggestionKind,
+    rule_code: &'static str,
+    message_code: &'static str,
+    priority: u8,
+    output: &mut Vec<ProposedEdit>,
+) {
+    let lower_source = source.to_ascii_lowercase();
+    let lower_needle = needle.to_ascii_lowercase();
+    let mut search_from = 0usize;
+    while let Some(relative) = lower_source[search_from..].find(&lower_needle) {
+        let start = search_from + relative;
+        let end = start + needle.len();
+        search_from = start + 1;
+        if !whole_word(source, start, end) {
+            continue;
+        }
+        let original = &source[start..end];
+        let replacement = if original.chars().next().is_some_and(|character| character.is_uppercase()) {
+            title_replacement
+        } else {
+            lower_replacement
+        };
+        if let Ok(range) = byte_range_to_utf16_range(source, start, end) {
+            output.push(ProposedEdit {
+                range,
+                replacement: Cow::Borrowed(replacement),
+                kind,
+                rule_code,
+                message_code,
+                confidence_band: ConfidenceBand::High,
+                priority,
+            });
+        }
+    }
+}
+
+fn is_protected_duplicate(word: &str) -> bool {
+    let upper = word.to_ascii_uppercase();
+    matches!(upper.as_str(), "LNG" | "ESD" | "CBHS")
+        || (word.len() <= 6 && word.chars().all(|character| character.is_ascii_uppercase()))
+}
+
+fn push_duplicate_words(source: &str, output: &mut Vec<ProposedEdit>) {
+    let mut words = Vec::new();
+    let mut current_start = None;
+    for (index, character) in source.char_indices() {
+        if character.is_ascii_alphabetic() {
+            if current_start.is_none() {
+                current_start = Some(index);
+            }
+        } else if let Some(start) = current_start.take() {
+            words.push((start, index));
+        }
+    }
+    if let Some(start) = current_start {
+        words.push((start, source.len()));
+    }
+    for pair in words.windows(2) {
+        let (left_start, left_end) = pair[0];
+        let (right_start, right_end) = pair[1];
+        let left = &source[left_start..left_end];
+        let right = &source[right_start..right_end];
+        if left.len() < 3 || right.len() < 3 {
+            continue;
+        }
+        if !left.eq_ignore_ascii_case(right) {
+            continue;
+        }
+        if is_protected_duplicate(left) || is_protected_duplicate(right) {
+            continue;
+        }
+        let between = &source[left_end..right_start];
+        if between.is_empty() || !between.chars().all(|character| character == ' ') {
+            continue;
+        }
+        if let Ok(range) = byte_range_to_utf16_range(source, left_start, right_end) {
+            output.push(ProposedEdit {
+                range,
+                replacement: Cow::Owned(left.to_string()),
+                kind: SuggestionKind::Spelling,
+                rule_code: "EN_DUPLICATE_WORD",
+                message_code: "LOCAL_DUPLICATE_WORD",
+                confidence_band: ConfidenceBand::High,
+                priority: 10,
+            });
+        }
+    }
 }

@@ -796,8 +796,16 @@ h1 {
   min-width: 0;
 }
 
-.result-heading > div > strong {
+.result-heading > div > strong,
+.result-title {
+  margin: 0;
   font-size: 12px;
+  font-weight: 700;
+}
+
+.result-title:focus {
+  outline: 2px solid #1b6f55;
+  outline-offset: 2px;
 }
 
 .result-heading > div > span {
@@ -897,6 +905,44 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.result-review {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid #d8e1da;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.result-review small {
+  color: var(--text-guidance);
+  font-size: 10px;
+}
+
+.result-review-source {
+  margin: 0;
+  max-height: 72px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.review-equal {
+  color: var(--text-recommended);
+}
+
+.review-delete {
+  color: #7a2430;
+  text-decoration: line-through;
+  background: #f8e3e6;
+}
+
+.review-insert {
+  color: #0f4233;
+  background: #dff0e7;
 }
 
 .result-actions {
