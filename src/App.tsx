@@ -193,7 +193,7 @@ function cloudAckFor(settings: AppSettings, kind: ProviderKind): number {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  schemaVersion: 6,
+  schemaVersion: 7,
   cloudProcessingAcknowledgementVersion: 0,
   mode: "grammar",
   restoreClipboard: true,
@@ -221,6 +221,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   activeProvider: "codex",
   antigravityCloudAcknowledgementVersion: 0,
   claudeCloudAcknowledgementVersion: 0,
+  onboardingVersion: 0,
+  startHiddenToTray: true,
 };
 
 const EMPTY_ENTRY_DRAFT: TerminologyEntryDraft = {
@@ -289,6 +291,9 @@ export default function App() {
   const [importPreview, setImportPreview] = useState<ImportPlanPreview | null>(null);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [providerSnapshot, setProviderSnapshot] = useState<ProviderSnapshot | null>(null);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [selfTestBusy, setSelfTestBusy] = useState<ProviderKind | null>(null);
+  const [selfTestNotes, setSelfTestNotes] = useState<Record<string, string>>({});
   const [prerequisites, setPrerequisites] = useState<PrerequisiteReport | null>(null);
   const [deviceLogin, setDeviceLogin] = useState<DeviceLogin | null>(null);
   const [selection, setSelection] = useState<ActiveSelection | null>(null);
@@ -488,6 +493,9 @@ export default function App() {
           throw new Error("Settings response was invalid.");
         }
         setSettings(next);
+        if (next.onboardingVersion < 1) {
+          setOnboardingOpen(true);
+        }
         modeRef.current = next.mode;
         targetLanguageRef.current = next.translation.targetLanguage;
         autoReferenceLanguageRef.current = next.translation.autoReferenceLanguage;
@@ -666,10 +674,21 @@ export default function App() {
 
     void listen("open-settings", () => {
       setSettingsOpen(true);
+      setOnboardingOpen(false);
       setRecordingShortcut(false);
       void refreshTerminology();
     }).then((unlisten) => {
       unlistenOpenSettings = unlisten;
+    });
+    void listen("open-onboarding", () => {
+      setOnboardingOpen(true);
+      setSettingsOpen(false);
+    });
+    void listen("open-provider-status", () => {
+      setSettingsOpen(true);
+      setOnboardingOpen(false);
+      setRecordingShortcut(false);
+      void refreshProviders();
     });
 
     return () => {
@@ -1413,7 +1432,45 @@ export default function App() {
           </div>
         </header>
 
-        {settingsOpen ? (
+        {onboardingOpen ? (
+          <div className="settings-pane" aria-label="First run">
+            <div className="settings-heading">
+              <div>
+                <h2>Welcome to Grammar</h2>
+                <p>Local Instant edits stay on this device. Deep sends selected text to one chosen Provider. Apply is always explicit.</p>
+              </div>
+            </div>
+            <ul className="disclosure-list">
+              <li>Default shortcut: {settings.shortcut.primary.display}</li>
+              <li>Tray icon: Show Grammar, Settings, Provider Status, Quit</li>
+              <li>Provider status and Test connection live in Settings</li>
+              <li>Instant is local. Deep uses only the selected Provider.</li>
+            </ul>
+            <label>
+              <input
+                type="checkbox"
+                checked={settings.startHiddenToTray}
+                onChange={() => {
+                  void saveSettings({ ...settings, startHiddenToTray: !settings.startHiddenToTray });
+                }}
+              />
+              Start hidden to tray
+            </label>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => {
+                void invoke<unknown>("complete_onboarding").then((value) => {
+                  const saved = parseAppSettings(value);
+                  if (saved) setSettings(saved);
+                  setOnboardingOpen(false);
+                });
+              }}
+            >
+              Continue
+            </button>
+          </div>
+        ) : settingsOpen ? (
           <div className="settings-pane" aria-label="Settings">
             <div className="settings-heading">
               <div>
@@ -1422,6 +1479,28 @@ export default function App() {
               </div>
               <Keyboard size={20} />
             </div>
+            <label>
+              <input
+                type="checkbox"
+                checked={settings.startHiddenToTray}
+                onChange={() => {
+                  void saveSettings({ ...settings, startHiddenToTray: !settings.startHiddenToTray });
+                }}
+              />
+              Start hidden to tray
+            </label>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                void invoke<unknown>("diagnostic_snapshot")
+                  .then((snapshot) => navigator.clipboard.writeText(JSON.stringify(snapshot)))
+                  .then(() => setStatus("Diagnostics copied"))
+                  .catch((nextError) => setError(toErrorMessage(nextError)));
+              }}
+            >
+              Copy diagnostics
+            </button>
             <label className="settings-field">
               <span>Primary shortcut</span>
               <button
@@ -1512,7 +1591,25 @@ export default function App() {
                       <button type="button" onClick={() => void refreshProviders()}>
                         Refresh status
                       </button>
+                      <button
+                        type="button"
+                        disabled={busy || selfTestBusy !== null}
+                        onClick={() => {
+                          setSelfTestBusy(item.kind);
+                          void invoke<unknown>("test_provider_connection", { kind: item.kind })
+                            .then((record) => {
+                              const classification = (record as { classification?: string }).classification ?? "product_failure";
+                              setSelfTestNotes((current) => ({ ...current, [item.kind]: classification }));
+                              void refreshProviders();
+                            })
+                            .catch((nextError) => setError(toErrorMessage(nextError)))
+                            .finally(() => setSelfTestBusy(null));
+                        }}
+                      >
+                        {selfTestBusy === item.kind ? "Testing…" : "Test connection"}
+                      </button>
                     </div>
+                    {selfTestNotes[item.kind] ? <p>Last test: {selfTestNotes[item.kind]}</p> : null}
                   </article>
                 );
               })}

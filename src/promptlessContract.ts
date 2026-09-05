@@ -18,7 +18,7 @@ export type PrimaryShortcut = ShortcutCandidate &
 export type ProviderKind = "codex" | "antigravity" | "claude";
 
 export type AppSettings = Readonly<{
-  schemaVersion: 6;
+  schemaVersion: 7;
   cloudProcessingAcknowledgementVersion: number;
   mode: RewriteMode;
   restoreClipboard: boolean;
@@ -40,6 +40,8 @@ export type AppSettings = Readonly<{
   activeProvider: ProviderKind;
   antigravityCloudAcknowledgementVersion: number;
   claudeCloudAcknowledgementVersion: number;
+  onboardingVersion: number;
+  startHiddenToTray: boolean;
 }>;
 
 export type RewriteIntentToken = CaptureToken &
@@ -151,8 +153,10 @@ export function parseAppSettings(value: unknown): AppSettings | null {
       "activeProvider",
       "antigravityCloudAcknowledgementVersion",
       "claudeCloudAcknowledgementVersion",
+      "onboardingVersion",
+      "startHiddenToTray",
     ]) ||
-    value.schemaVersion !== 6 ||
+    value.schemaVersion !== 7 ||
     typeof value.cloudProcessingAcknowledgementVersion !== "number" ||
     !Number.isSafeInteger(value.cloudProcessingAcknowledgementVersion) ||
     value.cloudProcessingAcknowledgementVersion < 0 ||
@@ -210,12 +214,17 @@ export function parseAppSettings(value: unknown): AppSettings | null {
     typeof value.claudeCloudAcknowledgementVersion !== "number" ||
     !Number.isSafeInteger(value.claudeCloudAcknowledgementVersion) ||
     value.claudeCloudAcknowledgementVersion < 0 ||
-    value.claudeCloudAcknowledgementVersion > 1
+    value.claudeCloudAcknowledgementVersion > 1 ||
+    typeof value.onboardingVersion !== "number" ||
+    !Number.isSafeInteger(value.onboardingVersion) ||
+    value.onboardingVersion < 0 ||
+    value.onboardingVersion > 1 ||
+    typeof value.startHiddenToTray !== "boolean"
   ) {
     return null;
   }
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     cloudProcessingAcknowledgementVersion: value.cloudProcessingAcknowledgementVersion,
     mode: value.mode as RewriteMode,
     restoreClipboard: value.restoreClipboard,
@@ -238,6 +247,8 @@ export function parseAppSettings(value: unknown): AppSettings | null {
     activeProvider: value.activeProvider as ProviderKind,
     antigravityCloudAcknowledgementVersion: value.antigravityCloudAcknowledgementVersion,
     claudeCloudAcknowledgementVersion: value.claudeCloudAcknowledgementVersion,
+    onboardingVersion: value.onboardingVersion,
+    startHiddenToTray: value.startHiddenToTray,
   };
 }
 

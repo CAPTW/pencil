@@ -86,8 +86,10 @@ fn default_settings_serialize_the_versioned_promptless_contract() {
     let serialized = serde_json::to_value(AppSettings::default())
         .expect("default settings should be serializable");
 
-    assert_eq!(serialized.get("schemaVersion"), Some(&json!(6)));
+    assert_eq!(serialized.get("schemaVersion"), Some(&json!(7)));
     assert_eq!(serialized.get("activeProvider"), Some(&json!("codex")));
+    assert_eq!(serialized.get("onboardingVersion"), Some(&json!(0)));
+    assert_eq!(serialized.get("startHiddenToTray"), Some(&json!(true)));
     assert_eq!(
         serialized.get("cloudProcessingAcknowledgementVersion"),
         Some(&json!(0))
@@ -136,7 +138,7 @@ fn settings_schema_five_accepts_auto_target_and_user_reference_language() {
     assert_eq!(loaded.settings.active_provider, crate::provider::ProviderKind::Codex);
     let serialized = serde_json::to_value(loaded.settings)
         .expect("auto translation settings should be serializable");
-    assert_eq!(serialized.get("schemaVersion"), Some(&json!(6)));
+    assert_eq!(serialized.get("schemaVersion"), Some(&json!(7)));
     assert_eq!(
         serialized.pointer("/translation/targetLanguage"),
         Some(&json!("auto"))
@@ -277,7 +279,7 @@ fn legacy_settings_migrate_without_losing_existing_supported_values() {
         decode_settings(r#"{"mode":"translate_ko","restoreClipboard":false,"autoRewrite":false}"#);
 
     assert_eq!(loaded.recovery, Some(SettingsRecoveryCode::Migrated));
-    assert_eq!(loaded.settings.schema_version, 6);
+    assert_eq!(loaded.settings.schema_version, 7);
     assert_eq!(loaded.settings.cloud_processing_acknowledgement_version, 0);
     assert_eq!(loaded.settings.mode, RewriteMode::Translate);
     assert!(!loaded.settings.restore_clipboard);
@@ -332,7 +334,7 @@ fn schema_four_settings_migrate_without_changing_the_manual_target() {
     );
 
     assert_eq!(loaded.recovery, Some(SettingsRecoveryCode::Migrated));
-    assert_eq!(loaded.settings.schema_version, 6);
+    assert_eq!(loaded.settings.schema_version, 7);
     assert_eq!(
         loaded.settings.translation.target_language,
         TranslationTargetLanguage::Ja
@@ -703,7 +705,7 @@ fn every_translation_target_is_named_in_the_internal_prompt() {
 #[test]
 fn unknown_settings_fields_follow_the_existing_ignore_policy() {
     let loaded = decode_settings(
-        r#"{"schemaVersion":6,"cloudProcessingAcknowledgementVersion":0,"mode":"grammar","restoreClipboard":true,"autoRewrite":true,"shortcut":{"primary":{"modifiers":["CTRL","SHIFT"],"key":"G","display":"Ctrl+Shift+G"}},"translation":{"sourceLanguage":"auto","targetLanguage":"en","autoReferenceLanguage":"ko","applyFormat":"translation_only"},"terminology":{"enabled":true,"activeProfileId":"general","useApprovedTerminology":true,"suggestTerminology":true,"autoSaveSuggestions":false},"activeProvider":"codex","antigravityCloudAcknowledgementVersion":0,"claudeCloudAcknowledgementVersion":0,"futureIgnored":{"synthetic":true}}"#,
+        r#"{"schemaVersion":7,"cloudProcessingAcknowledgementVersion":0,"mode":"grammar","restoreClipboard":true,"autoRewrite":true,"shortcut":{"primary":{"modifiers":["CTRL","SHIFT"],"key":"G","display":"Ctrl+Shift+G"}},"translation":{"sourceLanguage":"auto","targetLanguage":"en","autoReferenceLanguage":"ko","applyFormat":"translation_only"},"terminology":{"enabled":true,"activeProfileId":"general","useApprovedTerminology":true,"suggestTerminology":true,"autoSaveSuggestions":false},"activeProvider":"codex","antigravityCloudAcknowledgementVersion":0,"claudeCloudAcknowledgementVersion":0,"onboardingVersion":0,"startHiddenToTray":true,"futureIgnored":{"synthetic":true}}"#,
     );
 
     assert_eq!(loaded.recovery, None);
@@ -819,7 +821,7 @@ fn injected_save_failure_after_backup_recovery_keeps_a_valid_recovery_source() {
 #[test]
 fn settings_validation_rejects_noncanonical_or_future_contracts() {
     let mut future = AppSettings::default();
-    future.schema_version = 7;
+    future.schema_version = 8;
     assert_eq!(future.validate(), Err("settings_schema_unsupported"));
 
     let mut forged_display = AppSettings::default();

@@ -11,8 +11,9 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 
-pub(crate) const SETTINGS_SCHEMA_VERSION: u32 = 6;
+pub(crate) const SETTINGS_SCHEMA_VERSION: u32 = 7;
 pub(crate) const CLOUD_PROCESSING_DISCLOSURE_VERSION: u32 = 1;
+pub(crate) const ONBOARDING_VERSION: u32 = 1;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -66,6 +67,8 @@ pub struct AppSettings {
     pub active_provider: ProviderKind,
     pub antigravity_cloud_acknowledgement_version: u32,
     pub claude_cloud_acknowledgement_version: u32,
+    pub onboarding_version: u32,
+    pub start_hidden_to_tray: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -355,6 +358,25 @@ pub(crate) fn decode_settings(text: &str) -> SettingsLoad {
         Some(_) => invalid = true,
         None => migrated = true,
     }
+    match value.get("onboardingVersion").and_then(serde_json::Value::as_u64) {
+        Some(version) if version <= ONBOARDING_VERSION as u64 => {
+            settings.onboarding_version = version as u32;
+        }
+        Some(_) => invalid = true,
+        None => {
+            migrated = true;
+            if value.get("schemaVersion").is_some() {
+                settings.onboarding_version = ONBOARDING_VERSION;
+            }
+        }
+    }
+    match value.get("startHiddenToTray").and_then(serde_json::Value::as_bool) {
+        Some(value) => settings.start_hidden_to_tray = value,
+        None => {
+            migrated = true;
+            settings.start_hidden_to_tray = true;
+        }
+    }
 
     SettingsLoad {
         settings,
@@ -382,6 +404,8 @@ impl Default for AppSettings {
             active_provider: ProviderKind::Codex,
             antigravity_cloud_acknowledgement_version: 0,
             claude_cloud_acknowledgement_version: 0,
+            onboarding_version: 0,
+            start_hidden_to_tray: true,
         }
     }
 }
@@ -415,6 +439,10 @@ impl AppSettings {
             return Err("terminology_auto_save_must_be_false");
         }
         Ok(())
+    }
+
+    pub(crate) fn needs_onboarding(&self) -> bool {
+        self.onboarding_version < ONBOARDING_VERSION
     }
 
     pub(crate) fn rewrite_intent(&self) -> Result<RewriteIntent, &'static str> {

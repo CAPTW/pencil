@@ -28,10 +28,19 @@ export type ProviderStatus = Readonly<{
   }>;
 }>;
 
+export type SelfTestRecord = Readonly<{
+  kind: ProviderKind;
+  classification: string;
+  startedUtc: string;
+  durationMs: number;
+  errorCode: string | null;
+}>;
+
 export type ProviderSnapshot = Readonly<{
   active: ProviderKind;
   busyKind: ProviderKind | null;
   statuses: ProviderStatus[];
+  lastSelfTests?: SelfTestRecord[];
 }>;
 
 const KINDS = new Set<ProviderKind>(["codex", "antigravity", "claude"]);
@@ -110,5 +119,19 @@ export function parseProviderSnapshot(value: unknown): ProviderSnapshot | null {
     active: value.active as ProviderKind,
     busyKind,
     statuses,
+    lastSelfTests: Array.isArray(value.lastSelfTests)
+      ? value.lastSelfTests.flatMap((item) => {
+          if (!isRecord(item) || typeof item.kind !== "string" || !KINDS.has(item.kind as ProviderKind)) {
+            return [];
+          }
+          return [{
+            kind: item.kind as ProviderKind,
+            classification: typeof item.classification === "string" ? item.classification : "product_failure",
+            startedUtc: typeof item.startedUtc === "string" ? item.startedUtc : "",
+            durationMs: typeof item.durationMs === "number" ? item.durationMs : 0,
+            errorCode: typeof item.errorCode === "string" ? item.errorCode : null,
+          }];
+        })
+      : [],
   };
 }
