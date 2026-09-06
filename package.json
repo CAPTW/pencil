@@ -10,6 +10,7 @@
     "build:frontend": "tsc && vite build",
     "test:window-chrome": "node scripts/test-window-chrome-contract.mjs",
     "test:provider": "node scripts/test-provider-contract.mjs && node scripts/test-provider-no-fallback.mjs && node scripts/test-p3-03-instant-runtime-state.mjs && node scripts/test-p3-03-instant-runtime-contract.mjs && node scripts/test-r3-daily-use.mjs && node scripts/test-r5-writing-quality.mjs && node scripts/test-r6-provider-transport.mjs",
+    "test:daily-bundle": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-daily-use-bundle-contract.ps1",
     "typecheck": "tsc --noEmit",
     "verify:windows": "powershell -ExecutionPolicy Bypass -File scripts/verify-windows.ps1"
   },
