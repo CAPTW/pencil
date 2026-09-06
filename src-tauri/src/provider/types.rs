@@ -143,6 +143,13 @@ pub enum ProviderError {
     MalformedOutput,
     NonzeroExit(i32),
     SilentFallbackRejected,
+    EmptyResponse,
+    RateLimited,
+    TimedOut,
+    NetworkFailure,
+    CliUsage,
+    ExternalService,
+    InputTooLarge,
 }
 
 impl ProviderError {
@@ -158,6 +165,13 @@ impl ProviderError {
             Self::MalformedOutput => "provider_malformed_output",
             Self::NonzeroExit(_) => "provider_nonzero_exit",
             Self::SilentFallbackRejected => "provider_silent_fallback_rejected",
+            Self::EmptyResponse => "provider_empty_response",
+            Self::RateLimited => "provider_rate_limited",
+            Self::TimedOut => "provider_timeout",
+            Self::NetworkFailure => "provider_network_failure",
+            Self::CliUsage => "provider_cli_usage",
+            Self::ExternalService => "provider_external_service",
+            Self::InputTooLarge => "provider_input_too_large_for_transport",
         }
     }
 }
@@ -173,9 +187,31 @@ impl std::fmt::Display for ProviderError {
             Self::AuthRequired => write!(formatter, "Sign in to the selected Provider before sending a cloud request."),
             Self::ContentLimit(reason) => write!(formatter, "{reason}"),
             Self::MalformedOutput => write!(formatter, "The Provider returned output that could not be used."),
-            Self::NonzeroExit(code) => write!(formatter, "The Provider process exited with status {code}."),
+            Self::NonzeroExit(code) => write!(
+                formatter,
+                "The Provider process exited with status {code}. Retry the same Provider, or Test connection."
+            ),
             Self::SilentFallbackRejected => {
                 write!(formatter, "A failed Provider request cannot be replayed through another Provider.")
+            }
+            Self::EmptyResponse => {
+                write!(formatter, "The Provider returned an empty result. Retry the same Provider.")
+            }
+            Self::RateLimited => {
+                write!(formatter, "The Provider is rate limited. Wait, then retry the same Provider.")
+            }
+            Self::TimedOut => write!(formatter, "The Provider request timed out. Retry the same Provider."),
+            Self::NetworkFailure => {
+                write!(formatter, "The Provider network request failed. Check connectivity and retry the same Provider.")
+            }
+            Self::CliUsage => {
+                write!(formatter, "The official Provider CLI rejected the request. Update the official client, then Refresh status.")
+            }
+            Self::ExternalService => {
+                write!(formatter, "The official Provider service returned an error. Test connection, then retry the same Provider.")
+            }
+            Self::InputTooLarge => {
+                write!(formatter, "The selected text is too large for this Provider transport. Shorten the selection.")
             }
         }
     }

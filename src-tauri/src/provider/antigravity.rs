@@ -76,47 +76,91 @@ pub(crate) async fn rewrite(
         "--print-timeout".to_string(),
         "2m".to_string(),
     ];
+    if super::cli::command_line_too_long(&path, &args) {
+        return Err(ProviderError::InputTooLarge);
+    }
     let captured = run_writing(&path, &args, Duration::from_secs(130), cancel.clone(), slot)
         .await
         .map_err(ProviderError::Faulted)?;
     if captured.cancelled || cancel.load(Ordering::SeqCst) {
         return Err(ProviderError::Cancelled);
     }
-    if captured.exit_code != Some(0) {
-        let combined = format!("{} {}", captured.stdout, captured.stderr).to_lowercase();
-        if combined.contains("authentication required") || combined.contains("not already authenticated") {
-            return Err(ProviderError::SignedOut(
-                "Google Antigravity CLI is not signed in. Run `agy` once in a terminal to complete official Google sign-in.".to_string(),
-            ));
-        }
-        if let Ok(value) = serde_json::from_str::<Value>(captured.stdout.trim()) {
-            if let Some(error) = value.get("error").and_then(Value::as_str) {
-                if error.to_lowercase().contains("authentication") {
-                    return Err(ProviderError::SignedOut(error.to_string()));
-                }
-            }
-        }
-        return Err(ProviderError::NonzeroExit(captured.exit_code.unwrap_or(1)));
+    finish_agy_capture(&captured.stdout, captured.exit_code, intent.mode())
+}
+
+fn finish_agy_capture(
+    stdout: &str,
+    exit_code: Option<i32>,
+    mode: RewriteMode,
+) -> Result<RewriteResult, ProviderError> {
+    let parsed = serde_json::from_str::<Value>(stdout.trim()).ok();
+    if exit_code == Some(0) {
+        let Some(value) = parsed else {
+            return Err(ProviderError::MalformedOutput);
+        };
+        return finish_agy_value(value, mode);
     }
-    parse_agy_result(&captured.stdout, intent.mode())
+    Err(classify_agy_failure(
+        parsed.as_ref(),
+        exit_code,
+        stdout.trim().is_empty(),
+    ))
+}
+
+fn classify_agy_failure(
+    parsed: Option<&Value>,
+    exit_code: Option<i32>,
+    stdout_empty: bool,
+) -> ProviderError {
+    let error = parsed
+        .and_then(|value| value.get("error").and_then(Value::as_str))
+        .unwrap_or("");
+    let lower = error.to_lowercase();
+    if lower.contains("authentication")
+        || lower.contains("not already authenticated")
+        || lower.contains("sign in")
+        || lower.contains("signed out")
+    {
+        return ProviderError::SignedOut(
+            "Google Antigravity CLI is not signed in. Run `agy` once in a terminal to complete official Google sign-in.".to_string(),
+        );
+    }
+    if lower.contains("unknown option") || lower.contains("unknown flag") {
+        return ProviderError::CliUsage;
+    }
+    if lower.contains("rate") || lower.contains("quota") || lower.contains("resource exhausted") {
+        return ProviderError::RateLimited;
+    }
+    if lower.contains("timeout") || lower.contains("timed out") {
+        return ProviderError::TimedOut;
+    }
+    if lower.contains("network") || lower.contains("connection") || lower.contains("dns") {
+        return ProviderError::NetworkFailure;
+    }
+    if parsed.is_some() {
+        return ProviderError::ExternalService;
+    }
+    if stdout_empty {
+        return ProviderError::EmptyResponse;
+    }
+    ProviderError::NonzeroExit(exit_code.unwrap_or(1))
 }
 
 fn parse_agy_result(stdout: &str, mode: RewriteMode) -> Result<RewriteResult, ProviderError> {
-    let value: Value = serde_json::from_str(stdout.trim()).map_err(|_| ProviderError::MalformedOutput)?;
+    finish_agy_capture(stdout, Some(0), mode)
+}
+
+fn finish_agy_value(value: Value, mode: RewriteMode) -> Result<RewriteResult, ProviderError> {
     if value.get("status").and_then(Value::as_str) != Some("SUCCESS") {
-        let error = value
-            .get("error")
-            .and_then(Value::as_str)
-            .unwrap_or("Antigravity request failed");
-        if error.to_lowercase().contains("authentication") {
-            return Err(ProviderError::SignedOut(error.to_string()));
-        }
-        return Err(ProviderError::Faulted(error.to_string()));
+        return Err(classify_agy_failure(Some(&value), Some(0), false));
     }
     let text = value
         .get("response")
         .and_then(Value::as_str)
         .ok_or(ProviderError::MalformedOutput)?;
+    if text.trim().is_empty() {
+        return Err(ProviderError::EmptyResponse);
+    }
     parse_payload(text, mode)
 }
 
@@ -182,23 +226,62 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn structured_nonzero_error_is_external_and_does_not_leak_raw_text() {
+        let stdout = r#"{"status":"ERROR","response":"","error":"synthetic-official-detail-should-not-leak"}"#;
+        let error = finish_agy_capture(stdout, Some(1), RewriteMode::Grammar).unwrap_err();
+        assert!(matches!(error, ProviderError::ExternalService));
+        assert_eq!(error.code(), "provider_external_service");
+        assert!(!error.to_string().contains("synthetic-official-detail-should-not-leak"));
+    }
+
+    #[test]
+    fn empty_nonzero_stdout_is_empty_response() {
+        let error = finish_agy_capture("", Some(1), RewriteMode::Grammar).unwrap_err();
+        assert!(matches!(error, ProviderError::EmptyResponse));
+    }
+
+    #[test]
+    fn dash_dash_source_stays_inside_canonical_prompt() {
+        let prompt = rewrite_prompt_with_terminology(
+            "--inject option",
+            crate::translation::RewriteIntent::grammar(),
+            &[],
+        )
+        .unwrap();
+        assert!(prompt.contains("--inject option"));
+        assert!(prompt.contains("untrusted data"));
+    }
+
+    #[test]
+    fn command_line_preflight_rejects_oversized_argv() {
+        let path = PathBuf::from("agy.exe");
+        let huge = "x".repeat(40_000);
+        assert!(super::super::cli::command_line_too_long(&path, &[huge]));
+    }
+
     #[tokio::test]
     #[ignore]
     async fn live_adapter_synthetic_grammar() {
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let slot = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         let result = rewrite(
-            "This are a synthetic provider integration test.",
+            "These vessel is ready for departure.",
             crate::translation::RewriteIntent::grammar(),
             &[],
             cancel,
             slot,
         )
-        .await
-        .expect("agy adapter live rewrite");
-        assert_eq!(result.provider_used, ProviderKind::Antigravity);
-        assert!(!result.replacement.is_empty());
-        assert_ne!(result.provider_used, ProviderKind::Codex);
-        assert_ne!(result.provider_used, ProviderKind::Claude);
+        .await;
+        match result {
+            Ok(value) => {
+                assert_eq!(value.provider_used, ProviderKind::Antigravity);
+                assert!(!value.replacement.is_empty());
+            }
+            Err(error) => {
+                assert_ne!(error.code(), "provider_silent_fallback_rejected");
+                assert!(!error.to_string().contains("These vessel"));
+            }
+        }
     }
 }

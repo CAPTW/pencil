@@ -222,9 +222,17 @@ impl ProviderManager {
                 }
                 Err(ProviderError::Unavailable(_)) => SelfTestClassification::Unavailable,
                 Err(ProviderError::Cancelled) => SelfTestClassification::Cancelled,
-                Err(ProviderError::Faulted(_) | ProviderError::NonzeroExit(_)) => {
-                    SelfTestClassification::ExternalFailure
-                }
+                Err(
+                    ProviderError::Faulted(_)
+                    | ProviderError::NonzeroExit(_)
+                    | ProviderError::EmptyResponse
+                    | ProviderError::RateLimited
+                    | ProviderError::TimedOut
+                    | ProviderError::NetworkFailure
+                    | ProviderError::CliUsage
+                    | ProviderError::ExternalService
+                    | ProviderError::InputTooLarge,
+                ) => SelfTestClassification::ExternalFailure,
                 Err(_) => SelfTestClassification::ProductFailure,
             },
             started_utc,

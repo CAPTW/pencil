@@ -155,6 +155,9 @@ pub(crate) async fn rewrite(
         "--permission-mode".to_string(),
         "dontAsk".to_string(),
     ];
+    if super::cli::command_line_too_long(&path, &args) {
+        return Err(ProviderError::InputTooLarge);
+    }
     let captured = run_writing(
         &path,
         &args,
@@ -175,7 +178,7 @@ pub(crate) async fn rewrite(
     }
     if captured.exit_code != Some(0) {
         if combined.contains("unknown option") {
-            return Err(ProviderError::Faulted(captured.stderr));
+            return Err(ProviderError::CliUsage);
         }
         if combined.contains("authentication") {
             return Err(ProviderError::SignedOut(
