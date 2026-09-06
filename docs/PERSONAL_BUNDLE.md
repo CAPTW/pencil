@@ -125,3 +125,21 @@ The workflow fails closed with content-free codes:
 - `BLOCKED_GRAMMAR_P2_01_ARTIFACT_VERIFICATION_FAILED`: archive, manifest, PE, Authenticode, updater, or privacy verification failed.
 
 On a failed build, the script reports its uniquely owned temporary root for evidence and does not reuse it. On complete success, that owned temporary root is removed.
+
+## R8 daily-use portable bundle
+
+Current Owner handoff is the R8 portable folder and ZIP, not the P2-01 formal packaging chain above.
+
+From a clean worktree:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-daily-use-bundle.ps1 `
+  -ExecutablePath 'path\to\codex-pencil.exe' `
+  -OutputRoot 'D:\dev\artifacts\Codex-Pencil\GRAMMAR-PERSONAL-DAILY-USE-R8\<UTC>' `
+  -ProductCommit '<product-commit>' `
+  -PackagingCommit '<packaging-commit>' `
+  -GitTree '<tree>' `
+  -GitSubject '<subject>'
+```
+
+The portable root is `portable\Grammar\`. Helpers are relative to that folder. Settings remain in per-user AppData. Shortcuts and startup are optional, explicit, and reversible. Provider clients stay external.
