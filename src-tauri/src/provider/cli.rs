@@ -112,6 +112,27 @@ pub(crate) async fn run_args(
     })
 }
 
+const WINDOWS_COMMAND_LINE_LIMIT: usize = 32_000;
+
+pub(crate) fn command_line_too_long(path: &Path, args: &[String]) -> bool {
+    let mut size = quoted_arg(&path.to_string_lossy()).len();
+    for arg in args {
+        size = size.saturating_add(1).saturating_add(quoted_arg(arg).len());
+        if size > WINDOWS_COMMAND_LINE_LIMIT {
+            return true;
+        }
+    }
+    false
+}
+
+fn quoted_arg(value: &str) -> String {
+    if value.is_empty() || value.bytes().any(|byte| matches!(byte, b' ' | b'\t' | b'"')) {
+        format!("\"{}\"", value.replace('"', "\\\""))
+    } else {
+        value.to_string()
+    }
+}
+
 pub(crate) async fn run_writing(
     path: &Path,
     args: &[String],
@@ -204,4 +225,16 @@ pub(crate) async fn run_writing(
     *slot.lock().await = None;
     drop(workspace);
     outcome
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_line_limit_rejects_oversized_argument() {
+        let path = PathBuf::from("agy.exe");
+        assert!(!command_line_too_long(&path, &["-p".to_string(), "short".to_string()]));
+        assert!(command_line_too_long(&path, &["x".repeat(40_000)]));
+    }
 }

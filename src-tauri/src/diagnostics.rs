@@ -149,6 +149,7 @@ pub fn build_snapshot(
             format!("onboarding_version={ONBOARDING_VERSION}"),
             format!("writing_contract={WRITING_CONTRACT_VERSION}"),
             "result_review=1".to_string(),
+            "provider_transport_classify=1".to_string(),
             "p3b_not_implemented".to_string(),
         ],
         diagnostic_id: Uuid::new_v4().to_string(),
