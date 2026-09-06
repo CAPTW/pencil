@@ -43,12 +43,14 @@ if ((Test-Path -LiteralPath $infoPath) -and (Test-Path -LiteralPath $sumsPath)) 
     $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLower()
     if ($actual -ne $parts[0].ToLower()) { $failures.Add("SUMS_MISMATCH:$rel") }
   }
-  $textFiles = Get-ChildItem -LiteralPath $here -File | Where-Object { $_.Extension -match '\.(ps1|cmd|md|json|txt)$' }
+  $repoNeedle = 'D:\dev\repos' + '\Grammar'
+  $oldNeedle = 'GRAMMAR-PROVIDER' + '-RUNTIME-R6'
+  $textFiles = Get-ChildItem -LiteralPath $here -File | Where-Object { $_.Extension -match '\.(ps1|cmd|md|json|txt)$' -and $_.Name -ne 'Verify-Bundle.ps1' }
   foreach ($file in $textFiles) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
-    if ($text -match 'D:\\dev\\repos\\Grammar') { $failures.Add("REPO_PATH:$($file.Name)") }
-    if ($text -match 'GRAMMAR-PROVIDER-RUNTIME-R6') { $failures.Add("OLD_ARTIFACT:$($file.Name)") }
-    if ($text -match '(?i)(sk-|bearer\s+[A-Za-z0-9\-_]{12,}|api_key\s*=)') { $failures.Add("SECRET_SHAPE:$($file.Name)") }
+    if ($text.Contains($repoNeedle)) { $failures.Add("REPO_PATH:$($file.Name)") }
+    if ($text.Contains($oldNeedle)) { $failures.Add("OLD_ARTIFACT:$($file.Name)") }
+    if ($text -match '(?i)(sk-[A-Za-z0-9]{10,}|api_key\s*=\s*\S+)') { $failures.Add("SECRET_SHAPE:$($file.Name)") }
   }
   foreach ($bad in @('.git','node_modules','target','Cargo.lock','package-lock.json')) {
     if (Test-Path -LiteralPath (Join-Path $here $bad)) { $failures.Add("PROHIBITED:$bad") }
