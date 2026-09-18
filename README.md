@@ -1,5 +1,7 @@
 # Codex Pencil
 
+Current product direction, audit boundaries and development authority are in [`docs/control/CURRENT_DECISIONS.md`](docs/control/CURRENT_DECISIONS.md) and [`control/state.json`](control/state.json). Read [`AGENTS.md`](AGENTS.md) before new work. P3-B proactive inline assist is a frozen future target, not an implemented capability; the setup and historical contract notes below describe the existing P3-A application.
+
 Codex Pencil is a compact Windows tray/widget writing assistant built with Tauri v2, React, TypeScript, and Rust commands. It uses the local Codex app-server over stdio and ChatGPT managed Codex device-code login. It does not implement custom OpenAI OAuth, run a backend server, expose a network listener, add monetization, or create app-specific user accounts.
 
 ## File Tree

@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "agent_id",
+    "privacy_result",
+    "residual_process_result",
+    "worktree_status",
+    "recommended_disposition",
+    "entry_head",
+    "entry_tree",
+    "candidate_head",
+    "candidate_tree",
+    "candidate_parent",
+    "commit_subjects",
+    "changed_paths",
+    "unintended_paths",
+    "tests_run",
+    "tests_passed",
+    "tests_failed",
+    "tests_blocked",
+    "live_evidence",
+    "fixture_evidence",
+    "known_limitations",
+    "next_gate_executed",
+    "automatic_continuation",
+    "packet_status"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "privacy_result": {
+      "type": "string",
+      "minLength": 1
+    },
+    "residual_process_result": {
+      "type": "string",
+      "minLength": 1
+    },
+    "worktree_status": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recommended_disposition": {
+      "type": "string",
+      "minLength": 1
+    },
+    "entry_head": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "entry_tree": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "candidate_head": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "candidate_tree": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "candidate_parent": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "commit_subjects": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "changed_paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "unintended_paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "tests_run": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "tests_passed": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "tests_failed": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "tests_blocked": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "live_evidence": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "fixture_evidence": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "known_limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "next_gate_executed": {
+      "type": "boolean",
+      "const": false
+    },
+    "automatic_continuation": {
+      "type": "boolean",
+      "const": false
+    },
+    "packet_status": {
+      "enum": [
+        "EXAMPLE_NOT_AUTHORIZED",
+        "AUTHORIZED"
+      ]
+    }
+  }
+}
