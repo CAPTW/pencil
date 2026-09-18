@@ -1,0 +1,28 @@
+{
+  "task_id": "EXAMPLE-GOVERNANCE-REVIEW",
+  "agent_id": "EXAMPLE_NOT_AUTHORIZED",
+  "privacy_result": "EXAMPLE_NOT_AUTHORIZED",
+  "residual_process_result": "EXAMPLE_NOT_AUTHORIZED",
+  "worktree_status": "EXAMPLE_NOT_AUTHORIZED",
+  "recommended_disposition": "DO_NOT_EXECUTE",
+  "entry_head": "9f54ebd4b7586f7a1658245761ccccf8a77500c6",
+  "entry_tree": "a1bf70c9a5d215a8ce1f22e360790f0f3b90ad53",
+  "candidate_head": "9f54ebd4b7586f7a1658245761ccccf8a77500c6",
+  "candidate_tree": "a1bf70c9a5d215a8ce1f22e360790f0f3b90ad53",
+  "candidate_parent": "9f54ebd4b7586f7a1658245761ccccf8a77500c6",
+  "commit_subjects": [],
+  "changed_paths": [],
+  "unintended_paths": [],
+  "tests_run": [],
+  "tests_passed": [],
+  "tests_failed": [],
+  "tests_blocked": [],
+  "live_evidence": [],
+  "fixture_evidence": [],
+  "known_limitations": [
+    "Illustrative identities, not real candidate/evidence"
+  ],
+  "next_gate_executed": false,
+  "automatic_continuation": false,
+  "packet_status": "EXAMPLE_NOT_AUTHORIZED"
+}

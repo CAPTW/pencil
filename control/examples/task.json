@@ -1,0 +1,44 @@
+{
+  "task_id": "EXAMPLE-GOVERNANCE-REVIEW",
+  "owner_decision": "EXAMPLE_NOT_AUTHORIZED",
+  "objective": "Illustrate packet shape only; no execution authority",
+  "base_branch": "main",
+  "base_subject": "Historical example; use measured subject in a real authorized packet",
+  "base_head": "9f54ebd4b7586f7a1658245761ccccf8a77500c6",
+  "base_tree": "a1bf70c9a5d215a8ce1f22e360790f0f3b90ad53",
+  "authorized_paths": [
+    "docs/example/**"
+  ],
+  "forbidden_paths": [
+    "src/**",
+    "src-tauri/**"
+  ],
+  "required_reads": [
+    "docs/control/MULTI_AGENT_CONTRACT.md"
+  ],
+  "preconditions": [
+    "Owner has not authorized this example"
+  ],
+  "invariants": [
+    "Product source unchanged"
+  ],
+  "acceptance_tests": [
+    "python scripts/validate_governance.py --root ."
+  ],
+  "stop_conditions": [
+    "Any attempt to execute this example"
+  ],
+  "automatic_continuation": false,
+  "packet_status": "EXAMPLE_NOT_AUTHORIZED",
+  "live_tests": [
+    "NOT_RUN: example conveys no live-test authority"
+  ],
+  "privacy_tests": [
+    "NOT_RUN: example conveys no data capture or provider authority"
+  ],
+  "evidence_root": "EXAMPLE_NOT_AUTHORIZED_NO_EVIDENCE_DIRECTORY_CREATED",
+  "commit_policy": "EXAMPLE_NOT_AUTHORIZED: no commits permitted",
+  "integration_policy": "EXAMPLE_NOT_AUTHORIZED: no integration permitted",
+  "project_source_policy": "EXAMPLE_NOT_AUTHORIZED: no generation or publication permitted",
+  "next_gate_policy": "DO_NOT_EXECUTE_NEXT_GATE"
+}

@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "base_head",
+    "base_tree",
+    "candidate_head",
+    "candidate_tree",
+    "task_packet",
+    "current_diff",
+    "completed_verification",
+    "failed_verification",
+    "unrun_verification",
+    "known_hypotheses",
+    "refuted_hypotheses",
+    "allowed_paths",
+    "remaining_steps",
+    "no_go_boundaries"
+  ],
+  "properties": {
+    "base_head": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "base_tree": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "candidate_head": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "candidate_tree": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "task_packet": {
+      "$ref": "task.schema.json"
+    },
+    "current_diff": {
+      "type": "string",
+      "minLength": 1
+    },
+    "completed_verification": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "failed_verification": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "unrun_verification": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "known_hypotheses": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "refuted_hypotheses": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "allowed_paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "remaining_steps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "no_go_boundaries": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

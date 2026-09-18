@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "owner_decision",
+    "objective",
+    "base_branch",
+    "base_subject",
+    "base_head",
+    "base_tree",
+    "authorized_paths",
+    "forbidden_paths",
+    "required_reads",
+    "preconditions",
+    "invariants",
+    "acceptance_tests",
+    "stop_conditions",
+    "automatic_continuation",
+    "packet_status",
+    "live_tests",
+    "privacy_tests",
+    "evidence_root",
+    "commit_policy",
+    "integration_policy",
+    "project_source_policy",
+    "next_gate_policy"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner_decision": {
+      "type": "string",
+      "minLength": 1
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_branch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_head": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "base_tree": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "authorized_paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "forbidden_paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required_reads": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "invariants": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "acceptance_tests": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "stop_conditions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "automatic_continuation": {
+      "type": "boolean",
+      "const": false
+    },
+    "packet_status": {
+      "enum": [
+        "EXAMPLE_NOT_AUTHORIZED",
+        "AUTHORIZED"
+      ]
+    },
+    "live_tests": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "privacy_tests": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "evidence_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commit_policy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integration_policy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project_source_policy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "next_gate_policy": {
+      "type": "string",
+      "const": "DO_NOT_EXECUTE_NEXT_GATE"
+    }
+  }
+}
