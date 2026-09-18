@@ -222,10 +222,12 @@ def make(root, out, preview=False):
         "읽은 내용 한 문장씩 보고하라. 이름 목록을 기억으로 복창하지 말라. 누락/중복/접근 불가는 "
         "ACCESS_FAIL로 멈추고 추측하지 말라. ZIP/manifest는 Source가 아니다. 모두 직접 읽었을 때만 ACCESS_PASS.\n\n" +
         "\n".join(NAMES) + "\n")
+    source_snapshot = {key: value for key, value in resolved.items() if key != "source_content_digest"}
     semantic_prompt = ("같은 fresh chat에서 ACCESS_PASS 이후에만 실행. 02 JSON에서 아래 expected 값을 읽어 비교하고, "
         "04 첫 adapter, 05 roadmap, 08 exact next task, 10 F01-F06/D020 판정과 06 검증 한계의 일관성을 확인하라. "
         "P3-B 구현/현재 제품 acceptance/다음 task 실행을 선언하지 말라. 불일치는 SEMANTIC_FAIL, 모두 직접 확인했을 때만 "
-        "SEMANTIC_PASS. 어떠한 작업도 실행하지 말라.\n\n```json\n" + encode(resolved).decode() + "```\n")
+        "SEMANTIC_PASS. source_content_digest 실제 값은 payload 밖 manifest의 Owner 검증 대상이므로 "
+        "이 채팅의 접근 성공 조건에 넣지 않는다. digest 위치 필드는 02와 비교한다. 어떠한 작업도 실행하지 말라.\n\n```json\n" + encode(source_snapshot).decode() + "```\n")
     files = {f"payload/{k}": v for k, v in payload.items()}
     files.update({"PROJECT_SOURCE_MANIFEST.json": encode(manifest), "OWNER_HANDOFF.md": handoff.encode(),
         "FRESH_CHAT_ACCESS_DIAGNOSTIC_PROMPT.md": access.encode(), "FRESH_CHAT_SEMANTIC_VERIFICATION_PROMPT.md": semantic_prompt.encode(),

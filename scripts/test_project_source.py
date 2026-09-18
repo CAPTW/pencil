@@ -80,6 +80,12 @@ def run(repo):
         # A failed baseline aborts safely; downstream rejections must not mask a broken generator.
         baseline = ps.make(repo, a, preview=True)
         ps.make(repo, b, preview=True)
+        def fresh_chat_expected_matches_accessible_snapshot():
+            def fenced(path):
+                return json.loads(path.read_text(encoding="utf-8").split("```json\n", 1)[1].split("```", 1)[0])
+            return check(fenced(a / "FRESH_CHAT_SEMANTIC_VERIFICATION_PROMPT.md") == fenced(a / "payload" / ps.NAMES[2]),
+                         "fresh chat expectations require only the accessible Source02 snapshot")
+        record("fresh_chat_expected_equals_source02", fresh_chat_expected_matches_accessible_snapshot)
         record("deterministic_all_bytes_including_zip", lambda: check(inventory(a) == inventory(b), "two independent outputs identical"))
         record("exact_12_and_fresh_extraction", lambda: check(baseline["logical_sources"] == 12 and baseline["fresh_extraction"] == "PASS", "12 Sources and extraction verified"))
         record("preview_refused_without_opt_in", lambda: rejected(lambda: ps.verify(a, repo, False, True), ["PREVIEW_REFUSED"]))
