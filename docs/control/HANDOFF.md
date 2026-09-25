@@ -2,6 +2,12 @@
 
 Mission: GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1. This is an incomplete mission checkpoint, not P3-A/P3-B or personal-use acceptance. Read AGENTS.md, the v1.1 contract override, control/mission.json and control/state.json. The Owner has already authorized internal continuation; no fresh per-step approval is needed.
 
+## Viewport and scroll continuation (2026-09-26)
+
+Entry9818425; new evidence `D:/dev/grammar-evidence/grammar-autonomous-r1/resume-r5`. A real synthetic resize to320x240 exposed the panel remaining at its old offscreen coordinate (browser-aOq955, retained FAIL). Geometry-only, frame-coalesced resize/scroll updates now clamp measured panel bounds; border-box panel height reserves space for the visible toggle. A ResizeObserver handles content size changes. Disable disconnects observer/listeners and cancels the pending frame. No text read, inference, draft replacement or safety-budget change is part of layout.
+
+The intermediate browser-jhHm0e run passed27 checks before the scroll regression was added. Final source browser-GsF8z2 passes28 local native-host checks, including resized bounds, actual page scroll anchoring, draft retention and no added inference. Worker44/core215/typecheck PASS. Independent read-only review found no actionable issue; arbitrarily tiny viewports, physical zoom/mobile visual viewport remain unqualified. Expanded page overlap is still possible and the explicit collapse control releases it. Fresh source/package/Source preview receipts, if completed, are external in resume-r5; do not reuse9818425 artifacts for this new layout change. Overall mission and main adoption remain incomplete, with external acceptance boundaries below unchanged.
+
 ## Panel accessibility continuation (2026-09-26)
 
 Entry2267e24; evidence `D:/dev/grammar-evidence/grammar-autonomous-r1/resume-r4`. The overlay interception retained in browser-AOK4c5 now has an explicit escape: Hide Grammar panel or Escape within its controls preserves the draft/cache while releasing covered page controls. A visible Show panel control remains; hiding is not pausing. Existing revision, expiry, sensitivity and disable checks continue while hidden. Keyboard reopening does not trigger inference. Wide-element overlap while expanded and native browser undo remain limitations.
