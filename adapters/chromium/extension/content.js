@@ -4,7 +4,7 @@
   const {DocumentSession, MAX_TEXT} = globalThis.GrammarCore;
   let epoch = null, session = null, editor = null, chosen = null, composing = false;
   let root = null, shadow = null, status = null, list = null, card = null;
-  let timer = null, heartbeat = null, expiry = null, observer = null, inflight = false, pending = null;
+  let timer = null, heartbeat = null, expiry = null, observer = null, inflight = false, pending = null, deferredInstant = null;
   let selectedIndex = null, editBox = null, sequence = 0;
   let deepProvider = null, deepRequest = null, deepButton = null, draftVersion = 0;
   const sensitive = /password|passwd|secret|token|credit|card.?number|ssn|social.?security|medical|health|otp|one.?time|verification|auth|private|sensitive/i;
@@ -38,11 +38,13 @@
     if (el.tagName === 'TEXTAREA') return !el.readOnly;
     return el.getAttribute('contenteditable') === 'true' &&
       !el.parentElement?.closest('[contenteditable="true"]') &&
-      el.childNodes.length <= 16 && [...el.childNodes].every(n => n.nodeType === Node.TEXT_NODE);
+      el.childNodes.length <= 16 && ([...el.childNodes].every(n => n.nodeType === Node.TEXT_NODE) ||
+        ([...el.childNodes].filter(n=>n.nodeName==='BR').length===1 &&
+          [...el.childNodes].every(n=>n.nodeType===Node.TEXT_NODE ? n.length===0 : n.nodeName==='BR' && n.attributes.length===0 && n.childNodes.length===0)));
   }
   function read() {
     if (!session?.active || !supported(editor) || composing || document.hidden) return null;
-    const length = editor.tagName === 'TEXTAREA' ? editor.textLength : [...editor.childNodes].reduce((n,node)=>n+node.length,0);
+    const length = editor.tagName === 'TEXTAREA' ? editor.textLength : [...editor.childNodes].reduce((n,node)=>n+(node.nodeType===Node.TEXT_NODE ? node.length : 0),0);
     if (length > MAX_TEXT) return null;
     const text = editor.tagName === 'TEXTAREA' ? editor.value : editor.textContent;
     return text.length <= MAX_TEXT ? text : null;
@@ -58,7 +60,7 @@
   }
   function wipeField() {
     cancelDeepUI();
-    clearTimeout(timer); clearTimeout(expiry); pending = null;
+    clearTimeout(timer); clearTimeout(expiry); pending = null; deferredInstant = null;
     session?.clear(); session = null; editor = null; composing = false;
     selectedIndex = null; editBox = null;
     list?.replaceChildren(); card?.replaceChildren();
@@ -90,23 +92,31 @@
   function keyboard(event) { if (event.isTrusted && event.altKey && event.shiftKey && event.code === 'KeyG') { event.preventDefault(); disable(true); } }
   function visibility() { if (document.hidden) { wipeField(); if (status) status.textContent = 'Paused. Enable the field again when ready.'; } }
   function pagehide() { disable(true); }
-  function schedule() { clearTimeout(timer); timer = setTimeout(analyzeChanged, 250); }
+  function schedule() { clearTimeout(timer); if (!composing) timer = setTimeout(analyzeChanged, 250); }
   function analyzeChanged() {
-    if (!session) return;
+    if (!session || composing) return;
     const text = read();
     if (text === null) { wipeField(); status.textContent = 'Field unavailable. No text was sent.'; return; }
+    // A response received during preedit stays memory-only until committed text
+    // can be checked. Never read preedit or publish it as document authority.
+    const deferred = deferredInstant; deferredInstant = null;
+    if (deferred && deferred.owner === session && text === session.text)
+      session.publish(deferred.request, deferred.suggestions);
     const request = session.update(text);
-    if (!request) return;
+    if (!request) { render(); pump(); return; }
     pending = request; pump();
   }
   async function pump() {
-    if (inflight || !pending || !session) return;
+    if (inflight || !pending || !session || composing) return;
     const request = pending, owner = session; pending = null; inflight = true;
     try {
       const response = await chrome.runtime.sendMessage({version:1,op:'analyze',id:String(++sequence),epoch,
         revision:request.revision,text:request.text});
       if (session !== owner || !epoch) return;
       if (!response || response.error) { status.textContent = 'Local engine unavailable. Disable, check host, then enable again.'; invalidate(); return; }
+      if (composing && response.epoch === epoch && response.revision === request.revision) {
+        deferredInstant = {owner,request,suggestions:response.suggestions};return;
+      }
       if (response.epoch !== epoch || response.revision !== request.revision || read() !== owner.text) { invalidate(); schedule(); return; }
       if (owner.publish(request,response.suggestions)) render();
     } catch { if (session === owner && status) status.textContent = 'Connection lost. Enable this document again.'; }
