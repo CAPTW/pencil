@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import '../extension/core.js';
+const {DocumentSession,changedWindow,boundary}=globalThis.GrammarCore;
+let count=0; const check=(v)=>{assert.ok(v);count++};
+const s=new DocumentSession('doc1');
+const first=s.update('seperate\nseperate');
+check(s.publish(first,[{start:0,end:8,replacement:'separate',rule:'typo'},{start:9,end:17,replacement:'separate',rule:'typo'}],0));
+check(s.cache.length===2);
+const change=s.update('seperate\nseperate!');
+check(change.start===9 && change.text==='seperate!');
+check(s.publish(change,[{start:0,end:8,replacement:'separate',rule:'typo'}],1));
+check(s.cache.length===2 && s.cache[0].start===0);
+check(s.replacement(0,s.text,'separate',2).next==='separate\nseperate!');
+check(s.replacement(0,s.text+'x','separate',2)===null);
+check(!s.publish(first,[],2));
+check(s.suggestion(0,60001)===null);
+const unicode=new DocumentSession('emoji');const u=unicode.update('😀seperate');
+unicode.publish(u,[{start:1,end:2,replacement:'x',rule:'bad'},{start:2,end:10,replacement:'separate',rule:'good'}],0);
+check(unicode.cache.length===1 && !boundary('😀',1));
+check(unicode.replacement(0,'😀seperate','separate',1).next==='😀separate');
+s.clear();check(s.text==='' && s.cache.length===0 && s.replacement(0,'','x')===null);
+check(s.update('text')===null);
+const huge=new DocumentSession('huge');check(huge.update('x'.repeat(8193))===null && !huge.active);
+for(let i=0;i<200;i++) { const before='a\n😀seperate\nz';const after=before.slice(0,3)+'q'.repeat(i)+before.slice(3); const w=changedWindow(before,after);check(w.start>=0 && w.end<=after.length && w.text===after.slice(w.start,w.end)); }
+console.log(JSON.stringify({status:'PASS',productionCoreAssertions:count}));
