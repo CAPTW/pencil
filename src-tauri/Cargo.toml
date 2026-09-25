@@ -1,5 +1,6 @@
 [package]
 name = "codex-pencil"
+default-run = "codex-pencil"
 version = "0.1.0"
 description = "A compact Codex-powered writing assistant."
 authors = ["Codex Pencil"]
