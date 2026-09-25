@@ -153,8 +153,26 @@
       "minLength": 1
     },
     "next_gate_policy": {
+      "enum": [
+        "DO_NOT_EXECUTE_NEXT_GATE",
+        "CONTINUE_WITHIN_MISSION"
+      ]
+    },
+    "mission_id": {
       "type": "string",
-      "const": "DO_NOT_EXECUTE_NEXT_GATE"
+      "const": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1"
+    },
+    "internal_continuation": {
+      "type": "boolean",
+      "const": true
+    },
+    "scope_expansion": {
+      "type": "boolean",
+      "const": false
+    },
+    "remote_publication": {
+      "type": "boolean",
+      "const": false
     }
   }
 }

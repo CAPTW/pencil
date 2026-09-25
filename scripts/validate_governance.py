@@ -134,7 +134,9 @@ def matches(pattern, concrete):
 
 def scopes(task):
     require(bool(task["authorized_paths"]), "no authorized scope")
-    require(task["next_gate_policy"] == "DO_NOT_EXECUTE_NEXT_GATE", "task cannot authorize next gate")
+    require(task["next_gate_policy"] in ("DO_NOT_EXECUTE_NEXT_GATE", "CONTINUE_WITHIN_MISSION"), "invalid continuation policy")
+    if task["next_gate_policy"] == "CONTINUE_WITHIN_MISSION":
+        mission_check(task)
     for p in task["authorized_paths"] + task["forbidden_paths"] + task["required_reads"]:
         path_pattern(p)
     for a in task["authorized_paths"]:
@@ -194,10 +196,19 @@ def base_check(task, identity):
         require(task["base_" + field] == identity[field], "current main base " + field + " mismatch")
 
 
+def mission_check(value):
+    require(value.get("mission_id") == "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1", "unknown mission")
+    require(value.get("internal_continuation") is True, "explicit internal continuation required")
+    require(value.get("scope_expansion") is False, "mission scope expansion prohibited")
+    require(value.get("remote_publication") is False, "remote publication prohibited")
+
+
 def state_check(state):
     require(state.get("automatic_continuation") is False, "automatic continuation must be false")
     require(state.get("next_gate_executed") is False, "next gate must not execute")
     require(isinstance(state.get("exact_next_task"), str) and bool(state["exact_next_task"]), "one exact next task required")
+    if state.get("mission_id") is not None:
+        mission_check(state)
     defects = state.get("known_defects")
     require(isinstance(defects, list), "known defects list required")
     safety = any(d.get("verdict") in ("CONFIRMED_CURRENT_DEFECT", "PARTIALLY_CONFIRMED") for d in defects)
@@ -303,6 +314,14 @@ def self_test(root):
     rejects("handoff identity mismatch", lambda: handoff_check(handoff_example))
     st = {"automatic_continuation":False,"next_gate_executed":False,"exact_next_task":"GRAMMAR-P3B-P1-WRONG","next_gate":"P3B_CORE_DOCUMENT_MODEL_DESIGN_FREEZE","known_defects":[{"verdict":"CONFIRMED_CURRENT_DEFECT"}]}
     rejects("incompatible next gate", lambda: state_check(st))
+    mission = {"mission_id": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1", "internal_continuation": True, "scope_expansion": False, "remote_publication": False}
+    mission_check(mission)
+    for field in mission:
+        invalid = dict(mission); del invalid[field]
+        rejects("mission missing " + field, lambda invalid=invalid: mission_check(invalid))
+    for field in ("scope_expansion", "remote_publication"):
+        invalid = dict(mission); invalid[field] = True
+        rejects("mission prohibited " + field, lambda invalid=invalid: mission_check(invalid))
     # Test real pin comparison with in-memory path stand-ins, without writing fixtures.
     class FakePath:
         def __init__(self, rel=""): self.rel = rel

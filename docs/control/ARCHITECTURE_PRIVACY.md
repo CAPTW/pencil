@@ -1,3 +1,5 @@
+> Active mission: see MULTI_AGENT_CONTRACT.md v1.1.0 override and control/state.json. Historical no-execution/one-step approval restrictions below are superseded only inside this mission; acceptance claims are not promoted.
+
 # Architecture, Privacy and Threat Model
 
 이 문서는 현재 구조와 미래 설계를 구분한다. current identity와 acceptance를 복제하지 않으며 current audit 및 canonical state를 소비한다. 미래 경로명은 계획으로서 아직 존재하거나 구현됐다고 주장하지 않는다.

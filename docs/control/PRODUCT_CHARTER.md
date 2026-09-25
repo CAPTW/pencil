@@ -1,3 +1,5 @@
+> Active mission: see MULTI_AGENT_CONTRACT.md v1.1.0 override and control/state.json. Historical no-execution/one-step approval restrictions below are superseded only inside this mission; acceptance claims are not promoted.
+
 # Product Charter — P3-B target, P3-A preserved
 
 CURRENT_PRODUCT_TARGET=P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST
