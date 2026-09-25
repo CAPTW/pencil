@@ -32,6 +32,13 @@ META = {"PROJECT_SOURCE_MANIFEST.json", "SHA256SUMS.txt", "VERIFICATION_RECORD.j
 GUARDED = ("src/", "src-tauri/", "benchmarks/")
 GUARDED_FILES = {"package.json", "package-lock.json", "index.html", "tsconfig.json", "tsconfig.node.json", "vite.config.ts"}
 SAFETY_TASK = "GRAMMAR-P3A-R1-CURRENT-HEAD-SAFETY-STABILIZATION-CONFIRMED-CANCEL-PROCESS-DRAFT-AND-APPLY-BOUNDARY-DEFECTS-BOUNDED-REPAIR"
+MISSION = "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1"
+DEEP_TASK = "GRAMMAR-P3B-P1-SHARED-DEEP-RUNTIME-AND-CONSENT-BOUND-HOST"
+AUDIT_BASE = "9f54ebd4b7586f7a1658245761ccccf8a77500c6"
+
+
+def mission_state(state):
+    return state.get("mission_id") == MISSION
 
 
 def fail(condition, code):
@@ -78,11 +85,35 @@ def state_check(state):
     fail(required <= state.keys(), "STATE_FIELDS_MISSING")
     fail(state["automatic_continuation"] is False and state["next_gate_executed"] is False, "NEXT_GATE_FORBIDDEN")
     fail(state["product_target"] == "P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST", "TARGET_DRIFT")
-    fail(state["p3b_status"] == "DIRECTION_FROZEN_NOT_IMPLEMENTED", "P3B_OVERCLAIM")
     fail(state["first_adapter_decision"] == "CHROMIUM_TEXTAREA_CONTENTEDITABLE_MV3", "ADAPTER_DRIFT")
     fail(state["provider_kinds"] == ["codex", "antigravity", "claude"], "PROVIDER_DRIFT")
-    fail(state["acceptance_boundary"] == "P1_03_HISTORICAL_ONLY_NO_CURRENT_PRODUCT_ACCEPTANCE", "ACCEPTANCE_OVERCLAIM")
     fail({x["id"] for x in state["known_defects"]} == {f"F-0{i}" for i in range(1, 7)}, "VERDICT_SET_INVALID")
+    fail(len(state["known_defects"]) == 6, "DUPLICATE_VERDICT")
+    if mission_state(state):
+        fail(state.get("internal_continuation") is True and state.get("scope_expansion") is False and
+             state.get("remote_publication") is False, "MISSION_BOUNDARY_INVALID")
+        fail(state["product_audit_base"] == AUDIT_BASE, "HISTORICAL_AUDIT_BASE_DRIFT")
+        fail(state["p3b_status"] == "LOCAL_INSTANT_CANDIDATE_SYNTHETIC_VERIFIED_DEEP_NOT_IMPLEMENTED", "P3B_OVERCLAIM")
+        fail(state["acceptance_boundary"] == "CANDIDATE_SYNTHETIC_ONLY_NO_WHOLE_PRODUCT_ACCEPTANCE", "ACCEPTANCE_OVERCLAIM")
+        expected = {
+            "p3a_status": "SAFETY_REPAIRS_SYNTHETIC_VERIFIED_NATIVE_CAPTURE_NOT_QUALIFIED",
+            "active_phase": "MISSION_IMPLEMENTATION", "active_step": "SHARED_DEEP_RUNTIME_NEXT",
+            "active_task": MISSION, "exact_next_task": DEEP_TASK,
+            "next_task_status": "AUTHORIZED_WITHIN_MISSION", "next_gate": "SHARED_DEEP_RUNTIME_NEXT",
+            "d020_verdict": "D020_DOCUMENTATION_OVERCLAIM",
+        }
+        for key, value in expected.items():
+            fail(state.get(key) == value, f"STATE_SEMANTIC_DRIFT:{key}")
+        verdicts = {"F-01": "SYNTHETIC_VERIFIED", "F-02": "SYNTHETIC_VERIFIED", "F-03": "SYNTHETIC_VERIFIED",
+                    "F-04": "SYNTHETIC_VERIFIED", "F-05": "SYNTHETIC_VERIFIED_NATIVE_NOT_QUALIFIED",
+                    "F-06": "CONTAINED_COPY_ONLY_NATIVE_NOT_QUALIFIED"}
+        for defect in state["known_defects"]:
+            fail(defect["verdict"] == verdicts[defect["id"]], f"VERDICT_DRIFT:{defect['id']}")
+            fail(isinstance(defect.get("evidence"), list) and bool(defect["evidence"]), "DEFECT_EVIDENCE_MISSING")
+        return
+    fail(not state.get("mission_id"), "MISSION_NOT_AUTHORIZED")
+    fail(state["p3b_status"] == "DIRECTION_FROZEN_NOT_IMPLEMENTED", "P3B_OVERCLAIM")
+    fail(state["acceptance_boundary"] == "P1_03_HISTORICAL_ONLY_NO_CURRENT_PRODUCT_ACCEPTANCE", "ACCEPTANCE_OVERCLAIM")
     safety = any(x["id"] in ("F-01", "F-02", "F-05", "F-06") and
                  x["verdict"] in ("CONFIRMED_CURRENT_DEFECT", "PARTIALLY_CONFIRMED") for x in state["known_defects"])
     if safety:
@@ -118,7 +149,8 @@ def semantic_check(state, inputs):
                 found.add(key)
         fail(required.get(name, set()) <= found, f"DOC_AUTHORITY_MARKER_MISSING:{name}")
         fail("P3B_IMPLEMENTATION_COMPLETE=true" not in content, "UNSUPPORTED_COMPLETION")
-        for match in re.findall(r"GRAMMAR-P3[AB]-[A-Z0-9]+-[A-Z0-9-]+", content):
+        # The mission preserves historical task references; current normative markers above remain exact.
+        for match in ([] if mission_state(state) else re.findall(r"GRAMMAR-P3[AB]-[A-Z0-9]+-[A-Z0-9-]+", content)):
             if "STABILIZATION" in match or "DESIGN-FREEZE" in match:
                 fail(match == state["exact_next_task"], f"DOC_NEXT_TASK_CONFLICT:{name}")
     fail(all(f"## PHASE {i} " in inputs["ROADMAP.md"] for i in range(11)), "ROADMAP_PHASE_MISSING")
@@ -141,11 +173,14 @@ def render(state, ident, inputs, package_id, preview):
     resolved["qualification"] = "PREVIEW_NOT_QUALIFIED" if preview else "CANONICAL_MAIN_SNAPSHOT"
     resolved["source_content_digest_location"] = "PROJECT_SOURCE_MANIFEST.json/resolved_state/source_content_digest"
     payload = {name: inputs[doc].encode("utf-8") for name, doc in DOCS.items()}
+    continuation = ("이번 mission 내부 후속 개발은 이미 승인되었다. 범위 확장·외부 행동은 승인되지 않았고 제품 수용은 별도다. "
+                    "Source UI 적용은 Owner 작업이며 내부 개발의 선행조건이 아니다.\n" if mission_state(state) else
+                    "다음 작업은 02에 명시된 정확히 하나이며 자동 실행하지 않는다.\n")
     payload[NAMES[0]] = ("# Grammar Project Source — 읽기 순서\n\n"
         "이 exact 12-file 세트는 기존 active Source 전체를 대체한다. 현재 사실은 02의 단일 machine-readable snapshot에 있다. "
         "Repository Git/current bytes > 실제 현재 실행 > 코드 > Repository 결정 > 이 Source > 과거 대화 순서로 확인한다.\n\n"
         "00 → 02 → 04 → 08 → 선택 작업 관련 Source 순서로 읽는다. P3-B 방향 승인과 구현 승인은 다르다. "
-        "역사 acceptance는 현재 제품 수용이 아니다. 다음 작업은 02에 명시된 정확히 하나이며 자동 실행하지 않는다.\n\n"
+        "역사 acceptance는 현재 제품 수용이 아니다. " + continuation + "\n"
         "본문의 repo 상대경로는 원 저장소에서 해결한다. Source만으로 못 여는 파일/실행은 미확인으로 남긴다. "
         "현재 선택/문서 원문이나 credentials를 요구하지 않는다.\n").encode("utf-8")
     payload[NAMES[2]] = ("# 현재 Repository snapshot — 단일 current-fact 권위\n\n"
@@ -157,13 +192,14 @@ def render(state, ident, inputs, package_id, preview):
         f"- completed task: `{state.get('completed_task', '')}`\n"
         f"- active task: `{state['active_task']}`\n"
         f"- exact next task: `{state['exact_next_task']}`\n"
-        "- next task status: FROZEN_NOT_STARTED\n- next gate executed: false\n- automatic continuation: false\n\n"
-        "새 실행은 별도 Owner Task Packet이 필요하다. 이 Source 업로드 자체는 구현 실행 승인이 아니다.\n").encode("utf-8")
-    payload[NAMES[9]] = ("# Session handoff\n\n02에서 measured Git identity와 상태를 읽고 10의 현재 결함 및 06의 검증 한계를 확인한다. "
+        f"- next task status: {state['next_task_status']}\n- next gate executed: false\n- automatic continuation (legacy): false\n"
+        + ("- internal continuation: true\n- scope expansion: false\n- remote publication: false\n" if mission_state(state) else "")
+        + "\n" + continuation + "이 Source 업로드 자체는 추가 실행 승인이 아니다.\n").encode("utf-8")
+    payload[NAMES[9]] = ("# Session handoff\n\n02에서 measured Git identity와 현재 상태를 읽고 10의 역사적 감사 및 06의 검증 한계를 확인한다. "
         "05의 Phase-Step 경로와 07의 exact-base/worktree/path-claim 계약을 따른다.\n\n"
         "도구 전환 시 exact Task Packet, base/candidate identity, diff+hash, 완료/실패/미실행 검증, 가설/반증, "
         "allowed paths와 남은 단계/no-go를 전달한다. 이전 agent 결론을 그대로 신뢰하지 않는다.\n\n"
-        f"허용 가능한 후속 검토 대상은 `{state['exact_next_task']}` 하나다. 아직 실행되지 않았으며 별도 승인을 기다린다.\n").encode("utf-8")
+        f"다음 작업은 `{state['exact_next_task']}`이다. " + continuation).encode("utf-8")
     return payload, resolved
 
 
@@ -187,15 +223,19 @@ def make(root, out, preview=False):
     state = read_json(root / "control/state.json")
     state_check(state)
     ident = identity(root)
+    if mission_state(state):
+        ident["product_changes_since_historical_audit"] = product_diff(root, state["product_audit_base"])
     if not preview:
         fail(ident["branch"] == "main", "CANONICAL_MAIN_REQUIRED")
         canonical_check(root)
         fail(not git(root, "diff", "--name-only") and not git(root, "diff", "--cached", "--name-only"), "TRACKED_DIRTY")
-        fail(not product_diff(root, state["product_audit_base"]), "PRODUCT_DIFF_NONZERO")
+        if not mission_state(state):
+            fail(not product_diff(root, state["product_audit_base"]), "PRODUCT_DIFF_NONZERO")
     inputs = source_inputs(root)
     semantic_check(state, inputs)
     semantic = sha(encode(state) + encode(inputs))
-    package_id = f"GRAMMAR-P3B-R0-{ident['head'][:12]}-{semantic[:12]}"
+    prefix = "GRAMMAR-AUTONOMOUS-R1" if mission_state(state) else "GRAMMAR-P3B-R0"
+    package_id = f"{prefix}-{ident['head'][:12]}-{semantic[:12]}"
     payload, resolved = render(state, ident, inputs, package_id, preview)
     digest = digest_files(payload)
     resolved["source_content_digest"] = digest
@@ -214,8 +254,9 @@ def make(root, out, preview=False):
         "5. 중복 이름 Source를 만들지 않는다.\n6. genuinely fresh top-level chat에서 access diagnostic을 실행한다.\n"
         "7. access PASS 후 같은 fresh chat에서 semantic verification을 실행한다.\n"
         "8. 아래 expected values를 사용한다.\n9. 접근 누락은 해당 payload 파일만 재적용하고 중복은 제거한다. "
-        "semantic mismatch는 수동 문장 패치 대신 canonical Repository에서 다시 생성한다.\n"
-        "10. 성공 뒤에도 next task를 자동 실행하지 않는다. 별도 Owner 실행 권한을 부여한다.\n\n" +
+        "semantic mismatch는 수동 문장 패치 대신 canonical Repository에서 다시 생성한다.\n" +
+        ("10. 이번 mission 내부 개발은 기존 위임으로 계속할 수 있다. UI 적용 성공은 제품 acceptance나 외부 행동 승인이 아니다.\n\n" if mission_state(state) else
+         "10. 성공 뒤에도 next task를 자동 실행하지 않는다. 별도 Owner 실행 권한을 부여한다.\n\n") +
         "\n".join(f"- {name}" for name in NAMES) + "\n\nExpected values:\n```json\n" +
         encode(resolved).decode() + "```\n")
     access = ("Genuinely fresh top-level chat에서만 실행. 다음 exact 12 Source를 각각 열고 실제 첫 heading과 "
@@ -224,8 +265,8 @@ def make(root, out, preview=False):
         "\n".join(NAMES) + "\n")
     source_snapshot = {key: value for key, value in resolved.items() if key != "source_content_digest"}
     semantic_prompt = ("같은 fresh chat에서 ACCESS_PASS 이후에만 실행. 02 JSON에서 아래 expected 값을 읽어 비교하고, "
-        "04 첫 adapter, 05 roadmap, 08 exact next task, 10 F01-F06/D020 판정과 06 검증 한계의 일관성을 확인하라. "
-        "P3-B 구현/현재 제품 acceptance/다음 task 실행을 선언하지 말라. 불일치는 SEMANTIC_FAIL, 모두 직접 확인했을 때만 "
+        "04 첫 adapter, 05 roadmap, 08 exact next task, 02 현재 F01-F06/D020 판정과 06 검증 한계의 일관성을 확인하라. "
+        "10은 역사적 감사이며 현재 수용 근거를 대신하지 않는다. P3-B 전체 구현/현재 제품 acceptance/다음 task 실행을 선언하지 말라. 불일치는 SEMANTIC_FAIL, 모두 직접 확인했을 때만 "
         "SEMANTIC_PASS. source_content_digest 실제 값은 payload 밖 manifest의 Owner 검증 대상이므로 "
         "이 채팅의 접근 성공 조건에 넣지 않는다. digest 위치 필드는 02와 비교한다. 어떠한 작업도 실행하지 말라.\n\n```json\n" + encode(source_snapshot).decode() + "```\n")
     files = {f"payload/{k}": v for k, v in payload.items()}
@@ -285,6 +326,8 @@ def check_core(out, root, allow_preview):
     fail("P3B_IMPLEMENTATION_COMPLETE=true" not in text, "UNSUPPORTED_COMPLETION")
     if root:
         current = identity(root)
+        if mission_state(resolved):
+            current["product_changes_since_historical_audit"] = product_diff(root, resolved["product_audit_base"])
         fail(all(resolved[k] == v for k, v in current.items()), "GIT_IDENTITY_STALE")
         state = read_json(root / "control/state.json")
         inputs = source_inputs(root)
@@ -297,8 +340,10 @@ def check_core(out, root, allow_preview):
             fail(current["branch"] == "main", "CANONICAL_MAIN_REQUIRED")
             canonical_check(root)
             fail(not git(root, "diff", "--name-only") and not git(root, "diff", "--cached", "--name-only"), "TRACKED_DIRTY")
-            fail(not product_diff(root, state["product_audit_base"]), "PRODUCT_DIFF_NONZERO")
-    fail(m["package_id"] == f"GRAMMAR-P3B-R0-{resolved['head'][:12]}-{m['semantic_input_digest'][:12]}", "PACKAGE_ID_INVALID")
+            if not mission_state(state):
+                fail(not product_diff(root, state["product_audit_base"]), "PRODUCT_DIFF_NONZERO")
+    prefix = "GRAMMAR-AUTONOMOUS-R1" if mission_state(resolved) else "GRAMMAR-P3B-R0"
+    fail(m["package_id"] == f"{prefix}-{resolved['head'][:12]}-{m['semantic_input_digest'][:12]}", "PACKAGE_ID_INVALID")
     return m
 
 

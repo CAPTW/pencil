@@ -50,6 +50,26 @@ def run(repo):
 
     state = ps.read_json(repo / "control/state.json")
     inputs = ps.source_inputs(repo)
+    record("current_state_exact_semantics", lambda: ps.state_check(state))
+    if ps.mission_state(state):
+        for key, bad, token in [
+            ("mission_id", "UNAUTHORIZED-MISSION", "MISSION_NOT_AUTHORIZED"),
+            ("internal_continuation", False, "MISSION_BOUNDARY_INVALID"),
+            ("scope_expansion", True, "MISSION_BOUNDARY_INVALID"),
+            ("remote_publication", True, "MISSION_BOUNDARY_INVALID"),
+            ("product_audit_base", "0" * 40, "HISTORICAL_AUDIT_BASE_DRIFT"),
+            ("p3b_status", "IMPLEMENTATION_COMPLETE", "P3B_OVERCLAIM"),
+            ("acceptance_boundary", "WHOLE_PRODUCT_PASS", "ACCEPTANCE_OVERCLAIM"),
+        ]:
+            changed = copy.deepcopy(state); changed[key] = bad
+            record("mission_" + key + "_drift_refused", lambda changed=changed,token=token: rejected(lambda: ps.state_check(changed), [token]))
+        for defect_id in ("F-03", "F-05", "F-06"):
+            changed = copy.deepcopy(state)
+            next(d for d in changed["known_defects"] if d["id"] == defect_id)["verdict"] = "LIVE_QUALIFIED"
+            record("mission_" + defect_id + "_overclaim_refused", lambda changed=changed: rejected(lambda: ps.state_check(changed), ["VERDICT_DRIFT"]))
+        # Historical state remains separately valid; mission is not permission to relabel its audit.
+        historical = json.loads(ps.git(repo, "show", "4e833988ed27086dd6d4acb78d39fc3e9c98c707:control/state.json"))
+        record("historical_reset_state_preserved", lambda: ps.state_check(historical))
     for key, bad, tokens in [
         ("p3a_status", "COMPLETE", ["STATE_SEMANTIC_DRIFT:p3a_status"]),
         ("active_phase", "PHASE_9", ["STATE_SEMANTIC_DRIFT:active_phase"]),
@@ -88,6 +108,18 @@ def run(repo):
         record("fresh_chat_expected_equals_source02", fresh_chat_expected_matches_accessible_snapshot)
         record("deterministic_all_bytes_including_zip", lambda: check(inventory(a) == inventory(b), "two independent outputs identical"))
         record("exact_12_and_fresh_extraction", lambda: check(baseline["logical_sources"] == 12 and baseline["fresh_extraction"] == "PASS", "12 Sources and extraction verified"))
+        if ps.mission_state(state):
+            ledger = (a / "payload" / ps.NAMES[8]).read_text(encoding="utf-8")
+            handoff = (a / "payload" / ps.NAMES[9]).read_text(encoding="utf-8")
+            record("mission_continuation_separated_from_external_authority", lambda: check(
+                "internal continuation: true" in ledger and "scope expansion: false" in ledger and
+                "remote publication: false" in ledger and "별도 승인을 기다린다" not in handoff,
+                "authorized internal work is distinct from scope expansion/publication"))
+            manifest = ps.read_json(a / "PROJECT_SOURCE_MANIFEST.json")
+            record("historical_audit_and_product_delta_separate", lambda: check(
+                manifest["resolved_state"]["product_audit_base"] == ps.AUDIT_BASE and
+                manifest["resolved_state"]["product_changes_since_historical_audit"] == ps.product_diff(repo, ps.AUDIT_BASE),
+                "historical base preserved; committed product delta measured separately"))
         record("preview_refused_without_opt_in", lambda: rejected(lambda: ps.verify(a, repo, False, True), ["PREVIEW_REFUSED"]))
         record("existing_output_refused", lambda: rejected(lambda: ps.make(repo, a, True), ["OUTPUT_ALREADY_EXISTS"]))
         ident = ps.identity(repo)

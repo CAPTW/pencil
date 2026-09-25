@@ -1,9 +1,9 @@
-> Active mission: see MULTI_AGENT_CONTRACT.md v1.1.0 override and control/state.json. Historical no-execution/one-step approval restrictions below are superseded only inside this mission; acceptance claims are not promoted.
+# Active mission ledger
 
-# Active task ledger
+`control/state.json` records the active Owner-authorized mission and its exact next internal task. The same mission worktree is retained at `D:/dev/worktrees/Grammar/grammar-autonomous-r1`, branch `codex/grammar-autonomous-r1`. Canonical main remains the entry base unless an external integration receipt proves otherwise. Candidate commits are not adoption.
 
-Machine authority is `control/state.json`: completed_task names R0; active_task is NONE at closeout, active phase/step identify the completed authority reset, exact_next_task is a singleton FROZEN_NOT_STARTED. `automatic_continuation=false` and `next_gate_executed=false`.
+Runtime and draft repairs, native Copy-only containment, Chromium local Instant candidate, and provenance tooling have been implemented. Evidence classes and unqualified capabilities are in HANDOFF.md. Deep is not implemented. Native positive capture qualification is unavailable without an isolated input desktop; its production activation is withheld. No whole-product acceptance.
 
-This ledger records source content readiness, not an assertion of main adoption. Adoption/package qualification comes from measured result receipts. If adoption blocks, candidate remains isolated and no qualified canonical successor exists. A fresh authorized Task Packet is required before the frozen next stabilization task may run.
+`internal_continuation=true` authorizes further work inside this mission. `scope_expansion=false` and `remote_publication=false` retain external boundaries. Legacy `automatic_continuation=false` and `next_gate_executed=false` describe no external/reset gate authority; executed internal steps are explicitly listed in `mission_internal_steps_executed`. They must never be used to claim no development occurred.
 
-Read CURRENT_AUDIT and ACCEPTANCE_MATRIX; preserve unresolved current safety defects and NOT_RUN live evidence. Do not start P3-B monitoring while P3-A safety baseline is unresolved.
+Continue the remaining work without a new Owner approval for routine implementation. Do not perform real Provider inference, account operations, user-profile installation, or remote publication. Source preview/export and Owner UI application remain separate.

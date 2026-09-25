@@ -1,8 +1,10 @@
 > Active mission: see MULTI_AGENT_CONTRACT.md v1.1.0 override and control/state.json. Historical no-execution/one-step approval restrictions below are superseded only inside this mission; acceptance claims are not promoted.
 
-# Phase-Step Roadmap — Frozen plan, no automatic execution
+# Phase-Step Roadmap — historical phases, active mission continuation
 
-EXACT_NEXT_TASK=GRAMMAR-P3A-R1-CURRENT-HEAD-SAFETY-STABILIZATION-CONFIRMED-CANCEL-PROCESS-DRAFT-AND-APPLY-BOUNDARY-DEFECTS-BOUNDED-REPAIR
+EXACT_NEXT_TASK=GRAMMAR-P3B-P1-SHARED-DEEP-RUNTIME-AND-CONSENT-BOUND-HOST
+
+아래 Phase 표는 R0 당시 계획 기록이다. 현재 후보의 실행 결과·미완료 범위는 HANDOFF.md와 control/state.json을 따른다.
 
 current audit의 확인된 결함만 repair 범위로 채택한다. 아래는 미래 candidate 계획이며 구현 완료 또는 실행 권한이 아니다. exact next task는 **GRAMMAR-P3A-R1-CURRENT-HEAD-SAFETY-STABILIZATION-CONFIRMED-CANCEL-PROCESS-DRAFT-AND-APPLY-BOUNDARY-DEFECTS-BOUNDED-REPAIR** 하나다. 이 task를 여기서 실행하지 않는다. Phase 1 safety baseline 전에 P3-B monitoring을 시작하지 않는다.
 

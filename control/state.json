@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
-  "state_version": "2026-09-18.p3b-r0.1",
+  "state_version": "2026-09-25.autonomous-r1-candidate",
   "repository_branch": "main",
   "product_target": "P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST",
-  "p3a_status": "IMPLEMENTED_WITH_CURRENT_SAFETY_DEFECTS",
-  "p3b_status": "DIRECTION_FROZEN_NOT_IMPLEMENTED",
+  "p3a_status": "SAFETY_REPAIRS_SYNTHETIC_VERIFIED_NATIVE_CAPTURE_NOT_QUALIFIED",
+  "p3b_status": "LOCAL_INSTANT_CANDIDATE_SYNTHETIC_VERIFIED_DEEP_NOT_IMPLEMENTED",
   "first_adapter_decision": "CHROMIUM_TEXTAREA_CONTENTEDITABLE_MV3",
-  "active_phase": "PHASE_1_P3A_STABILIZATION",
-  "active_step": "RUNTIME_AND_APPLY_REPAIR",
+  "active_phase": "MISSION_IMPLEMENTATION",
+  "active_step": "SHARED_DEEP_RUNTIME_NEXT",
   "active_task": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
   "completed_task": "GRAMMAR-P3B-R0-CURRENT-LOCAL-REPOSITORY-REAUDIT-PRODUCT-TARGET-RESET-MULTI-AGENT-DEVELOPMENT-CONTRACT-PHASE-STEP-ROADMAP-AND-MINIMAL-PROJECT-SOURCE-SUCCESSOR-R1",
-  "exact_next_task": "GRAMMAR-P3A-R1-CURRENT-HEAD-SAFETY-STABILIZATION-CONFIRMED-CANCEL-PROCESS-DRAFT-AND-APPLY-BOUNDARY-DEFECTS-BOUNDED-REPAIR",
+  "exact_next_task": "GRAMMAR-P3B-P1-SHARED-DEEP-RUNTIME-AND-CONSENT-BOUND-HOST",
   "next_task_status": "AUTHORIZED_WITHIN_MISSION",
-  "acceptance_boundary": "P1_03_HISTORICAL_ONLY_NO_CURRENT_PRODUCT_ACCEPTANCE",
+  "acceptance_boundary": "CANDIDATE_SYNTHETIC_ONLY_NO_WHOLE_PRODUCT_ACCEPTANCE",
   "provider_kinds": [
     "codex",
     "antigravity",
@@ -20,56 +20,80 @@
   ],
   "known_defects": [
     {
-      "verdict": "CONFIRMED_CURRENT_DEFECT",
-      "evidence": [
+      "verdict": "SYNTHETIC_VERIFIED",
+      "id": "F-01",
+      "historical_verdict": "CONFIRMED_CURRENT_DEFECT",
+      "historical_evidence": [
         "src-tauri/src/main.rs:513-523",
         "src-tauri/src/main.rs:1412-1417"
       ],
-      "id": "F-01"
+      "evidence": [
+        "docs/control/HANDOFF.md"
+      ]
     },
     {
-      "verdict": "CONFIRMED_CURRENT_DEFECT",
-      "evidence": [
+      "verdict": "SYNTHETIC_VERIFIED",
+      "id": "F-02",
+      "historical_verdict": "CONFIRMED_CURRENT_DEFECT",
+      "historical_evidence": [
         "src-tauri/src/provider/cli.rs:160-213"
       ],
-      "id": "F-02"
+      "evidence": [
+        "docs/control/HANDOFF.md"
+      ]
     },
     {
-      "verdict": "PARTIALLY_CONFIRMED",
-      "evidence": [
+      "verdict": "SYNTHETIC_VERIFIED",
+      "id": "F-03",
+      "historical_verdict": "PARTIALLY_CONFIRMED",
+      "historical_evidence": [
         "scripts/build-daily-use-bundle.ps1:97-108",
         "scripts/build-personal-bundle.ps1:485-650"
       ],
-      "id": "F-03"
+      "evidence": [
+        "docs/control/HANDOFF.md"
+      ]
     },
     {
-      "verdict": "CONFIRMED_CURRENT_DEFECT",
-      "evidence": [
+      "verdict": "SYNTHETIC_VERIFIED",
+      "id": "F-04",
+      "historical_verdict": "CONFIRMED_CURRENT_DEFECT",
+      "historical_evidence": [
         "scripts/test-p3-03-instant-runtime-state.mjs:20-107"
       ],
-      "id": "F-04"
+      "evidence": [
+        "docs/control/HANDOFF.md"
+      ]
     },
     {
-      "verdict": "CONFIRMED_CURRENT_DEFECT",
-      "evidence": [
+      "verdict": "SYNTHETIC_VERIFIED_NATIVE_NOT_QUALIFIED",
+      "id": "F-05",
+      "historical_verdict": "CONFIRMED_CURRENT_DEFECT",
+      "historical_evidence": [
         "src/App.tsx:1434-1440",
         "src-tauri/src/main.rs:1338-1339"
       ],
-      "id": "F-05"
+      "evidence": [
+        "docs/control/HANDOFF.md"
+      ]
     },
     {
-      "verdict": "CONFIRMED_CURRENT_DEFECT",
-      "evidence": [
+      "verdict": "CONTAINED_COPY_ONLY_NATIVE_NOT_QUALIFIED",
+      "id": "F-06",
+      "historical_verdict": "CONFIRMED_CURRENT_DEFECT",
+      "historical_evidence": [
         "src-tauri/src/apply_safety.rs:14-25",
         "src-tauri/src/apply_safety.rs:192-202"
       ],
-      "id": "F-06"
+      "evidence": [
+        "docs/control/HANDOFF.md"
+      ]
     }
   ],
   "d020_verdict": "D020_DOCUMENTATION_OVERCLAIM",
   "automatic_continuation": false,
   "next_gate_executed": false,
-  "next_gate": "PHASE_1_P3A_STABILIZATION",
+  "next_gate": "SHARED_DEEP_RUNTIME_NEXT",
   "product_audit_base": "9f54ebd4b7586f7a1658245761ccccf8a77500c6",
   "git_identity_policy": "MEASURE_CANONICAL_MAIN_AT_EXPORT",
   "source_digest_policy": "COMPUTE_SORTED_PAYLOAD_PATH_SHA256_IN_MANIFEST_EXCLUDING_SELF_REFERENCE",
@@ -78,5 +102,15 @@
   "mission_id": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
   "internal_continuation": true,
   "scope_expansion": false,
-  "remote_publication": false
+  "remote_publication": false,
+  "mission_internal_steps_executed": [
+    "runtime repair and synthetic native verification",
+    "draft binding and Copy-only containment",
+    "Chromium local Instant candidate and synthetic browser verification",
+    "provenance tooling negative tests"
+  ],
+  "native_capture_activation": "WITHHELD_PENDING_ISOLATED_POSITIVE_AND_SENSITIVITY_ACCEPTANCE",
+  "chromium_deep_activation": "UNAVAILABLE_NOT_IMPLEMENTED",
+  "mission_completion": "INCOMPLETE",
+  "main_adoption": "NOT_ADOPTED_CANDIDATE_ONLY"
 }
