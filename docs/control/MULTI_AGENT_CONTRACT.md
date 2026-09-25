@@ -1,6 +1,13 @@
 # Grammar Tool-neutral Multi-Agent Development Contract
 
-Contract-Version: 1.0.0
+Contract-Version: 1.1.0
+
+## Active mission override (Owner authorization, 2026-09-25)
+For GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1, the Owner explicitly authorizes investigation, implementation, tests, local commits, reviewed safe local main integration and continuation through P3-A stabilization and the first Chromium textarea/simple-contenteditable adapter for personal use. This section supersedes conflicting historical one-step gates below, fixed file/iteration/commit budgets, per-step new-worktree requirements and fresh Source UI upload prerequisites. Use one dedicated mission worktree; preserve historical failed candidates and unrelated work. Historical failures remain failures. Review changed main before integration; no history rewrite or forced conflict resolution.
+
+The mission packet records `mission_id`, `internal_continuation=true`, `scope_expansion=false`, `remote_publication=false`; legacy `automatic_continuation=false` means no continuation outside the authorized mission. `next_gate_policy=CONTINUE_WITHIN_MISSION` requires this exact mission and explicit boundary fields. No permission is implied for live Provider inference, paid calls, account/credential changes, user document/profile use, global installation, security weakening, push or release. Only task-owned synthetic environments are permitted. Unknown target/revision/source, protected fields and revoked permission fail closed. All other safety, ownership, evidence and validator requirements remain effective. P3-B activation requires the relevant safety prerequisites; unverified capabilities stay disabled. External ChatGPT Source application remains Owner work.
+
+## Historical task defaults (except active mission override)
 
 ## Authority and boundaries
 Repository files and measured Git state are authority; chat, private memory, model identity and historical packets are not. Read this contract, control/state.json, docs/control/ACTIVE_TASK_LEDGER.md (if present), the current charter, roadmap and acceptance matrix before work. The Owner authorizes exactly one bounded task packet; examples in control/examples are EXAMPLE_NOT_AUTHORIZED and must never execute. Canonical integration uses Codex/Owner workflow, but every tool follows identical validation. P3-B direction approval does not authorize implementation. No automatic continuation and no next gate execution in this reset task. Preserve other agents' and existing dirty/untracked files.

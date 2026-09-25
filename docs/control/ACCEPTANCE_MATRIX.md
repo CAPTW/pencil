@@ -1,3 +1,5 @@
+> Active mission: see MULTI_AGENT_CONTRACT.md v1.1.0 override and control/state.json. Historical no-execution/one-step approval restrictions below are superseded only inside this mission; acceptance claims are not promoted.
+
 # Acceptance and test matrix
 
 Evidence labels: CODE_PROVEN, TEST_PROVEN, LIVE_PROVEN, FIXTURE_PROVEN, DOCUMENT_REPORTED, INFERRED, NOT_RUN, BLOCKED, UNKNOWN. Static strings, copied functions, real module tests, native fixtures and live product tests are distinct. Read CURRENT_AUDIT.md for the immutable product-base identity and run receipts. Current identity comes from Git, exported once in Source 02.
