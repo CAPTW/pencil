@@ -104,7 +104,8 @@ def state_check(state):
         }
         for key, value in expected.items():
             fail(state.get(key) == value, f"STATE_SEMANTIC_DRIFT:{key}")
-        verdicts = {"F-01": "SYNTHETIC_VERIFIED", "F-02": "SYNTHETIC_VERIFIED", "F-03": "SYNTHETIC_VERIFIED",
+        verdicts = {"F-01": "SYNTHETIC_VERIFIED",
+                    "F-02": "REPAIRED_SYNTHETIC_PASS_WITH_LOADED_RUN_TIMEOUT_UNRESOLVED", "F-03": "SYNTHETIC_VERIFIED",
                     "F-04": "SYNTHETIC_VERIFIED", "F-05": "SYNTHETIC_VERIFIED_NATIVE_NOT_QUALIFIED",
                     "F-06": "CONTAINED_COPY_ONLY_NATIVE_NOT_QUALIFIED"}
         for defect in state["known_defects"]:
