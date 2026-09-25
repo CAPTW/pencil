@@ -1,7 +1,9 @@
 //! Fixed installation-owned cleanup receipts. No document-derived data belongs here.
 use serde::{Deserialize, Serialize};
+#[cfg(any(test, not(windows)))]
+use std::fs;
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{File, OpenOptions},
     io::{Read, Write},
     path::PathBuf,
 };

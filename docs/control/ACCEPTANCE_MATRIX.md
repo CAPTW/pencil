@@ -49,3 +49,10 @@ No threshold here is claimed measured for P3-B. Budgets and editor support must 
 ## Autonomous mission candidate checkpoint (2026-09-25)
 
 Runtime/draft regressions and isolated Chromium local-Instant mutation rereads have synthetic evidence in HANDOFF.md. Native capture is activation-withheld and native Apply is Copy-only. The resumed candidate implements consent-bound Deep through a shared executor and concurrent cancellation host; synthetic runtime/host/browser checks pass, with live Providers NOT_RUN. Therefore A/B/C as a whole are NOT_ACCEPTED. Actual build receipts and Source package verification are separate evidence, not upgrades of these product verdicts. Historical audit/FAIL evidence is immutable.
+
+
+## Bounded cleanup receipt candidate (2026-09-26)
+
+Worker44 deterministic tests and native host16 tests pass for exact installation/token/generation receipt ownership, bounded four-slot storage, no-history persistence, cancellation races and restart reconciliation. Actual synthetic host4/4 verifies fresh-process query/ack after checked cleanup and rejects PENDING/wrong tickets. Unknown states remain blocked. These results do not qualify power loss, live Providers, native capture/clipboard, or whole-product A/B/C acceptance. Current browser and source/artifact receipts are in the resume-r3 external evidence directory referenced by HANDOFF.md.
+
+Actual isolated Chromium24 local checks also pass for restart reconciliation, both supported editors' protocol composition, delayed Instant response and explicit mutation rereads. A separate29-check partial run reached both editors' synthetic Deep success before a later fixture pointer interception; it is preserved as FAIL, not a complete Deep/browser PASS. The production activeTab protocol action was denied by Chromium and remains NOT_RUN. Read final extracted-package receipts independently.
