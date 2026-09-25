@@ -78,6 +78,14 @@ fn which(name: &str) -> Option<PathBuf> {
 }
 
 static CLEANUP_BLOCKED: AtomicBool = AtomicBool::new(false);
+pub(crate) fn cleanup_status() -> Result<(), &'static str> {
+    if CLEANUP_BLOCKED.load(Ordering::SeqCst) {
+        Err("provider_cleanup_unresolved_restart_required")
+    } else {
+        Ok(())
+    }
+}
+
 pub(crate) const CLEANUP_BUDGET: Duration = Duration::from_secs(5);
 
 pub(crate) const STDOUT_LIMIT: usize = 16 * 1024 * 1024;

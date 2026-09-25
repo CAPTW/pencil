@@ -235,11 +235,13 @@ impl CodexClientCache {
         if let Some(client) = self.current_healthy().await {
             return Ok(client);
         }
-        if let Some(old) = self.client.lock().await.take() {
+        let old = self.client.lock().await.clone();
+        if let Some(old) = old {
             if let Err(error) = old.shutdown_child().await {
                 self.cleanup_blocked.store(true, Ordering::SeqCst);
                 return Err(error);
             }
+            self.client.lock().await.take();
         }
         *self.connecting.lock().unwrap() = Some(cancel.clone());
         if self.shutting_down.load(Ordering::SeqCst) {
@@ -274,14 +276,22 @@ impl CodexClientCache {
             cancel.store(true, Ordering::SeqCst);
         }
         let _gate = self.connect_gate.lock().await;
-        let client = self.client.lock().await.take();
+        // The cache remains the teardown owner if this await is cancelled.
+        let client = self.client.lock().await.clone();
         let result = if let Some(client) = client {
             client.shutdown_child().await
+        } else if self.cleanup_blocked.load(Ordering::SeqCst) {
+            Err("codex_cleanup_unresolved_restart_required".into())
         } else {
             Ok(())
         };
         if result.is_err() {
             self.cleanup_blocked.store(true, Ordering::SeqCst);
+        } else if self.cleanup_blocked.load(Ordering::SeqCst) {
+            self.shutting_down.store(false, Ordering::SeqCst);
+            return Err("codex_cleanup_unresolved_restart_required".into());
+        } else {
+            self.client.lock().await.take();
         }
         self.shutting_down.store(false, Ordering::SeqCst);
         result
@@ -1830,6 +1840,42 @@ mod tests {
     struct FakeAppServer {
         lines: Lines<BufReader<ReadHalf<tokio::io::DuplexStream>>>,
         writer: WriteHalf<tokio::io::DuplexStream>,
+    }
+
+    #[tokio::test]
+    async fn cancelled_cache_shutdown_retains_client_and_failed_receipt() {
+        let (mut client, _server, _failure) = fake_transport();
+        let (tx, rx) = oneshot::channel();
+        client.shutdown = ChildShutdown {
+            tx: StdMutex::new(None),
+            completed: Mutex::new(Some(rx)),
+            result: StdMutex::new(None),
+        };
+        let cache = CodexClientCache::default();
+        *cache.client.lock().await = Some(Arc::new(client));
+        assert!(timeout(Duration::from_millis(1), cache.shutdown_checked())
+            .await
+            .is_err());
+        assert!(cache.client.lock().await.is_some());
+        tx.send(Err("synthetic_cleanup_failure".into())).unwrap();
+        assert_eq!(
+            cache.shutdown_checked().await.unwrap_err(),
+            "synthetic_cleanup_failure"
+        );
+        assert!(cache.client.lock().await.is_some());
+        assert_eq!(
+            cache.shutdown_checked().await.unwrap_err(),
+            "synthetic_cleanup_failure"
+        );
+        assert!(cache.cleanup_blocked.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn cache_missing_client_cannot_clear_latched_cleanup_failure() {
+        let cache = CodexClientCache::default();
+        cache.cleanup_blocked.store(true, Ordering::SeqCst);
+        assert!(cache.shutdown_checked().await.is_err());
+        assert!(cache.shutdown_checked().await.is_err());
     }
 
     #[test]

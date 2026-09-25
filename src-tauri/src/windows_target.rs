@@ -127,6 +127,14 @@ fn admitted_native_edit(edit: windows_sys::Win32::Foundation::HWND) -> bool {
 #[cfg(windows)]
 pub(crate) fn read_supported_selection() -> Result<String, String> {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    // Candidate containment: metadata denial is tested, but positive capture and
+    // sensitivity authority have not been qualified in an isolated input desktop.
+    // Keep the implementation for that acceptance step; never silently read an
+    // unqualified native field in a personal-use candidate.
+    const NATIVE_CAPTURE_QUALIFIED: bool = false;
+    if !NATIVE_CAPTURE_QUALIFIED {
+        return Err("native_capture_not_qualified: use the explicitly enabled Chromium adapter; native selection capture is withheld pending isolated editor acceptance".into());
+    }
     let denied = || "unsupported_or_sensitive_editor: native capture supports visible non-password standard Edit controls only".to_string();
     unsafe {
         let foreground = GetForegroundWindow();
