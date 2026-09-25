@@ -17,7 +17,11 @@ $binary = Join-Path $destination 'grammar-chromium-host.exe'
 Copy-Item -LiteralPath $source -Destination $binary
 $origin = 'chrome-extension://' + $ExtensionId + '/'
 $encoding = [Text.UTF8Encoding]::new($false)
-[IO.File]::WriteAllText((Join-Path $destination 'grammar-chromium-host.origin.json'), (@{origin=$origin} | ConvertTo-Json), $encoding)
+$installation = [Guid]::NewGuid().ToString('N')
+[IO.File]::WriteAllText((Join-Path $destination 'grammar-chromium-host.origin.json'), (@{origin=$origin; installation_id=$installation} | ConvertTo-Json), $encoding)
+$slots = @(1..4 | ForEach-Object { @{generation=0; token=''; state='FREE'} })
+[IO.File]::WriteAllText((Join-Path $destination 'grammar-cleanup.json'), (@{version=1; installation=$installation; slots=$slots} | ConvertTo-Json -Depth 4), $encoding)
+[IO.File]::WriteAllBytes((Join-Path $destination 'grammar-cleanup.lock'), [byte[]]@())
 $manifestPath = Join-Path $destination 'host.json'
 $manifest = @{name=$name; description='Grammar task-owned local Instant host'; path=$binary; type='stdio'; allowed_origins=@($origin)}
 [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json), $encoding)

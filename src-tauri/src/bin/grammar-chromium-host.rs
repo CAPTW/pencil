@@ -1,4 +1,6 @@
 //! Consent-bound native messaging actor. Local Instant and explicit selected-Provider Deep; no history.
+#[path = "grammar_chromium/cleanup.rs"]
+mod cleanup;
 use codex_pencil::instant_selection::{
     AnalysisMode, AnalysisOptions, AnalysisRequest, InstantSelectionEngine, SourceIdentity,
     ENGINE_ID, ENGINE_VERSION,
@@ -30,6 +32,8 @@ const CONFIG_NAME: &str = "grammar-chromium-host.origin.json";
 #[serde(deny_unknown_fields)]
 struct OriginConfig {
     origin: String,
+    #[serde(default)]
+    installation_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -45,6 +49,10 @@ struct Request {
     provider: Option<ProviderKind>,
     #[serde(default)]
     consent: Option<bool>,
+    #[serde(default)]
+    cleanup_token: Option<String>,
+    #[serde(default)]
+    cleanup_ticket: Option<cleanup::Ticket>,
 }
 
 #[derive(Serialize)]
@@ -72,6 +80,8 @@ struct Response {
     provider: Option<ProviderKind>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cleanup_complete: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cleanup_ticket: Option<cleanup::Ticket>,
 }
 
 fn valid_origin(origin: &str) -> bool {
@@ -144,12 +154,18 @@ fn response_for(request: &Request, error: Option<&'static str>) -> Response {
         source_sha256: None,
         provider: None,
         cleanup_complete: None,
+        cleanup_ticket: request.cleanup_ticket.clone(),
     }
 }
 
 fn analyze(body: &[u8]) -> Result<Response, &'static str> {
     let request = parse_request(body)?;
-    if request.op != "analyze" || request.provider.is_some() || request.consent.is_some() {
+    if request.op != "analyze"
+        || request.provider.is_some()
+        || request.consent.is_some()
+        || request.cleanup_token.is_some()
+        || request.cleanup_ticket.is_some()
+    {
         return Err("invalid_request");
     }
     let mut response = response_for(&request, None);
@@ -190,11 +206,68 @@ fn analyze(body: &[u8]) -> Result<Response, &'static str> {
 trait DeepService {
     fn start(&self, request: Request, cancellation: DeepCancellation) -> DeepFuture;
     fn shutdown(&self) -> CleanupFuture;
+    fn admit(&self, _: &Request) -> Result<(), &'static str> {
+        Ok(())
+    }
+    fn control(&self, request: &Request) -> Response {
+        response_for(request, Some("cleanup_unavailable"))
+    }
 }
-struct ProviderService(Arc<DeepRuntime>);
+struct ProviderService(Arc<DeepRuntime>, Option<cleanup::Store>);
 impl DeepService for ProviderService {
+    fn admit(&self, request: &Request) -> Result<(), &'static str> {
+        if request.cleanup_token.is_some() {
+            return Err("cleanup_invalid_ticket");
+        }
+        self.1.as_ref().ok_or("cleanup_unavailable")?.start(
+            request
+                .cleanup_ticket
+                .as_ref()
+                .ok_or("cleanup_invalid_ticket")?,
+        )
+    }
+    fn control(&self, request: &Request) -> Response {
+        let mut response = response_for(request, None);
+        let result = (|| -> Result<(), &'static str> {
+            let store = self.1.as_ref().ok_or("cleanup_unavailable")?;
+            match request.op.as_str() {
+                "cleanup-reserve" | "cleanup-find" if request.cleanup_ticket.is_none() => {
+                    let token = request
+                        .cleanup_token
+                        .as_deref()
+                        .ok_or("cleanup_invalid_ticket")?;
+                    response.cleanup_ticket = Some(if request.op == "cleanup-find" {
+                        store.find(token)?
+                    } else {
+                        store.reserve(token)?
+                    });
+                }
+                "cleanup-query" | "cleanup-ack" if request.cleanup_token.is_none() => {
+                    let ticket = request
+                        .cleanup_ticket
+                        .as_ref()
+                        .ok_or("cleanup_invalid_ticket")?;
+                    if request.op == "cleanup-query" {
+                        store.query(ticket)?
+                    } else {
+                        store.ack(ticket)?
+                    };
+                    response.cleanup_complete = Some(true);
+                }
+                _ => return Err("cleanup_invalid_ticket"),
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            response.error = Some(error);
+            response.cleanup_complete = Some(false);
+        }
+        response
+    }
     fn start(&self, request: Request, cancellation: DeepCancellation) -> DeepFuture {
         let runtime = self.0.clone();
+        let store = self.1.clone();
+        let ticket = request.cleanup_ticket.clone();
         let mut failed = response_for(&request, Some("deep_cleanup_unresolved"));
         failed.cleanup_complete = Some(false);
         Box::pin(async move {
@@ -219,6 +292,15 @@ impl DeepService for ProviderService {
                 response.cleanup_complete = Some(cleanup.is_ok());
                 if let Err(error) = cleanup {
                     response.error = Some(error.code());
+                    return response;
+                }
+                if store
+                    .as_ref()
+                    .zip(ticket.as_ref())
+                    .is_none_or(|(store, ticket)| store.complete(ticket).is_err())
+                {
+                    response.cleanup_complete = Some(false);
+                    response.error = Some("deep_cleanup_unresolved");
                     return response;
                 }
                 match result {
@@ -307,6 +389,15 @@ async fn run_actor<S: DeepService>(
             Ok(request) => request,
             Err(_) => break Err(()),
         };
+        if request.op.starts_with("cleanup-") {
+            if !request.text.is_empty() || request.provider.is_some() || request.consent.is_some() {
+                break Err(());
+            }
+            if output.send(&service.control(&request)).await.is_err() {
+                break Err(());
+            }
+            continue;
+        }
         if request.op == "cancel" {
             if request.text.is_empty()
                 && request.provider.is_none()
@@ -349,6 +440,16 @@ async fn run_actor<S: DeepService>(
                 }
             }
             "deep" => {
+                if let Err(error) = service.admit(&request) {
+                    if output
+                        .send(&response_for(&request, Some(error)))
+                        .await
+                        .is_err()
+                    {
+                        break Err(());
+                    }
+                    continue;
+                }
                 let cancel = DeepCancellation::default();
                 active = Some(ActiveDeep {
                     id: request.id.clone(),
@@ -470,7 +571,12 @@ fn main() {
         if config.len() > 4096 || !authorized_origin(&origin, &config) {
             return Err(());
         }
-        run_stdio(ProviderService(Arc::new(DeepRuntime::default())))
+        let parsed: OriginConfig = serde_json::from_slice(&config).map_err(|_| ())?;
+        let store = parsed.installation_id.map(|installation| cleanup::Store {
+            directory: std::env::current_exe().unwrap().parent().unwrap().into(),
+            installation,
+        });
+        run_stdio(ProviderService(Arc::new(DeepRuntime::default()), store))
     })();
     // No parser/provider error or document text is printed to stderr.
     std::process::exit(if result.is_ok() { 0 } else { 1 });
