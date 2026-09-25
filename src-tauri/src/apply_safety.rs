@@ -12,6 +12,10 @@ pub(crate) enum WaitStage {
 }
 
 pub(crate) trait ApplyPlatform {
+    // HWND/PID and successful SendInput are not document/range authority.
+    // Native platforms remain Copy-only until an atomic editor adapter exists.
+    fn has_verified_selection_authority(&mut self) -> bool { false }
+
     fn is_window(&mut self, hwnd: isize) -> bool;
     fn window_pid(&mut self, hwnd: isize) -> Option<u32>;
     fn hide_widget(&mut self) -> Result<(), ()>;
@@ -28,6 +32,7 @@ pub(crate) trait ApplyPlatform {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ApplyFallbackReason {
+    TargetSelectionUnverified,
     TargetMissing,
     TargetProcessChanged,
     TargetNotForeground,
@@ -121,6 +126,10 @@ fn execute_apply<P: ApplyPlatform>(
             ApplyFallbackReason::TargetProcessChanged,
             false,
         );
+    }
+
+    if !platform.has_verified_selection_authority() {
+        return copy_fallback(platform, replacement, ApplyFallbackReason::TargetSelectionUnverified, false);
     }
 
     if platform.hide_widget().is_err() {

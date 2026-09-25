@@ -9,6 +9,7 @@ export type SelectionCapturedPayload = CaptureToken &
   }>;
 
 export type ApplyFallbackReason =
+  | "target_selection_unverified"
   | "target_missing"
   | "target_process_changed"
   | "target_not_foreground"
@@ -29,6 +30,7 @@ export type ApplyOutcome =
   | Readonly<{ status: "failed"; reason: ApplyFailureReason }>;
 
 const FALLBACK_REASONS = new Set<ApplyFallbackReason>([
+  "target_selection_unverified",
   "target_missing",
   "target_process_changed",
   "target_not_foreground",

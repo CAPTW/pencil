@@ -1,7 +1,6 @@
 use std::{
     env,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 pub const SUPPORTED_CODEX_VERSION: &str = "codex-cli 0.144.6";
@@ -39,24 +38,7 @@ pub fn resolve_codex_executable() -> Option<PathBuf> {
 }
 
 pub fn read_codex_version(path: &Path) -> Result<String, String> {
-    let output = Command::new(path)
-        .arg("--version")
-        .output()
-        .map_err(|error| format!("Could not run the resolved Codex executable: {error}"))?;
-
-    if !output.status.success() {
-        return Err(
-            "The resolved Codex executable did not return a successful version response."
-                .to_string(),
-        );
-    }
-
-    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if version.is_empty() {
-        Err("The resolved Codex executable returned an empty version response.".to_string())
-    } else {
-        Ok(version)
-    }
+    crate::provider::cli::version_sync(path)
 }
 
 pub fn is_supported_codex_version(version: &str) -> bool {
@@ -78,24 +60,12 @@ fn select_codex_candidate(
 
 #[cfg(windows)]
 fn where_candidates(name: &str) -> Vec<PathBuf> {
-    let Ok(output) = Command::new("where.exe").arg(name).output() else {
-        return Vec::new();
-    };
-    if !output.status.success() {
-        return Vec::new();
-    }
-
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(PathBuf::from)
-        .collect()
+    crate::provider::cli::executable_candidates(name)
 }
 
 #[cfg(not(windows))]
 fn which_candidates(name: &str) -> Vec<PathBuf> {
-    let Ok(output) = Command::new("which").arg(name).output() else {
+    let Ok(output) = std::process::Command::new("which").arg(name).output() else {
         return Vec::new();
     };
     if !output.status.success() {

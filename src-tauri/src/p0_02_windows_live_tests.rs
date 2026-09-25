@@ -905,6 +905,9 @@ fn outcome_code(outcome: &ApplyOutcome) -> &'static str {
     match outcome {
         ApplyOutcome::Applied => "applied",
         ApplyOutcome::CopiedFallback {
+            reason: ApplyFallbackReason::TargetSelectionUnverified,
+        } => "copied_selection_unverified",
+        ApplyOutcome::CopiedFallback {
             reason: ApplyFallbackReason::TargetMissing,
         } => "copied_fallback_target_missing",
         ApplyOutcome::CopiedFallback {

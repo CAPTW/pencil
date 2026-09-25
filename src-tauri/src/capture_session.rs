@@ -100,6 +100,17 @@ impl SessionError {
     }
 }
 
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct InstantDraftProof {
+    session_id: String,
+    generation: u64,
+    source: String,
+    candidate: String,
+    draft_revision: u64,
+    user_edited: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ApplyContext {
     pub(crate) token: SessionToken,
@@ -182,6 +193,22 @@ impl CaptureSessionStore {
         let current = self.current(token)?;
         Self::require_state(current, CaptureLifecycle::Captured)?;
         Ok(current.selected_text.clone())
+    }
+
+    pub(crate) fn validate_instant_draft(
+        &self, token: &SessionToken, candidate: &str, replacement: &str,
+        proof: Option<&InstantDraftProof>,
+    ) -> Result<(), SessionError> {
+        let source = self.captured_source(token)?;
+        let proof = proof.ok_or(SessionError::InvalidState)?;
+        if proof.session_id != token.session_id || proof.generation != token.generation ||
+            proof.source != source || proof.candidate != candidate || replacement.is_empty() ||
+            proof.draft_revision > 9_007_199_254_740_991 ||
+            (proof.user_edited && proof.draft_revision == 0) ||
+            (!proof.user_edited && candidate != replacement) {
+            return Err(SessionError::InvalidState);
+        }
+        Ok(())
     }
 
     pub(crate) fn begin_rewrite_bound(
@@ -556,5 +583,31 @@ impl CaptureSessionStore {
         } else {
             Err(SessionError::InvalidState)
         }
+    }
+}
+
+#[cfg(test)]
+mod mission_draft_tests {
+    use super::*;
+    #[test]
+    fn edited_instant_keeps_capture_source_candidate_and_revision_binding() {
+        let mut store = CaptureSessionStore::default();
+        let token = store.capture("mission".into(), "source".into(), WindowTarget::new(1, 2), None, None).unwrap();
+        let mut proof = InstantDraftProof { session_id: token.session_id.clone(), generation: token.generation,
+            source: "source".into(), candidate: "candidate".into(), draft_revision: 1, user_edited: true };
+        assert!(store.validate_instant_draft(&token, "candidate", "my edit", Some(&proof)).is_ok());
+        assert!(store.validate_instant_draft(&token, "candidate", "my edit", None).is_err());
+        proof.source = "other source".into();
+        assert!(store.validate_instant_draft(&token, "candidate", "my edit", Some(&proof)).is_err());
+        proof.source = "source".into(); proof.generation += 1;
+        assert!(store.validate_instant_draft(&token, "candidate", "my edit", Some(&proof)).is_err());
+        proof.generation = token.generation; proof.draft_revision = 0;
+        assert!(store.validate_instant_draft(&token, "candidate", "my edit", Some(&proof)).is_err());
+        proof.draft_revision = 1; proof.user_edited = false;
+        assert!(store.validate_instant_draft(&token, "candidate", "my edit", Some(&proof)).is_err());
+        proof.user_edited = true;
+        assert!(store.validate_instant_draft(&token, "different candidate", "my edit", Some(&proof)).is_err());
+        store.cancel(&token).unwrap();
+        assert!(store.validate_instant_draft(&token, "candidate", "my edit", Some(&proof)).is_err());
     }
 }

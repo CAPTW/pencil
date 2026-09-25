@@ -44,6 +44,7 @@ import {
   captureReset,
   confirmSwitch,
   editDraft,
+  instantDraftProof,
   EMPTY_INSTANT_RUNTIME_STATE,
   lateCandidate,
   requestSwitch,
@@ -1307,6 +1308,7 @@ export default function App() {
         sessionId: token.sessionId,
         generation: token.generation,
         replacement: draft,
+        instantDraft: instantDraftProof(instantRuntime, token, selection?.sourceText ?? "", draft),
         mode: intent.mode,
         targetLanguage: intent.targetLanguage,
         autoReferenceLanguage: intent.autoReferenceLanguage,
@@ -1433,7 +1435,7 @@ export default function App() {
   );
   const canApply = Boolean(
     selection &&
-      (result || instantRuntime.activeKind === "instant") &&
+      (result || instantDraftProof(instantRuntime, selection.token, selection.sourceText, draft)) &&
       draft.length > 0 &&
       !isApplying &&
       !isRewriting &&

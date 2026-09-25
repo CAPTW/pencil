@@ -1,6 +1,8 @@
 use super::{
-    cli::{resolve_named_executable, run_args, run_version, run_writing, ActiveCliProcess},
-    types::{ProviderCapabilities, ProviderError, ProviderKind, ProviderLifecycleState, ProviderStatus},
+    cli::{resolve_named_executable, run_args, run_writing, ActiveCliProcess},
+    types::{
+        ProviderCapabilities, ProviderError, ProviderKind, ProviderLifecycleState, ProviderStatus,
+    },
 };
 use crate::{
     codex_client::{rewrite_prompt_with_terminology, RewriteEdit, RewriteResult},
@@ -27,6 +29,10 @@ pub(crate) fn resolve_claude() -> Option<PathBuf> {
 }
 
 pub(crate) async fn probe() -> ProviderStatus {
+    probe_cancel(Arc::new(AtomicBool::new(false))).await
+}
+
+pub(crate) async fn probe_cancel(cancel: Arc<AtomicBool>) -> ProviderStatus {
     let Some(path) = resolve_claude() else {
         return ProviderStatus::unavailable(
             ProviderKind::Claude,
@@ -34,11 +40,14 @@ pub(crate) async fn probe() -> ProviderStatus {
             "Install Claude Code and ensure `claude` is available, then Refresh status.",
         );
     };
-    let version = run_version(&path).await.ok();
-    let auth = run_args(
+    let version = super::cli::run_version_cancel(&path, cancel.clone())
+        .await
+        .ok();
+    let auth = super::cli::run_args_cancel(
         &path,
         &["auth".to_string(), "status".to_string()],
         Duration::from_secs(12),
+        cancel,
     )
     .await;
     match auth {
@@ -79,7 +88,9 @@ pub(crate) async fn probe() -> ProviderStatus {
             version,
             account_label: None,
             reason: Some(error),
-            setup_requirement: Some("Retry Refresh status after Claude Code is responding.".to_string()),
+            setup_requirement: Some(
+                "Retry Refresh status after Claude Code is responding.".to_string(),
+            ),
             capabilities: ProviderCapabilities {
                 writing: true,
                 official_sign_in: true,
@@ -111,7 +122,8 @@ fn signed_out(path: PathBuf, version: Option<String>) -> ProviderStatus {
 }
 
 pub(crate) async fn start_login() -> Result<(), String> {
-    let path = resolve_claude().ok_or_else(|| "Claude Code CLI was not found on PATH.".to_string())?;
+    let path =
+        resolve_claude().ok_or_else(|| "Claude Code CLI was not found on PATH.".to_string())?;
     let _ = std::process::Command::new(&path)
         .args(["auth", "login"])
         .stdin(std::process::Stdio::null())
@@ -121,7 +133,8 @@ pub(crate) async fn start_login() -> Result<(), String> {
 }
 
 pub(crate) async fn sign_out() -> Result<(), String> {
-    let path = resolve_claude().ok_or_else(|| "Claude Code CLI was not found on PATH.".to_string())?;
+    let path =
+        resolve_claude().ok_or_else(|| "Claude Code CLI was not found on PATH.".to_string())?;
     let captured = run_args(
         &path,
         &["auth".to_string(), "logout".to_string()],
@@ -158,15 +171,9 @@ pub(crate) async fn rewrite(
     if super::cli::command_line_too_long(&path, &args) {
         return Err(ProviderError::InputTooLarge);
     }
-    let captured = run_writing(
-        &path,
-        &args,
-        Duration::from_secs(120),
-        cancel.clone(),
-        slot,
-    )
-    .await
-    .map_err(ProviderError::Faulted)?;
+    let captured = run_writing(&path, &args, Duration::from_secs(120), cancel.clone(), slot)
+        .await
+        .map_err(ProviderError::Faulted)?;
     if captured.cancelled || cancel.load(Ordering::SeqCst) {
         return Err(ProviderError::Cancelled);
     }
@@ -191,7 +198,8 @@ pub(crate) async fn rewrite(
 }
 
 fn parse_claude_result(stdout: &str, mode: RewriteMode) -> Result<RewriteResult, ProviderError> {
-    let value: Value = serde_json::from_str(stdout.trim()).map_err(|_| ProviderError::MalformedOutput)?;
+    let value: Value =
+        serde_json::from_str(stdout.trim()).map_err(|_| ProviderError::MalformedOutput)?;
     if value.get("is_error").and_then(Value::as_bool) == Some(true) {
         let message = value
             .get("result")
@@ -218,7 +226,10 @@ fn parse_claude_result(stdout: &str, mode: RewriteMode) -> Result<RewriteResult,
     parse_rewrite_payload(text, mode)
 }
 
-pub(crate) fn parse_rewrite_payload(text: &str, mode: RewriteMode) -> Result<RewriteResult, ProviderError> {
+pub(crate) fn parse_rewrite_payload(
+    text: &str,
+    mode: RewriteMode,
+) -> Result<RewriteResult, ProviderError> {
     let extracted = crate::writing_contract::extract_json_object(text)
         .map_err(|_| ProviderError::MalformedOutput)?;
     let replacement = crate::writing_contract::replacement_from_payload(&extracted)
@@ -226,7 +237,10 @@ pub(crate) fn parse_rewrite_payload(text: &str, mode: RewriteMode) -> Result<Rew
     let value = extracted.value;
     Ok(RewriteResult {
         replacement,
-        changed: value.get("changed").and_then(Value::as_bool).unwrap_or(true),
+        changed: value
+            .get("changed")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
         summary: value
             .get("summary")
             .and_then(Value::as_str)
@@ -249,7 +263,10 @@ pub(crate) fn parse_rewrite_payload(text: &str, mode: RewriteMode) -> Result<Rew
                     .collect()
             })
             .unwrap_or_default(),
-        confidence: value.get("confidence").and_then(Value::as_f64).unwrap_or(0.5),
+        confidence: value
+            .get("confidence")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.5),
         mode,
         used_terminology_ids: Vec::new(),
         terminology_suggestions: Vec::new(),
@@ -296,7 +313,8 @@ mod tests {
 
     #[test]
     fn login_required_json_is_signed_out() {
-        let stdout = r#"{"type":"result","is_error":true,"result":"Not logged in · Please run /login"}"#;
+        let stdout =
+            r#"{"type":"result","is_error":true,"result":"Not logged in · Please run /login"}"#;
         assert!(matches!(
             parse_claude_result(stdout, RewriteMode::Grammar),
             Err(ProviderError::SignedOut(_))

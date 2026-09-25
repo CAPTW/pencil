@@ -2,73 +2,17 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import typescript from "typescript";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const ts = readFileSync(join(root, "src/instantSelectionRuntime.ts"), "utf8");
-
-const EMPTY_INSTANT_RUNTIME_STATE = {
-  sessionId: null,
-  generation: null,
-  draft: "",
-  dirty: false,
-  draftRevision: 0,
-  activeKind: null,
-  instant: null,
-  deep: null,
-  pendingSwitch: null,
-};
-
-function captureReset(_state, sessionId, generation) {
-  return { ...EMPTY_INSTANT_RUNTIME_STATE, sessionId, generation };
-}
-
-function lateCandidate(state, candidate) {
-  if (state.sessionId !== candidate.sessionId || state.generation !== candidate.generation) {
-    return state;
-  }
-  const next = {
-    ...state,
-    instant: candidate.kind === "instant" ? candidate : state.instant,
-    deep: candidate.kind === "deep" ? candidate : state.deep,
-  };
-  if (!state.dirty && state.draft.length === 0 && candidate.text.length > 0) {
-    return { ...next, draft: candidate.text, activeKind: candidate.kind };
-  }
-  return next;
-}
-
-function editDraft(state, text) {
-  if (state.draft === text) return state;
-  return { ...state, draft: text, dirty: true, draftRevision: state.draftRevision + 1, activeKind: "user" };
-}
-
-function requestSwitch(state, candidate) {
-  if (!state.dirty) {
-    return { ...state, draft: candidate.text, activeKind: candidate.kind, pendingSwitch: null };
-  }
-  return { ...state, pendingSwitch: candidate };
-}
-
-function confirmSwitch(state) {
-  if (!state.pendingSwitch) return state;
-  return {
-    ...state,
-    draft: state.pendingSwitch.text,
-    dirty: false,
-    activeKind: state.pendingSwitch.kind,
-    pendingSwitch: null,
-  };
-}
-
-function cancelSwitch(state) {
-  return { ...state, pendingSwitch: null };
-}
-
-function visibleChoices(state) {
-  const items = [];
-  if (state.instant) items.push(state.instant);
-  if (state.deep && (!state.instant || state.deep.text !== state.instant.text)) items.push(state.deep);
-  return items;
-}
+const source = readFileSync(join(root, "src/instantSelectionRuntime.ts"), "utf8");
+const compiled = typescript.transpileModule(source, {
+  compilerOptions: { target: typescript.ScriptTarget.ES2022, module: typescript.ModuleKind.ES2022 },
+});
+// Execute the production exports; a changed reducer must change this test's result.
+const { EMPTY_INSTANT_RUNTIME_STATE, captureReset, lateCandidate, editDraft,
+  requestSwitch, confirmSwitch, cancelSwitch, visibleChoices, instantDraftProof } =
+  await import(`data:text/javascript;base64,${Buffer.from(compiled.outputText).toString("base64")}`);
 
 const failures = [];
 let assertions = 0;
@@ -77,9 +21,6 @@ function check(condition, id) {
   if (!condition) failures.push(id);
 }
 
-check(ts.includes("export function lateCandidate"), "TS_LATE_CANDIDATE");
-check(ts.includes("export function confirmSwitch"), "TS_CONFIRM");
-check(ts.includes("export function cancelSwitch"), "TS_CANCEL");
 
 let state = captureReset(EMPTY_INSTANT_RUNTIME_STATE, "s", 1);
 const instant = { kind: "instant", text: "instant-text", sessionId: "s", generation: 1 };
@@ -105,6 +46,34 @@ const dupState = lateCandidate(
 check(visibleChoices(dupState).length === 1, "DEDUP_IDENTICAL");
 const stale = lateCandidate(dupState, { ...deep, sessionId: "other", generation: 9 });
 check(stale.draft === dupState.draft, "STALE_IGNORED");
+
+const token = { sessionId: "s", generation: 1 };
+let edited = lateCandidate(captureReset(EMPTY_INSTANT_RUNTIME_STATE, "s", 1), instant);
+check(editDraft(edited, edited.draft) === edited, "UNCHANGED_EDIT_IS_NOOP");
+const untouchedProof = instantDraftProof(edited, token, "original source", edited.draft);
+check(untouchedProof?.userEdited === false && untouchedProof.draftRevision === 0, "INSTANT_UNEDITED_PROOF");
+edited = editDraft(edited, "edited Instant");
+const proof = instantDraftProof(edited, token, "original source", edited.draft);
+check(proof?.candidate === instant.text && proof.source === "original source", "EDIT_RETAINS_SOURCE_CANDIDATE");
+check(proof?.draftRevision === 1 && proof.userEdited === true, "EDIT_REVISION_PROOF");
+check(instantDraftProof(edited, null, "original source", edited.draft) === null, "PROOF_NEEDS_CAPTURE");
+check(instantDraftProof(edited, {...token, generation: 2}, "original source", edited.draft) === null, "PROOF_REJECTS_STALE_GENERATION");
+check(instantDraftProof(edited, {...token, sessionId: "other"}, "original source", edited.draft) === null, "PROOF_REJECTS_STALE_SESSION");
+check(instantDraftProof(edited, token, "original source", "untracked text") === null, "PROOF_REJECTS_UNTRACKED_EDIT");
+check(instantDraftProof({...edited, draftRevision: Number.MAX_SAFE_INTEGER + 1}, token, "original source", edited.draft) === null, "PROOF_REJECTS_UNSAFE_REVISION");
+check(instantDraftProof({...edited, instant: {...instant, generation: 2}}, token, "original source", edited.draft) === null, "PROOF_REJECTS_STALE_CANDIDATE");
+check(instantDraftProof(editDraft(edited, ""), token, "original source", "") === null, "PROOF_REJECTS_EMPTY_DRAFT");
+const withDeep = lateCandidate(edited, deep);
+check(withDeep.draft === edited.draft && withDeep.draftOrigin === "instant", "LATE_DEEP_PRESERVES_EDIT_PROVENANCE");
+check(instantDraftProof(withDeep, token, "original source", edited.draft)?.userEdited === true, "LATE_DEEP_KEEPS_INSTANT_PROOF");
+check(requestSwitch(edited, {...deep, generation: 2}) === edited, "STALE_SWITCH_IGNORED");
+const switched = confirmSwitch(requestSwitch(edited, deep));
+check(switched.draftOrigin === "deep" && instantDraftProof(switched, token, "original source", switched.draft) === null, "DEEP_SWITCH_HAS_NO_INSTANT_PROOF");
+const fresh = captureReset(requestSwitch(edited, deep), "new", 2);
+check(fresh.pendingSwitch === null && fresh.draft === "" && fresh.instant === null && fresh.deep === null, "RECAPTURE_WIPES_DRAFT_AND_CANDIDATES");
+check(instantDraftProof(fresh, token, "original source", edited.draft) === null, "RECAPTURE_INVALIDATES_PROOF");
+check(confirmSwitch(fresh) === fresh, "CONFIRM_WITHOUT_PENDING_NOOP");
+check(lateCandidate(fresh, deep) === fresh, "OLD_CAPTURE_COMPLETION_NOOP");
 
 if (failures.length) {
   console.log(`FAIL ${failures.length} ${assertions} ${failures.join(",")}`);

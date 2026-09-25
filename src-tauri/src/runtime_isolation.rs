@@ -2,7 +2,7 @@ use std::{
     fs::{self, OpenOptions},
     io::{ErrorKind, Write},
     path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use uuid::Uuid;
 
@@ -12,7 +12,8 @@ const SESSION_MARKER: &str = ".codex-pencil-runtime-owner-v1";
 const SESSION_PREFIX: &str = "client-";
 const STALE_AFTER: Duration = Duration::from_secs(60);
 const MAX_STARTUP_CLEANUPS: usize = 32;
-const REMOVE_RETRIES: usize = 64;
+const REMOVE_RETRIES: usize = 8;
+const CLEANUP_BUDGET: Duration = Duration::from_secs(2);
 const REMOVE_RETRY_DELAY: Duration = Duration::from_millis(50);
 
 pub(crate) struct RuntimeWorkspace {
@@ -51,8 +52,14 @@ impl RuntimeWorkspace {
         &self.cwd
     }
 
-    pub(crate) fn close(mut self) -> Result<(), String> {
-        let result = remove_owned_session(&self.session_root);
+    // Persistent app-server workspaces have no deadline from creation. The owner
+    // supplies the absolute teardown deadline when shutdown actually begins.
+    pub(crate) fn close(self) -> Result<(), String> {
+        self.close_before(Instant::now() + CLEANUP_BUDGET)
+    }
+
+    pub(crate) fn close_before(mut self, deadline: Instant) -> Result<(), String> {
+        let result = remove_owned_session_before(&self.session_root, deadline);
         self.session_root.clear();
         self.cwd.clear();
         result
@@ -131,8 +138,9 @@ where
 {
     let entries = fs::read_dir(base).map_err(|_| "runtime_root_read_failed".to_string())?;
     let mut removed = 0usize;
+    let deadline = Instant::now() + Duration::from_millis(250);
     for entry in entries.flatten() {
-        if removed >= MAX_STARTUP_CLEANUPS {
+        if removed >= MAX_STARTUP_CLEANUPS || Instant::now() >= deadline {
             break;
         }
         let path = entry.path();
@@ -152,7 +160,7 @@ where
             continue;
         };
         let stale = now.saturating_sub(created) >= STALE_AFTER.as_secs();
-        if stale && !alive(pid) && remove_owned_session(&path).is_ok() {
+        if stale && !alive(pid) && remove_owned_session_before(&path, deadline).is_ok() {
             removed += 1;
         }
     }
@@ -160,6 +168,10 @@ where
 }
 
 fn remove_owned_session(path: &Path) -> Result<(), String> {
+    remove_owned_session_before(path, Instant::now() + CLEANUP_BUDGET)
+}
+
+fn remove_owned_session_before(path: &Path, deadline: Instant) -> Result<(), String> {
     let metadata =
         fs::symlink_metadata(path).map_err(|_| "runtime_session_metadata_failed".to_string())?;
     if !metadata.file_type().is_dir() || is_directory_link(&metadata) {
@@ -172,11 +184,25 @@ fn remove_owned_session(path: &Path) -> Result<(), String> {
 
     let mut last_os_error = 0;
     for attempt in 0..REMOVE_RETRIES {
+        if Instant::now() >= deadline {
+            return Err("runtime_cleanup_deadline".into());
+        }
         match fs::remove_dir_all(path) {
-            Ok(()) => return Ok(()),
-            Err(error) if attempt + 1 < REMOVE_RETRIES => {
+            Ok(()) => {
+                return if Instant::now() <= deadline {
+                    Ok(())
+                } else {
+                    Err("runtime_cleanup_completed_late".into())
+                }
+            }
+            Err(error)
+                if attempt + 1 < REMOVE_RETRIES
+                    && matches!(error.raw_os_error(), Some(32 | 145)) =>
+            {
                 last_os_error = error.raw_os_error().unwrap_or(0);
-                std::thread::sleep(REMOVE_RETRY_DELAY);
+                std::thread::sleep(
+                    REMOVE_RETRY_DELAY.min(deadline.saturating_duration_since(Instant::now())),
+                );
             }
             Err(error) => {
                 last_os_error = error.raw_os_error().unwrap_or(last_os_error);

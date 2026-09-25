@@ -21,10 +21,32 @@ use tokio::sync::Mutex;
 pub(crate) struct ProviderManager {
     active: ProviderKind,
     busy: Option<ProviderKind>,
-    cancel: Arc<AtomicBool>,
-    cli_slot: Arc<Mutex<Option<ActiveCliProcess>>>,
+    operation: Option<Arc<ProviderOperation>>,
+    next_operation: u64,
     statuses: Vec<ProviderStatus>,
     last_self_tests: Vec<SelfTestRecord>,
+}
+
+pub(crate) struct ProviderOperation {
+    pub(crate) id: u64,
+    pub(crate) kind: ProviderKind,
+    pub(crate) binding: String,
+    pub(crate) capture_binding: Option<(
+        crate::capture_session::SessionToken,
+        crate::capture_session::BoundRewriteIntent,
+    )>,
+    cancel: Arc<AtomicBool>,
+    cli_slot: Arc<Mutex<Option<ActiveCliProcess>>>,
+    completed: AtomicBool,
+}
+
+impl ProviderOperation {
+    pub(crate) fn cancel(&self) {
+        self.cancel.store(true, Ordering::SeqCst);
+    }
+    pub(crate) fn is_complete(&self) -> bool {
+        self.completed.load(Ordering::SeqCst)
+    }
 }
 
 impl Default for ProviderManager {
@@ -32,11 +54,13 @@ impl Default for ProviderManager {
         Self {
             active: ProviderKind::Codex,
             busy: None,
-            cancel: Arc::new(AtomicBool::new(false)),
-            cli_slot: Arc::new(Mutex::new(None)),
+            operation: None,
+            next_operation: 0,
             statuses: ProviderKind::ALL
                 .iter()
-                .map(|kind| ProviderStatus::unavailable(*kind, "Status not probed yet.", "Refresh status."))
+                .map(|kind| {
+                    ProviderStatus::unavailable(*kind, "Status not probed yet.", "Refresh status.")
+                })
                 .collect(),
             last_self_tests: Vec::new(),
         }
@@ -69,79 +93,136 @@ impl ProviderManager {
         &self.last_self_tests
     }
 
-    pub(crate) async fn refresh(&mut self, codex: &CodexClientCache) {
-        let mut statuses = Vec::new();
-        statuses.push(probe_codex(codex).await);
-        statuses.push(antigravity::probe().await);
-        statuses.push(claude::probe().await);
-        if let Some(busy) = self.busy {
-            for status in &mut statuses {
-                if status.kind == busy {
-                    status.state = if self.cancel.load(Ordering::SeqCst) {
-                        ProviderLifecycleState::Cancelling
-                    } else {
-                        ProviderLifecycleState::Busy
-                    };
-                }
+    pub(crate) async fn refresh(manager: &Mutex<Self>, codex: &CodexClientCache) {
+        let operation = {
+            let mut guard = manager.lock().await;
+            let kind = guard.active;
+            match guard.reserve(kind, "probe".into(), true) {
+                Ok(op) => op,
+                Err(_) => return,
             }
-        }
-        self.statuses = statuses;
-    }
-
-    pub(crate) async fn cancel_active(&mut self) {
-        self.cancel.store(true, Ordering::SeqCst);
-        if let Some(process) = self.cli_slot.lock().await.as_ref() {
-            process.request_cancel();
-        }
-        if self.busy.is_some() {
-            for status in &mut self.statuses {
-                if Some(status.kind) == self.busy {
-                    status.state = ProviderLifecycleState::Cancelling;
-                }
-            }
+        };
+        let statuses = vec![
+            probe_codex(codex, operation.cancel.clone()).await,
+            antigravity::probe_cancel(operation.cancel.clone()).await,
+            claude::probe_cancel(operation.cancel.clone()).await,
+        ];
+        let mut guard = manager.lock().await;
+        if guard.finish(&operation) && !operation.cancel.load(Ordering::SeqCst) {
+            guard.statuses = statuses;
         }
     }
 
-    pub(crate) fn clear_busy(&mut self) {
-        self.busy = None;
-        self.cancel.store(false, Ordering::SeqCst);
-        for status in &mut self.statuses {
-            if matches!(
-                status.state,
-                ProviderLifecycleState::Busy | ProviderLifecycleState::Cancelling
-            ) {
-                if status.available && status.reason.is_none() {
-                    status.state = ProviderLifecycleState::Ready;
-                }
-            }
-        }
+    pub(crate) fn cancel_handle(&self) -> Option<Arc<ProviderOperation>> {
+        self.operation.clone()
     }
 
-    pub(crate) async fn rewrite(
+    pub(crate) fn reserve(
         &mut self,
         kind: ProviderKind,
-        selected_text: &str,
-        intent: RewriteIntent,
-        terminology: &[TerminologyConstraint],
-        codex: &CodexClientCache,
-    ) -> Result<RewriteResult, ProviderError> {
-        if kind != self.active {
+        binding: String,
+        self_test: bool,
+    ) -> Result<Arc<ProviderOperation>, ProviderError> {
+        self.reserve_bound(kind, binding, self_test, None)
+    }
+    pub(crate) fn reserve_capture(
+        &mut self,
+        kind: ProviderKind,
+        token: crate::capture_session::SessionToken,
+        intent: crate::capture_session::BoundRewriteIntent,
+    ) -> Result<Arc<ProviderOperation>, ProviderError> {
+        self.reserve_bound(
+            kind,
+            format!("{}:{}", token.session_id, token.generation),
+            false,
+            Some((token, intent)),
+        )
+    }
+
+    fn reserve_bound(
+        &mut self,
+        kind: ProviderKind,
+        binding: String,
+        self_test: bool,
+        capture_binding: Option<(
+            crate::capture_session::SessionToken,
+            crate::capture_session::BoundRewriteIntent,
+        )>,
+    ) -> Result<Arc<ProviderOperation>, ProviderError> {
+        if !self_test && kind != self.active {
             return Err(ProviderError::SilentFallbackRejected);
         }
         if self.busy.is_some() {
             return Err(ProviderError::Busy);
         }
+        self.next_operation = self
+            .next_operation
+            .checked_add(1)
+            .ok_or_else(|| ProviderError::Faulted("provider_operation_id_exhausted".into()))?;
+        let operation = Arc::new(ProviderOperation {
+            id: self.next_operation,
+            kind,
+            binding,
+            capture_binding,
+            cancel: Arc::new(AtomicBool::new(false)),
+            cli_slot: Arc::new(Mutex::new(None)),
+            completed: AtomicBool::new(false),
+        });
         self.busy = Some(kind);
-        self.cancel.store(false, Ordering::SeqCst);
-        let result = match kind {
-            ProviderKind::Codex => rewrite_codex(codex, selected_text, intent, terminology).await,
+        self.operation = Some(operation.clone());
+        Ok(operation)
+    }
+
+    pub(crate) fn finish(&mut self, operation: &ProviderOperation) -> bool {
+        let current = self.operation.as_ref().is_some_and(|op| {
+            op.id == operation.id && op.binding == operation.binding && op.kind == operation.kind
+        });
+        if current {
+            self.busy = None;
+            self.operation = None;
+            for status in &mut self.statuses {
+                if matches!(
+                    status.state,
+                    ProviderLifecycleState::Busy | ProviderLifecycleState::Cancelling
+                ) && status.available
+                    && status.reason.is_none()
+                {
+                    status.state = ProviderLifecycleState::Ready;
+                }
+            }
+        }
+        operation.completed.store(true, Ordering::SeqCst);
+        current
+    }
+
+    pub(crate) async fn execute(
+        operation: &ProviderOperation,
+        selected_text: &str,
+        intent: RewriteIntent,
+        terminology: &[TerminologyConstraint],
+        codex: &CodexClientCache,
+    ) -> Result<RewriteResult, ProviderError> {
+        if operation.cancel.load(Ordering::SeqCst) {
+            return Err(ProviderError::Cancelled);
+        }
+        let result = match operation.kind {
+            ProviderKind::Codex => {
+                rewrite_codex(
+                    codex,
+                    selected_text,
+                    intent,
+                    terminology,
+                    operation.cancel.clone(),
+                )
+                .await
+            }
             ProviderKind::Claude => {
                 claude::rewrite(
                     selected_text,
                     intent,
                     terminology,
-                    self.cancel.clone(),
-                    self.cli_slot.clone(),
+                    operation.cancel.clone(),
+                    operation.cli_slot.clone(),
                 )
                 .await
             }
@@ -150,24 +231,40 @@ impl ProviderManager {
                     selected_text,
                     intent,
                     terminology,
-                    self.cancel.clone(),
-                    self.cli_slot.clone(),
+                    operation.cancel.clone(),
+                    operation.cli_slot.clone(),
                 )
                 .await
             }
         };
-        self.clear_busy();
-        match result {
-            Ok(mut value) => {
-                value.provider_used = kind;
-                Ok(value)
-            }
-            Err(error) => Err(error),
+        if operation.cancel.load(Ordering::SeqCst) && result.is_ok() {
+            return Err(ProviderError::Cancelled);
         }
+        result.map(|mut value| {
+            value.provider_used = operation.kind;
+            value
+        })
+    }
+
+    pub(crate) async fn rewrite(
+        manager: &Mutex<Self>,
+        kind: ProviderKind,
+        binding: String,
+        selected_text: &str,
+        intent: RewriteIntent,
+        terminology: &[TerminologyConstraint],
+        codex: &CodexClientCache,
+    ) -> Result<RewriteResult, ProviderError> {
+        let operation = manager.lock().await.reserve(kind, binding, false)?;
+        let result = Self::execute(&operation, selected_text, intent, terminology, codex).await;
+        if !manager.lock().await.finish(&operation) {
+            return Err(ProviderError::Cancelled);
+        }
+        result
     }
 
     pub(crate) async fn run_self_test(
-        &mut self,
+        manager: &Mutex<Self>,
         kind: ProviderKind,
         intent: RewriteIntent,
         codex: &CodexClientCache,
@@ -175,45 +272,25 @@ impl ProviderManager {
         let started = std::time::Instant::now();
         let started_utc = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_secs().to_string())
-            .unwrap_or_else(|_| "0".to_string());
-        if self.busy.is_some() {
-            return SelfTestRecord {
-                kind,
-                classification: SelfTestClassification::ProductFailure,
-                started_utc,
-                duration_ms: started.elapsed().as_millis() as u64,
-                error_code: Some("provider_busy".to_string()),
-            };
-        }
-        self.busy = Some(kind);
-        self.cancel.store(false, Ordering::SeqCst);
-        let result = match kind {
-            ProviderKind::Codex => rewrite_codex(codex, SELF_TEST_SOURCE, intent, &[]).await,
-            ProviderKind::Claude => {
-                claude::rewrite(
-                    SELF_TEST_SOURCE,
-                    intent,
-                    &[],
-                    self.cancel.clone(),
-                    self.cli_slot.clone(),
-                )
-                .await
+            .map(|d| d.as_secs().to_string())
+            .unwrap_or_else(|_| "0".into());
+        let reservation = manager.lock().await.reserve(kind, "self-test".into(), true);
+        let operation_id = reservation.as_ref().ok().map(|op| op.id);
+        let result = match reservation {
+            Ok(operation) => {
+                let result = Self::execute(&operation, SELF_TEST_SOURCE, intent, &[], codex).await;
+                if manager.lock().await.finish(&operation) {
+                    result
+                } else {
+                    Err(ProviderError::Cancelled)
+                }
             }
-            ProviderKind::Antigravity => {
-                antigravity::rewrite(
-                    SELF_TEST_SOURCE,
-                    intent,
-                    &[],
-                    self.cancel.clone(),
-                    self.cli_slot.clone(),
-                )
-                .await
-            }
+            Err(error) => Err(error),
         };
-        self.clear_busy();
         let record = SelfTestRecord {
             kind,
+            started_utc,
+            duration_ms: started.elapsed().as_millis() as u64,
             classification: match &result {
                 Ok(value) if value.provider_used == kind => SelfTestClassification::Success,
                 Ok(_) => SelfTestClassification::ProductFailure,
@@ -235,17 +312,21 @@ impl ProviderManager {
                 ) => SelfTestClassification::ExternalFailure,
                 Err(_) => SelfTestClassification::ProductFailure,
             },
-            started_utc,
-            duration_ms: started.elapsed().as_millis() as u64,
             error_code: result.err().map(|error| error.code().to_string()),
         };
-        self.last_self_tests.retain(|existing| existing.kind != kind);
-        self.last_self_tests.push(record.clone());
+        let mut guard = manager.lock().await;
+        if operation_id != Some(guard.next_operation) {
+            return record;
+        }
+        guard
+            .last_self_tests
+            .retain(|existing| existing.kind != kind);
+        guard.last_self_tests.push(record.clone());
         record
     }
 }
 
-async fn probe_codex(codex: &CodexClientCache) -> ProviderStatus {
+async fn probe_codex(codex: &CodexClientCache, cancel: Arc<AtomicBool>) -> ProviderStatus {
     match crate::codex_binary::resolve_codex_executable() {
         None => ProviderStatus::unavailable(
             ProviderKind::Codex,
@@ -253,9 +334,17 @@ async fn probe_codex(codex: &CodexClientCache) -> ProviderStatus {
             "Install Codex CLI and ensure `codex` is available, then Refresh status.",
         ),
         Some(path) => {
-            let version = crate::codex_binary::read_codex_version(&path).ok();
+            let version = super::cli::run_version_cancel(&path, cancel.clone())
+                .await
+                .ok();
             let auth = match codex.current_healthy().await {
-                Some(client) => client.auth_status().await.ok(),
+                Some(client) => {
+                    tokio::select! {
+                        biased;
+                        _ = super::cli::cancellation(&cancel) => { let _ = codex.shutdown_checked().await; None },
+                        result = client.auth_status() => result.ok(),
+                    }
+                }
                 None => None,
             };
             if let Some(auth) = auth {
@@ -322,24 +411,46 @@ async fn rewrite_codex(
     selected_text: &str,
     intent: RewriteIntent,
     terminology: &[TerminologyConstraint],
+    cancel: Arc<AtomicBool>,
 ) -> Result<RewriteResult, ProviderError> {
-    let client = cache.get().await.map_err(|error| {
+    let client = cache.get_cancel(cancel.clone()).await.map_err(|error| {
+        if cancel.load(Ordering::SeqCst) && !error.contains("cleanup") {
+            return ProviderError::Cancelled;
+        }
         if error.to_lowercase().contains("auth") || error.to_lowercase().contains("login") {
             ProviderError::SignedOut(error)
         } else {
             ProviderError::Faulted(error)
         }
     })?;
-    client
-        .rewrite_with_terminology(selected_text, intent, terminology)
-        .await
-        .map_err(|error| {
-            if error == "rewrite_interrupted" {
+    let result = tokio::select! {
+        biased;
+        _ = super::cli::cancellation(&cancel) => Err("rewrite_interrupted".to_string()),
+        result = client.rewrite_with_terminology(selected_text, intent, terminology) => result,
+    };
+    if cancel.load(Ordering::SeqCst) {
+        cache
+            .shutdown_checked()
+            .await
+            .map_err(ProviderError::Faulted)?;
+        return Err(ProviderError::Cancelled);
+    }
+    match result {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            // A failed turn/start or response wait may still have dispatched
+            // work. Reap its exact cached server before releasing admission.
+            cache
+                .shutdown_checked()
+                .await
+                .map_err(|cleanup| ProviderError::Faulted(format!("{error};cleanup={cleanup}")))?;
+            Err(if error == "rewrite_interrupted" {
                 ProviderError::Cancelled
             } else {
                 ProviderError::Faulted(error)
-            }
-        })
+            })
+        }
+    }
 }
 
 #[cfg(test)]
@@ -365,7 +476,8 @@ mod tests {
             .build()
             .unwrap();
         let cache = CodexClientCache::default();
-        let record = runtime.block_on(manager.run_self_test(
+        let record = runtime.block_on(ProviderManager::run_self_test(
+            &Mutex::new(manager),
             ProviderKind::Claude,
             RewriteIntent::grammar(),
             &cache,
@@ -387,8 +499,10 @@ mod tests {
             .build()
             .unwrap();
         let cache = CodexClientCache::default();
-        let error = runtime.block_on(manager.rewrite(
+        let error = runtime.block_on(ProviderManager::rewrite(
+            &Mutex::new(manager),
             ProviderKind::Claude,
+            "unit-test".into(),
             "hi",
             RewriteIntent::grammar(),
             &[],
@@ -402,18 +516,19 @@ mod tests {
     async fn live_self_test_antigravity_is_not_apply_ready() {
         let mut manager = ProviderManager::default();
         let cache = CodexClientCache::default();
-        let record = manager
-            .run_self_test(
-                ProviderKind::Antigravity,
-                RewriteIntent::grammar(),
-                &cache,
-            )
-            .await;
+        let manager = Mutex::new(manager);
+        let record = ProviderManager::run_self_test(
+            &manager,
+            ProviderKind::Antigravity,
+            RewriteIntent::grammar(),
+            &cache,
+        )
+        .await;
         assert_eq!(record.kind, ProviderKind::Antigravity);
         assert_eq!(
             record.classification,
             crate::diagnostics::SelfTestClassification::Success
         );
-        assert!(manager.snapshot().busy_kind.is_none());
+        assert!(manager.lock().await.snapshot().busy_kind.is_none());
     }
 }
