@@ -1401,6 +1401,7 @@ async fn shutdown_providers(state: &AppState) -> Result<(), &'static str> {
             }
         };
         let (_, cleanup) = tokio::join!(cli, state.codex.shutdown_checked());
+        provider::cli::cleanup_status().map_err(|_| "provider_shutdown_cleanup_failed")?;
         cleanup.map_err(|_| "provider_shutdown_cleanup_failed")
     }).await.map_err(|_| "provider_shutdown_timeout")?
 }
