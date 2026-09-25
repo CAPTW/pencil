@@ -10,6 +10,18 @@ use std::{
 fn main() {
     let args: Vec<String> = env::args().collect();
     let descendant = args.iter().any(|arg| arg == "--fixture-descendant");
+    if !descendant {
+        if let Ok(dir) = env::var("P01_CASE_DIR") {
+            let flags = format!(
+                "{{\"no_session_persistence\":{},\"bare\":{},\"disallowed_all_tools\":{},\"disable_slash_commands\":{}}}",
+                args.iter().any(|arg| arg == "--no-session-persistence"),
+                args.iter().any(|arg| arg == "--bare"),
+                args.windows(2).any(|pair| pair[0] == "--disallowedTools" && pair[1] == "*"),
+                args.iter().any(|arg| arg == "--disable-slash-commands"),
+            );
+            fs::write(std::path::Path::new(&dir).join("flags.json"), flags).unwrap();
+        }
+    }
     let mode = env::var("P01_FIXTURE_MODE").unwrap_or_else(|_| "slow".into());
     if let Ok(dir) = env::var("P01_CASE_DIR") {
         fs::write(

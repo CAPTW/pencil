@@ -276,6 +276,12 @@ impl CodexClientCache {
             cancel.store(true, Ordering::SeqCst);
         }
         let _gate = self.connect_gate.lock().await;
+        // A failed receipt permanently retains teardown ownership. Retrying here
+        // would give the same unresolved child a fresh shutdown budget.
+        if self.cleanup_blocked.load(Ordering::SeqCst) {
+            self.shutting_down.store(false, Ordering::SeqCst);
+            return Err("codex_cleanup_unresolved_restart_required".into());
+        }
         // The cache remains the teardown owner if this await is cancelled.
         let client = self.client.lock().await.clone();
         let result = if let Some(client) = client {
@@ -1865,9 +1871,32 @@ mod tests {
         assert!(cache.client.lock().await.is_some());
         assert_eq!(
             cache.shutdown_checked().await.unwrap_err(),
-            "synthetic_cleanup_failure"
+            "codex_cleanup_unresolved_restart_required"
         );
         assert!(cache.cleanup_blocked.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn latched_cleanup_does_not_retry_retained_child_shutdown() {
+        let (mut client, _server, _failure) = fake_transport();
+        let (_tx, rx) = oneshot::channel();
+        client.shutdown = ChildShutdown {
+            tx: StdMutex::new(None),
+            completed: Mutex::new(Some(rx)),
+            result: StdMutex::new(None),
+        };
+        let client = Arc::new(client);
+        let cache = CodexClientCache::default();
+        *cache.client.lock().await = Some(client.clone());
+        cache.cleanup_blocked.store(true, Ordering::SeqCst);
+        assert_eq!(
+            cache.shutdown_checked().await.unwrap_err(),
+            "codex_cleanup_unresolved_restart_required"
+        );
+        // The pending receipt is untouched, proving no second teardown started.
+        assert!(client.shutdown.completed.lock().await.is_some());
+        assert!(cache.client.lock().await.is_some());
+        assert!(!cache.shutting_down.load(Ordering::SeqCst));
     }
 
     #[tokio::test]
