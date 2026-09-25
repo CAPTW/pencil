@@ -67,6 +67,10 @@ def run(repo):
             changed = copy.deepcopy(state)
             next(d for d in changed["known_defects"] if d["id"] == defect_id)["verdict"] = "LIVE_QUALIFIED"
             record("mission_" + defect_id + "_overclaim_refused", lambda changed=changed: rejected(lambda: ps.state_check(changed), ["VERDICT_DRIFT"]))
+        changed = copy.deepcopy(state)
+        next(d for d in changed["known_defects"] if d["id"] == "F-02")["verdict"] = "SYNTHETIC_VERIFIED"
+        record("mission_F-02_loaded_timeout_erasure_refused", lambda changed=changed: rejected(
+            lambda: ps.state_check(changed), ["VERDICT_DRIFT:F-02"]))
         # Historical state remains separately valid; mission is not permission to relabel its audit.
         historical = json.loads(ps.git(repo, "show", "4e833988ed27086dd6d4acb78d39fc3e9c98c707:control/state.json"))
         record("historical_reset_state_preserved", lambda: ps.state_check(historical))
