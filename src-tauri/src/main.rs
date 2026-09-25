@@ -123,6 +123,10 @@ impl Default for ConfigurationState {
     }
 }
 
+#[cfg(test)]
+#[path = "../tests/runtime_mission/mod.rs"]
+mod runtime_mission;
+
 struct AppState {
     codex: CodexClientCache,
     capture: Mutex<CaptureSessionStore>,
@@ -132,6 +136,7 @@ struct AppState {
     shortcut_trigger: StdMutex<ShortcutTriggerGate>,
     startup_notices: StdMutex<Vec<String>>,
     shutdown_started: AtomicBool,
+    shutdown_complete: AtomicBool,
     instant: StdMutex<p3_03_runtime::InstantRuntimeState>,
     providers: Mutex<ProviderManager>,
 }
@@ -147,6 +152,7 @@ impl Default for AppState {
             shortcut_trigger: StdMutex::new(ShortcutTriggerGate::default()),
             startup_notices: StdMutex::new(Vec::new()),
             shutdown_started: AtomicBool::new(false),
+            shutdown_complete: AtomicBool::new(false),
             instant: StdMutex::new(p3_03_runtime::InstantRuntimeState::new()),
             providers: Mutex::new(ProviderManager::default()),
         }
@@ -219,11 +225,8 @@ async fn test_provider_connection(
 ) -> Result<SelfTestRecord, String> {
     let intent = RewriteIntent::new_with_auto_reference(RewriteMode::Grammar, None, None)
         .map_err(str::to_string)?;
-    let mut providers = state.providers.lock().await;
-    let record = providers
-        .run_self_test(kind, intent, &state.codex)
-        .await;
-    providers.refresh(&state.codex).await;
+    let record = ProviderManager::run_self_test(&state.providers, kind, intent, &state.codex).await;
+    ProviderManager::refresh(&state.providers, &state.codex).await;
     Ok(record)
 }
 
@@ -267,10 +270,9 @@ async fn refresh_providers(state: State<'_, AppState>) -> Result<ProviderSnapsho
         .map_err(|_| "configuration_unavailable".to_string())?
         .settings
         .active_provider;
-    let mut providers = state.providers.lock().await;
-    let _ = providers.set_active(active);
-    providers.refresh(&state.codex).await;
-    Ok(providers.snapshot())
+    let _ = state.providers.lock().await.set_active(active);
+    ProviderManager::refresh(&state.providers, &state.codex).await;
+    Ok(state.providers.lock().await.snapshot())
 }
 
 #[tauri::command]
@@ -472,61 +474,22 @@ async fn rewrite_selected_text(
         )
     };
 
-    let rewrite = match settings_snapshot.active_provider {
-        ProviderKind::Codex => match ensure_codex(&state).await {
-            Ok(client) => match client
-                .prepare_rewrite_with_terminology(&selected_text, intent, &request_constraints)
-                .await
-            {
-                Ok(prepared) => {
-                    let still_current = state
-                        .capture
-                        .lock()
-                        .await
-                        .validate_rewriting_bound_intent(&token, &bound_intent);
-                    if let Err(error) = still_current {
-                        return Err(error.code().to_string());
-                    }
-                    match client.start_prepared_rewrite(prepared).await {
-                        Ok(pending) => {
-                            let active_turn = pending.active_turn();
-                            let bound = state.capture.lock().await.bind_active_turn(
-                                &token,
-                                &bound_intent,
-                                active_turn.clone(),
-                            );
-                            if let Err(error) = bound {
-                                let _ = client.interrupt_turn(&active_turn).await;
-                                Err(error.code().to_string())
-                            } else {
-                                client.complete_rewrite(pending).await
-                            }
-                        }
-                        Err(error) => Err(error),
-                    }
-                }
-                Err(error) => Err(error),
-            },
-            Err(error) => Err(error),
-        },
-        kind => {
-            let mut providers = state.providers.lock().await;
-            let _ = providers.set_active(kind);
-            match providers
-                .rewrite(
-                    kind,
-                    &selected_text,
-                    intent,
-                    &request_constraints,
-                    &state.codex,
-                )
-                .await
-            {
-                Ok(result) => Ok(result),
-                Err(error) => Err(error.to_string()),
-            }
-        }
+    // Reservation and cancellation both acquire capture before provider state.
+    // A cancelled capture cannot dispatch a child, and late cancellation cannot
+    // select a newer valid capture's operation.
+    let operation = {
+        let capture = state.capture.lock().await;
+        capture.validate_rewriting_bound_intent(&token, &bound_intent)
+            .map_err(|error| error.code().to_string())?;
+        let mut providers = state.providers.lock().await;
+        providers.set_active(settings_snapshot.active_provider).map_err(|e| e.to_string())?;
+        providers.reserve_capture(settings_snapshot.active_provider, token.clone(), bound_intent.clone())
+            .map_err(|e| e.to_string())?
     };
+    let rewrite = ProviderManager::execute(&operation, &selected_text, intent, &request_constraints, &state.codex)
+        .await.map_err(|error| error.to_string());
+    let current = state.providers.lock().await.finish(&operation);
+    let rewrite = if current { rewrite } else { Err("rewrite_interrupted".into()) };
 
     let mut capture = state.capture.lock().await;
     match rewrite {
@@ -696,6 +659,7 @@ async fn apply_replacement(
     target_language: Option<TranslationTargetLanguage>,
     auto_reference_language: Option<TranslationTargetLanguage>,
     restore_clipboard: bool,
+    instant_draft: Option<capture_session::InstantDraftProof>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<ApplyOutcome, String> {
@@ -711,7 +675,7 @@ async fn apply_replacement(
     let mut capture = state.capture.lock().await;
     let bound_intent = match capture.ready_bound_intent_for(&token, intent) {
         Ok(bound) => bound,
-        Err(error) => match promote_instant_candidate(&state, &mut capture, &token, intent, &replacement)
+        Err(error) => match promote_instant_candidate(&state, &mut capture, &token, intent, &replacement, instant_draft.as_ref())
         {
             Ok(bound) => bound,
             Err(_) => {
@@ -1326,6 +1290,7 @@ fn promote_instant_candidate(
     token: &SessionToken,
     intent: RewriteIntent,
     replacement: &str,
+    draft_proof: Option<&capture_session::InstantDraftProof>,
 ) -> Result<BoundRewriteIntent, String> {
     let instant_text = state
         .instant
@@ -1335,9 +1300,8 @@ fn promote_instant_candidate(
     let Some(instant_text) = instant_text else {
         return Err("instant_candidate_missing".to_string());
     };
-    if instant_text != replacement {
-        return Err("instant_candidate_mismatch".to_string());
-    }
+    capture.validate_instant_draft(token, &instant_text, replacement, draft_proof)
+        .map_err(|error| error.code().to_string())?;
     let selected_text = capture
         .captured_source(token)
         .map_err(|error| error.code().to_string())?;
@@ -1410,12 +1374,38 @@ async fn ensure_codex(state: &State<'_, AppState>) -> Result<Arc<CodexClient>, S
 }
 
 async fn interrupt_active_turn(state: &AppState, active_turn: Option<ActiveTurn>) {
-    {
-        let mut providers = state.providers.lock().await;
-        if providers.snapshot().busy_kind.is_some() {
-            providers.cancel_active().await;
+    cancel_cli_operation(state).await;
+    interrupt_codex_turn(state, active_turn).await;
+}
+
+async fn cancel_cli_operation(state: &AppState) -> Option<Arc<provider::manager::ProviderOperation>> {
+    let capture = state.capture.lock().await;
+    let operation = state.providers.lock().await.cancel_handle();
+    if let Some(operation) = &operation {
+        if let Some((token, intent)) = &operation.capture_binding {
+            if capture.validate_rewriting_bound_intent(token, intent).is_ok() {
+                return None; // This is a newer, still valid operation.
+            }
         }
+        operation.cancel();
     }
+    operation
+}
+
+async fn shutdown_providers(state: &AppState) -> Result<(), &'static str> {
+    let operation = cancel_cli_operation(state).await;
+    tokio::time::timeout(std::time::Duration::from_secs(8), async {
+        let cli = async {
+            if let Some(operation) = operation {
+                while !operation.is_complete() { tokio::time::sleep(std::time::Duration::from_millis(5)).await; }
+            }
+        };
+        let (_, cleanup) = tokio::join!(cli, state.codex.shutdown_checked());
+        cleanup.map_err(|_| "provider_shutdown_cleanup_failed")
+    }).await.map_err(|_| "provider_shutdown_timeout")?
+}
+
+async fn interrupt_codex_turn(state: &AppState, active_turn: Option<ActiveTurn>) {
     let Some(active_turn) = active_turn else {
         return;
     };
@@ -1523,21 +1513,34 @@ fn main() {
     app.run(|app, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             let state = app.state::<AppState>();
+            if state.shutdown_complete.load(Ordering::SeqCst) { return; }
+            api.prevent_exit();
             if !state.shutdown_started.swap(true, Ordering::SeqCst) {
-                api.prevent_exit();
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let state = app.state::<AppState>();
                     let active_turn = state.capture.lock().await.cancel_active_with_turn();
-                    interrupt_active_turn(state.inner(), active_turn).await;
+                    let _ = active_turn;
+                    cancel_cli_operation(state.inner()).await;
                     if let Ok(mut instant) = state.instant.lock() {
                         p3_03_runtime::invalidate_cache(
                             instant.cache_mut(),
                             p3_03_runtime::InstantInvalidationReason::AppShutdown,
                         );
                     }
-                    state.codex.shutdown().await;
-                    app.exit(0);
+                    match shutdown_providers(state.inner()).await {
+                        Ok(()) => {
+                            state.shutdown_complete.store(true, Ordering::SeqCst);
+                            app.exit(0);
+                        }
+                        Err(code) => {
+                            state.shutdown_started.store(false, Ordering::SeqCst);
+                            if let Some(window) = app.get_webview_window("main") { let _ = window.show(); }
+                            let _ = app.emit("capture-error", CaptureErrorEvent {
+                                message: format!("Shutdown incomplete ({code}). Cleanup has not been confirmed; the app remains open."),
+                            });
+                        }
+                    }
                 });
             }
         }
@@ -1857,11 +1860,12 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
     {
         let state = app.state::<AppState>();
         let active_turn = state.capture.lock().await.cancel_active_with_turn();
+        cancel_cli_operation(state.inner()).await;
         if active_turn.is_some() {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
-                interrupt_active_turn(state.inner(), active_turn).await;
+                interrupt_codex_turn(state.inner(), active_turn).await;
             });
         }
     }
@@ -1884,7 +1888,7 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
         move |target| {
             let app = prepare_app.clone();
             async move {
-                let capture = clipboard::capture_selected_text().await?;
+                let capture = clipboard::capture_selected_text_for(target).await?;
                 let token = {
                     let state = app.state::<AppState>();
                     let mut store = state.capture.lock().await;

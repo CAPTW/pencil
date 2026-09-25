@@ -1,6 +1,8 @@
 use super::{
-    cli::{resolve_named_executable, run_version, run_writing, ActiveCliProcess},
-    types::{ProviderCapabilities, ProviderError, ProviderKind, ProviderLifecycleState, ProviderStatus},
+    cli::{resolve_named_executable, run_writing, ActiveCliProcess},
+    types::{
+        ProviderCapabilities, ProviderError, ProviderKind, ProviderLifecycleState, ProviderStatus,
+    },
 };
 use crate::{
     codex_client::{rewrite_prompt_with_terminology, RewriteEdit, RewriteResult},
@@ -27,6 +29,10 @@ pub(crate) fn resolve_agy() -> Option<PathBuf> {
 }
 
 pub(crate) async fn probe() -> ProviderStatus {
+    probe_cancel(Arc::new(AtomicBool::new(false))).await
+}
+
+pub(crate) async fn probe_cancel(cancel: Arc<AtomicBool>) -> ProviderStatus {
     let Some(path) = resolve_agy() else {
         return ProviderStatus::unavailable(
             ProviderKind::Antigravity,
@@ -34,7 +40,9 @@ pub(crate) async fn probe() -> ProviderStatus {
             "Install Antigravity CLI from https://antigravity.google/docs/cli/install/ then Refresh status.",
         );
     };
-    let version = run_version(&path).await.ok();
+    let version = super::cli::run_version_cancel(&path, cancel.clone())
+        .await
+        .ok();
     let capabilities = ProviderCapabilities {
         writing: true,
         official_sign_in: false,
@@ -172,7 +180,10 @@ fn parse_payload(text: &str, mode: RewriteMode) -> Result<RewriteResult, Provide
     let value = extracted.value;
     Ok(RewriteResult {
         replacement,
-        changed: value.get("changed").and_then(Value::as_bool).unwrap_or(true),
+        changed: value
+            .get("changed")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
         summary: value
             .get("summary")
             .and_then(Value::as_str)
@@ -195,7 +206,10 @@ fn parse_payload(text: &str, mode: RewriteMode) -> Result<RewriteResult, Provide
                     .collect()
             })
             .unwrap_or_default(),
-        confidence: value.get("confidence").and_then(Value::as_f64).unwrap_or(0.5),
+        confidence: value
+            .get("confidence")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.5),
         mode,
         used_terminology_ids: Vec::new(),
         terminology_suggestions: Vec::new(),
@@ -232,7 +246,9 @@ mod tests {
         let error = finish_agy_capture(stdout, Some(1), RewriteMode::Grammar).unwrap_err();
         assert!(matches!(error, ProviderError::ExternalService));
         assert_eq!(error.code(), "provider_external_service");
-        assert!(!error.to_string().contains("synthetic-official-detail-should-not-leak"));
+        assert!(!error
+            .to_string()
+            .contains("synthetic-official-detail-should-not-leak"));
     }
 
     #[test]

@@ -1,6 +1,5 @@
 use std::future::Future;
 use tokio::time::{sleep, Duration};
-use uuid::Uuid;
 
 const UNSUPPORTED_NON_TEXT_CLIPBOARD: &str = "unsupported_non_text_clipboard";
 const MODIFIER_RELEASE_ERROR: &str = "shortcut_modifiers_still_pressed";
@@ -21,51 +20,34 @@ pub struct ClipboardCapture {
     pub cursor: CursorPoint,
 }
 
+pub(crate) async fn capture_selected_text_for(target: crate::capture_session::WindowTarget) -> Result<ClipboardCapture, String> {
+    wait_for_capture_modifiers_released().await?;
+    if crate::windows_apply::foreground_window_handle() != target.hwnd ||
+        crate::windows_apply::window_process_id(target.hwnd) != Some(target.pid) {
+        return Err("capture_target_changed".to_string());
+    }
+    let capture = capture_supported_selection()?;
+    if crate::windows_apply::foreground_window_handle() != target.hwnd ||
+        crate::windows_apply::window_process_id(target.hwnd) != Some(target.pid) {
+        return Err("capture_target_changed".to_string());
+    }
+    Ok(capture)
+}
+
 pub async fn capture_selected_text() -> Result<ClipboardCapture, String> {
     wait_for_capture_modifiers_released().await?;
-    let previous_text = supported_text_snapshot_before_capture()?;
+    capture_supported_selection()
+}
+
+fn capture_supported_selection() -> Result<ClipboardCapture, String> {
+    // Generic Ctrl+C cannot identify password fields or bind the copied text to
+    // a focused editor. Only the bounded standard Edit reader is admitted.
+    let selected_text = crate::windows_target::read_supported_selection()?;
     let cursor = current_cursor_position()?;
-    let sentinel = format!("__CODEX_PENCIL_SENTINEL_{}__", Uuid::new_v4());
-
-    // This is intentionally a one-shot clipboard workflow. The app never
-    // subscribes to clipboard changes or stores clipboard history.
-    write_clipboard_text(&sentinel)?;
-    let sentinel_sequence = clipboard_sequence_number();
-    if let Err(error) = send_copy_shortcut() {
-        let _ = restore_clipboard_after_capture(previous_text.as_deref(), sentinel_sequence);
-        return Err(error);
-    }
-
-    let mut copied = String::new();
-    let mut observed_sequence = sentinel_sequence;
-    for _ in 0..8 {
-        sleep(Duration::from_millis(55)).await;
-        let sequence_before_read = clipboard_sequence_number();
-        if let Ok(candidate) = read_clipboard_text() {
-            let sequence_after_read = clipboard_sequence_number();
-            if sequence_before_read == sequence_after_read {
-                copied = candidate;
-                observed_sequence = sequence_after_read;
-                if copied != sentinel {
-                    break;
-                }
-            }
-        }
-    }
-
-    let owned_sequence =
-        restore_clipboard_after_capture(previous_text.as_deref(), observed_sequence)?;
-
-    if copied == sentinel || copied.trim().is_empty() {
-        return Err(
-            "No text selected. Select text in another app, then press Ctrl+Shift+G.".to_string(),
-        );
-    }
-
     Ok(ClipboardCapture {
-        selected_text: copied,
-        previous_text,
-        owned_sequence,
+        selected_text,
+        previous_text: None,
+        owned_sequence: None,
         cursor,
     })
 }

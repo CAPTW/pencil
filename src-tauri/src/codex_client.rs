@@ -1,6 +1,5 @@
 use crate::{
     active_turn::ActiveTurn,
-    codex_binary::resolve_supported_codex,
     codex_home::CodexHome,
     content_limits::{validate_text_limit, ContentLimitKind},
     process_job::ProcessJob,
@@ -20,7 +19,7 @@ use std::{
     path::PathBuf,
     process::Stdio,
     sync::{
-        atomic::{AtomicU64, AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering},
         Arc, Mutex as StdMutex,
     },
     time::Duration,
@@ -37,7 +36,6 @@ const CONNECTION_INITIALIZING: u8 = 1;
 const CONNECTION_READY: u8 = 2;
 const CONNECTION_DEAD: u8 = 3;
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
-const CHILD_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_REWRITE_MODEL: &str = "gpt-5.6-luna";
 const DEFAULT_REWRITE_REASONING_EFFORT: &str = "medium";
 const FAST_TRANSLATION_REASONING_EFFORT: &str = "low";
@@ -99,6 +97,7 @@ enum ProtocolError {
     Timeout(String),
     WriteTimeout,
     InvalidJson,
+    OutputLimit,
     StdoutClosed,
     StdinClosed,
     ChildExited,
@@ -119,6 +118,7 @@ impl fmt::Display for ProtocolError {
             ),
             Self::Timeout(method) => write!(formatter, "Codex request timed out: {method}"),
             Self::WriteTimeout => write!(formatter, "Timed out writing to Codex app-server."),
+            Self::OutputLimit => write!(formatter, "provider_output_limit"),
             Self::InvalidJson => write!(
                 formatter,
                 "Codex app-server returned invalid protocol JSON."
@@ -149,14 +149,19 @@ struct TransportFailure {
     pending: PendingRequests,
     notifications: broadcast::Sender<Value>,
     state: Arc<AtomicU8>,
+    first_cause: Arc<StdMutex<Option<ProtocolError>>>,
 }
 
 impl TransportFailure {
     async fn fail(&self, error: ProtocolError) {
-        if self.state.swap(CONNECTION_DEAD, Ordering::SeqCst) == CONNECTION_DEAD {
-            return;
+        {
+            let mut cause = self.first_cause.lock().unwrap();
+            if cause.is_some() {
+                return;
+            }
+            *cause = Some(error.clone());
+            self.state.store(CONNECTION_DEAD, Ordering::SeqCst);
         }
-
         fail_all_pending(&self.pending, error.clone()).await;
         let _ = self.notifications.send(json!({
             "method": "codex/process/exited",
@@ -176,23 +181,32 @@ pub struct CodexClient {
     failure: TransportFailure,
     runtime_cwd: PathBuf,
     shutdown: ChildShutdown,
+    io_tasks: Arc<StdMutex<Vec<tokio::task::JoinHandle<()>>>>,
 }
 
 pub struct CodexClientCache {
     client: Mutex<Option<Arc<CodexClient>>>,
+    connect_gate: Mutex<()>,
+    connecting: StdMutex<Option<Arc<AtomicBool>>>,
+    cleanup_blocked: AtomicBool,
+    shutting_down: AtomicBool,
 }
 
 impl Default for CodexClientCache {
     fn default() -> Self {
         Self {
             client: Mutex::new(None),
+            connect_gate: Mutex::new(()),
+            connecting: StdMutex::new(None),
+            cleanup_blocked: AtomicBool::new(false),
+            shutting_down: AtomicBool::new(false),
         }
     }
 }
 
 impl CodexClientCache {
     pub async fn get(&self) -> Result<Arc<CodexClient>, String> {
-        self.get_or_connect_with(CodexClient::connect).await
+        self.get_cancel(Arc::new(AtomicBool::new(false))).await
     }
 
     pub(crate) async fn current_healthy(&self) -> Option<Arc<CodexClient>> {
@@ -204,11 +218,73 @@ impl CodexClientCache {
             .cloned()
     }
 
-    pub(crate) async fn shutdown(&self) {
-        let client = self.client.lock().await.take();
-        if let Some(client) = client {
-            let _ = client.shutdown_child().await;
+    pub(crate) async fn get_cancel(
+        &self,
+        cancel: Arc<AtomicBool>,
+    ) -> Result<Arc<CodexClient>, String> {
+        let _gate = self.connect_gate.lock().await;
+        if self.shutting_down.load(Ordering::SeqCst) {
+            return Err("rewrite_interrupted".into());
         }
+        if self.cleanup_blocked.load(Ordering::SeqCst) {
+            return Err("codex_cleanup_unresolved_restart_required".into());
+        }
+        if cancel.load(Ordering::SeqCst) {
+            return Err("rewrite_interrupted".into());
+        }
+        if let Some(client) = self.current_healthy().await {
+            return Ok(client);
+        }
+        if let Some(old) = self.client.lock().await.take() {
+            if let Err(error) = old.shutdown_child().await {
+                self.cleanup_blocked.store(true, Ordering::SeqCst);
+                return Err(error);
+            }
+        }
+        *self.connecting.lock().unwrap() = Some(cancel.clone());
+        if self.shutting_down.load(Ordering::SeqCst) {
+            cancel.store(true, Ordering::SeqCst);
+        }
+        let result = CodexClient::connect_cancel(cancel.clone()).await;
+        *self.connecting.lock().unwrap() = None;
+        let client = Arc::new(result.map_err(|error| {
+            if error.contains("cleanup") {
+                self.cleanup_blocked.store(true, Ordering::SeqCst);
+            }
+            error
+        })?);
+        if cancel.load(Ordering::SeqCst) {
+            if let Err(error) = client.shutdown_child().await {
+                self.cleanup_blocked.store(true, Ordering::SeqCst);
+                return Err(format!("rewrite_interrupted;cleanup={error}"));
+            }
+            return Err("rewrite_interrupted".into());
+        }
+        *self.client.lock().await = Some(client.clone());
+        Ok(client)
+    }
+
+    pub(crate) async fn shutdown(&self) {
+        let _ = self.shutdown_checked().await;
+    }
+
+    pub(crate) async fn shutdown_checked(&self) -> Result<(), String> {
+        self.shutting_down.store(true, Ordering::SeqCst);
+        if let Some(cancel) = self.connecting.lock().unwrap().as_ref() {
+            cancel.store(true, Ordering::SeqCst);
+        }
+        let _gate = self.connect_gate.lock().await;
+        let client = self.client.lock().await.take();
+        let result = if let Some(client) = client {
+            client.shutdown_child().await
+        } else {
+            Ok(())
+        };
+        if result.is_err() {
+            self.cleanup_blocked.store(true, Ordering::SeqCst);
+        }
+        self.shutting_down.store(false, Ordering::SeqCst);
+        result
     }
 
     async fn get_or_connect_with<F, Fut>(&self, connect: F) -> Result<Arc<CodexClient>, String>
@@ -232,7 +308,8 @@ impl CodexClientCache {
 
 struct ChildShutdown {
     tx: StdMutex<Option<oneshot::Sender<()>>>,
-    completed: StdMutex<Option<oneshot::Receiver<Result<(), String>>>>,
+    completed: Mutex<Option<oneshot::Receiver<Result<(), String>>>>,
+    result: StdMutex<Option<Result<(), String>>>,
 }
 
 impl ChildShutdown {
@@ -240,7 +317,8 @@ impl ChildShutdown {
     fn detached() -> Self {
         Self {
             tx: StdMutex::new(None),
-            completed: StdMutex::new(None),
+            completed: Mutex::new(None),
+            result: StdMutex::new(Some(Ok(()))),
         }
     }
 
@@ -254,18 +332,23 @@ impl ChildShutdown {
 
     async fn wait(&self) -> Result<(), String> {
         self.request();
-        let completed = self
-            .completed
-            .lock()
-            .ok()
-            .and_then(|mut value| value.take());
-        let Some(completed) = completed else {
-            return Ok(());
+        let mut receiver = self.completed.lock().await;
+        if let Some(result) = self.result.lock().unwrap().clone() {
+            return result;
+        }
+        // Keep the receiver in its owner until completion. Dropping this wait
+        // (for example an outer UI deadline) cannot discard teardown evidence.
+        let result = if let Some(completed) = receiver.as_mut() {
+            match completed.await {
+                Ok(result) => result,
+                Err(_) => Err("app_server_shutdown_channel_closed".to_string()),
+            }
+        } else {
+            Err("app_server_shutdown_receipt_missing".into())
         };
-        timeout(Duration::from_secs(5), completed)
-            .await
-            .map_err(|_| "app_server_shutdown_timeout".to_string())?
-            .map_err(|_| "app_server_shutdown_channel_closed".to_string())?
+        receiver.take();
+        *self.result.lock().unwrap() = Some(result.clone());
+        result
     }
 }
 
@@ -345,7 +428,22 @@ impl PendingRewrite {
 
 impl CodexClient {
     pub async fn connect() -> Result<Self, String> {
-        let resolved = resolve_supported_codex()?;
+        Self::connect_cancel(Arc::new(AtomicBool::new(false))).await
+    }
+
+    async fn connect_cancel(cancel: Arc<AtomicBool>) -> Result<Self, String> {
+        if cancel.load(Ordering::SeqCst) {
+            return Err("rewrite_interrupted".into());
+        }
+        let resolved =
+            crate::codex_binary::resolve_codex_executable().ok_or("codex_unavailable")?;
+        let version = crate::provider::cli::run_version_cancel(&resolved, cancel.clone()).await?;
+        if !crate::codex_binary::is_supported_codex_version(&version) {
+            return Err("codex_version_unsupported".into());
+        }
+        if cancel.load(Ordering::SeqCst) {
+            return Err("rewrite_interrupted".into());
+        }
         let codex_home = CodexHome::prepare()?;
         let runtime = RuntimeWorkspace::create()?;
         let runtime_cwd = runtime.cwd().to_path_buf();
@@ -364,17 +462,14 @@ impl CodexClient {
             .env("CODEX_HOME", codex_home.path())
             .kill_on_drop(true);
 
-        let mut child = command
-            .spawn()
-            .map_err(|error| format!("Could not start local Codex app-server. Install Codex CLI and ensure `codex` is on PATH. Details: {error}"))?;
-
-        let process_job = match ProcessJob::assign(&child) {
-            Ok(job) => job,
+        let (mut child, process_job) = match ProcessJob::spawn(&mut command).await {
+            Ok(value) => value,
             Err(error) => {
-                let _ = child.start_kill();
-                let _ = timeout(CHILD_SHUTDOWN_TIMEOUT, child.wait()).await;
-                let _ = runtime.close();
-                return Err(error);
+                let deadline = std::time::Instant::now() + crate::provider::cli::CLEANUP_BUDGET;
+                return match runtime.close_before(deadline) {
+                    Ok(()) => Err(error),
+                    Err(cleanup) => Err(format!("{error};cleanup={cleanup}")),
+                };
             }
         };
 
@@ -398,11 +493,13 @@ impl CodexClient {
             stdin,
             ChildShutdown {
                 tx: StdMutex::new(Some(shutdown_tx)),
-                completed: StdMutex::new(Some(shutdown_completed_rx)),
+                completed: Mutex::new(Some(shutdown_completed_rx)),
+                result: StdMutex::new(None),
             },
             runtime_cwd,
         );
-        spawn_stderr_drain(stderr);
+        let stderr_task = spawn_stderr_drain(stderr, failure.clone());
+        client.io_tasks.lock().unwrap().push(stderr_task);
         spawn_child_watcher(
             child,
             shutdown_rx,
@@ -410,12 +507,21 @@ impl CodexClient {
             failure,
             runtime,
             process_job,
+            client.io_tasks.clone(),
         );
 
-        client
-            .perform_handshake()
-            .await
-            .map_err(|error| error.to_string())?;
+        let handshake = tokio::select! {
+            biased;
+            _ = crate::provider::cli::cancellation(&cancel) => Err("rewrite_interrupted".to_string()),
+            result = client.perform_handshake() => result.map_err(|error| error.to_string()),
+        };
+        if let Err(error) = handshake {
+            client
+                .shutdown_child()
+                .await
+                .map_err(|cleanup| format!("{error};cleanup={cleanup}"))?;
+            return Err(error);
+        }
         Ok(client)
     }
 
@@ -437,10 +543,11 @@ impl CodexClient {
             pending: pending.clone(),
             notifications: notifications.clone(),
             state: state.clone(),
+            first_cause: Arc::new(StdMutex::new(None)),
         };
 
-        spawn_stdin_writer(stdin, rx, failure.clone());
-        spawn_stdout_reader(
+        let writer = spawn_stdin_writer(stdin, rx, failure.clone());
+        let reader = spawn_stdout_reader(
             stdout,
             pending.clone(),
             notifications.clone(),
@@ -457,6 +564,7 @@ impl CodexClient {
             failure: failure.clone(),
             runtime_cwd,
             shutdown,
+            io_tasks: Arc::new(StdMutex::new(vec![writer, reader])),
         };
 
         (client, failure)
@@ -876,7 +984,10 @@ impl CodexClient {
                     "item/agentMessage/delta" => {
                         if params.get("turnId").and_then(Value::as_str) == Some(turn_id) {
                             if let Some(delta) = params.get("delta").and_then(Value::as_str) {
-                                latest_agent_message.push_str(delta);
+                                if append_agent_delta(&mut latest_agent_message, delta).is_err() {
+                                    self.failure.fail(ProtocolError::OutputLimit).await;
+                                    return Err("provider_output_limit".into());
+                                }
                             }
                         }
                     }
@@ -971,7 +1082,8 @@ fn spawn_stdin_writer<W>(
     mut stdin: W,
     mut rx: mpsc::Receiver<OutgoingMessage>,
     failure: TransportFailure,
-) where
+) -> tokio::task::JoinHandle<()>
+where
     W: AsyncWrite + Unpin + Send + 'static,
 {
     tokio::spawn(async move {
@@ -988,7 +1100,11 @@ fn spawn_stdin_writer<W>(
             };
             line.push(b'\n');
 
-            if stdin.write_all(&line).await.is_err() || stdin.flush().await.is_err() {
+            let write = async {
+                stdin.write_all(&line).await?;
+                stdin.flush().await
+            };
+            if !matches!(timeout(WRITE_TIMEOUT, write).await, Ok(Ok(()))) {
                 if let Some(written) = outgoing.written {
                     let _ = written.send(Err(ProtocolError::StdinClosed));
                 }
@@ -1000,7 +1116,7 @@ fn spawn_stdin_writer<W>(
                 let _ = written.send(Ok(()));
             }
         }
-    });
+    })
 }
 
 fn spawn_stdout_reader<R>(
@@ -1009,20 +1125,31 @@ fn spawn_stdout_reader<R>(
     notifications: broadcast::Sender<Value>,
     tx: mpsc::Sender<OutgoingMessage>,
     failure: TransportFailure,
-) where
+) -> tokio::task::JoinHandle<()>
+where
     R: AsyncRead + Unpin + Send + 'static,
 {
     tokio::spawn(async move {
-        let mut lines = BufReader::new(stdout).lines();
+        let mut lines = BufReader::new(stdout);
+        let mut cumulative = 0_usize;
         loop {
-            let line = match lines.next_line().await {
+            let line = match bounded_line(&mut lines).await {
                 Ok(Some(line)) => line,
-                Ok(None) | Err(_) => {
+                Err(error) => {
+                    failure.fail(error).await;
+                    return;
+                }
+                Ok(None) => {
                     failure.fail(ProtocolError::StdoutClosed).await;
                     return;
                 }
             };
 
+            cumulative = cumulative.saturating_add(line.len());
+            if cumulative > 64 * 1024 * 1024 {
+                failure.fail(ProtocolError::OutputLimit).await;
+                return;
+            }
             let message = match serde_json::from_str::<Value>(&line) {
                 Ok(message) => message,
                 Err(_) => {
@@ -1049,12 +1176,14 @@ fn spawn_stdout_reader<R>(
                         "message": "Codex Pencil does not support server-initiated requests."
                     }
                 });
-                let _ = tx
-                    .send(OutgoingMessage {
+                let _ = timeout(
+                    WRITE_TIMEOUT,
+                    tx.send(OutgoingMessage {
                         value: response,
                         written: None,
-                    })
-                    .await;
+                    }),
+                )
+                .await;
                 continue;
             }
 
@@ -1075,16 +1204,70 @@ fn spawn_stdout_reader<R>(
                 let _ = notifications.send(message);
             }
         }
-    });
+    })
 }
 
-fn spawn_stderr_drain(stderr: tokio::process::ChildStderr) {
+fn append_agent_delta(current: &mut String, delta: &str) -> Result<(), ProtocolError> {
+    if delta.len() > crate::provider::cli::STDOUT_LIMIT.saturating_sub(current.len()) {
+        return Err(ProtocolError::OutputLimit);
+    }
+    current.push_str(delta);
+    Ok(())
+}
+
+async fn bounded_line<R: AsyncRead + Unpin>(
+    reader: &mut BufReader<R>,
+) -> Result<Option<String>, ProtocolError> {
+    let mut bytes = Vec::new();
+    loop {
+        let available = reader
+            .fill_buf()
+            .await
+            .map_err(|_| ProtocolError::StdoutClosed)?;
+        if available.is_empty() {
+            return if bytes.is_empty() {
+                Ok(None)
+            } else {
+                String::from_utf8(bytes)
+                    .map(Some)
+                    .map_err(|_| ProtocolError::InvalidJson)
+            };
+        }
+        let count = available
+            .iter()
+            .position(|b| *b == b'\n')
+            .map_or(available.len(), |p| p + 1);
+        if count > crate::provider::cli::STDOUT_LIMIT.saturating_sub(bytes.len()) {
+            return Err(ProtocolError::OutputLimit);
+        }
+        let complete = available[count - 1] == b'\n';
+        bytes.extend_from_slice(&available[..count]);
+        reader.consume(count);
+        if complete {
+            return String::from_utf8(bytes)
+                .map(Some)
+                .map_err(|_| ProtocolError::InvalidJson);
+        }
+    }
+}
+
+fn spawn_stderr_drain(
+    stderr: tokio::process::ChildStderr,
+    failure: TransportFailure,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut lines = BufReader::new(stderr).lines();
-        // Intentionally discard stderr. Codex diagnostics should not be surfaced
-        // here because prompts may contain selected user text.
-        while matches!(lines.next_line().await, Ok(Some(_))) {}
-    });
+        if let Err(error) =
+            crate::provider::cli::read_bounded(stderr, crate::provider::cli::STDERR_LIMIT).await
+        {
+            failure
+                .fail(if error == "provider_output_limit" {
+                    ProtocolError::OutputLimit
+                } else {
+                    ProtocolError::StdoutClosed
+                })
+                .await;
+        }
+    })
 }
 
 fn spawn_child_watcher(
@@ -1094,10 +1277,14 @@ fn spawn_child_watcher(
     failure: TransportFailure,
     runtime: RuntimeWorkspace,
     process_job: ProcessJob,
+    io_tasks: Arc<StdMutex<Vec<tokio::task::JoinHandle<()>>>>,
 ) {
     tokio::spawn(async move {
         let runtime = runtime;
         loop {
+            if failure.state.load(Ordering::SeqCst) == CONNECTION_DEAD {
+                break;
+            }
             match child.try_wait() {
                 Ok(Some(_)) => {
                     failure.fail(ProtocolError::ChildExited).await;
@@ -1112,19 +1299,44 @@ fn spawn_child_watcher(
 
             tokio::select! {
                 _ = &mut shutdown => {
-                    if process_job.terminate().is_err() {
-                        let _ = child.start_kill();
-                    }
-                    let _ = timeout(CHILD_SHUTDOWN_TIMEOUT, child.wait()).await;
                     failure.fail(ProtocolError::ChildExited).await;
                     break;
                 }
-                _ = tokio::time::sleep(Duration::from_millis(250)) => {}
+                _ = tokio::time::sleep(Duration::from_millis(10)) => {}
             }
+        }
+        let deadline = tokio::time::Instant::now() + crate::provider::cli::CLEANUP_BUDGET;
+        let mut cleanup = process_job.terminate();
+        let _ = child.start_kill();
+        match tokio::time::timeout_at(deadline, child.wait()).await {
+            Ok(Ok(_)) => {}
+            _ => cleanup = Err("provider_cleanup_timeout".into()),
+        }
+        let tasks = io_tasks
+            .lock()
+            .map(|mut tasks| std::mem::take(&mut *tasks))
+            .unwrap_or_default();
+        for task in &tasks {
+            task.abort();
+        }
+        for task in tasks {
+            if tokio::time::timeout_at(deadline, task).await.is_err() {
+                cleanup = Err("provider_reader_join_timeout".into());
+            }
+        }
+        while process_job.active_processes().unwrap_or(u32::MAX) != 0 {
+            if tokio::time::Instant::now() >= deadline {
+                cleanup = Err("provider_subtree_cleanup_timeout".into());
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(2)).await;
         }
         drop(child);
         drop(process_job);
-        let cleanup = runtime.close();
+        let workspace_cleanup = runtime.close_before(deadline.into_std());
+        if cleanup.is_ok() {
+            cleanup = workspace_cleanup;
+        }
         let _ = shutdown_completed.send(cleanup);
     });
 }
@@ -3141,5 +3353,144 @@ mod tests {
         assert!(prompt.contains(
             "Preserve URLs, code, shell commands, product names, numbers, and email addresses"
         ));
+    }
+}
+
+#[cfg(test)]
+mod runtime_protocol_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn dropped_shutdown_wait_retains_receipt_and_failure() {
+        let (tx, rx) = oneshot::channel();
+        let shutdown = ChildShutdown {
+            tx: StdMutex::new(None),
+            completed: Mutex::new(Some(rx)),
+            result: StdMutex::new(None),
+        };
+        assert!(timeout(Duration::from_millis(1), shutdown.wait())
+            .await
+            .is_err());
+        tx.send(Err("synthetic_cleanup_failure".into())).unwrap();
+        assert_eq!(
+            shutdown.wait().await.unwrap_err(),
+            "synthetic_cleanup_failure"
+        );
+        assert_eq!(
+            shutdown.wait().await.unwrap_err(),
+            "synthetic_cleanup_failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn closed_shutdown_channel_never_becomes_success() {
+        let (tx, rx) = oneshot::channel::<Result<(), String>>();
+        drop(tx);
+        let shutdown = ChildShutdown {
+            tx: StdMutex::new(None),
+            completed: Mutex::new(Some(rx)),
+            result: StdMutex::new(None),
+        };
+        assert_eq!(
+            shutdown.wait().await.unwrap_err(),
+            "app_server_shutdown_channel_closed"
+        );
+        assert_eq!(
+            shutdown.wait().await.unwrap_err(),
+            "app_server_shutdown_channel_closed"
+        );
+    }
+
+    #[tokio::test]
+    async fn protocol_line_and_delta_boundaries() {
+        let limit = crate::provider::cli::STDOUT_LIMIT;
+        for count in [limit - 1, limit, limit + 1] {
+            let bytes = vec![b'x'; count];
+            let mut reader = BufReader::new(bytes.as_slice());
+            let result = bounded_line(&mut reader).await;
+            assert_eq!(result.is_ok(), count <= limit);
+        }
+        let mut reader = BufReader::new(&b"partial"[..]);
+        assert_eq!(
+            bounded_line(&mut reader).await.unwrap().as_deref(),
+            Some("partial")
+        );
+        let mut reader = BufReader::new(&[255_u8][..]);
+        assert!(bounded_line(&mut reader).await.is_err());
+        let mut text = "x".repeat(limit - 1);
+        append_agent_delta(&mut text, "x").unwrap();
+        assert!(append_agent_delta(&mut text, "x").is_err());
+        assert_eq!(text.len(), limit);
+    }
+
+    #[tokio::test]
+    #[ignore = "explicit isolated native fixture invocation only"]
+    async fn native_codex_transport_cleanup() {
+        use std::fs;
+        let exe = std::env::var("MISSION_FIXTURE_EXE").unwrap();
+        let root = PathBuf::from(std::env::var("MISSION_EVIDENCE").unwrap());
+        for mode in ["stdout-flood", "stderr-flood"] {
+            let dir = root.join(format!("case-codex-{mode}-{}", uuid::Uuid::new_v4()));
+            fs::create_dir(&dir).unwrap();
+            std::env::set_var("P01_CASE_DIR", &dir);
+            std::env::set_var("P01_FIXTURE_MODE", mode);
+            std::env::set_var(
+                "P01_FIXTURE_BYTES",
+                (crate::provider::cli::STDOUT_LIMIT + 1).to_string(),
+            );
+            let runtime = RuntimeWorkspace::create().unwrap();
+            let cwd = runtime.cwd().to_owned();
+            let mut command = Command::new(&exe);
+            command
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .current_dir(&cwd);
+            let started = std::time::Instant::now();
+            let (mut child, job) = ProcessJob::spawn(&mut command).await.unwrap();
+            let pid = child.id().unwrap();
+            let (tx, rx) = oneshot::channel();
+            let (done_tx, done_rx) = oneshot::channel();
+            let stderr = child.stderr.take().unwrap();
+            let (client, failure) = CodexClient::from_io(
+                child.stdout.take().unwrap(),
+                child.stdin.take().unwrap(),
+                ChildShutdown {
+                    tx: StdMutex::new(Some(tx)),
+                    completed: Mutex::new(Some(done_rx)),
+                    result: StdMutex::new(None),
+                },
+                cwd,
+            );
+            client
+                .io_tasks
+                .lock()
+                .unwrap()
+                .push(spawn_stderr_drain(stderr, failure.clone()));
+            spawn_child_watcher(
+                child,
+                rx,
+                done_tx,
+                failure,
+                runtime,
+                job,
+                client.io_tasks.clone(),
+            );
+            timeout(Duration::from_secs(3), async {
+                while client.state.load(Ordering::SeqCst) != CONNECTION_DEAD {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap();
+            client.shutdown.wait().await.unwrap();
+            assert!(matches!(
+                *client.failure.first_cause.lock().unwrap(),
+                Some(ProtocolError::OutputLimit)
+            ));
+            assert!(!client.runtime_cwd.parent().unwrap().exists());
+            fs::write(dir.join("qualification.json"), serde_json::to_vec_pretty(&json!({"case":"codex-transport-overflow","stream":mode,"root_pid":pid,"elapsed_ms":started.elapsed().as_millis(),"io_tasks_remaining":client.io_tasks.lock().unwrap().len(),"cleanup_result":"job-count-zero-and-joined","raw_output_saved":false})).unwrap()).unwrap();
+            assert!(started.elapsed() <= Duration::from_secs(5));
+        }
     }
 }

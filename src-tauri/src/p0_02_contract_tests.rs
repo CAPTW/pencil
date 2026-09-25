@@ -134,6 +134,7 @@ fn zero_or_partial_input_cancels_the_session_and_prevents_retry() {
 
 #[derive(Debug)]
 struct FakeApplyPlatform {
+    verified_selection: bool,
     target: isize,
     target_exists: bool,
     target_pid: Option<u32>,
@@ -154,6 +155,7 @@ struct FakeApplyPlatform {
 impl Default for FakeApplyPlatform {
     fn default() -> Self {
         Self {
+            verified_selection: true,
             target: 101,
             target_exists: true,
             target_pid: Some(2001),
@@ -174,6 +176,9 @@ impl Default for FakeApplyPlatform {
 }
 
 impl ApplyPlatform for FakeApplyPlatform {
+    // Synthetic state-machine fixture only, not Windows editor acceptance.
+    fn has_verified_selection_authority(&mut self) -> bool { self.verified_selection }
+
     fn is_window(&mut self, hwnd: isize) -> bool {
         self.events.push("is_window");
         hwnd == self.target && self.target_exists
@@ -700,4 +705,40 @@ fn selection_event_exposes_only_token_and_selected_text() {
     assert_eq!(keys, ["generation", "selectedText", "sessionId"]);
     assert!(object.get("hwnd").is_none());
     assert!(object.get("pid").is_none());
+}
+
+#[test]
+fn mission_unverified_selection_is_copy_only_without_focus_or_paste() {
+    let (mut store, token) = ready_session();
+    let mut platform = FakeApplyPlatform { verified_selection: false, ..FakeApplyPlatform::default() };
+    let outcome = apply_current_session(&mut store, &token, "edited draft", true, &mut platform);
+    assert_eq!(outcome, ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetSelectionUnverified });
+    assert_eq!(platform.clipboard_text.as_deref(), Some("edited draft"));
+    assert_eq!(platform.paste_calls, 0);
+    assert!(!platform.events.contains(&"hide_widget"));
+    assert!(!platform.events.contains(&"request_foreground"));
+    assert!(!platform.events.contains(&"read_clipboard_text"));
+}
+
+#[test]
+fn mission_edited_instant_proof_to_explicit_copy_fallback_keeps_source_binding() {
+    use crate::capture_session::{BoundRewriteIntent, InstantDraftProof};
+    use crate::translation::RewriteIntent;
+    let mut store = CaptureSessionStore::default();
+    let token = capture(&mut store, "edited", 101, 2001);
+    let proof: InstantDraftProof = serde_json::from_value(serde_json::json!({
+        "sessionId": token.session_id, "generation": token.generation,
+        "source": "synthetic-source-edited", "candidate": "local Instant", "draftRevision": 2, "userEdited": true
+    })).unwrap();
+    store.validate_instant_draft(&token, "local Instant", "user final draft", Some(&proof)).unwrap();
+    let bound = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
+    store.begin_rewrite_bound(&token, bound.clone()).unwrap();
+    store.finish_rewrite_success_bound(&token, &bound).unwrap();
+    assert_eq!(store.ready_source_for(&token, RewriteIntent::grammar()).unwrap(), "synthetic-source-edited");
+    let mut platform = FakeApplyPlatform { verified_selection: false, ..FakeApplyPlatform::default() };
+    assert_eq!(apply_current_session(&mut store, &token, "user final draft", true, &mut platform),
+        ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetSelectionUnverified });
+    assert_eq!(platform.clipboard_text.as_deref(), Some("user final draft"));
+    assert_eq!(platform.paste_calls, 0);
+    assert!(store.begin_apply(&token).is_err());
 }

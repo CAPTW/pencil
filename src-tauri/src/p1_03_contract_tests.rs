@@ -244,8 +244,8 @@ fn backend_disclosure_and_source_limits_precede_client_or_thread_creation() {
         .find("ContentLimitKind::Source")
         .expect("backend source limit must exist");
     let client = rewrite
-        .find("ensure_codex")
-        .expect("Codex client acquisition must exist");
+        .find("ProviderManager::execute")
+        .expect("reserved Provider execution must exist");
     assert!(disclosure < source_limit);
     assert!(source_limit < client);
 }
@@ -305,15 +305,14 @@ fn production_csp_is_non_null_and_remote_navigation_is_not_enabled() {
 }
 
 #[test]
-fn clipboard_capture_has_a_pre_mutation_non_text_guard() {
+fn supported_capture_does_not_mutate_or_read_clipboard() {
     let source = include_str!("clipboard.rs");
-    let guard = source
-        .find("unsupported_non_text_clipboard")
-        .expect("pure non-text clipboard guard must exist");
-    let sentinel_write = source
-        .find("write_clipboard_text(&sentinel)")
-        .expect("capture sentinel write must remain explicit");
-    assert!(guard < sentinel_write);
+    let capture = &source[..source.find("async fn wait_for_capture_modifiers_released").unwrap()];
+    assert!(capture.contains("read_supported_selection()?"));
+    assert!(!capture.contains("write_clipboard_text("));
+    assert!(!capture.contains("read_clipboard_text("));
+    assert!(!capture.contains("send_copy_shortcut"));
+    // Actual metadata/Win32 denial tests live in windows_target::mission_secure_field_tests.
 }
 
 #[test]

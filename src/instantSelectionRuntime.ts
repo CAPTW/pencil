@@ -14,6 +14,7 @@ export interface InstantRuntimeState {
   dirty: boolean;
   draftRevision: number;
   activeKind: CandidateKind | null;
+  draftOrigin: "instant" | "deep" | null;
   instant: RuntimeCandidate | null;
   deep: RuntimeCandidate | null;
   pendingSwitch: RuntimeCandidate | null;
@@ -26,6 +27,7 @@ export const EMPTY_INSTANT_RUNTIME_STATE: InstantRuntimeState = {
   dirty: false,
   draftRevision: 0,
   activeKind: null,
+  draftOrigin: null,
   instant: null,
   deep: null,
   pendingSwitch: null,
@@ -63,6 +65,7 @@ export function lateCandidate(
       ...next,
       draft: candidate.text,
       activeKind: candidate.kind,
+      draftOrigin: candidate.kind === "user" ? null : candidate.kind,
     };
   }
   return next;
@@ -85,11 +88,13 @@ export function requestSwitch(
   state: InstantRuntimeState,
   candidate: RuntimeCandidate,
 ): InstantRuntimeState {
+  if (state.sessionId !== candidate.sessionId || state.generation !== candidate.generation) return state;
   if (!state.dirty) {
     return {
       ...state,
       draft: candidate.text,
       activeKind: candidate.kind,
+      draftOrigin: candidate.kind === "user" ? null : candidate.kind,
       pendingSwitch: null,
     };
   }
@@ -105,6 +110,7 @@ export function confirmSwitch(state: InstantRuntimeState): InstantRuntimeState {
     draft: state.pendingSwitch.text,
     dirty: false,
     activeKind: state.pendingSwitch.kind,
+    draftOrigin: state.pendingSwitch.kind === "user" ? null : state.pendingSwitch.kind,
     pendingSwitch: null,
   };
 }
@@ -122,4 +128,15 @@ export function visibleChoices(state: InstantRuntimeState): RuntimeCandidate[] {
     items.push(state.deep);
   }
   return items;
+}
+
+// The immutable candidate and capture remain the authority for an edited draft.
+export function instantDraftProof(state: InstantRuntimeState, token: { sessionId: string; generation: number } | null, source: string, draft: string) {
+  const candidate = state.instant;
+  if (!token || state.sessionId !== token.sessionId || state.generation !== token.generation ||
+      state.draftOrigin !== "instant" || !candidate || candidate.sessionId !== token.sessionId ||
+      candidate.generation !== token.generation || draft !== state.draft || !draft ||
+      !Number.isSafeInteger(state.draftRevision) || state.draftRevision < 0) return null;
+  return { sessionId: token.sessionId, generation: token.generation, source,
+    candidate: candidate.text, draftRevision: state.draftRevision, userEdited: state.dirty };
 }
