@@ -2,6 +2,12 @@
 
 Mission: GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1. This is an incomplete mission checkpoint, not P3-A/P3-B or personal-use acceptance. Read AGENTS.md, the v1.1 contract override, control/mission.json and control/state.json. The Owner has already authorized internal continuation; no fresh per-step approval is needed.
 
+## Panel accessibility continuation (2026-09-26)
+
+Entry2267e24; evidence `D:/dev/grammar-evidence/grammar-autonomous-r1/resume-r4`. The overlay interception retained in browser-AOK4c5 now has an explicit escape: Hide Grammar panel or Escape within its controls preserves the draft/cache while releasing covered page controls. A visible Show panel control remains; hiding is not pausing. Existing revision, expiry, sensitivity and disable checks continue while hidden. Keyboard reopening does not trigger inference. Wide-element overlap while expanded and native browser undo remain limitations.
+
+Production browser-O6WhWQ passes26 synthetic native-host checks, including an actual covered page button click, preserved edited draft with unchanged inference count, source edits while hidden invalidating old mutation authority, and keyboard reopening. Worker44 and core215 also pass. Read-only independent review by native_host found no actionable issue in the UI change; parent ran the tests. No performance threshold or safety gate changed. Fresh committed-source build/package/Source preview and extracted browser receipts, if completed, are recorded externally under resume-r4; old2267e24 artifacts do not contain this UI fix. Main is not adopted and the overall mission remains incomplete. Native capture/clipboard/physical IME/toolbar and live Provider boundaries remain as recorded below.
+
 ## Cleanup recovery continuation (2026-09-26)
 
 Entry for this continuation is3fa0018 (the previous clean-source package is in `resume-r2`). New evidence is `D:/dev/grammar-evidence/grammar-autonomous-r1/resume-r3`. This section supersedes the earlier statement that restart reconciliation is absent. Main adoption and A/B/C acceptance remain withheld.

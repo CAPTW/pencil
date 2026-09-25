@@ -4,6 +4,7 @@
   const {DocumentSession, MAX_TEXT} = globalThis.GrammarCore;
   let epoch = null, session = null, editor = null, chosen = null, composing = false;
   let root = null, shadow = null, status = null, list = null, card = null;
+  let panel = null, panelToggle = null;
   let timer = null, heartbeat = null, expiry = null, observer = null, inflight = false, pending = null, deferredInstant = null;
   let selectedIndex = null, editBox = null, sequence = 0;
   let deepProvider = null, deepRequest = null, deepButton = null, draftVersion = 0;
@@ -75,7 +76,7 @@
     document.removeEventListener('keydown', keyboard, true);
     document.removeEventListener('visibilitychange', visibility);
     window.removeEventListener('pagehide', pagehide);
-    root?.remove(); root = shadow = status = list = card = null;
+    root?.remove(); root = shadow = status = list = card = panel = panelToggle = null;
     if (notify && oldEpoch) chrome.runtime.sendMessage({op:'disable',epoch:oldEpoch}).catch(() => {});
   }
   function focus(event) {
@@ -89,7 +90,24 @@
   function input(event) { if (event.target === editor) { cancelDeepUI(); invalidate(false); schedule(); } }
   function compositionStart(event) { if (event.target === editor) { composing = true; cancelDeepUI(); invalidate(false); clearTimeout(timer); } }
   function compositionEnd(event) { if (event.target === editor) { composing = false; schedule(); } }
-  function keyboard(event) { if (event.isTrusted && event.altKey && event.shiftKey && event.code === 'KeyG') { event.preventDefault(); disable(true); } }
+  function setPanelVisible(visible) {
+    if (!panel) return;
+    panel.hidden = !visible;
+    panelToggle.setAttribute('aria-expanded', String(visible));
+    panelToggle.textContent = visible ? 'Hide Grammar panel' : 'Grammar enabled · Show panel';
+    if (!visible) {
+      // Retain the draft/cache, but release focus and pointer access to the page.
+      if (supported(editor)) editor.focus({preventScroll:true});
+      else panelToggle.focus({preventScroll:true});
+    }
+  }
+  function keyboard(event) {
+    if (!event.isTrusted) return;
+    if (event.altKey && event.shiftKey && event.code === 'KeyG') { event.preventDefault(); disable(true); }
+    else if (!event.isComposing && event.key === 'Escape' && event.composedPath().includes(root) && !panel.hidden) {
+      event.preventDefault(); event.stopPropagation(); setPanelVisible(false);
+    }
+  }
   function visibility() { if (document.hidden) { wipeField(); if (status) status.textContent = 'Paused. Enable the field again when ready.'; } }
   function pagehide() { disable(true); }
   function schedule() { clearTimeout(timer); if (!composing) timer = setTimeout(analyzeChanged, 250); }
@@ -227,10 +245,12 @@
   function enable(newEpoch) {
     disable(); epoch=newEpoch; chosen=supported(document.activeElement) ? document.activeElement : null;
     root=document.createElement('div');root.id='grammar-local-assist';
-    root.style.cssText='position:fixed;right:12px;top:12px;z-index:2147483647;width:340px;';
+    root.style.cssText='position:fixed;right:12px;top:12px;z-index:2147483647;width:340px;max-width:calc(100vw - 16px);pointer-events:none;';
     shadow=root.attachShadow({mode:'open'});
-    const style=document.createElement('style');style.textContent=':host{all:initial}section{font:13px system-ui;color:#15202b;background:#fff;border:2px solid #18684b;border-radius:10px;padding:10px;box-shadow:0 4px 16px #0003;max-height:50vh;overflow:auto}button{font:inherit;margin:3px;padding:6px;border:1px solid #779;border-radius:4px;background:#f4f8f6;color:#15202b;cursor:pointer}button:focus-visible,textarea:focus-visible{outline:3px solid #2065cd}textarea{box-sizing:border-box;width:100%;min-height:55px}p{margin:5px 0}';
-    const panel=document.createElement('section');panel.setAttribute('aria-label','Grammar local writing assist');
+    const style=document.createElement('style');style.textContent=':host{all:initial}section,button{pointer-events:auto}section[hidden]{display:none}section{font:13px system-ui;color:#15202b;background:#fff;border:2px solid #18684b;border-radius:10px;padding:10px;box-shadow:0 4px 16px #0003;max-height:50vh;overflow:auto}button{font:inherit;margin:3px;padding:6px;border:1px solid #779;border-radius:4px;background:#f4f8f6;color:#15202b;cursor:pointer}button:focus-visible,textarea:focus-visible{outline:3px solid #2065cd}textarea{box-sizing:border-box;width:100%;min-height:55px}p{margin:5px 0}';
+    panel=document.createElement('section');panel.id='grammar-panel';panel.setAttribute('aria-label','Grammar local writing assist');
+    panelToggle=button('Hide Grammar panel',()=>setPanelVisible(panel.hidden));
+    panelToggle.setAttribute('aria-controls','grammar-panel');panelToggle.setAttribute('aria-expanded','true');
     status=document.createElement('p');status.setAttribute('role','status');status.textContent='Document enabled. Select a non-sensitive field, then enable it.';
     list=document.createElement('div');list.setAttribute('aria-label','Cached suggestions');card=document.createElement('div');
     deepButton=button('Deep requires document permission in the popup',requestDeep);deepButton.disabled=true;
@@ -240,7 +260,7 @@
       if (!supported(target)) {status.textContent='Unsupported or sensitive field. No text read.';return;}
       editor=target;session=new DocumentSession(epoch);status.textContent='Local Instant active';schedule();
     }),button('Pause field',()=>{wipeField();status.textContent='Paused; cache cleared';}),button('Disable document',()=>disable(true)),list,card);
-    shadow.append(style,panel);document.documentElement.append(root);
+    shadow.append(style,panelToggle,panel);document.documentElement.append(root);
     document.addEventListener('focusin',focus);document.addEventListener('input',input,true);
     document.addEventListener('compositionstart',compositionStart,true);document.addEventListener('compositionend',compositionEnd,true);
     document.addEventListener('keydown',keyboard,true);document.addEventListener('visibilitychange',visibility);window.addEventListener('pagehide',pagehide);

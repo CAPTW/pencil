@@ -102,6 +102,30 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  await suggestion.click();await page.getByRole('textbox',{name:'Edit replacement',exact:true}).fill('my draft');
  await page.getByRole('button',{name:/Suggestion 2:/}).hover();
  assert.equal(await page.getByRole('textbox',{name:'Edit replacement',exact:true}).inputValue(),'my draft');pass('passive hover preserves edited draft');
+ // Reproduce a page control directly underneath the annotation, then release it
+ // without dismissing a user-edited suggestion or performing another analysis.
+ const panelBounds=await page.getByRole('region',{name:'Grammar local writing assist'}).boundingBox();
+ await page.evaluate(bounds=>{
+   const control=document.createElement('button');control.id='under-panel';control.textContent='Page action';
+   control.style.cssText=`position:fixed;left:${bounds.x+20}px;top:${bounds.y+20}px;width:100px;height:30px`;
+   control.addEventListener('click',()=>control.dataset.clicked='yes');document.body.append(control);
+ },panelBounds);
+ const collapseCount=(await worker.evaluate(()=>fixtureMetrics)).analyses;
+ await page.getByRole('textbox',{name:'Edit replacement',exact:true}).press('Escape');
+ await page.locator('#under-panel').click();assert.equal(await page.locator('#under-panel').getAttribute('data-clicked'),'yes');
+ assert.equal(await page.getByRole('button',{name:'Grammar enabled · Show panel',exact:true}).getAttribute('aria-expanded'),'false');
+ await page.getByRole('button',{name:'Grammar enabled · Show panel',exact:true}).click();
+ assert.equal(await page.getByRole('textbox',{name:'Edit replacement',exact:true}).inputValue(),'my draft');
+ assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,collapseCount);
+ await page.locator('#under-panel').evaluate(el=>el.remove());
+ pass('Escape releases covered page control; reopening preserves edited draft without inference');
+ await page.getByRole('button',{name:'Hide Grammar panel',exact:true}).click();
+ await page.locator('#writing').fill('changed while collapsed');await page.waitForTimeout(700);
+ await page.getByRole('button',{name:'Grammar enabled · Show panel',exact:true}).focus();await page.keyboard.press('Enter');
+ assert.equal(await page.getByRole('button',{name:'Accept',exact:true}).count(),0);
+ assert.equal(await page.getByRole('textbox',{name:'Edit replacement',exact:true}).count(),0);
+ assert.equal(await page.locator('#writing').inputValue(),'changed while collapsed');
+ pass('collapsed source edits invalidate old mutation authority; keyboard reopen stays safe');
  await page.locator('#writing').fill('seperate');await suggestion.waitFor();
  const before=(await worker.evaluate(()=>fixtureMetrics)).analyses;await suggestion.hover();await suggestion.click();await page.waitForTimeout(400);
  assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,before);pass('hover and click use cache; inference count unchanged');
