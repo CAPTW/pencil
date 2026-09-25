@@ -11,13 +11,13 @@ assert.notEqual(source, original, 'mock loader must replace exactly the host con
 const deferred = () => { let resolve,reject; const promise = new Promise((r,j) => {resolve=r;reject=j;}); return {promise,resolve,reject}; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function event() { const listeners=[];return {addListener(fn){listeners.push(fn);},emit(...args){for(const fn of listeners)fn(...args);}}; }
-function fixture() {
-  const sent=[],ports=[],timers=new Map();let nextTimer=0,epoch=0,storageGate=null,injectionGate=null,writeGate=null,stored={deniedOrigins:[]};
+function fixture(initial={deniedOrigins:[]}) {
+  const sent=[],ports=[],timers=new Map();let nextTimer=0,epoch=0,storageGate=null,injectionGate=null,writeGate=null,stored=structuredClone(initial);
   const injectionGates=new Map(),writes=[];
   const onMessage=event(),onUpdated=event(),onRemoved=event();
   const chrome={
     storage:{local:{async get(){const gate=storageGate;storageGate=null;return gate?gate.promise:structuredClone(stored);},
-      async set(value){writes.push(structuredClone(value));const gate=writeGate;writeGate=null;if(gate)await gate.promise;stored=structuredClone(value);}}},
+      async set(value){writes.push(structuredClone(value));const gate=writeGate;writeGate=null;if(gate)await gate.promise;stored={...stored,...structuredClone(value)};}}},
     runtime:{id:'extension',getURL:path=>'chrome-extension://extension/'+path,onMessage,
       connectNative(name){assert.equal(name,'org.grammar.test');const port={onMessage:event(),onDisconnect:event(),posted:[],closed:0,
         postMessage(message){this.posted.push(message);},disconnect(){this.closed++;this.onDisconnect.emit();}};ports.push(port);return port;}},
@@ -30,7 +30,7 @@ function fixture() {
   new vm.Script(source,{filename:'production-worker.js'}).runInContext(context);
   const popup={id:'extension',url:'chrome-extension://extension/popup.html'};
   const dispatch=(message,sender)=>new Promise(resolve=>onMessage.emit(message,sender,resolve));
-  const command=(op,tabId=1)=>dispatch({op,tabId},popup);
+  const command=(op,tabId=1,extra={})=>dispatch({op,tabId,...extra},popup);
   const sender=(tabId=1)=>({id:'extension',url:'https://example.test/document/'+tabId,tab:{id:tabId},frameId:0,documentId:'doc-'+tabId});
   const currentEpoch=(tabId=1)=>sent.filter(x=>x.tabId===tabId&&x.message.op==='enable').at(-1)?.message.epoch;
   const request=(id='r1',tabId=1)=>({version:1,op:'analyze',id,epoch:currentEpoch(tabId),revision:1,text:'seperate'});
@@ -44,6 +44,16 @@ test('revoke during awaited denylist lookup sends zero native messages',async()=
   const f=fixture();await f.command('enable');const gate=f.delayStorage();
   const pending=f.dispatch(f.request(),f.sender());await tick();await f.command('disable');
   gate.resolve({deniedOrigins:[]});assert.equal((await pending).error,'permission_revoked');assert.equal(f.ports.length,0);
+});
+
+for(const revoke of ['cancel','regrant'])test(`${revoke} during pre-admission storage cannot revive Deep`,async()=>{
+  const f=fixture();await f.command('enable');await f.command('deep-consent',1,{consent:true,provider:'claude'});
+  const gate=f.delayStorage(),request={...f.request(),op:'deep',provider:'claude'};
+  const pending=f.dispatch(request,f.sender());await tick();
+  if(revoke==='cancel')await f.dispatch({op:'cancel-deep',epoch:request.epoch,id:request.id},f.sender());
+  else await f.command('deep-consent',1,{consent:true,provider:'claude'});
+  gate.resolve({deniedOrigins:[]});assert.equal((await pending).error,'deep_permission_denied');
+  assert.equal(f.ports.length,0);assert.equal(f.writes.length,0);
 });
 
 for(const revoke of ['disable','stop'])test(`late enable after ${revoke} cannot activate document`,async()=>{
@@ -71,7 +81,7 @@ test('sender, frame, origin, epoch and missing document identity fail before nat
 
 test('oversized text, id and invalid revision are rejected; exactly one request may be in flight',async()=>{
   const f=fixture();await f.command('enable');
-  for(const patch of [{text:'x'.repeat(8193)},{id:'x'.repeat(129)},{revision:0},{revision:1.5},{revision:Number.MAX_SAFE_INTEGER+1},{version:2},{op:'deep'}]){
+  for(const patch of [{text:'x'.repeat(8193)},{id:'x'.repeat(129)},{revision:0},{revision:1.5},{revision:Number.MAX_SAFE_INTEGER+1},{version:2},{op:'unsupported'}]){
     assert.equal((await f.dispatch({...f.request(),...patch},f.sender())).error,'invalid_request');
   }
   assert.equal(f.ports.length,0);
@@ -152,4 +162,89 @@ test('failed policy write releases busy latch and keeps all prior sessions revok
   assert.equal((await f.dispatch(f.request(),f.sender())).error,'permission_denied');
   gate.reject(Error('synthetic storage failure'));assert.equal((await deny).error,'unavailable');
   assert.match((await f.command('enable')).status,/Document enabled/);assert.equal(f.ports.length,0);
+});
+
+
+test('Deep requires popup consent and selected provider; no native call before consent',async()=>{
+ const f=fixture();await f.command('enable');const deep={...f.request(),op:'deep',provider:'claude'};
+ assert.equal((await f.dispatch(deep,f.sender())).error,'deep_permission_denied');assert.equal(f.ports.length,0);
+ await f.command('deep-consent',1,{provider:'claude',consent:true});
+ assert.equal((await f.dispatch({...deep,provider:'codex'},f.sender())).error,'deep_permission_denied');
+ const pending=f.dispatch(deep,f.sender());await tick();assert.equal(f.ports[0].posted.length,1);assert.equal(f.ports[0].posted[0].provider,'claude');assert.equal(f.ports[0].posted[0].consent,true);
+ f.ports[0].onMessage.emit({id:deep.id,epoch:deep.epoch,revision:1,cleanup_complete:true,provider:'claude',replacement:'synthetic'});assert.equal((await pending).replacement,'synthetic');
+});
+test('disable Deep sends cancel and holds native port until actual cleanup receipt',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});
+ const deep={...f.request(),op:'deep',provider:'claude'},pending=f.dispatch(deep,f.sender());await tick();const port=f.ports[0];
+ await f.command('disable');assert.equal((await pending).error,'disabled');assert.equal(port.closed,0);assert.equal(port.posted.at(-1).op,'cancel');
+ port.onMessage.emit({id:deep.id,epoch:deep.epoch,revision:1,error:'cancelled',cleanup_complete:true});await tick();assert.equal(port.closed,1);assert.deepEqual(f.writes.at(-1).deepCleanupPending,[]);
+});
+test('missing cleanup receipt latches Deep admission and does not kill host as cancellation',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});
+ const deep={...f.request(),op:'deep',provider:'claude'},pending=f.dispatch(deep,f.sender());await tick();const port=f.ports[0];
+ f.fireTimer();assert.equal(port.posted.at(-1).op,'cancel');assert.equal(port.closed,0);
+ f.fireTimer();assert.equal((await pending).error,'cleanup_unconfirmed');assert.equal(port.closed,0);
+ assert.match((await f.command('deep-consent',1,{provider:'codex',consent:true})).status,/unavailable/);
+ port.onMessage.emit({id:deep.id,epoch:deep.epoch,revision:1,error:'cancelled',cleanup_complete:true});
+});
+test('Deep revoke cancels in flight and cannot silently replay',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'antigravity',consent:true});
+ const deep={...f.request(),op:'deep',provider:'antigravity'},pending=f.dispatch(deep,f.sender());await tick();
+ await f.command('deep-revoke');const port=f.ports[0];assert.equal(port.posted.length,2);assert.equal(port.posted[1].op,'cancel');
+ port.onMessage.emit({id:deep.id,epoch:deep.epoch,revision:1,error:'cancelled',cleanup_complete:true});assert.equal((await pending).error,'cancelled');
+ assert.equal((await f.dispatch(deep,f.sender())).error,'deep_permission_denied');assert.equal(port.posted.length,2);
+});
+
+
+test('persisted unfinished Deep blocks new admission after worker restart without document text',async()=>{
+ const f=fixture({deniedOrigins:[],deepCleanupPending:['opaque-owned-marker']});await f.command('enable');
+ assert.match((await f.command('deep-consent',1,{provider:'claude',consent:true})).status,/unavailable/);
+ assert.equal((await f.dispatch({...f.request(),op:'deep',provider:'claude'},f.sender())).error,'deep_permission_denied');assert.equal(f.ports.length,0);
+});
+test('marker is persisted before send; wrong revision cleanup cannot erase ownership',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});
+ const deep={...f.request(),op:'deep',provider:'claude'},pending=f.dispatch(deep,f.sender());await tick();const port=f.ports[0];
+ assert.equal(f.writes.at(-1).deepCleanupPending.length,1);assert.equal(JSON.stringify(f.writes).includes('seperate'),false);
+ port.onMessage.emit({id:deep.id,epoch:deep.epoch,revision:2,error:'cancelled',cleanup_complete:true});await tick();
+ assert.equal((await pending).error,'cleanup_unconfirmed');assert.equal(f.writes.at(-1).deepCleanupPending.length,1);assert.equal(port.closed,0);
+ port.onMessage.emit({id:deep.id,epoch:deep.epoch,revision:1,error:'cancelled',cleanup_complete:true});await tick();assert.deepEqual(f.writes.at(-1).deepCleanupPending,[]);
+});
+
+
+test('field cancellation during marker persistence prevents all Provider work',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});
+ const gate=f.delayWrite(),deep={...f.request(),op:'deep',provider:'claude'},pending=f.dispatch(deep,f.sender());await tick();
+ await f.dispatch({op:'cancel-deep',id:deep.id,epoch:deep.epoch},f.sender());gate.resolve();
+ assert.equal((await pending).error,'permission_revoked');assert.equal(f.ports.length,0);assert.deepEqual(f.writes.at(-1).deepCleanupPending,[]);
+});
+test('same-provider regrant cannot revive old asynchronous admission',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});
+ const gate=f.delayWrite(),deep={...f.request(),op:'deep',provider:'claude'},pending=f.dispatch(deep,f.sender());await tick();
+ await f.command('deep-revoke');await f.command('deep-consent',1,{provider:'claude',consent:true});gate.resolve();
+ assert.equal((await pending).error,'permission_revoked');assert.equal(f.ports.length,0);
+});
+test('disabled admissions retain document capacity until marker cleanup completes',async()=>{
+ const f=fixture(),gate=f.delayWrite(),pending=[];
+ for(let id=1;id<=4;id++) {
+   await f.command('enable',id);await f.command('deep-consent',id,{provider:'claude',consent:true});
+   pending.push(f.dispatch({...f.request('d'+id,id),op:'deep',provider:'claude'},f.sender(id)));await tick();await f.command('disable',id);
+ }
+ assert.match((await f.command('enable',5)).status,/limit 4/);gate.resolve();
+ for(const result of await Promise.all(pending))assert.equal(result.error,'permission_revoked');
+ assert.equal(f.ports.length,0);assert.deepEqual(f.writes.at(-1).deepCleanupPending,[]);
+ assert.match((await f.command('enable',5)).status,/Document enabled/);
+});
+
+
+test('idle Instant port disconnect cannot release a stalled Deep admission slot',async()=>{
+ const f=fixture(),gate=f.delayWrite(),pending=[];
+ for(let id=1;id<=4;id++) {
+   await f.command('enable',id);const instant=f.request('i'+id,id),local=f.dispatch(instant,f.sender(id));await tick();
+   f.ports.at(-1).onMessage.emit({id:instant.id,epoch:instant.epoch,revision:1,suggestions:[]});await local;
+   await f.command('deep-consent',id,{provider:'claude',consent:true});
+   pending.push(f.dispatch({...f.request('d'+id,id),op:'deep',provider:'claude'},f.sender(id)));await tick();await f.command('disable',id);
+ }
+ assert.match((await f.command('enable',5)).status,/limit 4/);gate.resolve();await Promise.all(pending);
+ assert.ok(f.ports.every(port=>port.posted.length===1 && port.posted[0].op==='analyze'));
+ assert.match((await f.command('enable',5)).status,/Document enabled/);
 });

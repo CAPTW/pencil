@@ -1,10 +1,14 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><title>Grammar</title>
 <body style="font:14px system-ui;min-width:300px;padding:12px">
 <h1 style="font-size:18px">Grammar · Local Instant</h1>
-<p id="origin"></p><p>No cloud requests. Enable only non-sensitive writing fields.</p>
+<p id="origin"></p><p>Local Instant stays local. Enable only non-sensitive writing fields.</p>
 <button id="enable">Enable this document</button>
 <button id="disable">Disable this document</button>
 <button id="deny">Block this domain</button>
 <button id="allow">Remove domain block</button>
 <button id="stop">Emergency disable all</button>
+<fieldset><legend>Optional Deep permission for this document</legend>
+<label>Provider <select id="provider"><option value="codex">Codex</option><option value="antigravity">Antigravity</option><option value="claude">Claude</option></select></label>
+<label><input type="checkbox" id="consent">I allow sending the current enabled field to this Provider when I click Send for Deep review. No terminology is sent.</label>
+<button id="deep-consent">Allow Deep for this document</button><button id="deep-revoke">Revoke Deep</button></fieldset>
 <p id="status" role="status"></p><script type="module" src="popup.js"></script></body></html>
