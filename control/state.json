@@ -108,7 +108,9 @@
     "draft binding and Copy-only containment",
     "Chromium local Instant candidate and synthetic browser verification",
     "provenance tooling negative tests",
-    "shared Provider executor, consent-bound concurrent Deep host and cancellation-safe browser candidate"
+    "shared Provider executor, consent-bound concurrent Deep host and cancellation-safe browser candidate",
+    "bounded installation cleanup receipts and explicit restart reconciliation; synthetic qualification only",
+    "Chromium composition, deferred Instant publication and empty-editor safety regressions"
   ],
   "native_capture_activation": "WITHHELD_PENDING_ISOLATED_POSITIVE_AND_SENSITIVITY_ACCEPTANCE",
   "chromium_deep_activation": "UNCONFIGURED_CANDIDATE_SYNTHETIC_QUALIFICATION_ONLY",
