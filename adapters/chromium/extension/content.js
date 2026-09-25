@@ -6,6 +6,7 @@
   let root = null, shadow = null, status = null, list = null, card = null;
   let timer = null, heartbeat = null, expiry = null, observer = null, inflight = false, pending = null;
   let selectedIndex = null, editBox = null, sequence = 0;
+  let deepProvider = null, deepRequest = null, deepButton = null, draftVersion = 0;
   const sensitive = /password|passwd|secret|token|credit|card.?number|ssn|social.?security|medical|health|otp|one.?time|verification|auth|private|sensitive/i;
   function labelText(label) {
     if (!label) return '';
@@ -51,14 +52,19 @@
     b.addEventListener('click', event => { if (event.isTrusted) callback(event); });
     return b;
   }
+  function cancelDeepUI() {
+    const request=deepRequest;deepRequest=null;
+    if(request) chrome.runtime.sendMessage({op:'cancel-deep',epoch:request.epoch,id:request.id}).catch(()=>{});
+  }
   function wipeField() {
+    cancelDeepUI();
     clearTimeout(timer); clearTimeout(expiry); pending = null;
     session?.clear(); session = null; editor = null; composing = false;
     selectedIndex = null; editBox = null;
     list?.replaceChildren(); card?.replaceChildren();
   }
   function disable(notify = false) {
-    const oldEpoch = epoch; epoch = null; wipeField();
+    const oldEpoch = epoch; wipeField(); epoch = null; deepProvider=null; deepButton=null;
     clearInterval(heartbeat); heartbeat = null; observer?.disconnect(); observer = null;
     document.removeEventListener('focusin', focus);
     document.removeEventListener('input', input, true);
@@ -78,8 +84,8 @@
     if (!session) return;
     if(clear) session.cache = []; list.replaceChildren(); card.replaceChildren(); selectedIndex = null;
   }
-  function input(event) { if (event.target === editor) { invalidate(false); schedule(); } }
-  function compositionStart(event) { if (event.target === editor) { composing = true; invalidate(false); clearTimeout(timer); } }
+  function input(event) { if (event.target === editor) { cancelDeepUI(); invalidate(false); schedule(); } }
+  function compositionStart(event) { if (event.target === editor) { composing = true; cancelDeepUI(); invalidate(false); clearTimeout(timer); } }
   function compositionEnd(event) { if (event.target === editor) { composing = false; schedule(); } }
   function keyboard(event) { if (event.isTrusted && event.altKey && event.shiftKey && event.code === 'KeyG') { event.preventDefault(); disable(true); } }
   function visibility() { if (document.hidden) { wipeField(); if (status) status.textContent = 'Paused. Enable the field again when ready.'; } }
@@ -108,12 +114,12 @@
   }
   function render() {
     list.replaceChildren(); card.replaceChildren(); selectedIndex = null;
-    status.textContent = 'Local Instant active · ' + session.cache.length + ' suggestions · no cloud';
+    status.textContent = session.cache.some(s=>s.rule.startsWith('deep:')) ? 'Deep result cached for review. Apply is explicit.' : 'Local Instant active · ' + session.cache.length + ' suggestions · no cloud';
     session.cache.forEach((s,index) => {
       const b = button((s.source || 'Insert') + ' → ' + s.replacement, () => show(index));
       b.setAttribute('aria-label', 'Suggestion ' + (index+1) + ': ' + s.message);
-      b.addEventListener('mouseenter', () => show(index));
-      b.addEventListener('focus', () => show(index));
+      b.addEventListener('mouseenter', () => { if(!dirtyDraft()) show(index); });
+      b.addEventListener('focus', () => { if(!dirtyDraft()) show(index); });
       list.append(b);
     });
     // Equivalent annotation beside the field. It never wraps or mutates editor DOM.
@@ -121,7 +127,18 @@
     root.style.top = Math.max(8, Math.min(innerHeight - 200, rect.top)) + 'px';
     root.style.left = Math.max(8, Math.min(innerWidth - 360, rect.right + 8)) + 'px';
     root.style.right = 'auto';
-    clearTimeout(expiry); expiry = setTimeout(() => invalidate(), 60000);
+    clearTimeout(expiry); expiry = setTimeout(() => {
+      if(!dirtyDraft()) {invalidate();return;}
+      session.cache=[];list.replaceChildren();
+      for(const action of card.querySelectorAll('button')) {
+        if(['Accept','Apply edit','Ignore'].includes(action.textContent))action.disabled=true;
+      }
+      status.textContent='Suggestion expired. Edited draft kept for Copy or Dismiss; Apply is disabled.';
+    }, 60000);
+  }
+  function dirtyDraft() {
+    return editBox?.isConnected && selectedIndex!==null &&
+      editBox.value!==session?.suggestion(selectedIndex)?.replacement;
   }
   function show(index) {
     const s = session?.suggestion(index);
@@ -134,7 +151,36 @@
     card.append(button('Accept', () => apply(index, s.replacement)),button('Apply edit', () => apply(index,editBox.value)),
       button('Dismiss', () => {session.dismiss(index);render();}),button('Ignore', () => {session.dismiss(index,true);render();}),
       button('Copy', async () => { try { await navigator.clipboard.writeText(editBox.value); status.textContent='Copied'; } catch { editBox.focus(); editBox.select(); status.textContent='Press Ctrl+C to copy selected replacement'; } }));
-    const deep = document.createElement('p'); deep.textContent = 'Deep is unavailable in this candidate. No Provider is called.'; card.append(deep);
+    editBox.addEventListener('input',()=>draftVersion++);
+  }
+  function updateDeepPolicy(provider) {
+    if(provider!==deepProvider) {cancelDeepUI();if(session?.cache.some(s=>s.rule.startsWith('deep:'))){session.cache=[];invalidate();}}
+    deepProvider=['codex','antigravity','claude'].includes(provider) ? provider : null;
+    if(deepButton) {deepButton.disabled=!deepProvider;deepButton.textContent=deepProvider ? 'Send current field to '+deepProvider+' for Deep review' : 'Deep requires document permission in the popup';}
+  }
+  async function requestDeep() {
+    if(dirtyDraft()) {status.textContent='Apply, copy, or dismiss your edited draft before requesting Deep.';return;}
+    if(!deepProvider || !session || deepRequest || inflight) {status.textContent='Deep unavailable or local request still running. Try explicitly when ready.';return;}
+    const text=read();if(text===null || !text.trim())return;
+    clearTimeout(timer);pending=null;session.update(text);
+    const owner=session, target=editor, provider=deepProvider, draft=draftVersion;
+    const request={version:1,op:'deep',id:String(++sequence),epoch,revision:owner.revision,text,provider};
+    deepRequest=request;status.textContent='Sending current enabled field to '+provider+'. Cancel or pause to stop.';
+    try {
+      const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
+      const hash=[...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');
+      if(deepRequest!==request || session!==owner || read()!==text)return;
+      const result=await chrome.runtime.sendMessage(request);
+      if(deepRequest!==request || session!==owner || editor!==target || epoch!==request.epoch)return;
+      if(result?.error) {status.textContent='Deep unavailable: '+String(result.error).slice(0,80)+'. No retry or fallback.';return;}
+      if(read()!==text || owner.revision!==request.revision || draftVersion!==draft || deepProvider!==provider ||
+          result?.epoch!==request.epoch || result.revision!==request.revision || result.provider!==provider || result.source_sha256!==hash ||
+          result.cleanup_complete!==true || typeof result.replacement!=='string' || result.replacement.length>MAX_TEXT) {status.textContent='Deep result stale or invalid. No changes applied.';return;}
+      owner.cache=[{start:0,end:text.length,source:text,replacement:result.replacement,rule:'deep:'+provider,message:'Deep '+provider,
+        epoch,revision:owner.revision,expires:Date.now()+60000}];
+      render();show(0);
+    } catch {if(deepRequest===request && status)status.textContent='Deep connection unavailable. No retry.';}
+    finally {if(deepRequest===request)deepRequest=null;}
   }
   function apply(index, replacement) {
     const current = read(), mutation = current !== null ? session.replacement(index,current,replacement) : null;
@@ -143,6 +189,7 @@
     // beforeinput handlers may modify the page. Revalidate AFTER synchronous page callbacks.
     const before = new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertReplacementText',data:replacement});
     if (!target.dispatchEvent(before) || session !== owner || editor !== target || read() !== current) {
+      const actual=read();if(session===owner && editor===target && actual!==null)owner.update(actual);
       invalidate(); status.textContent='Editor rejected replacement or changed. Copy only.'; return;
     }
     if (target.tagName === 'TEXTAREA') {
@@ -176,7 +223,8 @@
     const panel=document.createElement('section');panel.setAttribute('aria-label','Grammar local writing assist');
     status=document.createElement('p');status.setAttribute('role','status');status.textContent='Document enabled. Select a non-sensitive field, then enable it.';
     list=document.createElement('div');list.setAttribute('aria-label','Cached suggestions');card=document.createElement('div');
-    panel.append(status,button('Enable this field',()=>{
+    deepButton=button('Deep requires document permission in the popup',requestDeep);deepButton.disabled=true;
+    panel.append(status,deepButton,button('Cancel Deep',()=>{cancelDeepUI();status.textContent='Deep cancelled; cleanup receipt pending in host.';}),button('Enable this field',()=>{
       const target=chosen;
       wipeField();
       if (!supported(target)) {status.textContent='Unsupported or sensitive field. No text read.';return;}
@@ -189,21 +237,22 @@
     observer=new MutationObserver(mutations=>{
       if (!root?.isConnected) {disable(true);return;}
       if (editor && !supported(editor)) {wipeField();status.textContent='Field changed capability. Disabled.';}
-      else if (editor && editor.tagName!=='TEXTAREA' && mutations.some(m=>m.target===editor || editor.contains(m.target))) {invalidate(false);schedule();}
+      else if (editor && editor.tagName!=='TEXTAREA' && mutations.some(m=>m.target===editor || editor.contains(m.target))) {cancelDeepUI();invalidate(false);schedule();}
     });
     observer.observe(document.documentElement,{subtree:true,childList:true,attributes:true,characterData:true,
       attributeFilter:['type','readonly','disabled','hidden','inert','contenteditable','autocomplete','data-sensitive','data-grammar-sensitive','aria-hidden','aria-label','aria-labelledby','aria-disabled','aria-readonly','id','name','style','class']});
     heartbeat=setInterval(async()=>{
       const activeEpoch=epoch;
-      try {const response=await chrome.runtime.sendMessage({op:'heartbeat',epoch});if (epoch===activeEpoch && !response?.ok) disable();}
+      try {const response=await chrome.runtime.sendMessage({op:'heartbeat',epoch});if (epoch===activeEpoch) {if(!response?.ok)disable();else updateDeepPolicy(response.deepProvider);}}
       catch {if (epoch===activeEpoch) disable();}
       // Bounded reconciliation catches programmatic textarea value changes without key logging.
-      if (session && !composing && !document.hidden) {const current=read();if(current===null){wipeField();}else if(current!==session.text){invalidate(false);schedule();}}
+      if (session && !composing && !document.hidden) {const current=read();if(current===null){wipeField();}else if(current!==session.text){cancelDeepUI();invalidate(false);schedule();}}
     },1000);
   }
   chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     if(sender.id!==chrome.runtime.id)return;
     if(message.op==='enable'&&typeof message.epoch==='string'){enable(message.epoch);respond({ready:true});}
+    else if(message.op==='deep-policy'&&message.epoch===epoch){updateDeepPolicy(message.provider);respond({ok:true});}
     else if(message.op==='disable'){disable();respond({ok:true});}
   });
 })();
