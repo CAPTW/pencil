@@ -44,9 +44,9 @@ def main():
         rejected = invoke(frame(request), ORIGIN.replace('aaaa', 'bbbb', 1))
         assert rejected.returncode != 0 and not rejected.stdout and not rejected.stderr
         deep = invoke(frame({**request, 'op': 'deep'}))
-        assert json.loads(deep.stdout[4:])['error'] == 'deep_unavailable'
+        assert json.loads(deep.stdout[4:])['error'] == 'deep_consent_required'
         assert invoke(b'').returncode == 0
-        print('PASS: real host local engine/UTF16, framing, size, origin, schema, Deep unavailable, EOF; no Provider')
+        print('PASS: real host local engine/UTF16, framing, size, origin, schema, Deep missing-consent rejected, EOF; no Provider')
 
 
 if __name__ == '__main__':
