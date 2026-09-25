@@ -31,14 +31,7 @@
       "agent_id": "runtime_review",
       "base_head": "4e833988ed27086dd6d4acb78d39fc3e9c98c707",
       "claimed_paths": [
-        "src-tauri/src/codex_binary.rs",
-        "src-tauri/src/codex_client.rs",
-        "src-tauri/src/process_job.rs",
-        "src-tauri/src/provider/antigravity.rs",
-        "src-tauri/src/provider/claude.rs",
         "src-tauri/src/provider/cli.rs",
-        "src-tauri/src/provider/manager.rs",
-        "src-tauri/src/runtime_isolation.rs",
         "src-tauri/tests/runtime_mission/**"
       ],
       "claim_type": "exclusive",
@@ -46,32 +39,22 @@
       "expires_at": null,
       "release_state": "active",
       "conflicting_claim": null,
-      "owner_override": "Explicit mission scope; single integrator serializes shared files"
+      "owner_override": "Resumed mission: bounded phase diagnostics; shared facade dependencies transferred by integrator"
     },
     {
       "task_id": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
       "agent_id": "apply_safety",
       "base_head": "4e833988ed27086dd6d4acb78d39fc3e9c98c707",
       "claimed_paths": [
-        "src-tauri/src/apply_safety.rs",
-        "src-tauri/src/capture_session.rs",
-        "src-tauri/src/clipboard.rs",
-        "src-tauri/src/windows_target.rs",
-        "src/App.tsx",
-        "src/instantSelectionRuntime.ts",
-        "src-tauri/tests/apply_mission/**",
-        "scripts/test-mission-draft.mjs",
-        "src/captureContract.ts",
-        "src-tauri/src/p0_02_contract_tests.rs",
-        "scripts/test-p3-03-instant-runtime-state.mjs",
-        "adapters/chromium/tests/worker.test.mjs"
+        "src-tauri/src/bin/grammar-chromium-host.rs",
+        "adapters/chromium/host/**"
       ],
       "claim_type": "exclusive",
       "created_at": "2026-09-25T00:00:00Z",
       "expires_at": null,
       "release_state": "active",
       "conflicting_claim": null,
-      "owner_override": "Explicit mission scope; single integrator serializes shared files"
+      "owner_override": "Resumed mission bounded native host actor and protocol tests"
     },
     {
       "task_id": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
@@ -93,7 +76,30 @@
         "scripts/mission/verify.mjs",
         "scripts/mission/package.ps1",
         "adapters/chromium/tests/core.test.mjs",
-        "adapters/chromium/tests/browser.test.mjs"
+        "adapters/chromium/tests/browser.test.mjs",
+        "adapters/chromium/tests/worker.test.mjs",
+        "scripts/project_source.py",
+        "scripts/test_project_source.py",
+        "src-tauri/src/codex_binary.rs",
+        "src-tauri/src/process_job.rs",
+        "src-tauri/src/provider/antigravity.rs",
+        "src-tauri/src/provider/claude.rs",
+        "src-tauri/src/runtime_isolation.rs",
+        "src-tauri/src/apply_safety.rs",
+        "src-tauri/src/capture_session.rs",
+        "src-tauri/src/clipboard.rs",
+        "src-tauri/src/windows_target.rs",
+        "src/App.tsx",
+        "src/instantSelectionRuntime.ts",
+        "src-tauri/tests/apply_mission/**",
+        "scripts/test-mission-draft.mjs",
+        "src/captureContract.ts",
+        "src-tauri/src/p0_02_contract_tests.rs",
+        "scripts/test-p3-03-instant-runtime-state.mjs",
+        "scripts/build-daily-use-bundle.ps1",
+        "scripts/mission/test-provenance.ps1",
+        "scripts/mission/build-receipt.ps1",
+        "scripts/test-r6-provider-transport.mjs"
       ],
       "claim_type": "exclusive",
       "created_at": "2026-09-25T00:00:00Z",
@@ -107,20 +113,19 @@
       "agent_id": "native_host",
       "base_head": "4e833988ed27086dd6d4acb78d39fc3e9c98c707",
       "claimed_paths": [
-        "src-tauri/src/bin/grammar-chromium-host.rs",
-        "adapters/chromium/host/**",
-        "scripts/build-daily-use-bundle.ps1",
-        "scripts/mission/test-provenance.ps1",
-        "scripts/mission/build-receipt.ps1",
-        "scripts/project_source.py",
-        "scripts/test_project_source.py"
+        "src-tauri/src/lib.rs",
+        "src-tauri/src/provider/mod.rs",
+        "src-tauri/src/provider/manager.rs",
+        "src-tauri/src/provider/executor.rs",
+        "src-tauri/src/provider/types.rs",
+        "src-tauri/src/codex_client.rs"
       ],
       "claim_type": "exclusive",
       "created_at": "2026-09-25T00:00:00Z",
       "expires_at": null,
       "release_state": "active",
       "conflicting_claim": null,
-      "owner_override": "Explicit mission scope; single integrator serializes shared files"
+      "owner_override": "Resumed mission shared executor extraction; other prior claims released for integrator"
     }
   ]
 }
