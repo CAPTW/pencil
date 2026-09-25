@@ -45,3 +45,7 @@ Fast-forward requires independent review to decide whether these baseline failur
 Document epoch/revision and unicode ranges must match before mutation; stale/ambiguous range fails closed. Opt-in/denylist/sensitive-field checks occur before reading; visible state, pause and emergency disable precede monitoring. Hover/click cached surface emits inference/network count0. Local analysis is bounded and memory-only. Cloud requires separate consent and one selected Provider. Accept/Edit/Apply is explicit, mutation is reread, unsupported states preserve P3-A without reading secure fields. Each ROADMAP step inherits these checks and declares its own unit/integration/native/privacy gate.
 
 No threshold here is claimed measured for P3-B. Budgets and editor support must be frozen and verified in their bounded design/implementation steps. P3-B implementation and product acceptance are not R0 outcomes.
+
+## Autonomous mission candidate checkpoint (2026-09-25)
+
+Runtime/draft regressions and isolated Chromium local-Instant mutation rereads have synthetic evidence in HANDOFF.md. Native capture is activation-withheld, native Apply is Copy-only, Deep host integration is absent. Therefore A/B/C as a whole are NOT_ACCEPTED. Actual build receipts and Source package verification are separate evidence, not upgrades of these product verdicts. Historical audit/FAIL evidence is immutable.

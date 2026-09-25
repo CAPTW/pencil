@@ -209,6 +209,10 @@ def state_check(state):
     require(isinstance(state.get("exact_next_task"), str) and bool(state["exact_next_task"]), "one exact next task required")
     if state.get("mission_id") is not None:
         mission_check(state)
+        require(state.get("active_phase") in ("PHASE_1_P3A_STABILIZATION", "MISSION_IMPLEMENTATION"), "invalid mission phase")
+        require(state.get("mission_completion", "INCOMPLETE") == "INCOMPLETE", "mission acceptance requires explicit validator extension and evidence")
+        require(isinstance(state.get("known_defects"), list), "known defects list required")
+        return
     defects = state.get("known_defects")
     require(isinstance(defects, list), "known defects list required")
     safety = any(d.get("verdict") in ("CONFIRMED_CURRENT_DEFECT", "PARTIALLY_CONFIRMED") for d in defects)

@@ -11,14 +11,27 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$GitTree,
   [Parameter(Mandatory = $true)]
-  [string]$GitSubject
+  [string]$GitSubject,
+  [Parameter(Mandatory = $true)]
+  [string]$BuildReceiptPath
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
 if (Test-Path -LiteralPath $OutputRoot) { throw "Output root already exists: $OutputRoot" }
+$sourceRoot = Split-Path -Parent $PSScriptRoot
+# Verify source, actual executed build receipt and binary before creating any output.
+$receipt = & (Join-Path $PSScriptRoot 'mission/build-receipt.ps1') -SourceRoot $sourceRoot -ReceiptPath $BuildReceiptPath -ExecutablePath $ExecutablePath -VerifyOnly
+$receiptHash = (Get-FileHash -LiteralPath $BuildReceiptPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($ProductCommit -cne $receipt.after.commit -or $PackagingCommit -cne $receipt.after.commit -or
+    $GitTree -cne $receipt.after.tree -or $GitSubject -cne $receipt.after.subject) {
+  throw 'Caller metadata does not match measured build source'
+}
 $bundle = Join-Path $OutputRoot 'portable\Grammar'
 New-Item -ItemType Directory -Path $bundle -Force | Out-Null
 Copy-Item -LiteralPath $ExecutablePath -Destination (Join-Path $bundle 'codex-pencil.exe')
+if ((Get-FileHash -LiteralPath (Join-Path $bundle 'codex-pencil.exe') -Algorithm SHA256).Hash.ToLowerInvariant() -cne $receipt.executableSha256) { throw 'Executable changed during packaging' }
+Copy-Item -LiteralPath $BuildReceiptPath -Destination (Join-Path $bundle 'BUILD_RECEIPT.json')
+if ((Get-FileHash -LiteralPath (Join-Path $bundle 'BUILD_RECEIPT.json') -Algorithm SHA256).Hash.ToLowerInvariant() -cne $receiptHash) { throw 'Receipt changed during packaging' }
 $daily = Join-Path $PSScriptRoot 'daily-use'
 foreach ($name in @('Launch-Grammar.cmd','Check-Prerequisites.ps1','Verify-Bundle.ps1','Create-Shortcuts.ps1','Remove-Shortcuts.ps1','Enable-Startup.ps1','Disable-Startup.ps1')) {
   Copy-Item -LiteralPath (Join-Path $daily $name) -Destination (Join-Path $bundle $name)
@@ -94,17 +107,20 @@ $info = [ordered]@{
   productName = 'Grammar'
   artifactClassification = 'UNSIGNED_PERSONAL_DAILY_USE_BUNDLE'
   buildUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
-  gitCommit = $PackagingCommit
-  productCommit = $ProductCommit
-  gitTree = $GitTree
-  gitSubject = $GitSubject
+  gitCommit = $receipt.after.commit
+  productCommit = $receipt.after.commit
+  gitTree = $receipt.after.tree
+  gitSubject = $receipt.after.subject
   executableRelativePath = 'codex-pencil.exe'
   executableBytes = $exeLen
   executableSha256 = $exeHash
   settingsSchemaVersion = 7
   writingContractVersion = 1
   providerKinds = @('codex','antigravity','claude')
-  sourceWorktreeClean = $true
+  sourceWorktreeClean = $receipt.after.clean
+  sourceTrackedBytesSha256 = $receipt.after.trackedBytesSha256
+  buildReceiptSha256 = $receiptHash
+  buildCommand = $receipt.command
   bundleVersion = '2026-09-06.r8'
   signingState = 'NotSigned'
   updaterState = 'disabled'
@@ -117,6 +133,7 @@ Get-ChildItem -LiteralPath $bundle -File | Where-Object { $_.Name -ne 'SHA256SUM
   $sumLines += "$h  $($_.Name)"
 }
 Write-Utf8 (Join-Path $bundle 'SHA256SUMS.txt') (($sumLines -join "`n") + "`n")
+$null = & (Join-Path $PSScriptRoot 'mission/build-receipt.ps1') -SourceRoot $sourceRoot -ReceiptPath (Join-Path $bundle 'BUILD_RECEIPT.json') -ExecutablePath $exe -VerifyOnly
 & (Join-Path $bundle 'Verify-Bundle.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'bundle verifier failed' }
 $zip = Join-Path $OutputRoot 'Grammar-portable.zip'
