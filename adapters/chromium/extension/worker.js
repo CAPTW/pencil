@@ -4,18 +4,106 @@ const generations = new Map();
 const retiring = new Set();
 let nativeUnsafe = false;
 const providers = new Set(['codex', 'antigravity', 'claude']);
-let deepMarkers = new Set();
+// Content-free cleanup ownership survives worker restart. Legacy string markers
+// remain blocked: they have no native receipt and cannot be inferred complete.
+let deepMarkers = new Map();
+let markerStorageInvalid = false;
+let recovering = false;
+const validToken = t => typeof t==='string' && /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(t);
+const validTicket = t => t && typeof t==='object' && !Array.isArray(t) &&
+  Object.keys(t).length===4 && ['installation','slot','generation','token'].every(key=>Object.hasOwn(t,key)) &&
+  typeof t.installation==='string' && /^[a-f0-9]{32}$/.test(t.installation) &&
+  Number.isInteger(t.slot) && t.slot >= 0 && t.slot < 4 &&
+  Number.isSafeInteger(t.generation) && t.generation > 0 &&
+  validToken(t.token);
+const sameTicket = (a,b) => validTicket(a) && validTicket(b) &&
+  a.installation===b.installation && a.slot===b.slot && a.generation===b.generation && a.token===b.token;
 const cleanupReady = chrome.storage.local.get('deepCleanupPending').then(({deepCleanupPending=[]})=>{
-  if(!Array.isArray(deepCleanupPending) || deepCleanupPending.length)nativeUnsafe=true;
-  deepMarkers=new Set(Array.isArray(deepCleanupPending) ? deepCleanupPending.slice(0,4).filter(x=>typeof x==='string'&&x.length<=128) : []);
-}).catch(()=>{nativeUnsafe=true;});
+  if(!Array.isArray(deepCleanupPending) || deepCleanupPending.length>4) {markerStorageInvalid=true;nativeUnsafe=true;return;}
+  for(const entry of deepCleanupPending) {
+    const key=typeof entry==='string' ? entry : entry?.ticket?.token || entry?.token;
+    if(typeof key!=='string' || !key || key.length>128 || deepMarkers.has(key) ||
+      (typeof entry!=='string' && !(entry && !Array.isArray(entry) && Object.keys(entry).length===2 && (entry.phase==='reserving' ? validToken(entry.token) : validTicket(entry.ticket) && ['pending','ack'].includes(entry.phase)))))markerStorageInvalid=true;
+    else deepMarkers.set(key,entry);
+  }
+  if(markerStorageInvalid || deepMarkers.size)nativeUnsafe=true;
+}).catch(()=>{nativeUnsafe=true;markerStorageInvalid=true;});
 let markerQueue=Promise.resolve();
-function markDeep(marker,add) {
+function markDeep(marker,value) {
   const next=markerQueue.then(async()=>{
-    await cleanupReady;const updated=new Set(deepMarkers);add ? updated.add(marker) : updated.delete(marker);
-    await chrome.storage.local.set({deepCleanupPending:[...updated]});deepMarkers=updated;
+    await cleanupReady;
+    if(markerStorageInvalid)throw Error('cleanup_storage_invalid');
+    const updated=new Map(deepMarkers);value ? updated.set(marker,value) : updated.delete(marker);
+    if(updated.size>4)throw Error('cleanup_capacity');
+    await chrome.storage.local.set({deepCleanupPending:[...updated.values()]});deepMarkers=updated;
   });
-  markerQueue=next.catch(()=>{nativeUnsafe=true;});return next;
+  markerQueue=next.catch(()=>{nativeUnsafe=true;markerStorageInvalid=true;});return next;
+}
+// Control messages never contain document identity/text and cannot invoke inference.
+function cleanupControl(op, fields) {
+  if(!HOST)return Promise.resolve({error:'native_host_not_configured'});
+  const id=crypto.randomUUID(),epoch='cleanup-control';
+  return new Promise(resolve=>{
+    let port,done=false,timer;
+    const finish=value=>{if(done)return;done=true;clearTimeout(timer);port?.disconnect();resolve(value);};
+    try {
+      port=chrome.runtime.connectNative(HOST);
+      port.onMessage.addListener(value=>finish(value?.id===id && value.epoch===epoch && value.revision===1 && (!fields.cleanup_ticket || sameTicket(value.cleanup_ticket,fields.cleanup_ticket)) ? value : {error:'invalid_cleanup_response'}));
+      port.onDisconnect.addListener(()=>{void chrome.runtime.lastError;finish({error:'cleanup_unavailable'});});
+      timer=setTimeout(()=>finish({error:'cleanup_timeout'}),5000);
+      port.postMessage({version:1,op,id,epoch,revision:1,text:'',...fields});
+    }catch {finish({error:'cleanup_unavailable'});}
+  });
+}
+// Reserve+persist and acknowledge+erase share one queue: an acknowledged slot
+// cannot be reused while its old browser marker is still durable.
+let lifecycleQueue=Promise.resolve();
+function lifecycle(action) {const next=lifecycleQueue.then(action);lifecycleQueue=next.catch(()=>{});return next;}
+const releasingTickets=new Map();
+function releaseTicket(ticket,alreadyComplete=false) {
+  if(releasingTickets.has(ticket.token))return releasingTickets.get(ticket.token);
+  const promise=releaseTicketOwned(ticket,alreadyComplete).finally(()=>releasingTickets.delete(ticket.token));
+  releasingTickets.set(ticket.token,promise);return promise;
+}
+async function releaseTicketOwned(ticket, alreadyComplete=false) {
+  const record=deepMarkers.get(ticket.token);
+  if(!record || !sameTicket(record.ticket,ticket))return false;
+  if(record.phase!=='ack') {
+    const checked=alreadyComplete ? {cleanup_complete:true} : await cleanupControl('cleanup-query',{cleanup_ticket:ticket});
+    if(checked.error || checked.cleanup_complete!==true)return false;
+    await markDeep(ticket.token,{ticket,phase:'ack'});
+  }
+  return lifecycle(async()=>{
+    const ack=await cleanupControl('cleanup-ack',{cleanup_ticket:ticket});
+    if(ack.error || ack.cleanup_complete!==true)return false;
+    await markDeep(ticket.token,null);return true;
+  });
+}
+async function recoverCleanup() {
+  await cleanupReady;
+  if(recovering || [...sessions.values(),...retiring].some(s=>s.admitting))return {status:'Cleanup check busy; try again'};
+  if(markerStorageInvalid)return {status:'Cleanup records unavailable; Deep remains blocked'};
+  recovering=true;
+  try {
+    for(let record of [...deepMarkers.values()]) {
+      if(typeof record==='string')continue;
+      if(record.phase==='reserving') {
+        const found=await cleanupControl('cleanup-find',{cleanup_token:record.token});
+        if(found.error || !validTicket(found.cleanup_ticket) || found.cleanup_ticket.token!==record.token)continue;
+        record={ticket:found.cleanup_ticket,phase:'pending'};
+        await markDeep(record.ticket.token,record);
+      }
+      if(!await releaseTicket(record.ticket))continue;
+      for(const s of new Set([...sessions.values(),...retiring])) {
+        if(s.pending?.marker!==record.ticket.token && s.deepMarker!==record.ticket.token)continue;
+        clearTimeout(s.timer);s.pending?.resolve({error:'cancelled'});s.pending=null;
+        const port=s.port;s.port=null;port?.disconnect();retiring.delete(s);
+      }
+    }
+    if(!deepMarkers.size && !markerStorageInvalid)nativeUnsafe=false;
+    return {status:deepMarkers.size ? 'Cleanup unconfirmed; Deep remains blocked. Local Instant is available.' : 'Cleanup confirmed. Grant Deep permission again to send.'};
+  }catch {nativeUnsafe=true;return {status:'Cleanup check failed; Deep remains blocked'};}
+  finally {recovering=false;}
 }
 let emergencyGeneration = 0;
 let policyChanging = false;
@@ -73,16 +161,16 @@ function analyze(s, request) {
   if (!HOST) return Promise.resolve({error: 'native_host_not_configured'});
   if (s.pending) return Promise.resolve({error: 'busy'});
   return new Promise(resolve => {
-    s.pending = {id:request.id,op:request.op,revision:request.revision,provider:request.provider,marker:s.deepMarker,resolve};
+    s.pending = {id:request.id,op:request.op,revision:request.revision,provider:request.provider,marker:s.deepMarker,ticket:request.cleanup_ticket,resolve};
     const finish = async (value, id = request.id) => {
       if(s.pending?.id !== id) return;
       clearTimeout(s.timer); const pending = s.pending;
       if (pending.op === 'deep' && value?.cleanup_complete!==true) {
         nativeUnsafe = true; cancelDeep(s); pending.resolve({error:'cleanup_unconfirmed'}); return;
       }
-      if(pending.op==='deep') {try {await markDeep(pending.marker,false);}catch {nativeUnsafe=true;pending.resolve({error:'cleanup_unconfirmed'});return;}}
+      if(pending.op==='deep') {try {if(!await releaseTicket(pending.ticket,true))throw Error('cleanup_ack_missing');}catch {nativeUnsafe=true;pending.resolve({error:'cleanup_unconfirmed'});return;}}
       if(s.pending!==pending)return;
-      s.pending = null; pending.resolve(pending.cancelling ? {error:'cancelled'} : value);
+      clearTimeout(s.timer);s.pending = null; pending.resolve(pending.cancelling ? {error:'cancelled'} : value);
       if (s.closed) { retiring.delete(s); const port=s.port; s.port=null; port?.disconnect(); }
     };
     try {
@@ -105,6 +193,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     // Only the extension popup may grant permission. No external messaging listener exists.
     if (sender.id === chrome.runtime.id && sender.url === chrome.runtime.getURL('popup.html')) {
       const {op, tabId} = message;
+      if(op==='cleanup-recover')return recoverCleanup();
       if (op === 'stop') { emergencyGeneration++; for (const id of [...sessions.keys()]) close(id); return {status: 'All documents disabled'}; }
       if (!Number.isInteger(tabId)) return {status: 'Invalid tab'};
       if (op === 'enable') return enable(tabId);
@@ -113,7 +202,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         await cleanupReady;
         const s=sessions.get(tabId);
         if(!s || s.closed || policyChanging) return {status:'Enable the current document first'};
-        if(op==='deep-consent' && (message.consent!==true || !providers.has(message.provider) || nativeUnsafe)) return {status:'Deep consent or runtime unavailable'};
+        if(op==='deep-consent' && (message.consent!==true || !providers.has(message.provider) || nativeUnsafe || recovering)) return {status:'Deep consent or runtime unavailable'};
         cancelDeep(s); s.grantGeneration++; if(s.admitting)s.admitting.cancelled=true; s.deepProvider = op==='deep-consent' ? message.provider : null;
         await chrome.tabs.sendMessage(tabId,{op:'deep-policy',epoch:s.epoch,provider:s.deepProvider},{documentId:s.documentId});
         return {status:s.deepProvider ? 'Deep allowed for this document; each send still requires a click' : 'Deep permission revoked'};
@@ -161,16 +250,34 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       if(!message.text.trim())return {error:'invalid_request'};
       if(!HOST)return {error:'native_host_not_configured'};
       await cleanupReady;
-      if(s.closed || sessions.get(sender.tab.id)!==s || cancellation!==(s.cancelGeneration || 0) || grant!==s.grantGeneration || !s.deepProvider || message.provider!==s.deepProvider || nativeUnsafe)return {error:'deep_permission_denied'};
+      if(s.closed || sessions.get(sender.tab.id)!==s || cancellation!==(s.cancelGeneration || 0) || grant!==s.grantGeneration || !s.deepProvider || message.provider!==s.deepProvider || nativeUnsafe || recovering)return {error:'deep_permission_denied'};
       if(s.pending || s.admitting)return {error:'busy'};
       const provider=s.deepProvider,marker=crypto.randomUUID();
       const admission={id:request.id,cancelled:false,generation:s.grantGeneration};s.admitting=admission;
       try {
-        await markDeep(marker,true);
-        if(s.closed || admission.cancelled || admission.generation!==s.grantGeneration || s.deepProvider!==provider || nativeUnsafe) {await markDeep(marker,false);retiring.delete(s);return {error:'permission_revoked'};}
         s.deepMarker=marker;
-        return analyze(s,{...request,provider,consent:true});
-      } catch {nativeUnsafe=true;return {error:'cleanup_unconfirmed'};}
+        const ticket=await lifecycle(async()=>{
+          if(nativeUnsafe || [...deepMarkers.values()].some(x=>x?.phase==='ack'))throw Error('cleanup_unconfirmed');
+          // Persist intent before native reservation, so a lost reply is discoverable.
+          await markDeep(marker,{token:marker,phase:'reserving'});
+          if(s.closed || admission.cancelled || admission.generation!==s.grantGeneration || s.deepProvider!==provider || nativeUnsafe || recovering) {
+            await markDeep(marker,null);return null;
+          }
+          const reserved=await cleanupControl('cleanup-reserve',{cleanup_token:marker});
+          if(reserved.error || !validTicket(reserved.cleanup_ticket) || reserved.cleanup_ticket.token!==marker)throw Error('cleanup_reservation_unavailable');
+          const ticket=reserved.cleanup_ticket;
+          await markDeep(marker,{ticket,phase:'pending'});return ticket;
+        });
+        if(!ticket) {retiring.delete(s);return {error:'permission_revoked'};}
+
+        if(s.closed || admission.cancelled || admission.generation!==s.grantGeneration || s.deepProvider!==provider || nativeUnsafe || recovering) {
+          if(await releaseTicket(ticket))retiring.delete(s);else nativeUnsafe=true;
+          return {error:'permission_revoked'};
+        }
+        s.deepMarker=marker;
+        return analyze(s,{...request,provider,consent:true,cleanup_ticket:ticket});
+      } catch {nativeUnsafe=true;if(!markerStorageInvalid && !deepMarkers.has(marker))retiring.delete(s);return {error:'cleanup_unconfirmed'};}
+
       finally {if(s.admitting===admission)s.admitting=null;}
     }
     return analyze(s,request);

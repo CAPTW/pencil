@@ -55,7 +55,8 @@
     "src-tauri/src/provider/mod.rs",
     "src-tauri/src/provider/executor.rs",
     "src-tauri/src/provider/types.rs",
-    "scripts/test-r6-provider-transport.mjs"
+    "scripts/test-r6-provider-transport.mjs",
+    "src-tauri/src/bin/grammar_chromium/cleanup.rs"
   ],
   "forbidden_paths": [],
   "required_reads": [

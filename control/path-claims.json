@@ -47,7 +47,8 @@
       "base_head": "4e833988ed27086dd6d4acb78d39fc3e9c98c707",
       "claimed_paths": [
         "src-tauri/src/bin/grammar-chromium-host.rs",
-        "adapters/chromium/host/**"
+        "adapters/chromium/host/**",
+        "src-tauri/src/bin/grammar_chromium/cleanup.rs"
       ],
       "claim_type": "exclusive",
       "created_at": "2026-09-25T00:00:00Z",

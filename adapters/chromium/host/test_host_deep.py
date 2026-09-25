@@ -12,6 +12,7 @@ from pathlib import Path
 import shutil
 import struct
 import sys
+import uuid
 
 ORIGIN = 'chrome-extension://' + 'a' * 32 + '/'
 SOURCE = 'Synthetic writing.'
@@ -41,6 +42,41 @@ async def read_response(proc):
     assert 0 < size <= 256 * 1024
     return json.loads(await asyncio.wait_for(proc.stdout.readexactly(size), 20))
 
+async def control(host, operation, ticket=None, token=None):
+    request = dict(version=1, op=operation, id=str(uuid.uuid4()), epoch='cleanup-control', revision=1, text='')
+    if ticket is not None:
+        request['cleanup_ticket'] = ticket
+    if token is not None:
+        request['cleanup_token'] = token
+    proc = await asyncio.create_subprocess_exec(str(host), ORIGIN, stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    output, errors = await asyncio.wait_for(proc.communicate(frame(request)), 20)
+    assert proc.returncode == 0 and not errors
+    size, = struct.unpack('<I', output[:4])
+    assert len(output) == size + 4
+    result = json.loads(output[4:])
+    assert result['id'] == request['id']
+    if ticket is not None:
+        assert result['cleanup_ticket'] == ticket
+    return result
+
+async def locked_receipt_test(host, root):
+    ticket = (await control(host, 'cleanup-reserve', token=str(uuid.uuid4())))['cleanup_ticket']
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+        ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel.CreateFileW(str(root / 'grammar-cleanup.lock'), 0xC0000000, 0, None, 3, 0, None)
+    assert handle != ctypes.c_void_p(-1).value
+    try:
+        result = await control(host, 'cleanup-query', ticket=ticket)
+        assert result['cleanup_complete'] is False and result['error'] == 'cleanup_busy'
+    finally:
+        assert kernel.CloseHandle(handle)
+    assert (await control(host, 'cleanup-query', ticket=ticket))['cleanup_complete'] is True
+    assert (await control(host, 'cleanup-ack', ticket=ticket))['cleanup_complete'] is True
+
 async def case(host, fixture, root, name):
     owned = root / name
     owned.mkdir()
@@ -58,6 +94,10 @@ async def case(host, fixture, root, name):
     request = dict(version=1, op='deep', id=name, epoch='synthetic-document', revision=4,
                    text=SOURCE, provider='claude', consent=name != 'denied')
     receipt = None
+    reserved = await control(host, 'cleanup-reserve', token=str(uuid.uuid4()))
+    ticket = reserved['cleanup_ticket']
+    assert (await control(host, 'cleanup-find', token=ticket['token']))['cleanup_ticket'] == ticket
+    request['cleanup_ticket'] = ticket
     try:
         proc.stdin.write(frame(request))
         await proc.stdin.drain()
@@ -67,6 +107,7 @@ async def case(host, fixture, root, name):
                     await asyncio.sleep(.01)
             await asyncio.wait_for(started(), 15)
             assert not exited(int((owned / 'root.pid').read_text().strip()))
+            assert (await control(host, 'cleanup-query', ticket=ticket))['cleanup_complete'] is False
             if name == 'cancel':
                 proc.stdin.write(frame(dict(version=1, op='cancel', id=name,
                     epoch=request['epoch'], revision=4, text='')))
@@ -96,10 +137,16 @@ async def case(host, fixture, root, name):
         runtime = temporary / 'codex-pencil-runtime-v1'
         residuals = [p.name for p in runtime.glob('client-*')]
         assert not residuals
+        # A fresh host instance reconciles the exact ticket using only durable proof.
+        proof = await control(host, 'cleanup-query', ticket=ticket)
+        assert proof['cleanup_complete'] is True and 'error' not in proof
+        assert (await control(host, 'cleanup-ack', ticket=ticket))['cleanup_complete'] is True
+        assert (await control(host, 'cleanup-ack', ticket=ticket))['cleanup_complete'] is True
         result = {'case': name, 'classification': 'NATIVE_SYNTHETIC_PROVIDER',
                   'host_exit': 0, 'owned_fixture_exited': name != 'denied',
                   'provider_not_admitted': name == 'denied', 'runtime_sessions_remaining': 0,
                   'claude_privacy_flags_verified': name != 'denied',
+                  'restart_receipt_verified': True,
                   'cleanup_receipt': receipt.get('cleanup_complete') if receipt else None}
         (owned / 'receipt.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
         return result
@@ -120,11 +167,17 @@ async def main():
     root.mkdir(parents=True, exist_ok=False)
     host = root / 'grammar-chromium-host.exe'
     shutil.copyfile(host_source, host)
-    (root / 'grammar-chromium-host.origin.json').write_text(json.dumps({'origin': ORIGIN}), encoding='utf-8')
+    installation = uuid.uuid4().hex
+    (root / 'grammar-chromium-host.origin.json').write_text(json.dumps({'origin': ORIGIN, 'installation_id': installation}), encoding='utf-8')
+    (root / 'grammar-cleanup.json').write_text(json.dumps({'version': 1, 'installation': installation,
+        'slots': [dict(generation=0, token='', state='FREE') for _ in range(4)]}), encoding='utf-8')
+    (root / 'grammar-cleanup.lock').touch()
+    await locked_receipt_test(host, root)
     results = []
     for name in ('denied', 'success', 'cancel', 'eof'):
         results.append(await case(host, fixture, root, name))
     report = {'classification': 'NATIVE_SYNTHETIC_PROVIDER_NOT_LIVE',
+              'cross_process_lock_verified': True,
               'host_sha256': hashlib.sha256(host.read_bytes()).hexdigest(),
               'fixture_sha256': hashlib.sha256(fixture.read_bytes()).hexdigest(), 'cases': results}
     (root / 'receipt.json').write_text(json.dumps(report, indent=2), encoding='utf-8')

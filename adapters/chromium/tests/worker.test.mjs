@@ -12,20 +12,29 @@ const deferred = () => { let resolve,reject; const promise = new Promise((r,j) =
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function event() { const listeners=[];return {addListener(fn){listeners.push(fn);},emit(...args){for(const fn of listeners)fn(...args);}}; }
 function fixture(initial={deniedOrigins:[]}) {
-  const sent=[],ports=[],timers=new Map();let nextTimer=0,epoch=0,storageGate=null,injectionGate=null,writeGate=null,stored=structuredClone(initial);
-  const injectionGates=new Map(),writes=[];
+  const sent=[],ports=[],controlPorts=[],timers=new Map();let nextTimer=0,epoch=0,storageGate=null,injectionGate=null,writeGate=null,stored=structuredClone(initial);
+  const injectionGates=new Map(),writes=[];let controlAuto=true;
+  const ticket=token=>({installation:'a'.repeat(32),slot:0,generation:1,token});
   const onMessage=event(),onUpdated=event(),onRemoved=event();
   const chrome={
     storage:{local:{async get(){const gate=storageGate;storageGate=null;return gate?gate.promise:structuredClone(stored);},
       async set(value){writes.push(structuredClone(value));const gate=writeGate;writeGate=null;if(gate)await gate.promise;stored={...stored,...structuredClone(value)};}}},
     runtime:{id:'extension',getURL:path=>'chrome-extension://extension/'+path,onMessage,
       connectNative(name){assert.equal(name,'org.grammar.test');const port={onMessage:event(),onDisconnect:event(),posted:[],closed:0,
-        postMessage(message){this.posted.push(message);},disconnect(){this.closed++;this.onDisconnect.emit();}};ports.push(port);return port;}},
+        postMessage(message){this.posted.push(message);
+          if(message.op.startsWith('cleanup-')) {
+            if(ports.includes(this))ports.splice(ports.indexOf(this),1);
+            if(!controlPorts.includes(this))controlPorts.push(this);
+            if(controlAuto)queueMicrotask(()=>this.onMessage.emit({...message,
+              cleanup_ticket:message.cleanup_ticket || ticket(message.cleanup_token),
+              ...(message.op==='cleanup-reserve'?{}:{cleanup_complete:true})}));
+          }
+        },disconnect(){this.closed++;this.onDisconnect.emit();}};ports.push(port);return port;}},
     tabs:{onUpdated,onRemoved,async get(tabId){return {url:'https://example.test/document/'+tabId};},
       async sendMessage(tabId,message,options){sent.push({tabId,message,options});return {ready:true};}},
     scripting:{async executeScript({target}){const gate=injectionGates.get(target.tabId)||injectionGate;injectionGates.delete(target.tabId);injectionGate=null;return gate?gate.promise:[{frameId:0,documentId:'doc-'+target.tabId}];}},
   };
-  const context=vm.createContext({chrome,URL,crypto:{randomUUID:()=>`epoch-${++epoch}`},
+  const context=vm.createContext({chrome,URL,crypto:{randomUUID:()=>`00000000-0000-4000-8000-${String(++epoch).padStart(12,'0')}`},
     setTimeout:fn=>{const id=++nextTimer;timers.set(id,fn);return id;},clearTimeout:id=>timers.delete(id)});
   new vm.Script(source,{filename:'production-worker.js'}).runInContext(context);
   const popup={id:'extension',url:'chrome-extension://extension/popup.html'};
@@ -34,7 +43,7 @@ function fixture(initial={deniedOrigins:[]}) {
   const sender=(tabId=1)=>({id:'extension',url:'https://example.test/document/'+tabId,tab:{id:tabId},frameId:0,documentId:'doc-'+tabId});
   const currentEpoch=(tabId=1)=>sent.filter(x=>x.tabId===tabId&&x.message.op==='enable').at(-1)?.message.epoch;
   const request=(id='r1',tabId=1)=>({version:1,op:'analyze',id,epoch:currentEpoch(tabId),revision:1,text:'seperate'});
-  return {sent,ports,timers,writes,command,dispatch,sender,request,currentEpoch,onUpdated,onRemoved,
+  return {sent,ports,controlPorts,ticket,controlAuto(value){controlAuto=value;},stored(){return structuredClone(stored);},timers,writes,command,dispatch,sender,request,currentEpoch,onUpdated,onRemoved,
     delayStorage(){return storageGate=deferred();},delayWrite(){return writeGate=deferred();},
     delayInjection(tabId){if(tabId!==undefined){const gate=deferred();injectionGates.set(tabId,gate);return gate;}return injectionGate=deferred();},
     fireTimer(){const [id,fn]=timers.entries().next().value;timers.delete(id);fn();}};
@@ -247,4 +256,132 @@ test('idle Instant port disconnect cannot release a stalled Deep admission slot'
  assert.match((await f.command('enable',5)).status,/limit 4/);gate.resolve();await Promise.all(pending);
  assert.ok(f.ports.every(port=>port.posted.length===1 && port.posted[0].op==='analyze'));
  assert.match((await f.command('enable',5)).status,/Document enabled/);
+});
+
+
+const recoveredTicket={installation:'a'.repeat(32),slot:2,generation:7,token:'10000000-0000-4000-8000-000000000001'};
+function recoveryFixture(phase='pending') {return fixture({deepCleanupPending:[{ticket:recoveredTicket,phase}]});}
+function replyControl(f,patch={}) {const port=f.controlPorts.at(-1);port.onMessage.emit({...port.posted[0],cleanup_complete:true,...patch});}
+
+test('restart recovery is explicit, content-free, and grants no document consent',async()=>{
+ const f=recoveryFixture();await tick();assert.equal(f.controlPorts.length,0);
+ assert.match((await f.command('cleanup-recover')).status,/Cleanup confirmed/);
+ assert.deepEqual(f.controlPorts.map(p=>p.posted[0].op),['cleanup-query','cleanup-ack']);
+ for(const port of f.controlPorts) {
+   assert.equal(port.posted[0].text,'');assert.equal(port.posted[0].provider,undefined);
+   assert.equal(port.posted[0].epoch,'cleanup-control');assert.equal(port.closed,1);
+ }
+ assert.deepEqual(f.stored().deepCleanupPending,[]);assert.equal(f.ports.length,0);
+ await f.command('enable');assert.equal((await f.dispatch({...f.request(),op:'deep',provider:'claude'},f.sender())).error,'deep_permission_denied');
+ assert.match((await f.command('deep-consent',1,{provider:'claude',consent:true})).status,/Deep allowed/);
+});
+
+for(const patch of [{cleanup_complete:false,error:'cleanup_unknown'},{cleanup_complete:undefined},
+ {cleanup_ticket:{...recoveredTicket,generation:8}},{revision:2},{id:'old-id'}])test(`unconfirmed or mismatched receipt retains restart ownership ${JSON.stringify(patch)}`,async()=>{
+ const f=recoveryFixture();f.controlAuto(false);const recovery=f.command('cleanup-recover');await tick();replyControl(f,patch);
+ assert.match((await recovery).status,/unconfirmed/);assert.equal(f.controlPorts.length,1);
+ assert.equal(f.stored().deepCleanupPending[0].phase,'pending');await f.command('enable');
+ assert.match((await f.command('deep-consent',1,{provider:'claude',consent:true})).status,/unavailable/);
+});
+
+test('ack phase is durable before native ack and survives lost ack response',async()=>{
+ const f=recoveryFixture();f.controlAuto(false);const recovery=f.command('cleanup-recover');await tick();replyControl(f);await tick();
+ assert.equal(f.stored().deepCleanupPending[0].phase,'ack');assert.equal(f.controlPorts.at(-1).posted[0].op,'cleanup-ack');
+ f.fireTimer();assert.match((await recovery).status,/unconfirmed/);
+ const restarted=fixture(f.stored());assert.match((await restarted.command('cleanup-recover')).status,/Cleanup confirmed/);
+ assert.deepEqual(restarted.controlPorts.map(p=>p.posted[0].op),['cleanup-ack']);assert.deepEqual(restarted.stored().deepCleanupPending,[]);
+});
+
+test('failed ack-phase persistence cannot release native receipt or erase marker',async()=>{
+ const f=recoveryFixture();f.controlAuto(false);const recovery=f.command('cleanup-recover');await tick();const gate=f.delayWrite();
+ replyControl(f);await tick();gate.reject(Error('synthetic storage failure'));
+ assert.match((await recovery).status,/failed/);assert.equal(f.controlPorts.length,1);assert.equal(f.stored().deepCleanupPending[0].phase,'pending');
+ assert.match((await f.command('cleanup-recover')).status,/records unavailable/);
+});
+
+test('legacy or corrupt ownership is never inferred complete',async()=>{
+ for(const entries of [['opaque-old-marker'],[{ticket:{...recoveredTicket,generation:0},phase:'pending'}],Array(5).fill({ticket:recoveredTicket,phase:'pending'})]) {
+  const f=fixture({deepCleanupPending:entries});assert.match((await f.command('cleanup-recover')).status,/blocked/);
+  assert.equal(f.controlPorts.length,0);assert.deepEqual(f.stored().deepCleanupPending,entries);
+ }
+});
+
+test('concurrent recovery cannot exceed one bounded native control operation',async()=>{
+ const f=recoveryFixture();f.controlAuto(false);const first=f.command('cleanup-recover');await tick();
+ assert.match((await f.command('cleanup-recover')).status,/busy/);assert.equal(f.controlPorts.length,1);
+ replyControl(f);await tick();replyControl(f);assert.match((await first).status,/confirmed/);
+});
+
+test('cancelled reservation is retired before any text is sent',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});
+ f.controlAuto(false);const request={...f.request(),op:'deep',provider:'claude'};
+ const pending=f.dispatch(request,f.sender());await tick();const reserve=f.controlPorts[0].posted[0];
+ await f.command('disable');replyControl(f,{cleanup_ticket:f.ticket(reserve.cleanup_token)});await tick();
+ assert.equal(f.controlPorts.at(-1).posted[0].op,'cleanup-query');replyControl(f);await tick();replyControl(f);
+ assert.equal((await pending).error,'permission_revoked');assert.equal(f.ports.length,0);assert.deepEqual(f.stored().deepCleanupPending,[]);
+});
+
+
+test('lost reservation reply remains discoverable from durable intent after restart',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});f.controlAuto(false);
+ const pending=f.dispatch({...f.request(),op:'deep',provider:'claude'},f.sender());await tick();
+ const token=f.controlPorts[0].posted[0].cleanup_token;
+ assert.deepEqual(f.stored().deepCleanupPending,[{token,phase:'reserving'}]);f.fireTimer();assert.equal((await pending).error,'cleanup_unconfirmed');
+ const restarted=fixture(f.stored());assert.match((await restarted.command('cleanup-recover')).status,/confirmed/);
+ assert.deepEqual(restarted.controlPorts.map(p=>p.posted[0].op),['cleanup-find','cleanup-query','cleanup-ack']);assert.deepEqual(restarted.stored().deepCleanupPending,[]);
+});
+
+test('intent with no exact native record remains blocked, never absent-means-complete',async()=>{
+ const f=fixture({deepCleanupPending:[{token:recoveredTicket.token,phase:'reserving'}]});f.controlAuto(false);
+ const recovery=f.command('cleanup-recover');await tick();replyControl(f,{error:'cleanup_unknown',cleanup_ticket:undefined});
+ assert.match((await recovery).status,/unconfirmed/);assert.equal(f.stored().deepCleanupPending.length,1);
+});
+
+test('slot cannot be reused until completed ack marker removal is durable',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});
+ const deep={...f.request(),op:'deep',provider:'claude'},pending=f.dispatch(deep,f.sender());await tick();f.controlAuto(false);
+ f.ports[0].onMessage.emit({id:deep.id,epoch:deep.epoch,revision:1,provider:'claude',cleanup_complete:true});await tick();
+ const gate=f.delayWrite();replyControl(f);await tick(); // ack succeeded, browser erase deliberately stalled
+ await f.command('enable',2);await f.command('deep-consent',2,{provider:'claude',consent:true});
+ const second=f.dispatch({...f.request('second',2),op:'deep',provider:'claude'},f.sender(2));await tick();
+ assert.equal(f.controlPorts.filter(p=>p.posted[0].op==='cleanup-reserve').length,1);
+ gate.resolve();await pending;await tick();assert.equal(f.controlPorts.at(-1).posted[0].op,'cleanup-reserve');
+ await f.command('disable',2);const reserve=f.controlPorts.at(-1).posted[0];replyControl(f,{cleanup_ticket:f.ticket(reserve.cleanup_token)});await tick();replyControl(f);await tick();replyControl(f);await second;
+});
+
+test('closed failed admission releases document capacity only after exact recovery',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});f.controlAuto(false);
+ const pending=f.dispatch({...f.request(),op:'deep',provider:'claude'},f.sender());await tick();await f.command('disable');f.fireTimer();await pending;
+ for(let id=2;id<=4;id++)await f.command('enable',id);
+ assert.match((await f.command('enable',5)).status,/limit 4/);
+ f.controlAuto(true);assert.match((await f.command('cleanup-recover')).status,/confirmed/);
+ assert.match((await f.command('enable',5)).status,/Document enabled/);
+});
+
+
+test('closed queued admission rejected before reservation leaves no markerless retired owner',async()=>{
+ const f=fixture();for(let id=1;id<=2;id++){await f.command('enable',id);await f.command('deep-consent',id,{provider:'claude',consent:true});}
+ const first={...f.request(),op:'deep',provider:'claude'},one=f.dispatch(first,f.sender());await tick();f.controlAuto(false);
+ f.ports[0].onMessage.emit({id:first.id,epoch:first.epoch,revision:1,provider:'claude',cleanup_complete:true});await tick();
+ const two=f.dispatch({...f.request('second',2),op:'deep',provider:'claude'},f.sender(2));await tick();await f.command('disable',2);
+ replyControl(f,{error:'cleanup_busy',cleanup_complete:false});await one;await two;
+ assert.equal(f.stored().deepCleanupPending.length,1);f.controlAuto(true);await f.command('cleanup-recover');
+ for(let id=3;id<=5;id++)assert.match((await f.command('enable',id)).status,/Document enabled/);
+});
+
+
+test('native ticket extra content is rejected before durable receipt persistence or inference',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});f.controlAuto(false);
+ const pending=f.dispatch({...f.request(),op:'deep',provider:'claude'},f.sender());await tick();const token=f.controlPorts[0].posted[0].cleanup_token;
+ replyControl(f,{cleanup_ticket:{...f.ticket(token),source:'must never be persisted'}});
+ assert.equal((await pending).error,'cleanup_unconfirmed');assert.equal(JSON.stringify(f.writes).includes('must never'),false);assert.equal(f.ports.length,0);
+});
+
+
+test('disable during receipt acknowledgement leaves no stale cancellation timer',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});
+ const request={...f.request(),op:'deep',provider:'claude'},pending=f.dispatch(request,f.sender());await tick();f.controlAuto(false);
+ f.ports[0].onMessage.emit({id:request.id,epoch:request.epoch,revision:1,provider:'claude',cleanup_complete:true});await tick();
+ await f.command('disable');assert.equal((await pending).error,'disabled');replyControl(f);await tick();
+ assert.equal(f.timers.size,0);assert.deepEqual(f.stored().deepCleanupPending,[]);assert.equal(f.ports[0].closed,1);
 });
