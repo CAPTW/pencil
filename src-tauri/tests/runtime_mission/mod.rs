@@ -47,13 +47,15 @@ fn fixture(mode: &str) -> (PathBuf, PathBuf) {
     (exe, dir)
 }
 
-fn assert_exited(dir: &Path) {
+fn assert_exited(dir: &Path) -> usize {
     use windows_sys::Win32::{
         Foundation::CloseHandle,
         System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
     };
+    let mut observed_pid_count = 0;
     for name in ["root.pid", "descendant.pid"] {
         if let Ok(text) = std::fs::read_to_string(dir.join(name)) {
+            observed_pid_count += 1;
             let pid = text.parse::<u32>().unwrap();
             let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
             if !handle.is_null() {
@@ -66,11 +68,13 @@ fn assert_exited(dir: &Path) {
             }
         }
     }
+    observed_pid_count
 }
 
 #[tokio::test]
 #[ignore = "task-owned native fixture and TEMP required, serial invocation"]
 async fn native_lifecycle_matrix() {
+    let mut failures = Vec::new();
     for (mode, expected) in [
         ("success", None),
         ("pipe-holder", Some("provider_timeout")),
@@ -81,20 +85,21 @@ async fn native_lifecycle_matrix() {
     ] {
         let (exe, dir) = fixture(mode);
         let start = Instant::now();
-        let result = provider::cli::run_bounded(
+        let (result, phases) = provider::cli::diagnose_run(provider::cli::run_bounded(
             &exe,
             &[],
             Duration::from_millis(750),
             Arc::new(AtomicBool::new(false)),
             65536,
             65536,
-        )
+        ))
         .await;
         let elapsed = start.elapsed().as_millis();
-        assert_exited(&dir);
-        if mode == "pipe-holder" {
-            assert!(dir.join("descendant.pid").exists());
-        }
+        let observed_pid_count = assert_exited(&dir);
+        let spawn_observed_pid_count = phases
+            .iter()
+            .filter(|event| event.phase == "spawn_job_end" && event.pid.is_some())
+            .count();
         let base = std::env::temp_dir().join("codex-pencil-runtime-v1");
         let roots: Vec<_> = std::fs::read_dir(&base)
             .unwrap()
@@ -103,19 +108,86 @@ async fn native_lifecycle_matrix() {
             .collect();
         std::fs::write(dir.join("receipt.json"), serde_json::to_vec_pretty(&serde_json::json!({
             "mode":mode,"elapsed_ms":elapsed,"request_budget_ms":750,"cleanup_budget_ms":5000,
-            "error":result.as_ref().err(),"residual_roots":roots.len(),"owned_pids_exited":true,"provider_live":false
+            "error":result.as_ref().err(),"residual_roots":roots.len(),
+            "observed_pid_count":observed_pid_count,"fixture_observed_pid_count":observed_pid_count,
+            "spawn_observed_pid_count":spawn_observed_pid_count,"owned_pids_exited":if observed_pid_count > 0 { Some(true) } else { None },
+            "provider_live":false,"phases":phases
         })).unwrap()).unwrap();
-        assert_eq!(
-            result.as_ref().err().map(String::as_str),
-            expected,
-            "case {mode}"
-        );
-        assert!(
-            elapsed < 5750,
-            "case {mode} exceeded request plus cleanup budget"
-        );
-        assert!(roots.is_empty(), "runtime roots survived {mode}");
+        if result.as_ref().err().map(String::as_str) != expected {
+            failures.push(format!(
+                "{mode}: expected {expected:?}, got {:?}",
+                result.as_ref().err()
+            ));
+        }
+        if elapsed >= 5750 {
+            failures.push(format!("{mode}: request plus cleanup budget exceeded"));
+        }
+        if !roots.is_empty() {
+            failures.push(format!("{mode}: residual runtime roots"));
+        }
+        let expected_pid_count = if mode == "pipe-holder" { 2 } else { 1 };
+        if observed_pid_count != expected_pid_count {
+            failures.push(format!(
+                "{mode}: expected {expected_pid_count} observed PIDs, got {observed_pid_count}"
+            ));
+        }
     }
+    assert!(failures.is_empty(), "{}", failures.join("; "));
+}
+
+#[tokio::test]
+#[ignore = "task-owned native fixture and TEMP required, serial invocation"]
+async fn native_claude_existing_120s_caller_success() {
+    let (exe, dir) = fixture("success");
+    std::env::set_var("CODEX_PENCIL_CLAUDE_BIN", exe);
+    let state = AppState::default();
+    let operation = state
+        .providers
+        .lock()
+        .await
+        .reserve(
+            ProviderKind::Claude,
+            "production-caller-fixture".into(),
+            true,
+        )
+        .unwrap();
+    let start = Instant::now();
+    // Calls Claude's actual 120-second request policy; this does not replace
+    // or change the separate 750ms stress matrix above.
+    let (result, phases) = provider::cli::diagnose_run(ProviderManager::execute(
+        &operation,
+        "Synthetic.",
+        RewriteIntent::grammar(),
+        &[],
+        &state.codex,
+    ))
+    .await;
+    let elapsed = start.elapsed().as_millis();
+    assert!(state.providers.lock().await.finish(&operation));
+    let observed = assert_exited(&dir);
+    let base = std::env::temp_dir().join("codex-pencil-runtime-v1");
+    let roots = std::fs::read_dir(&base)
+        .unwrap()
+        .flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with("client-"))
+        .count();
+    std::fs::write(
+        dir.join("caller-receipt.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "classification":"PRODUCTION_CLAUDE_CALLER_SYNTHETIC_CHILD", "request_budget_ms":120000,
+            "cleanup_budget_ms":5000,"elapsed_ms":elapsed,"observed_pid_count":observed,
+            "residual_roots":roots,"provider_live":false,"phases":phases,
+            "error":result.as_ref().err().map(|error| error.code())
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    std::env::remove_var("CODEX_PENCIL_CLAUDE_BIN");
+    assert_eq!(observed, 1);
+    assert_eq!(roots, 0);
+    let result = result.unwrap();
+    assert_eq!(result.provider_used, ProviderKind::Claude);
+    assert_eq!(result.replacement, "Synthetic.");
 }
 
 #[tokio::test]

@@ -213,6 +213,57 @@ pub(crate) async fn cancellation(cancel: &AtomicBool) {
     }
 }
 
+#[cfg(test)]
+#[derive(Clone, serde::Serialize)]
+pub(crate) struct RuntimePhase {
+    pub(crate) phase: &'static str,
+    pub(crate) elapsed_us: u128,
+    pub(crate) pid: Option<u32>,
+}
+
+#[cfg(test)]
+tokio::task_local! {
+    static RUNTIME_PHASES: (std::time::Instant, std::sync::Arc<std::sync::Mutex<Vec<RuntimePhase>>>);
+}
+
+// Content-free and allocation-free in non-test builds. A trace belongs to one
+// scoped future, so parallel requests cannot steal or mix each other's events.
+fn record_phase(phase: &'static str, pid: Option<u32>) {
+    #[cfg(test)]
+    let _ = RUNTIME_PHASES.try_with(|(started, phases)| {
+        phases.lock().unwrap().push(RuntimePhase {
+            phase,
+            elapsed_us: started.elapsed().as_micros(),
+            pid,
+        });
+    });
+    #[cfg(not(test))]
+    let _ = (phase, pid);
+}
+
+#[cfg(test)]
+pub(crate) async fn diagnose_run<F: std::future::Future>(
+    future: F,
+) -> (F::Output, Vec<RuntimePhase>) {
+    let phases = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let result = RUNTIME_PHASES
+        .scope((std::time::Instant::now(), phases.clone()), future)
+        .await;
+    let receipt = phases.lock().unwrap().clone();
+    (result, receipt)
+}
+
+fn request_expired(now: tokio::time::Instant, deadline: tokio::time::Instant) -> bool {
+    now >= deadline
+}
+
+fn teardown_deadline(
+    now: tokio::time::Instant,
+    overall_deadline: tokio::time::Instant,
+) -> tokio::time::Instant {
+    overall_deadline.min(now + CLEANUP_BUDGET)
+}
+
 pub(crate) async fn run_bounded(
     path: &Path,
     args: &[String],
@@ -227,6 +278,7 @@ pub(crate) async fn run_bounded(
     if CLEANUP_BLOCKED.load(Ordering::SeqCst) {
         return Err("provider_cleanup_unresolved_restart_required".into());
     }
+    record_phase("request_start", None);
     let execution_deadline = tokio::time::Instant::now() + limit;
     let deadline = execution_deadline + CLEANUP_BUDGET;
     if cancel.load(Ordering::SeqCst) {
@@ -237,14 +289,43 @@ pub(crate) async fn run_bounded(
             cancelled: true,
         });
     }
-    let workspace = RuntimeWorkspace::create()?;
-    if tokio::time::Instant::now() >= execution_deadline || cancel.load(Ordering::SeqCst) {
-        workspace
-            .close_before((tokio::time::Instant::now() + CLEANUP_BUDGET).into_std())
-            .map_err(|error| {
-                CLEANUP_BLOCKED.store(true, Ordering::SeqCst);
-                error
-            })?;
+    record_phase("workspace_create_begin", None);
+    let workspace_result = RuntimeWorkspace::create();
+    record_phase(
+        if workspace_result.is_ok() {
+            "workspace_create_end"
+        } else {
+            "workspace_create_failed"
+        },
+        None,
+    );
+    let workspace = workspace_result?;
+    if request_expired(tokio::time::Instant::now(), execution_deadline)
+        || cancel.load(Ordering::SeqCst)
+    {
+        record_phase(
+            if cancel.load(Ordering::SeqCst) {
+                "cancel_before_spawn"
+            } else {
+                "timeout_before_spawn"
+            },
+            None,
+        );
+        record_phase("cleanup_filesystem_begin", None);
+        let cleanup = workspace
+            .close_before(teardown_deadline(tokio::time::Instant::now(), deadline).into_std());
+        record_phase(
+            if cleanup.is_ok() {
+                "cleanup_filesystem_end"
+            } else {
+                "cleanup_filesystem_failed"
+            },
+            None,
+        );
+        cleanup.map_err(|error| {
+            CLEANUP_BLOCKED.store(true, Ordering::SeqCst);
+            error
+        })?;
         return if cancel.load(Ordering::SeqCst) {
             Ok(CapturedProcess {
                 exit_code: None,
@@ -268,11 +349,25 @@ pub(crate) async fn run_bounded(
         .env_remove("GEMINI_API_KEY")
         .env_remove("GOOGLE_API_KEY")
         .env_remove("OPENAI_API_KEY");
+    record_phase("spawn_job_begin", None);
     let (mut child, job) =
         match crate::process_job::ProcessJob::spawn_before(&mut command, deadline).await {
-            Ok(value) => value,
+            Ok(value) => {
+                record_phase("spawn_job_end", value.0.id());
+                value
+            }
             Err(error) => {
+                record_phase("spawn_job_failed", None);
+                record_phase("cleanup_filesystem_begin", None);
                 let cleanup = workspace.close_before(deadline.into_std());
+                record_phase(
+                    if cleanup.is_ok() {
+                        "cleanup_filesystem_end"
+                    } else {
+                        "cleanup_filesystem_failed"
+                    },
+                    None,
+                );
                 if let Err(cleanup) = cleanup {
                     CLEANUP_BLOCKED.store(true, Ordering::SeqCst);
                     return Err(format!("{error};cleanup={cleanup}"));
@@ -285,19 +380,28 @@ pub(crate) async fn run_bounded(
         };
     let stdout = child.stdout.take().ok_or("provider_stdout_missing")?;
     let stderr = child.stderr.take().ok_or("provider_stderr_missing")?;
+    record_phase("io_begin", None);
     let outcome = {
         let io = async {
             let wait = async {
-                child
+                let result = child
                     .wait()
                     .await
-                    .map_err(|_| "provider_wait_failed".to_string())
+                    .map_err(|_| "provider_wait_failed".to_string());
+                record_phase("child_wait_end", None);
+                result
             };
-            let (out, err, status) = tokio::try_join!(
-                read_bounded(stdout, stdout_limit),
-                read_bounded(stderr, stderr_limit),
-                wait
-            )?;
+            let out = async {
+                let result = read_bounded(stdout, stdout_limit).await;
+                record_phase("stdout_read_end", None);
+                result
+            };
+            let err = async {
+                let result = read_bounded(stderr, stderr_limit).await;
+                record_phase("stderr_read_end", None);
+                result
+            };
+            let (out, err, status) = tokio::try_join!(out, err, wait)?;
             Ok::<_, String>(CapturedProcess {
                 exit_code: status.code(),
                 stdout: String::from_utf8(out).map_err(|_| "provider_invalid_utf8".to_string())?,
@@ -307,13 +411,17 @@ pub(crate) async fn run_bounded(
         };
         tokio::select! {
             biased;
-            _ = cancellation(&cancel) => Ok(CapturedProcess { exit_code: None, stdout: String::new(), stderr: String::new(), cancelled: true }),
-            result = tokio::time::timeout_at(execution_deadline, io) => result.unwrap_or_else(|_| Err("provider_timeout".into())),
+            _ = cancellation(&cancel) => { record_phase("cancel_during_io", None); Ok(CapturedProcess { exit_code: None, stdout: String::new(), stderr: String::new(), cancelled: true }) },
+            result = tokio::time::timeout_at(execution_deadline, io) => match result {
+                Ok(value) => { record_phase("io_complete", None); value },
+                Err(_) => { record_phase("timeout_during_io", None); Err("provider_timeout".into()) },
+            },
         }
     }; // All pipe futures are dropped here, including on overflow/cancel/timeout.
        // One teardown deadline starts once, after normal completion/cancel/timeout.
        // No retry, reader, process, or filesystem phase restarts this budget.
-    let cleanup_deadline = deadline.min(tokio::time::Instant::now() + CLEANUP_BUDGET);
+    record_phase("cleanup_begin", None);
+    let cleanup_deadline = teardown_deadline(tokio::time::Instant::now(), deadline);
     let cleanup = async {
         job.terminate()?;
         let _ = child.start_kill();
@@ -327,12 +435,24 @@ pub(crate) async fn run_bounded(
             }
             tokio::time::sleep(Duration::from_millis(2)).await;
         }
+        record_phase("cleanup_job_zero", None);
         Ok::<(), String>(())
     }
     .await;
     drop(child);
     drop(job);
-    let cleanup = cleanup.and(workspace.close_before(cleanup_deadline.into_std()));
+    record_phase("cleanup_filesystem_begin", None);
+    let workspace_cleanup = workspace.close_before(cleanup_deadline.into_std());
+    record_phase(
+        if workspace_cleanup.is_ok() {
+            "cleanup_filesystem_end"
+        } else {
+            "cleanup_filesystem_failed"
+        },
+        None,
+    );
+    let cleanup = cleanup.and(workspace_cleanup);
+    record_phase("cleanup_end", None);
     if let Err(cleanup_error) = cleanup {
         CLEANUP_BLOCKED.store(true, Ordering::SeqCst);
         let cause = match &outcome {
@@ -348,6 +468,36 @@ pub(crate) async fn run_bounded(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn request_budget_expires_at_boundary_without_deadline_restart() {
+        let start = tokio::time::Instant::now();
+        let deadline = start + Duration::from_millis(750);
+        assert!(!request_expired(
+            deadline - Duration::from_nanos(1),
+            deadline
+        ));
+        assert!(request_expired(deadline, deadline));
+        assert!(request_expired(
+            deadline + Duration::from_millis(1187),
+            deadline
+        ));
+        let overall = deadline + CLEANUP_BUDGET;
+        let late_cleanup_start = deadline + Duration::from_secs(2);
+        assert_eq!(teardown_deadline(late_cleanup_start, overall), overall);
+    }
+
+    #[test]
+    fn overdue_workspace_creation_cannot_renew_cleanup_budget() {
+        let start = tokio::time::Instant::now();
+        let request_deadline = start + Duration::from_millis(750);
+        let overall = request_deadline + CLEANUP_BUDGET;
+        let overdue_create_end = overall + Duration::from_millis(500);
+        assert!(request_expired(overdue_create_end, request_deadline));
+        let cleanup = teardown_deadline(overdue_create_end, overall);
+        assert_eq!(cleanup, overall);
+        assert!(cleanup < overdue_create_end);
+    }
 
     #[tokio::test]
     async fn bounded_reader_accepts_exact_limit_and_rejects_one_extra() {
