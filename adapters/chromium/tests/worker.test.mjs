@@ -8,20 +8,22 @@ import test from 'node:test';
 const original = readFileSync(new URL('../extension/worker.js', import.meta.url), 'utf8');
 const source = original.replace("import {HOST} from './host-config.js';", "const HOST = 'org.grammar.test';");
 assert.notEqual(source, original, 'mock loader must replace exactly the host config import');
-const deferred = () => { let resolve; const promise = new Promise(r => {resolve=r;}); return {promise,resolve}; };
+const deferred = () => { let resolve,reject; const promise = new Promise((r,j) => {resolve=r;reject=j;}); return {promise,resolve,reject}; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function event() { const listeners=[];return {addListener(fn){listeners.push(fn);},emit(...args){for(const fn of listeners)fn(...args);}}; }
 function fixture() {
-  const sent=[],ports=[],timers=new Map();let nextTimer=0,epoch=0,storageGate=null,injectionGate=null;
+  const sent=[],ports=[],timers=new Map();let nextTimer=0,epoch=0,storageGate=null,injectionGate=null,writeGate=null,stored={deniedOrigins:[]};
+  const injectionGates=new Map(),writes=[];
   const onMessage=event(),onUpdated=event(),onRemoved=event();
   const chrome={
-    storage:{local:{async get(){const gate=storageGate;storageGate=null;return gate?gate.promise:{deniedOrigins:[]};},async set(){}}},
+    storage:{local:{async get(){const gate=storageGate;storageGate=null;return gate?gate.promise:structuredClone(stored);},
+      async set(value){writes.push(structuredClone(value));const gate=writeGate;writeGate=null;if(gate)await gate.promise;stored=structuredClone(value);}}},
     runtime:{id:'extension',getURL:path=>'chrome-extension://extension/'+path,onMessage,
       connectNative(name){assert.equal(name,'org.grammar.test');const port={onMessage:event(),onDisconnect:event(),posted:[],closed:0,
         postMessage(message){this.posted.push(message);},disconnect(){this.closed++;this.onDisconnect.emit();}};ports.push(port);return port;}},
     tabs:{onUpdated,onRemoved,async get(tabId){return {url:'https://example.test/document/'+tabId};},
       async sendMessage(tabId,message,options){sent.push({tabId,message,options});return {ready:true};}},
-    scripting:{async executeScript({target}){const gate=injectionGate;injectionGate=null;return gate?gate.promise:[{frameId:0,documentId:'doc-'+target.tabId}];}},
+    scripting:{async executeScript({target}){const gate=injectionGates.get(target.tabId)||injectionGate;injectionGates.delete(target.tabId);injectionGate=null;return gate?gate.promise:[{frameId:0,documentId:'doc-'+target.tabId}];}},
   };
   const context=vm.createContext({chrome,URL,crypto:{randomUUID:()=>`epoch-${++epoch}`},
     setTimeout:fn=>{const id=++nextTimer;timers.set(id,fn);return id;},clearTimeout:id=>timers.delete(id)});
@@ -32,8 +34,9 @@ function fixture() {
   const sender=(tabId=1)=>({id:'extension',url:'https://example.test/document/'+tabId,tab:{id:tabId},frameId:0,documentId:'doc-'+tabId});
   const currentEpoch=(tabId=1)=>sent.filter(x=>x.tabId===tabId&&x.message.op==='enable').at(-1)?.message.epoch;
   const request=(id='r1',tabId=1)=>({version:1,op:'analyze',id,epoch:currentEpoch(tabId),revision:1,text:'seperate'});
-  return {sent,ports,timers,command,dispatch,sender,request,currentEpoch,onUpdated,onRemoved,
-    delayStorage(){return storageGate=deferred();},delayInjection(){return injectionGate=deferred();},
+  return {sent,ports,timers,writes,command,dispatch,sender,request,currentEpoch,onUpdated,onRemoved,
+    delayStorage(){return storageGate=deferred();},delayWrite(){return writeGate=deferred();},
+    delayInjection(tabId){if(tabId!==undefined){const gate=deferred();injectionGates.set(tabId,gate);return gate;}return injectionGate=deferred();},
     fireTimer(){const [id,fn]=timers.entries().next().value;timers.delete(id);fn();}};
 }
 
@@ -101,4 +104,52 @@ test('document cap and emergency teardown bound native ownership',async()=>{
   const pending=f.dispatch(f.request(),f.sender());await tick();await f.command('stop');
   assert.equal((await pending).error,'disabled');assert.equal(f.ports[0].closed,1);
   for(let id=1;id<=4;id++)assert.equal((await f.dispatch(f.request('after',id),f.sender(id))).error,'permission_denied');
+});
+
+
+test('domain deny invalidates an enable already waiting on injection',async()=>{
+  const f=fixture(),gate=f.delayInjection(1);const enable=f.command('enable');await tick();
+  assert.match((await f.command('deny')).status,/^Domain blocked/);
+  gate.resolve([{frameId:0,documentId:'doc-1'}]);
+  assert.equal((await enable).status,'Enable cancelled');
+  assert.equal(f.sent.filter(x=>x.message.op==='enable').length,0);assert.equal(f.ports.length,0);
+  assert.match((await f.command('enable')).status,/blocked/);
+});
+
+test('new enable while policy storage write waits is rejected before document activation',async()=>{
+  const f=fixture(),gate=f.delayWrite();const deny=f.command('deny');await tick();
+  assert.equal(f.writes.length,1);
+  const enable=await f.command('enable',2);
+  assert.match(enable.status,/busy|progress|changing/i);
+  assert.equal(f.sent.filter(x=>x.message.op==='enable').length,0);
+  gate.resolve();assert.match((await deny).status,/^Domain blocked/);assert.equal(f.ports.length,0);
+});
+
+test('concurrent domain policy commands fail busy instead of losing stored deny entries',async()=>{
+  const f=fixture(),gate=f.delayWrite();const deny=f.command('deny');await tick();
+  assert.match((await f.command('allow')).status,/busy|progress|changing/i);
+  assert.match((await f.command('deny',2)).status,/busy|progress|changing/i);
+  assert.equal(f.writes.length,1);gate.resolve();await deny;
+  assert.match((await f.command('enable')).status,/blocked/);
+  assert.match((await f.command('allow')).status,/removed/);
+  assert.equal(f.writes.length,2);assert.deepEqual(f.writes[1].deniedOrigins,[]);
+  assert.match((await f.command('enable')).status,/Document enabled/);
+});
+
+test('concurrent enables recheck the four-document cap after asynchronous injection',async()=>{
+  const f=fixture(),gates=[],pending=[];
+  for(let id=1;id<=5;id++){gates.push(f.delayInjection(id));pending.push(f.command('enable',id));}
+  await tick();
+  for(let id=1;id<=5;id++)gates[id-1].resolve([{frameId:0,documentId:'doc-'+id}]);
+  const results=await Promise.all(pending);
+  assert.equal(results.filter(value=>value.status.startsWith('Document enabled')).length,4);
+  assert.equal(results.filter(value=>value.status.includes('limit 4')).length,1);
+  assert.equal(f.sent.filter(x=>x.message.op==='enable').length,4);assert.equal(f.ports.length,0);
+});
+
+test('failed policy write releases busy latch and keeps all prior sessions revoked',async()=>{
+  const f=fixture();await f.command('enable');const gate=f.delayWrite();const deny=f.command('deny');await tick();
+  assert.equal((await f.dispatch(f.request(),f.sender())).error,'permission_denied');
+  gate.reject(Error('synthetic storage failure'));assert.equal((await deny).error,'unavailable');
+  assert.match((await f.command('enable')).status,/Document enabled/);assert.equal(f.ports.length,0);
 });

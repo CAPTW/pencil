@@ -24,6 +24,14 @@ Historical 200ms failure is not reclassified. Cancel-handle acknowledgement targ
 
 Chromium implementation limits are 8192 UTF-16 units/document, 64 cached suggestions, 60s TTL, 250ms debounce, four documents, one host request per document, 5s local host timeout; native frames128KiB. Changed complete lines are analyzed; unchanged suggestions rebase only through exact unaffected ranges/source equality. These are candidate resource contracts, not broad performance-quality claims. Suggested local responsiveness target is2s from field/input to annotation including debounce; final native timeout is5s. Deep requires a separate request budget, not an enlarged Instant timeout.
 
+## Final checkpoint caveats
+
+`final-rust.log` records219 passed/21 ignored; `final-frontend.log` passes Provider contracts and typecheck. Core now215 assertions; `browser-BpsSOU/result.json` records16 synthetic checks and zero sensitive-field value reads, including explicit sensitive attributes. Later worker policy fixes invalidate pending enables synchronously, block concurrent policy changes/new enables, and recheck the four-document limit after injection; final external receipts record their tests and exact commit.
+
+`runtime/final-checkpoint.log` is a retained failure:19 passed/1 failed. While release compilation was also active, the success fixture exceeded its unchanged750ms request deadline and returned provider_timeout (elapsed1937ms); owned processes exited and workspace roots were removed. Concurrency is an observation, not a proven cause. A same-budget repeat without compilation must be recorded separately and cannot erase this failure. F02 overall acceptance remains unresolved. `final-format.log` fails formatting; `final-clippy.log` exits0 with43 warnings. These are not clean lint/format acceptance.
+
+Release attempts whose source changed during security fixes are superseded and must not emit qualified receipts. Only the final clean-source receipt, if successfully produced, authorizes a candidate package; the package remains UNQUALIFIED_MISSION_CANDIDATE. Exact source/build/package identity, final Source preview, test additions and residual checks live in the external final result/handoff packets.
+
 ## Exact remaining development
 
 1. Recheck final runtime review/tests and preserve all ownership/cleanup evidence. Qualify native capture only in an isolated input desktop and with defensible sensitivity authority. Do not remove the fail-closed gate just to revive the UI. A native supported Apply path needs exact document/range authority and mutation reread; generic native editors stay Copy-only.

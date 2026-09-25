@@ -32,7 +32,7 @@
       ]
     },
     {
-      "verdict": "SYNTHETIC_VERIFIED",
+      "verdict": "REPAIRED_SYNTHETIC_PASS_WITH_LOADED_RUN_TIMEOUT_UNRESOLVED",
       "id": "F-02",
       "historical_verdict": "CONFIRMED_CURRENT_DEFECT",
       "historical_evidence": [

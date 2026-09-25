@@ -2,6 +2,7 @@
 const sessions = new Map();
 const generations = new Map();
 let emergencyGeneration = 0;
+let policyChanging = false;
 import {HOST} from './host-config.js';
 const blockedDefault = /(^|\.)(accounts\.google\.com|login\.microsoftonline\.com)$/i;
 const originOf = url => { try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.origin : null; } catch { return null; } };
@@ -16,9 +17,10 @@ function close(tabId) {
   chrome.tabs.sendMessage(tabId, {op: 'disable'}).catch(() => {});
 }
 async function enable(tabId) {
+  if (policyChanging) return {status: 'Domain policy changing; enable again after completion'};
   close(tabId);
   const generation = generations.get(tabId), emergency = emergencyGeneration;
-  const current = () => generations.get(tabId) === generation && emergencyGeneration === emergency;
+  const current = () => !policyChanging && generations.get(tabId) === generation && emergencyGeneration === emergency;
   const tab = await chrome.tabs.get(tabId), origin = originOf(tab.url);
   if (await denied(origin)) return {status: 'Domain blocked or unsupported'};
   if (!current()) return {status: 'Enable cancelled'};
@@ -27,6 +29,7 @@ async function enable(tabId) {
   if (!current()) return {status: 'Enable cancelled'};
   const documentId = injected.find(frame => frame.frameId === 0)?.documentId;
   if (!documentId) return {status: 'Document unavailable'};
+  if (sessions.size >= 4) return {status: 'Disable another document first (limit 4)'};
   const epoch = crypto.randomUUID();
   sessions.set(tabId, {origin, epoch, documentId, port: null, pending: null, timer: null});
   const response = await chrome.tabs.sendMessage(tabId, {op: 'enable', epoch}, {documentId});
@@ -65,14 +68,20 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       if (op === 'enable') return enable(tabId);
       if (op === 'disable') { close(tabId); return {status: 'Disabled'}; }
       if (op === 'deny' || op === 'allow') {
-        const origin = originOf((await chrome.tabs.get(tabId)).url);
-        if (!origin) return {status: 'Unsupported domain'};
-        const {deniedOrigins = []} = await chrome.storage.local.get('deniedOrigins');
-        const next = new Set(deniedOrigins); op === 'deny' ? next.add(origin) : next.delete(origin);
-        if (next.size > 256) return {status: 'Domain block limit reached'};
-        await chrome.storage.local.set({deniedOrigins: [...next]});
-        for (const [id,s] of sessions) if (s.origin === origin) close(id);
-        return {status: op === 'deny' ? 'Domain blocked' : 'Block removed; enable explicitly'};
+        if (policyChanging) return {status: 'Domain policy changing; try again after completion'};
+        policyChanging = true;
+        emergencyGeneration++;
+        // Policy changes revoke every active and pending grant before any async work.
+        for (const id of new Set([...sessions.keys(), tabId])) close(id);
+        try {
+          const origin = originOf((await chrome.tabs.get(tabId)).url);
+          if (!origin) return {status: 'Unsupported domain'};
+          const {deniedOrigins = []} = await chrome.storage.local.get('deniedOrigins');
+          const next = new Set(deniedOrigins); op === 'deny' ? next.add(origin) : next.delete(origin);
+          if (next.size > 256) return {status: 'Domain block limit reached'};
+          await chrome.storage.local.set({deniedOrigins: [...next]});
+          return {status: op === 'deny' ? 'Domain blocked; all documents disabled' : 'Block removed; enable explicitly'};
+        } finally { policyChanging = false; }
       }
       return {status: 'Unsupported action'};
     }
