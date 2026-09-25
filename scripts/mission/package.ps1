@@ -20,7 +20,7 @@ $null=& (Join-Path $PSScriptRoot 'build-receipt.ps1') -SourceRoot $source -Recei
 $files=@(Get-ChildItem -LiteralPath $destination -File -Recurse | Sort-Object FullName | ForEach-Object {
   [ordered]@{path=[IO.Path]::GetRelativePath($destination,$_.FullName).Replace('\','/');sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower();bytes=$_.Length}
 })
-$manifest=[ordered]@{classification='UNQUALIFIED_MISSION_CANDIDATE';sourceCommit=$verified.after.commit;sourceTree=$verified.after.tree;sourcePhysicalDigest=$verified.after.trackedBytesSha256;nativeCapture='WITHHELD';nativeApply='COPY_ONLY';chromiumDeep='UNAVAILABLE';providerLive='NOT_RUN';files=$files}
+$manifest=[ordered]@{classification='UNQUALIFIED_MISSION_CANDIDATE';sourceCommit=$verified.after.commit;sourceTree=$verified.after.tree;sourcePhysicalDigest=$verified.after.trackedBytesSha256;nativeCapture='WITHHELD';nativeApply='COPY_ONLY';chromiumDeep='CONSENT_BOUND_CANDIDATE_UNQUALIFIED';antigravityDeep='PRIVACY_UNQUALIFIED';claudeOAuth='UNAVAILABLE_WITH_BARE';providerLive='NOT_RUN';files=$files}
 [IO.File]::WriteAllText((Join-Path $destination 'MANIFEST.json'),($manifest|ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false))
 $zip=$destination+'.zip'
 if(Test-Path -LiteralPath $zip){throw 'ZIP already exists'}

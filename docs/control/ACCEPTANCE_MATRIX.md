@@ -48,4 +48,4 @@ No threshold here is claimed measured for P3-B. Budgets and editor support must 
 
 ## Autonomous mission candidate checkpoint (2026-09-25)
 
-Runtime/draft regressions and isolated Chromium local-Instant mutation rereads have synthetic evidence in HANDOFF.md. Native capture is activation-withheld, native Apply is Copy-only, Deep host integration is absent. Therefore A/B/C as a whole are NOT_ACCEPTED. Actual build receipts and Source package verification are separate evidence, not upgrades of these product verdicts. Historical audit/FAIL evidence is immutable.
+Runtime/draft regressions and isolated Chromium local-Instant mutation rereads have synthetic evidence in HANDOFF.md. Native capture is activation-withheld and native Apply is Copy-only. The resumed candidate implements consent-bound Deep through a shared executor and concurrent cancellation host; synthetic runtime/host/browser checks pass, with live Providers NOT_RUN. Therefore A/B/C as a whole are NOT_ACCEPTED. Actual build receipts and Source package verification are separate evidence, not upgrades of these product verdicts. Historical audit/FAIL evidence is immutable.

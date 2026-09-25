@@ -60,6 +60,10 @@ def run(repo):
             ("product_audit_base", "0" * 40, "HISTORICAL_AUDIT_BASE_DRIFT"),
             ("p3b_status", "IMPLEMENTATION_COMPLETE", "P3B_OVERCLAIM"),
             ("acceptance_boundary", "WHOLE_PRODUCT_PASS", "ACCEPTANCE_OVERCLAIM"),
+            ("mission_completion", "COMPLETE", "STATE_SEMANTIC_DRIFT:mission_completion"),
+            ("main_adoption", "ADOPTED", "STATE_SEMANTIC_DRIFT:main_adoption"),
+            ("native_capture_activation", "ENABLED", "STATE_SEMANTIC_DRIFT:native_capture_activation"),
+            ("chromium_deep_activation", "LIVE_QUALIFIED", "STATE_SEMANTIC_DRIFT:chromium_deep_activation"),
         ]:
             changed = copy.deepcopy(state); changed[key] = bad
             record("mission_" + key + "_drift_refused", lambda changed=changed,token=token: rejected(lambda: ps.state_check(changed), [token]))
