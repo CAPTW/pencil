@@ -80,6 +80,9 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  await page.locator('#secret').click();await page.getByRole('button',{name:'Enable this field',exact:true}).click();await page.waitForTimeout(500);
  assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,paused);const sensitiveReads=await worker.evaluate(async()=>{const [tab]=await chrome.tabs.query({url:'http://127.0.0.1:18437/*'});return (await chrome.scripting.executeScript({target:{tabId:tab.id},func:()=>globalThis.fixtureSensitiveReads}))[0].result;});
  assert.equal(sensitiveReads,0);pass('sensitive label rejected before isolated-world value read');
+ await page.locator('#writing').evaluate(el=>el.setAttribute('data-sensitive','true'));
+ await page.locator('#writing').click();await page.getByRole('button',{name:'Enable this field',exact:true}).click();await page.waitForTimeout(500);
+ assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,paused);pass('explicit sensitive metadata denied');
  await page.locator('#secret').press('Tab');
  assert.equal(await page.evaluate(()=>document.activeElement.id),'rich');await page.getByRole('button',{name:'Enable this field',exact:true}).click();await page.waitForTimeout(400);assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,paused);pass('rich editor unsupported');
  await page.reload();assert.equal(await page.locator('#grammar-local-assist').count(),0);pass('navigation revokes opt-in');

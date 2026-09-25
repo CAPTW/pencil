@@ -22,7 +22,7 @@
   }
   function supported(el) {
     if (!el || !el.isConnected || el.ownerDocument !== document || el.getRootNode() !== document ||
-        el.closest('[inert],[hidden],[aria-hidden="true"],[data-grammar-sensitive]') || el.matches(':disabled,[readonly],[aria-readonly="true"],[aria-disabled="true"]')) return false;
+        el.closest('[inert],[hidden],[aria-hidden="true"],[data-grammar-sensitive],[data-sensitive]:not([data-sensitive="false"])') || el.matches(':disabled,[readonly],[aria-readonly="true"],[aria-disabled="true"]')) return false;
     const style = getComputedStyle(el);
     if (style.display === 'none' || style.visibility !== 'visible' || el.getClientRects().length === 0) return false;
     // Never read value/textContent before these structural and sensitivity checks.
