@@ -33,7 +33,7 @@ GUARDED = ("src/", "src-tauri/", "benchmarks/")
 GUARDED_FILES = {"package.json", "package-lock.json", "index.html", "tsconfig.json", "tsconfig.node.json", "vite.config.ts"}
 SAFETY_TASK = "GRAMMAR-P3A-R1-CURRENT-HEAD-SAFETY-STABILIZATION-CONFIRMED-CANCEL-PROCESS-DRAFT-AND-APPLY-BOUNDARY-DEFECTS-BOUNDED-REPAIR"
 MISSION = "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1"
-DEEP_TASK = "GRAMMAR-P3B-P1-SHARED-DEEP-RUNTIME-AND-CONSENT-BOUND-HOST"
+DEEP_TASK = "GRAMMAR-P3B-P2-SYNTHETIC-DEEP-AND-EDITOR-QUALIFICATION"
 AUDIT_BASE = "9f54ebd4b7586f7a1658245761ccccf8a77500c6"
 
 
@@ -93,14 +93,17 @@ def state_check(state):
         fail(state.get("internal_continuation") is True and state.get("scope_expansion") is False and
              state.get("remote_publication") is False, "MISSION_BOUNDARY_INVALID")
         fail(state["product_audit_base"] == AUDIT_BASE, "HISTORICAL_AUDIT_BASE_DRIFT")
-        fail(state["p3b_status"] == "LOCAL_INSTANT_CANDIDATE_SYNTHETIC_VERIFIED_DEEP_NOT_IMPLEMENTED", "P3B_OVERCLAIM")
+        fail(state["p3b_status"] == "CONSENT_BOUND_DEEP_CANDIDATE_NO_LIVE_ACCEPTANCE", "P3B_OVERCLAIM")
         fail(state["acceptance_boundary"] == "CANDIDATE_SYNTHETIC_ONLY_NO_WHOLE_PRODUCT_ACCEPTANCE", "ACCEPTANCE_OVERCLAIM")
         expected = {
             "p3a_status": "SAFETY_REPAIRS_SYNTHETIC_VERIFIED_NATIVE_CAPTURE_NOT_QUALIFIED",
-            "active_phase": "MISSION_IMPLEMENTATION", "active_step": "SHARED_DEEP_RUNTIME_NEXT",
+            "active_phase": "MISSION_IMPLEMENTATION", "active_step": "DEEP_ADAPTER_QUALIFICATION",
             "active_task": MISSION, "exact_next_task": DEEP_TASK,
-            "next_task_status": "AUTHORIZED_WITHIN_MISSION", "next_gate": "SHARED_DEEP_RUNTIME_NEXT",
+            "next_task_status": "AUTHORIZED_WITHIN_MISSION", "next_gate": "DEEP_ADAPTER_QUALIFICATION",
             "d020_verdict": "D020_DOCUMENTATION_OVERCLAIM",
+            "mission_completion": "INCOMPLETE", "main_adoption": "NOT_ADOPTED_CANDIDATE_ONLY",
+            "native_capture_activation": "WITHHELD_PENDING_ISOLATED_POSITIVE_AND_SENSITIVITY_ACCEPTANCE",
+            "chromium_deep_activation": "UNCONFIGURED_CANDIDATE_SYNTHETIC_QUALIFICATION_ONLY",
         }
         for key, value in expected.items():
             fail(state.get(key) == value, f"STATE_SEMANTIC_DRIFT:{key}")

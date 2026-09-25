@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
-  "state_version": "2026-09-25.autonomous-r1-candidate",
+  "state_version": "2026-09-25.autonomous-r1-resume-r2",
   "repository_branch": "main",
   "product_target": "P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST",
   "p3a_status": "SAFETY_REPAIRS_SYNTHETIC_VERIFIED_NATIVE_CAPTURE_NOT_QUALIFIED",
-  "p3b_status": "LOCAL_INSTANT_CANDIDATE_SYNTHETIC_VERIFIED_DEEP_NOT_IMPLEMENTED",
+  "p3b_status": "CONSENT_BOUND_DEEP_CANDIDATE_NO_LIVE_ACCEPTANCE",
   "first_adapter_decision": "CHROMIUM_TEXTAREA_CONTENTEDITABLE_MV3",
   "active_phase": "MISSION_IMPLEMENTATION",
-  "active_step": "SHARED_DEEP_RUNTIME_NEXT",
+  "active_step": "DEEP_ADAPTER_QUALIFICATION",
   "active_task": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
   "completed_task": "GRAMMAR-P3B-R0-CURRENT-LOCAL-REPOSITORY-REAUDIT-PRODUCT-TARGET-RESET-MULTI-AGENT-DEVELOPMENT-CONTRACT-PHASE-STEP-ROADMAP-AND-MINIMAL-PROJECT-SOURCE-SUCCESSOR-R1",
-  "exact_next_task": "GRAMMAR-P3B-P1-SHARED-DEEP-RUNTIME-AND-CONSENT-BOUND-HOST",
+  "exact_next_task": "GRAMMAR-P3B-P2-SYNTHETIC-DEEP-AND-EDITOR-QUALIFICATION",
   "next_task_status": "AUTHORIZED_WITHIN_MISSION",
   "acceptance_boundary": "CANDIDATE_SYNTHETIC_ONLY_NO_WHOLE_PRODUCT_ACCEPTANCE",
   "provider_kinds": [
@@ -93,7 +93,7 @@
   "d020_verdict": "D020_DOCUMENTATION_OVERCLAIM",
   "automatic_continuation": false,
   "next_gate_executed": false,
-  "next_gate": "SHARED_DEEP_RUNTIME_NEXT",
+  "next_gate": "DEEP_ADAPTER_QUALIFICATION",
   "product_audit_base": "9f54ebd4b7586f7a1658245761ccccf8a77500c6",
   "git_identity_policy": "MEASURE_CANONICAL_MAIN_AT_EXPORT",
   "source_digest_policy": "COMPUTE_SORTED_PAYLOAD_PATH_SHA256_IN_MANIFEST_EXCLUDING_SELF_REFERENCE",
@@ -107,10 +107,11 @@
     "runtime repair and synthetic native verification",
     "draft binding and Copy-only containment",
     "Chromium local Instant candidate and synthetic browser verification",
-    "provenance tooling negative tests"
+    "provenance tooling negative tests",
+    "shared Provider executor, consent-bound concurrent Deep host and cancellation-safe browser candidate"
   ],
   "native_capture_activation": "WITHHELD_PENDING_ISOLATED_POSITIVE_AND_SENSITIVITY_ACCEPTANCE",
-  "chromium_deep_activation": "UNAVAILABLE_NOT_IMPLEMENTED",
+  "chromium_deep_activation": "UNCONFIGURED_CANDIDATE_SYNTHETIC_QUALIFICATION_ONLY",
   "mission_completion": "INCOMPLETE",
   "main_adoption": "NOT_ADOPTED_CANDIDATE_ONLY"
 }

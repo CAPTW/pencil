@@ -2,7 +2,7 @@
 
 # Phase-Step Roadmap — historical phases, active mission continuation
 
-EXACT_NEXT_TASK=GRAMMAR-P3B-P1-SHARED-DEEP-RUNTIME-AND-CONSENT-BOUND-HOST
+EXACT_NEXT_TASK=GRAMMAR-P3B-P2-SYNTHETIC-DEEP-AND-EDITOR-QUALIFICATION
 
 아래 Phase 표는 R0 당시 계획 기록이다. 현재 후보의 실행 결과·미완료 범위는 HANDOFF.md와 control/state.json을 따른다.
 
