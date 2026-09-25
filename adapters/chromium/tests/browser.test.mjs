@@ -102,6 +102,26 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  await suggestion.click();await page.getByRole('textbox',{name:'Edit replacement',exact:true}).fill('my draft');
  await page.getByRole('button',{name:/Suggestion 2:/}).hover();
  assert.equal(await page.getByRole('textbox',{name:'Edit replacement',exact:true}).inputValue(),'my draft');pass('passive hover preserves edited draft');
+ const layoutAnalyses=(await worker.evaluate(()=>fixtureMetrics)).analyses;
+ await page.setViewportSize({width:320,height:240});await page.waitForTimeout(150);
+ const smallPanel=await page.locator('#grammar-local-assist').boundingBox();
+ assert.ok(smallPanel.x>=0 && smallPanel.y>=0 && smallPanel.x+smallPanel.width<=320 && smallPanel.y+smallPanel.height<=240,'panel stays inside resized viewport');
+ assert.equal(await page.getByRole('textbox',{name:'Edit replacement',exact:true}).inputValue(),'my draft');
+ await page.getByRole('button',{name:'Hide Grammar panel',exact:true}).click();
+ await page.getByRole('button',{name:'Grammar enabled · Show panel',exact:true}).click();
+ await page.setViewportSize({width:1280,height:720});await page.waitForTimeout(150);
+ assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,layoutAnalyses);
+ pass('narrow short viewport preserves draft and accessible panel without inference');
+ await page.evaluate(()=>{document.body.style.minHeight='1800px';document.querySelector('#writing').style.marginTop='300px';window.scrollTo(0,200);});
+ await page.waitForTimeout(150);
+ const scrolledPanel=await page.locator('#grammar-local-assist').boundingBox();
+ const scrolledEditor=await page.locator('#writing').boundingBox();
+ assert.equal(scrolledPanel.y,Math.max(8,Math.min(720-scrolledPanel.height-8,scrolledEditor.y)));
+ assert.equal(await page.getByRole('textbox',{name:'Edit replacement',exact:true}).inputValue(),'my draft');
+ assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,layoutAnalyses);
+ await page.evaluate(()=>{document.body.style.minHeight='';document.querySelector('#writing').style.marginTop='';window.scrollTo(0,0);});
+ await page.waitForTimeout(150);
+ pass('page scroll reanchors panel without replacing draft or invoking inference');
  // Reproduce a page control directly underneath the annotation, then release it
  // without dismissing a user-edited suggestion or performing another analysis.
  const panelBounds=await page.getByRole('region',{name:'Grammar local writing assist'}).boundingBox();

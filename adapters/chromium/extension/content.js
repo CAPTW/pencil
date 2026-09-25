@@ -4,7 +4,7 @@
   const {DocumentSession, MAX_TEXT} = globalThis.GrammarCore;
   let epoch = null, session = null, editor = null, chosen = null, composing = false;
   let root = null, shadow = null, status = null, list = null, card = null;
-  let panel = null, panelToggle = null;
+  let panel = null, panelToggle = null, layoutObserver = null, layoutFrame = null;
   let timer = null, heartbeat = null, expiry = null, observer = null, inflight = false, pending = null, deferredInstant = null;
   let selectedIndex = null, editBox = null, sequence = 0;
   let deepProvider = null, deepRequest = null, deepButton = null, draftVersion = 0;
@@ -69,6 +69,10 @@
   function disable(notify = false) {
     const oldEpoch = epoch; wipeField(); epoch = null; deepProvider=null; deepButton=null;
     clearInterval(heartbeat); heartbeat = null; observer?.disconnect(); observer = null;
+    layoutObserver?.disconnect(); layoutObserver = null;
+    if (layoutFrame !== null) cancelAnimationFrame(layoutFrame); layoutFrame = null;
+    window.removeEventListener('resize', scheduleLayout);
+    window.removeEventListener('scroll', scheduleLayout, true);
     document.removeEventListener('focusin', focus);
     document.removeEventListener('input', input, true);
     document.removeEventListener('compositionstart', compositionStart, true);
@@ -90,9 +94,26 @@
   function input(event) { if (event.target === editor) { cancelDeepUI(); invalidate(false); schedule(); } }
   function compositionStart(event) { if (event.target === editor) { composing = true; cancelDeepUI(); invalidate(false); clearTimeout(timer); } }
   function compositionEnd(event) { if (event.target === editor) { composing = false; schedule(); } }
+  function scheduleLayout() {
+    if (!root || layoutFrame !== null) return;
+    layoutFrame = requestAnimationFrame(() => {
+      layoutFrame = null;
+      if (!root?.isConnected) return;
+      // Geometry only: layout changes never read document text or invoke analysis.
+      panel.style.maxHeight = Math.max(0, Math.min(innerHeight / 2,
+        innerHeight - panelToggle.getBoundingClientRect().height - 16)) + 'px';
+      const bounds = root.getBoundingClientRect();
+      const anchor = editor?.isConnected ? editor.getBoundingClientRect() : null;
+      const left = anchor ? anchor.right + 8 : innerWidth - bounds.width - 12;
+      const top = anchor ? anchor.top : 12;
+      root.style.left = Math.max(8, Math.min(innerWidth - bounds.width - 8, left)) + 'px';
+      root.style.top = Math.max(8, Math.min(innerHeight - bounds.height - 8, top)) + 'px';
+      root.style.right = 'auto';
+    });
+  }
   function setPanelVisible(visible) {
     if (!panel) return;
-    panel.hidden = !visible;
+    panel.hidden = !visible; scheduleLayout();
     panelToggle.setAttribute('aria-expanded', String(visible));
     panelToggle.textContent = visible ? 'Hide Grammar panel' : 'Grammar enabled · Show panel';
     if (!visible) {
@@ -151,10 +172,7 @@
       list.append(b);
     });
     // Equivalent annotation beside the field. It never wraps or mutates editor DOM.
-    const rect = editor.getBoundingClientRect();
-    root.style.top = Math.max(8, Math.min(innerHeight - 200, rect.top)) + 'px';
-    root.style.left = Math.max(8, Math.min(innerWidth - 360, rect.right + 8)) + 'px';
-    root.style.right = 'auto';
+    scheduleLayout();
     clearTimeout(expiry); expiry = setTimeout(() => {
       if(!dirtyDraft()) {invalidate();return;}
       session.cache=[];list.replaceChildren();
@@ -247,7 +265,7 @@
     root=document.createElement('div');root.id='grammar-local-assist';
     root.style.cssText='position:fixed;right:12px;top:12px;z-index:2147483647;width:340px;max-width:calc(100vw - 16px);pointer-events:none;';
     shadow=root.attachShadow({mode:'open'});
-    const style=document.createElement('style');style.textContent=':host{all:initial}section,button{pointer-events:auto}section[hidden]{display:none}section{font:13px system-ui;color:#15202b;background:#fff;border:2px solid #18684b;border-radius:10px;padding:10px;box-shadow:0 4px 16px #0003;max-height:50vh;overflow:auto}button{font:inherit;margin:3px;padding:6px;border:1px solid #779;border-radius:4px;background:#f4f8f6;color:#15202b;cursor:pointer}button:focus-visible,textarea:focus-visible{outline:3px solid #2065cd}textarea{box-sizing:border-box;width:100%;min-height:55px}p{margin:5px 0}';
+    const style=document.createElement('style');style.textContent=':host{all:initial}section,button{pointer-events:auto}section[hidden]{display:none}section{box-sizing:border-box;font:13px system-ui;color:#15202b;background:#fff;border:2px solid #18684b;border-radius:10px;padding:10px;box-shadow:0 4px 16px #0003;max-height:50vh;overflow:auto}button{font:inherit;margin:3px;padding:6px;border:1px solid #779;border-radius:4px;background:#f4f8f6;color:#15202b;cursor:pointer}button:focus-visible,textarea:focus-visible{outline:3px solid #2065cd}textarea{box-sizing:border-box;width:100%;min-height:55px}p{margin:5px 0}';
     panel=document.createElement('section');panel.id='grammar-panel';panel.setAttribute('aria-label','Grammar local writing assist');
     panelToggle=button('Hide Grammar panel',()=>setPanelVisible(panel.hidden));
     panelToggle.setAttribute('aria-controls','grammar-panel');panelToggle.setAttribute('aria-expanded','true');
@@ -261,6 +279,9 @@
       editor=target;session=new DocumentSession(epoch);status.textContent='Local Instant active';schedule();
     }),button('Pause field',()=>{wipeField();status.textContent='Paused; cache cleared';}),button('Disable document',()=>disable(true)),list,card);
     shadow.append(style,panelToggle,panel);document.documentElement.append(root);
+    layoutObserver=new ResizeObserver(scheduleLayout);layoutObserver.observe(root);
+    window.addEventListener('resize',scheduleLayout,{passive:true});
+    window.addEventListener('scroll',scheduleLayout,{capture:true,passive:true});scheduleLayout();
     document.addEventListener('focusin',focus);document.addEventListener('input',input,true);
     document.addEventListener('compositionstart',compositionStart,true);document.addEventListener('compositionend',compositionEnd,true);
     document.addEventListener('keydown',keyboard,true);document.addEventListener('visibilitychange',visibility);window.addEventListener('pagehide',pagehide);
