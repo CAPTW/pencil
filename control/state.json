@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state_version": "2026-09-25.autonomous-r1-resume-r2",
+  "state_version": "2026-09-26.autonomous-r1-resume-r4",
   "repository_branch": "main",
   "product_target": "P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST",
   "p3a_status": "SAFETY_REPAIRS_SYNTHETIC_VERIFIED_NATIVE_CAPTURE_NOT_QUALIFIED",
@@ -110,7 +110,8 @@
     "provenance tooling negative tests",
     "shared Provider executor, consent-bound concurrent Deep host and cancellation-safe browser candidate",
     "bounded installation cleanup receipts and explicit restart reconciliation; synthetic qualification only",
-    "Chromium composition, deferred Instant publication and empty-editor safety regressions"
+    "Chromium composition, deferred Instant publication and empty-editor safety regressions",
+    "Collapsible annotation panel with preserved draft, page pointer access and hidden-source invalidation regressions"
   ],
   "native_capture_activation": "WITHHELD_PENDING_ISOLATED_POSITIVE_AND_SENSITIVITY_ACCEPTANCE",
   "chromium_deep_activation": "UNCONFIGURED_CANDIDATE_SYNTHETIC_QUALIFICATION_ONLY",
