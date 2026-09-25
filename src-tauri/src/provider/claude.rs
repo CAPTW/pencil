@@ -167,6 +167,11 @@ pub(crate) async fn rewrite(
         "json".to_string(),
         "--permission-mode".to_string(),
         "dontAsk".to_string(),
+        "--no-session-persistence".to_string(),
+        "--bare".to_string(),
+        "--disallowedTools".to_string(),
+        "*".to_string(),
+        "--disable-slash-commands".to_string(),
     ];
     if super::cli::command_line_too_long(&path, &args) {
         return Err(ProviderError::InputTooLarge);

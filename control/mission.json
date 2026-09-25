@@ -50,7 +50,12 @@
     "scripts/mission/test-provenance.ps1",
     "scripts/mission/build-receipt.ps1",
     "scripts/project_source.py",
-    "scripts/test_project_source.py"
+    "scripts/test_project_source.py",
+    "src-tauri/src/lib.rs",
+    "src-tauri/src/provider/mod.rs",
+    "src-tauri/src/provider/executor.rs",
+    "src-tauri/src/provider/types.rs",
+    "scripts/test-r6-provider-transport.mjs"
   ],
   "forbidden_paths": [],
   "required_reads": [

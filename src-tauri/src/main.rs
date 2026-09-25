@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use codex_pencil::instant_selection;
+
 mod active_turn;
 mod apply_safety;
 mod capture_session;

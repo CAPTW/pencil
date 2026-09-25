@@ -123,7 +123,13 @@ impl ProviderManager {
         binding: String,
         self_test: bool,
     ) -> Result<Arc<ProviderOperation>, ProviderError> {
-        self.reserve_bound(kind, binding, self_test, None)
+        self.reserve_bound(
+            kind,
+            binding,
+            self_test,
+            None,
+            Arc::new(AtomicBool::new(false)),
+        )
     }
     pub(crate) fn reserve_capture(
         &mut self,
@@ -136,7 +142,17 @@ impl ProviderManager {
             format!("{}:{}", token.session_id, token.generation),
             false,
             Some((token, intent)),
+            Arc::new(AtomicBool::new(false)),
         )
+    }
+
+    pub(crate) fn reserve_with_cancel(
+        &mut self,
+        kind: ProviderKind,
+        binding: String,
+        cancel: Arc<AtomicBool>,
+    ) -> Result<Arc<ProviderOperation>, ProviderError> {
+        self.reserve_bound(kind, binding, false, None, cancel)
     }
 
     fn reserve_bound(
@@ -148,6 +164,7 @@ impl ProviderManager {
             crate::capture_session::SessionToken,
             crate::capture_session::BoundRewriteIntent,
         )>,
+        cancel: Arc<AtomicBool>,
     ) -> Result<Arc<ProviderOperation>, ProviderError> {
         if !self_test && kind != self.active {
             return Err(ProviderError::SilentFallbackRejected);
@@ -164,7 +181,7 @@ impl ProviderManager {
             kind,
             binding,
             capture_binding,
-            cancel: Arc::new(AtomicBool::new(false)),
+            cancel,
             cli_slot: Arc::new(Mutex::new(None)),
             completed: AtomicBool::new(false),
         });
@@ -202,48 +219,16 @@ impl ProviderManager {
         terminology: &[TerminologyConstraint],
         codex: &CodexClientCache,
     ) -> Result<RewriteResult, ProviderError> {
-        if operation.cancel.load(Ordering::SeqCst) {
-            return Err(ProviderError::Cancelled);
-        }
-        let result = match operation.kind {
-            ProviderKind::Codex => {
-                rewrite_codex(
-                    codex,
-                    selected_text,
-                    intent,
-                    terminology,
-                    operation.cancel.clone(),
-                )
-                .await
-            }
-            ProviderKind::Claude => {
-                claude::rewrite(
-                    selected_text,
-                    intent,
-                    terminology,
-                    operation.cancel.clone(),
-                    operation.cli_slot.clone(),
-                )
-                .await
-            }
-            ProviderKind::Antigravity => {
-                antigravity::rewrite(
-                    selected_text,
-                    intent,
-                    terminology,
-                    operation.cancel.clone(),
-                    operation.cli_slot.clone(),
-                )
-                .await
-            }
-        };
-        if operation.cancel.load(Ordering::SeqCst) && result.is_ok() {
-            return Err(ProviderError::Cancelled);
-        }
-        result.map(|mut value| {
-            value.provider_used = operation.kind;
-            value
-        })
+        super::executor::execute(
+            operation.kind,
+            operation.cancel.clone(),
+            operation.cli_slot.clone(),
+            selected_text,
+            intent,
+            terminology,
+            codex,
+        )
+        .await
     }
 
     pub(crate) async fn rewrite(
@@ -402,53 +387,6 @@ async fn probe_codex(codex: &CodexClientCache, cancel: Arc<AtomicBool>) -> Provi
                     cancellation: true,
                 },
             }
-        }
-    }
-}
-
-async fn rewrite_codex(
-    cache: &CodexClientCache,
-    selected_text: &str,
-    intent: RewriteIntent,
-    terminology: &[TerminologyConstraint],
-    cancel: Arc<AtomicBool>,
-) -> Result<RewriteResult, ProviderError> {
-    let client = cache.get_cancel(cancel.clone()).await.map_err(|error| {
-        if cancel.load(Ordering::SeqCst) && !error.contains("cleanup") {
-            return ProviderError::Cancelled;
-        }
-        if error.to_lowercase().contains("auth") || error.to_lowercase().contains("login") {
-            ProviderError::SignedOut(error)
-        } else {
-            ProviderError::Faulted(error)
-        }
-    })?;
-    let result = tokio::select! {
-        biased;
-        _ = super::cli::cancellation(&cancel) => Err("rewrite_interrupted".to_string()),
-        result = client.rewrite_with_terminology(selected_text, intent, terminology) => result,
-    };
-    if cancel.load(Ordering::SeqCst) {
-        cache
-            .shutdown_checked()
-            .await
-            .map_err(ProviderError::Faulted)?;
-        return Err(ProviderError::Cancelled);
-    }
-    match result {
-        Ok(value) => Ok(value),
-        Err(error) => {
-            // A failed turn/start or response wait may still have dispatched
-            // work. Reap its exact cached server before releasing admission.
-            cache
-                .shutdown_checked()
-                .await
-                .map_err(|cleanup| ProviderError::Faulted(format!("{error};cleanup={cleanup}")))?;
-            Err(if error == "rewrite_interrupted" {
-                ProviderError::Cancelled
-            } else {
-                ProviderError::Faulted(error)
-            })
         }
     }
 }
