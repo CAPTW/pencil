@@ -21,5 +21,6 @@ check(unicode.replacement(0,'😀seperate','separate',1).next==='😀separate');
 s.clear();check(s.text==='' && s.cache.length===0 && s.replacement(0,'','x')===null);
 check(s.update('text')===null);
 const huge=new DocumentSession('huge');check(huge.update('x'.repeat(8193))===null && !huge.active);
+const leadingLine=changedWindow('x\nseperate','\nseperate');check(leadingLine.start===0 && leadingLine.end===0);
 for(let i=0;i<200;i++) { const before='a\n😀seperate\nz';const after=before.slice(0,3)+'q'.repeat(i)+before.slice(3); const w=changedWindow(before,after);check(w.start>=0 && w.end<=after.length && w.text===after.slice(w.start,w.end)); }
 console.log(JSON.stringify({status:'PASS',productionCoreAssertions:count}));

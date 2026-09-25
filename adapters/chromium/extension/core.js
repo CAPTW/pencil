@@ -9,7 +9,7 @@
     while (start < oldEnd && start < end && before[start] === after[start]) start++;
     while (oldEnd > start && end > start && before[oldEnd - 1] === after[end - 1]) { oldEnd--; end--; }
     // Rules are line-local. Include complete changed lines; no split surrogate pairs.
-    start = after.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+    start = start === 0 ? 0 : after.lastIndexOf('\n', start - 1) + 1;
     const lineEnd = after.indexOf('\n', end);
     end = lineEnd < 0 ? after.length : lineEnd;
     return { start, end, text: after.slice(start, end) };
