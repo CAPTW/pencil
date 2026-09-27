@@ -2,7 +2,9 @@
 // select -> global shortcut -> local Instant -> edit -> explicit Apply/Copy,
 // plus cancel, reselect and a stale session that must not touch a new document.
 // The editor is the task-owned synthetic native Edit harness; no Provider,
-// account, user document or real profile is used.
+// account, user document or real profile is used. The primary shortcut is a
+// toggle (documented widget behavior): pressed while the widget is visible it
+// hides the widget and cancels the capture, so every capture starts hidden.
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {spawn, execFileSync} from 'node:child_process';
@@ -92,8 +94,9 @@ class Editor {
   set(index, text) {
     return this.command(`SET ${index} ${b64(text)}`);
   }
-  select(index, start, end) {
-    return this.command(`SELECT ${index} ${start} ${end}`);
+  async select(index, start, end) {
+    await this.command(`SELECT ${index} ${start} ${end}`);
+    assert.equal(await this.command(`SEL ${index}`), `SEL ${start} ${end}`);
   }
   async text(index) {
     return unb64((await this.command(`TEXT ${index}`)).split(' ')[1]);
@@ -129,6 +132,8 @@ function alive(pid) {
 const editor = new Editor();
 let app;
 let browser;
+let page;
+let widgetState = null;
 try {
   await editor.ready();
   pass('owned synthetic native editor ready');
@@ -145,9 +150,17 @@ try {
     }
   }, 90000);
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${cdpPort}`);
-  const page = await until('widget page', async () => browser.contexts()[0]?.pages()[0], 30000);
-  await page.waitForLoadState('domcontentloaded');
-  pass('built app started with its widget WebView');
+  // The debugging endpoint answers before the widget document commits, so wait
+  // for the app origin itself and for Tauri's injected IPC bridge. Polling is by
+  // interval, not animation frames, because the widget may start hidden.
+  const appPage = (candidate) => /^(https?:\/\/tauri\.localhost|tauri:\/\/localhost)\//.test(candidate.url());
+  page = await until('widget page', async () =>
+    browser.contexts().flatMap((context) => context.pages()).find(appPage), 60000);
+  await page.waitForFunction(() => typeof window.__TAURI_INTERNALS__?.transformCallback === 'function', null, {
+    polling: 100,
+    timeout: 60000,
+  });
+  pass('built app started with its widget WebView and IPC bridge');
 
   // Record capture tokens exactly as the app's own listener receives them.
   await page.evaluate(() => {
@@ -157,42 +170,68 @@ try {
     return internals.invoke('plugin:event|listen', {event: 'selection-captured', target: {kind: 'Any'}, handler});
   });
   const captures = () => page.evaluate(() => window.__grammarCaptures.slice());
+  const widgetVisible = () =>
+    page.evaluate(() => window.__TAURI_INTERNALS__.invoke('plugin:window|is_visible', {label: 'main'}));
 
-  const onboarding = page.getByRole('button', {name: 'Continue'});
-  if (await onboarding.count()) {
+  const closeButton = page.getByRole('button', {name: 'Close', exact: true});
+  async function closeWidget() {
+    await closeButton.click();
+    await until('widget hidden', async () => !(await widgetVisible()));
+  }
+
+  // A fresh profile shows first-run onboarding in the visible widget. The stored
+  // settings (read-only command) decide which pane the widget must settle on.
+  const loadSettings = () => page.evaluate(() => window.__TAURI_INTERNALS__.invoke('load_settings'));
+  const onboarding = page.getByRole('button', {name: 'Continue', exact: true});
+  if ((await loadSettings()).onboardingVersion < 1) {
+    await until('onboarding shown', async () => (await onboarding.count()) > 0 && (await widgetVisible()), 30000);
     await onboarding.click();
     await until('onboarding closed', async () => (await onboarding.count()) === 0);
+    assert.ok((await loadSettings()).onboardingVersion >= 1, 'onboarding completion persisted');
   }
-  pass('first-run onboarding completed');
+  await until('main pane rendered', async () => (await page.getByTestId('apply-result').count()) > 0, 30000);
+  if (await widgetVisible()) await closeWidget();
+  pass('first-run onboarding completed and the widget closed to the tray');
 
-  const draft = page.getByLabel('Editable rewrite result text');
+  const draft = page.getByLabel('Editable rewrite result text', {exact: true});
   const status = page.locator('.status-pill');
   const apply = page.getByTestId('apply-result');
   const copy = page.getByTestId('copy-result');
-  const draftValue = () => draft.inputValue().catch(() => '');
+  const review = page.getByRole('dialog', {name: 'AI 클라우드 처리 안내'});
+  const draftValue = () => draft.inputValue({timeout: 2000}).catch(() => '');
 
-  async function captureAndWaitInstant(index, text, selected, expectedCandidate) {
-    const before = (await captures()).length;
+  async function prepareSelection(index, text, selected) {
     await editor.set(index, text);
     const [start, end] = range(text, selected);
     await editor.select(index, start, end);
     await editor.focus(index);
+  }
+
+  async function captureAndWaitInstant(index, text, selected, expectedCandidate) {
+    assert.equal(await widgetVisible(), false, 'each capture starts with the widget hidden');
+    const before = (await captures()).length;
+    await prepareSelection(index, text, selected);
     await editor.hotkey();
     const token = await until('selection captured', async () => (await captures())[before], 15000);
     assert.equal(token.selectedText, selected);
+    await until('widget shown for the capture', widgetVisible);
     await until('Instant candidate', async () => (await draftValue()) === expectedCandidate, 15000);
     return token;
+  }
+
+  // Auto rewrite is on by default and cloud consent was never given: each capture
+  // offers the Deep review beside the local Instant draft. Declining sends nothing.
+  async function declineDeep() {
+    await until('Deep consent review shown beside Instant', async () => (await review.count()) === 1);
+    await review.getByRole('button', {name: '취소', exact: true}).click();
+    await until('Deep declined', async () =>
+      (await review.count()) === 0 && (await status.textContent()) === 'Deep not sent · Instant stays local');
   }
 
   // 1. Instant-only draft, edited by the user, applied on the supported path.
   const doc = 'Line one stays.\r\nPlease seperate these items.\r\nLine three stays.';
   const token1 = await captureAndWaitInstant(0, doc, 'Please seperate these items.', 'Please separate these items.');
-  // Auto rewrite is on by default: consent is requested for Deep only, while the
-  // local Instant draft is already usable. Declining sends nothing.
-  const review = page.getByRole('dialog', {name: 'AI 클라우드 처리 안내'});
-  await until('Deep consent review shown beside Instant', async () => (await review.count()) === 1);
-  await review.getByRole('button', {name: '취소'}).click();
-  await until('Deep declined', async () => (await status.textContent()) === 'Deep not sent · Instant stays local');
+  await declineDeep();
   assert.equal(await draftValue(), 'Please separate these items.');
   pass('shortcut captured the exact selection; local Instant is usable without cloud consent and declining Deep sends nothing');
   const clipboardBefore = await editor.clipboard();
@@ -200,22 +239,26 @@ try {
   await until('Apply enabled', async () => apply.isEnabled());
   await apply.click();
   await until('document applied', async () => (await editor.text(0)) === doc.replace('Please seperate these items.', 'Please separate these items carefully.'));
+  await until('widget hidden after Apply', async () => !(await widgetVisible()));
   assert.equal(await editor.clipboard(), clipboardBefore);
-  pass('edited Instant-only draft applied exactly with document reread and clipboard untouched');
+  pass('edited Instant-only draft applied exactly with document reread, clipboard untouched and widget closed');
 
   // 2. Copy leaves the document unchanged and places the draft on the clipboard.
   const copyDoc = 'Copy source line.\r\nthe results is final.';
   await captureAndWaitInstant(0, copyDoc, 'the results is final.', 'the results are final.');
+  await declineDeep();
   await copy.click();
   await until('draft copied', async () => (await editor.clipboard()) === 'the results are final.');
   assert.equal(await editor.text(0), copyDoc);
+  await closeWidget();
   pass('explicit Copy wrote only the clipboard and never changed the document');
 
   // 3. Cancel: dismissing the capture invalidates it; its token cannot Apply later.
   const cancelDoc = 'Cancel check: please seperate nothing here.';
   const cancelToken = await captureAndWaitInstant(0, cancelDoc, 'please seperate nothing', 'please separate nothing');
-  await page.getByRole('button', {name: 'Close'}).click();
-  await until('capture dismissed', async () => !(await apply.isEnabled()));
+  await declineDeep();
+  await closeWidget();
+  await until('capture dismissed', async () => !(await apply.isEnabled({timeout: 2000})));
   const invokeApply = (token, replacement) => page.evaluate(({token, replacement}) =>
     window.__TAURI_INTERNALS__.invoke('apply_replacement', {
       sessionId: token.sessionId,
@@ -234,19 +277,39 @@ try {
   assert.equal(await editor.text(0), cancelDoc);
   pass('cancel invalidated the capture and its token was rejected without mutation');
 
-  // 4. Reselect: a new capture replaces the old one; only the new range changes.
+  // 4. Reselect: the user selects another range while the widget is open. The
+  //    first shortcut press closes the widget and cancels the old capture, the
+  //    second captures the new range; Apply changes only the new range.
   const reselectDoc = 'First: please seperate this.\r\nSecond: this are wrong.';
   const staleToken = await captureAndWaitInstant(0, reselectDoc, 'please seperate this.', 'please separate this.');
-  await captureAndWaitInstant(0, reselectDoc, 'this are wrong.', 'this is wrong.');
+  const beforeToggle = (await captures()).length;
+  const [secondStart, secondEnd] = range(reselectDoc, 'this are wrong.');
+  await editor.select(0, secondStart, secondEnd);
+  await editor.focus(0);
+  await editor.hotkey();
+  await until('shortcut closed the open widget', async () => !(await widgetVisible()));
+  assert.equal((await captures()).length, beforeToggle, 'closing press captures nothing');
+  assert.deepEqual(await invokeApply(staleToken, 'CLOSED-SHOULD-NOT-APPLY'), {
+    status: 'failed',
+    reason: 'invalid_session_state',
+  });
+  await sleep(300);
+  const reselectToken = await captureAndWaitInstant(0, reselectDoc, 'this are wrong.', 'this is wrong.');
+  assert.deepEqual(await invokeApply(staleToken, 'STALE-SHOULD-NOT-APPLY'), {status: 'rejected_stale'});
+  assert.equal(await editor.text(0), reselectDoc);
+  await declineDeep();
   await apply.click();
   const reselected = reselectDoc.replace('this are wrong.', 'this is wrong.');
   await until('reselected range applied', async () => (await editor.text(0)) === reselected);
-  pass('reselection bound Apply to the new selection only');
+  await until('widget hidden after Apply', async () => !(await widgetVisible()));
+  assert.notEqual(reselectToken.sessionId, staleToken.sessionId);
+  pass('shortcut toggle closed and cancelled the old capture; reselection bound Apply to the new range only');
 
   // 5. A stale session never changes a newer document in another window.
   const otherDoc = 'Other window: please seperate me.';
   const otherToken = await captureAndWaitInstant(5, otherDoc, 'please seperate me.', 'please separate me.');
-  for (const token of [staleToken, token1]) {
+  await declineDeep();
+  for (const token of [staleToken, token1, reselectToken]) {
     assert.deepEqual(await invokeApply(token, 'STALE-SHOULD-NOT-APPLY'), {status: 'rejected_stale'});
   }
   assert.equal(await editor.text(5), otherDoc);
@@ -259,6 +322,14 @@ try {
 } catch (error) {
   failure = error;
   console.error('FAIL', error?.stack ?? error);
+  // App-generated status and error strings only (the documents are synthetic).
+  widgetState = await page
+    ?.evaluate(() => ({
+      status: document.querySelector('.status-pill')?.textContent ?? null,
+      error: document.querySelector('.error-row')?.textContent ?? null,
+    }))
+    .catch(() => null);
+  if (widgetState) console.error('WIDGET_STATE', JSON.stringify(widgetState));
 } finally {
   try {
     await browser?.close();
@@ -281,6 +352,7 @@ try {
     classification: 'SYNTHETIC_OWNED_WINDOWS_DESKTOP_BUILT_APP',
     checks,
     failure: failure ? String(failure.message ?? failure).slice(0, 500) : null,
+    widget_state: widgetState,
     not_qualified: ['physical keyboard and IME', 'live Provider Deep', 'user profiles and real documents'],
   };
   await writeFile(join(out, 'result.json'), JSON.stringify(result, null, 2));
