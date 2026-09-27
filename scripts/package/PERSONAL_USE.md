@@ -17,7 +17,7 @@
 PowerShell 7에서 실행합니다.
 
 ```powershell
-Expand-Archive .\grammar-<commit>.zip -DestinationPath .\grammar-package
+Expand-Archive .\<패키지>.zip -DestinationPath .\grammar-package
 pwsh -NoProfile -File .\grammar-package\Install-Grammar.ps1
 ```
 
