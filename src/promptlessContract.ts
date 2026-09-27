@@ -21,6 +21,7 @@ export type AppSettings = Readonly<{
   schemaVersion: 7;
   cloudProcessingAcknowledgementVersion: number;
   mode: RewriteMode;
+  /** Stored for compatibility only; nothing reads it since Copy replaced the paste path. */
   restoreClipboard: boolean;
   autoRewrite: boolean;
   shortcut: Readonly<{ primary: PrimaryShortcut }>;
