@@ -1,6 +1,7 @@
 //! Production runtime seams, synthetic data only. Native tests require isolated TEMP.
 use super::*;
 
+mod deep_boundary;
 mod endurance;
 use std::{
     path::{Path, PathBuf},

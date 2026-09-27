@@ -7,10 +7,35 @@ use std::{
     time::Duration,
 };
 
+/// Minimal JSON string encoding; the fixture is compiled without crates.
+fn json_string(value: &str) -> String {
+    let mut out = String::from("\"");
+    for character in value.chars() {
+        match character {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let descendant = args.iter().any(|arg| arg == "--fixture-descendant");
     if !descendant {
+        if let Ok(dir) = env::var("P01_CASE_DIR") {
+            // Every root spawn and its exact argv (synthetic payloads only), so
+            // tests can prove what the selected Provider received and that no
+            // fallback or replay started another process.
+            let dir = std::path::Path::new(&dir);
+            let argv = args[1..].iter().map(|arg| json_string(arg)).collect::<Vec<_>>().join(",");
+            fs::write(dir.join("argv.json"), format!("[{argv}]")).unwrap();
+            let mut spawns = fs::OpenOptions::new().create(true).append(true).open(dir.join("spawns.log")).unwrap();
+            writeln!(spawns, "{}", std::process::id()).unwrap();
+        }
         if let Ok(dir) = env::var("P01_CASE_DIR") {
             let flags = format!(
                 "{{\"no_session_persistence\":{},\"bare\":{},\"disallowed_all_tools\":{},\"disable_slash_commands\":{}}}",

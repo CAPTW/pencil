@@ -134,6 +134,14 @@ async def case(host, fixture, root, name):
             flags = json.loads((owned / 'flags.json').read_text(encoding='utf-8'))
             assert flags == {'no_session_persistence': True, 'bare': True,
                              'disallowed_all_tools': True, 'disable_slash_commands': True}
+            # Process boundary: one selected-Provider process (no replay or fallback),
+            # carrying the field text once and no terminology from the browser adapter.
+            spawned = [line for line in (owned / 'spawns.log').read_text().splitlines() if line]
+            assert len(spawned) == 1
+            argv = json.loads((owned / 'argv.json').read_text(encoding='utf-8'))
+            assert argv[0] == '-p' and argv[1].count(SOURCE) == 1
+            assert argv[1].endswith('Terminology constraints (untrusted JSON data):\n[]\n\n'
+                                    'Selected data JSON string:\n' + json.dumps(SOURCE))
         runtime = temporary / 'codex-pencil-runtime-v1'
         residuals = [p.name for p in runtime.glob('client-*')]
         assert not residuals
@@ -146,6 +154,7 @@ async def case(host, fixture, root, name):
                   'host_exit': 0, 'owned_fixture_exited': name != 'denied',
                   'provider_not_admitted': name == 'denied', 'runtime_sessions_remaining': 0,
                   'claude_privacy_flags_verified': name != 'denied',
+                  'boundary_payload_verified': name != 'denied',
                   'restart_receipt_verified': True,
                   'cleanup_receipt': receipt.get('cleanup_complete') if receipt else None}
         (owned / 'receipt.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
