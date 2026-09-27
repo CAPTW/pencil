@@ -219,8 +219,40 @@ pub(crate) struct CloudTestReceipt {
     passed: bool,
 }
 
+thread_local! {
+    /// Last panic on this test thread, for the receipt written during unwinding.
+    static CLOUD_TEST_PANIC: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Keeps the default panic output and also records the location and message so
+/// a FAIL receipt names its cause even when the step log is not retrievable.
+/// Owned-desktop tests handle synthetic text only.
+fn record_cloud_test_panics() {
+    static INSTALL: std::sync::Once = std::sync::Once::new();
+    INSTALL.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let message = info
+                .payload()
+                .downcast_ref::<&str>()
+                .map(|message| (*message).to_string())
+                .or_else(|| info.payload().downcast_ref::<String>().cloned())
+                .unwrap_or_default();
+            let location = info
+                .location()
+                .map(|location| format!("{}:{}", location.file(), location.line()))
+                .unwrap_or_default();
+            let summary: String = format!("{location}: {message}").chars().take(600).collect();
+            CLOUD_TEST_PANIC.with(|slot| *slot.borrow_mut() = Some(summary));
+            previous(info);
+        }));
+    });
+}
+
 impl CloudTestReceipt {
     pub(crate) fn new(test: &'static str) -> Self {
+        record_cloud_test_panics();
+        CLOUD_TEST_PANIC.with(|slot| slot.borrow_mut().take());
         take_editor_cleanups();
         Self {
             test,
@@ -256,8 +288,12 @@ impl Drop for CloudTestReceipt {
         } else {
             "FAIL"
         };
+        let failure = CLOUD_TEST_PANIC.with(|slot| slot.borrow_mut().take());
         eprintln!("CLOUD_TEST_RESULT {} {status}", self.test);
         eprintln!("CLOUD_TEST_CLEANUPS {} {:?}", self.test, self.cleanups);
+        if let Some(failure) = &failure {
+            eprintln!("CLOUD_TEST_FAILURE {} {failure}", self.test);
+        }
         let Some(root) = std::env::var_os("GRAMMAR_EVIDENCE") else {
             return;
         };
@@ -286,6 +322,7 @@ impl Drop for CloudTestReceipt {
             "run_attempt": env("GITHUB_RUN_ATTEMPT"),
             "completed_checks": self.completed_checks,
             "last_completed_check": self.completed_checks.last(),
+            "failure": failure,
             "editor_cleanups": cleanups,
             "not_qualified": [
                 "production toolbar and global shortcut",
