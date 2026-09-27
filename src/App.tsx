@@ -1954,7 +1954,7 @@ export default function App() {
               </button>
             </div>
           </div>
-        ) : settings.activeProvider === "codex" && !auth?.loggedIn && !selection ? (
+        ) : settings.activeProvider === "codex" && !auth?.loggedIn && !selection && !draft ? (
           <div className="login-pane">
             <div className="login-copy">
               {codexCheck && !codexCheck.available ? <AlertTriangle size={22} /> : <LogIn size={22} />}
