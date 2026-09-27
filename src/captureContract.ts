@@ -8,24 +8,17 @@ export type SelectionCapturedPayload = CaptureToken &
     selectedText: string;
   }>;
 
+// The desktop Copy result: the backend never changes text inside another
+// application, so every delivered result is a copy with a reason.
 export type ApplyFallbackReason =
   | "target_selection_unverified"
   | "target_missing"
   | "target_process_changed"
-  | "target_not_foreground"
-  | "target_changed_before_paste"
   | "target_mutation_disabled";
 
-export type ApplyFailureReason =
-  | "empty_replacement"
-  | "invalid_session_state"
-  | "widget_hide_failed"
-  | "clipboard_write_failed"
-  | "clipboard_ownership_lost"
-  | "input_injection_failed";
+export type ApplyFailureReason = "empty_replacement" | "invalid_session_state" | "clipboard_write_failed";
 
 export type ApplyOutcome =
-  | Readonly<{ status: "applied" }>
   | Readonly<{ status: "copied_fallback"; reason: ApplyFallbackReason }>
   | Readonly<{ status: "rejected_stale" }>
   | Readonly<{ status: "failed"; reason: ApplyFailureReason }>;
@@ -34,58 +27,43 @@ const FALLBACK_REASONS = new Set<ApplyFallbackReason>([
   "target_selection_unverified",
   "target_missing",
   "target_process_changed",
-  "target_not_foreground",
-  "target_changed_before_paste",
   "target_mutation_disabled",
 ]);
 
 const FAILURE_REASONS = new Set<ApplyFailureReason>([
   "empty_replacement",
   "invalid_session_state",
-  "widget_hide_failed",
   "clipboard_write_failed",
-  "clipboard_ownership_lost",
-  "input_injection_failed",
 ]);
 
-/** Copy-only explanation for each fallback; the replacement is on the clipboard. */
-export function copiedFallbackMessage(reason: ApplyFallbackReason): string {
+/**
+ * Note shown with a successful Copy. The normal case needs none: the result is
+ * on the clipboard and the user pastes it. The other reasons only add context.
+ */
+export function copiedNotice(reason: ApplyFallbackReason): string | null {
   switch (reason) {
     case "target_mutation_disabled":
-      return "Grammar does not change text inside other apps: it cannot rule out that the app changes the text at the same moment. The result is on the clipboard; paste it into the field yourself.";
+      return null;
     case "target_missing":
-      return "The captured window is gone. The result is on the clipboard; paste it manually.";
+      return "The captured window is gone. The result is on the clipboard; paste it where you need it.";
     default:
-      return "The captured target could not be proven safe. The approved replacement is on the clipboard; paste it manually.";
+      return "The captured window changed. The result is on the clipboard; paste it where you need it.";
   }
 }
 
-/** True when the backend cancelled the capture; a retry needs a new capture. */
+/** True when the capture is no longer usable; copying again needs a new capture. */
 export function applyFailureEndsCapture(reason: ApplyFailureReason): boolean {
-  return reason === "input_injection_failed" || reason === "invalid_session_state";
-}
-
-/**
- * True when part of the Apply may have reached the target, so the result is
- * unknown and must never be reported as a safe failure.
- */
-export function applyFailureIsUncertain(reason: ApplyFailureReason): boolean {
-  return reason === "input_injection_failed";
-}
-
-/** Status line for a failed Apply; uncertain outcomes are never called safe. */
-export function applyFailureStatus(reason: ApplyFailureReason): string {
-  return applyFailureIsUncertain(reason) ? "Apply result uncertain" : "Apply failed safely";
+  return reason === "invalid_session_state";
 }
 
 export function applyFailureMessage(reason: ApplyFailureReason): string {
   switch (reason) {
-    case "clipboard_ownership_lost":
-      return "The clipboard changed before paste. Nothing was pasted; review and try again.";
-    case "input_injection_failed":
-      return "Windows did not confirm the complete paste input, so part of it may have reached the field. Check the field; automatic retry is disabled, capture again.";
+    case "clipboard_write_failed":
+      return "The clipboard could not be written. Nothing changed; try Copy again.";
+    case "invalid_session_state":
+      return "This capture is no longer active. Capture the selection again.";
     default:
-      return "Nothing was pasted. Review the target and try again.";
+      return "There is nothing to copy.";
   }
 }
 
@@ -139,7 +117,7 @@ export function parseApplyOutcome(value: unknown): ApplyOutcome | null {
   if (!isRecord(value) || typeof value.status !== "string") {
     return null;
   }
-  if (value.status === "applied" || value.status === "rejected_stale") {
+  if (value.status === "rejected_stale") {
     return hasExactKeys(value, ["status"]) ? { status: value.status } : null;
   }
   if (value.status === "copied_fallback") {

@@ -79,22 +79,20 @@ assert.ok(
   "drag handler must call the tested policy with the current Tauri window",
 );
 
-const appliedBranch = appSource.match(
-  /if \(outcome\.status === "applied"\) \{(?<body>[\s\S]*?)\n\s*\}/,
-);
-assert.ok(appliedBranch?.groups?.body, "successful Apply branch must exist");
-assert.match(
-  appliedBranch.groups.body,
-  /await dismiss\(\)/,
-  "successful Apply must automatically hide and clear the Widget through the normal dismiss path",
+// Copy is the only result action: there is no branch that reports a change
+// inside another application, so nothing hides the widget as if it had applied.
+assert.doesNotMatch(
+  appSource,
+  /outcome\.status === "applied"/,
+  "no Apply success branch may exist; the result is only copied",
 );
 
 const copiedFallbackBranch = appSource.match(
   /if \(outcome\.status === "copied_fallback"\) \{(?<body>[\s\S]*?)\n\s*\}/,
 );
-assert.ok(copiedFallbackBranch?.groups?.body, "copied fallback branch must exist");
+assert.ok(copiedFallbackBranch?.groups?.body, "copied branch must exist");
 assert.doesNotMatch(
   copiedFallbackBranch.groups.body,
   /dismiss\(/,
-  "manual-paste fallback must remain visible so the warning cannot be lost",
+  "after Copy the widget must remain visible so the status and the copied draft cannot be lost",
 );

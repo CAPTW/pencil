@@ -36,8 +36,7 @@ import {
 import {
   applyFailureEndsCapture,
   applyFailureMessage,
-  applyFailureStatus,
-  copiedFallbackMessage,
+  copiedNotice,
   parseApplyOutcome,
   parseSelectionCaptured,
   sameCaptureToken,
@@ -314,7 +313,7 @@ export default function App() {
   const [loginState, setLoginState] = useState<LoginState>("signed_out");
   const [error, setError] = useState<string | null>(null);
   const [isRewriting, setIsRewriting] = useState(false);
-  const [isApplying, setIsApplying] = useState(false);
+  const [isCopying, setIsCopying] = useState(false);
   const [isStartingLogin, setIsStartingLogin] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [recordingShortcut, setRecordingShortcut] = useState(false);
@@ -337,7 +336,7 @@ export default function App() {
   const currentIntentRef = useRef<RewriteIntentToken | null>(null);
   const rewritingIntentRef = useRef<RewriteIntentToken | null>(null);
   const resultIntentRef = useRef<RewriteIntentToken | null>(null);
-  const applyingTokenRef = useRef<CaptureToken | null>(null);
+  const copyingTokenRef = useRef<CaptureToken | null>(null);
   const terminologyEpochRef = useRef(0);
 
   useEffect(() => {
@@ -504,18 +503,6 @@ export default function App() {
     }
   }, []);
 
-  const copyResult = useCallback(async () => {
-    if (!draft) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(draft);
-      setStatus("Result copied");
-    } catch (nextError) {
-      setError(toErrorMessage(nextError));
-    }
-  }, [draft]);
-
   useEffect(() => {
     if (!settingsOpen && !isRewriting && (result || instantRuntime.instant)) {
       resultHeadingRef.current?.focus();
@@ -618,12 +605,12 @@ export default function App() {
         currentIntentRef.current = null;
         rewritingIntentRef.current = null;
         resultIntentRef.current = null;
-        applyingTokenRef.current = null;
+        copyingTokenRef.current = null;
         setSelection(null);
         setResult(null);
         setDraft("");
         setIsRewriting(false);
-        setIsApplying(false);
+        setIsCopying(false);
         setError("The capture token was invalid. Capture the selection again.");
         setStatus("Capture rejected");
         return;
@@ -646,7 +633,7 @@ export default function App() {
       currentIntentRef.current = intent;
       rewritingIntentRef.current = null;
       resultIntentRef.current = null;
-      applyingTokenRef.current = null;
+      copyingTokenRef.current = null;
       setSelection({
         token,
         charCount: Array.from(payload.selectedText).length,
@@ -657,7 +644,7 @@ export default function App() {
       setResult(null);
       setDraft("");
       setIsRewriting(false);
-      setIsApplying(false);
+      setIsCopying(false);
       setError(null);
       setStatus("Selection captured");
       const sourceLimit = validateFrontendTextLimit("source", payload.selectedText);
@@ -681,12 +668,12 @@ export default function App() {
       currentIntentRef.current = null;
       rewritingIntentRef.current = null;
       resultIntentRef.current = null;
-      applyingTokenRef.current = null;
+      copyingTokenRef.current = null;
       setSelection(null);
       setResult(null);
       setDraft("");
       setIsRewriting(false);
-      setIsApplying(false);
+      setIsCopying(false);
       setCloudReviewOpen(false);
       setError(event.payload.message);
       setStatus("No selection");
@@ -1291,7 +1278,10 @@ export default function App() {
     }
   }
 
-  async function applyReplacement() {
+  // The one result action on the desktop: the backend checks the current
+  // capture, formats a translation locally and puts the approved result on the
+  // clipboard. Grammar never changes text inside another application.
+  async function copyResult() {
     const token = currentTokenRef.current;
     const intent = currentIntentRef.current;
     if (!token || !intent || draft.length === 0) {
@@ -1307,8 +1297,8 @@ export default function App() {
       return;
     }
 
-    applyingTokenRef.current = token;
-    setIsApplying(true);
+    copyingTokenRef.current = token;
+    setIsCopying(true);
     setError(null);
     try {
       const rawOutcome = await invoke<unknown>("apply_replacement", {
@@ -1319,7 +1309,6 @@ export default function App() {
         mode: intent.mode,
         targetLanguage: intent.targetLanguage,
         autoReferenceLanguage: intent.autoReferenceLanguage,
-        restoreClipboard: settings.restoreClipboard,
       });
       if (!sameCaptureToken(currentTokenRef.current, token)) {
         return;
@@ -1330,18 +1319,8 @@ export default function App() {
         currentIntentRef.current = null;
         resultIntentRef.current = null;
         setSelection(null);
-        setError("Apply returned an invalid response. Capture the selection again.");
-        setStatus("Apply rejected");
-        return;
-      }
-      if (outcome.status === "applied") {
-        currentTokenRef.current = null;
-        currentIntentRef.current = null;
-        resultIntentRef.current = null;
-        setSelection(null);
-        setStatus("Applied");
-        void refreshTerminology();
-        await dismiss();
+        setError("Copy returned an invalid response. Capture the selection again.");
+        setStatus("Copy rejected");
         return;
       }
       if (outcome.status === "copied_fallback") {
@@ -1349,9 +1328,9 @@ export default function App() {
         currentIntentRef.current = null;
         resultIntentRef.current = null;
         setSelection(null);
-        setStatus("Copied — paste manually");
+        setStatus("Copied — paste it into the field");
         void refreshTerminology();
-        setError(copiedFallbackMessage(outcome.reason));
+        setError(copiedNotice(outcome.reason));
         return;
       }
       if (outcome.status === "rejected_stale") {
@@ -1366,7 +1345,7 @@ export default function App() {
         return;
       }
 
-      setStatus(applyFailureStatus(outcome.reason));
+      setStatus("Copy failed");
       if (applyFailureEndsCapture(outcome.reason)) {
         currentTokenRef.current = null;
         setSelection(null);
@@ -1381,11 +1360,11 @@ export default function App() {
         setSelection(null);
       }
       setError(toErrorMessage(nextError));
-      setStatus("Apply failed safely");
+      setStatus("Copy failed");
     } finally {
-      if (sameCaptureToken(applyingTokenRef.current, token)) {
-        applyingTokenRef.current = null;
-        setIsApplying(false);
+      if (sameCaptureToken(copyingTokenRef.current, token)) {
+        copyingTokenRef.current = null;
+        setIsCopying(false);
       }
     }
   }
@@ -1401,12 +1380,12 @@ export default function App() {
     currentIntentRef.current = null;
     rewritingIntentRef.current = null;
     resultIntentRef.current = null;
-    applyingTokenRef.current = null;
+    copyingTokenRef.current = null;
     setSelection(null);
     setResult(null);
     setDraft("");
     setIsRewriting(false);
-    setIsApplying(false);
+    setIsCopying(false);
     try {
       await invoke("dismiss_window", {
         sessionId: token?.sessionId ?? null,
@@ -1422,19 +1401,18 @@ export default function App() {
 
   const activeProviderStatus = providerSnapshot?.statuses.find((item) => item.kind === settings.activeProvider) ?? null;
   const providerReady = activeProviderStatus?.state === "ready" || (settings.activeProvider === "codex" && auth?.loggedIn === true);
-  const canRunDeep = Boolean(selection && providerReady && !isRewriting && !isApplying);
-  const canCopy = Boolean(draft.length > 0 && !isRewriting);
+  const canRunDeep = Boolean(selection && providerReady && !isRewriting && !isCopying);
   const canCancel = isRewriting;
-  const canDismissResult = Boolean(selection && !isApplying);
+  const canDismissResult = Boolean(selection && !isCopying);
   const reviewSpans = useMemo(
     () => (selection && draft ? reviewDiff(selection.sourceText, draft) : []),
     [selection, draft],
   );
-  const canApply = Boolean(
+  const canCopy = Boolean(
     selection &&
       (result || instantDraftProof(instantRuntime, selection.token, selection.sourceText, draft)) &&
       draft.length > 0 &&
-      !isApplying &&
+      !isCopying &&
       !isRewriting &&
       (result ? sameRewriteIntent(resultIntentRef.current, currentIntentRef.current) : true),
   );
@@ -1487,7 +1465,7 @@ export default function App() {
             <div className="settings-heading">
               <div>
                 <h2>Welcome to Grammar</h2>
-                <p>Local Instant edits stay on this device. Deep sends selected text to one chosen Provider. Apply is always explicit.</p>
+                <p>Local Instant edits stay on this device. Deep sends selected text to one chosen Provider. Copy is always explicit, and Grammar never changes text in other apps.</p>
               </div>
             </div>
             <ul className="disclosure-list">
@@ -2063,7 +2041,7 @@ export default function App() {
                   </select>
                 </label>
                 <fieldset className="format-options">
-                  <legend>Apply format</legend>
+                  <legend>Copy format</legend>
                   <label>
                     <input
                       type="radio"
@@ -2084,7 +2062,7 @@ export default function App() {
                   </label>
                 </fieldset>
                 {settings.translation.applyFormat === "source_with_translation" ? (
-                  <p>The exact captured source is combined locally when you Apply.</p>
+                  <p>The exact captured source is combined locally when you Copy.</p>
                 ) : null}
                 {settings.translation.targetLanguage === "auto" ? (
                   <p>
@@ -2147,7 +2125,7 @@ export default function App() {
                       ? "Instant local candidate"
                       : result
                         ? `Deep · ${providerDisplayName(result.providerUsed)}`
-                        : "Edit the text before applying it."}
+                        : "Edit the text before copying it."}
                   </span>
                 </div>
                 {result ? (
@@ -2247,7 +2225,7 @@ export default function App() {
                       {result.terminologyWarnings.map((warning, index) => (
                         <span key={`${warning.code}-${index}`}>{warning.code.replace(/_/g, " ")}</span>
                       ))}
-                      <small>Warnings never auto-correct or auto-Apply the result.</small>
+                      <small>Warnings never auto-correct the result.</small>
                     </div>
                   ) : null}
                   {result.terminologySuggestions.length ? (
@@ -2287,23 +2265,12 @@ export default function App() {
                 <button
                   className="primary-button"
                   type="button"
-                  data-testid="apply-result"
-                  aria-label="Apply result"
-                  onClick={applyReplacement}
-                  disabled={!canApply}
-                >
-                  {isApplying ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
-                  Apply
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
                   data-testid="copy-result"
                   aria-label="Copy result"
                   onClick={() => void copyResult()}
                   disabled={!canCopy}
                 >
-                  <Copy size={16} />
+                  {isCopying ? <Loader2 className="spin" size={16} /> : <Copy size={16} />}
                   Copy
                 </button>
                 <button
