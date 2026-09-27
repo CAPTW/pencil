@@ -182,7 +182,7 @@ impl std::fmt::Display for ProviderError {
             Self::Unavailable(reason) | Self::SignedOut(reason) | Self::Faulted(reason) => {
                 write!(formatter, "{reason}")
             }
-            Self::Busy => write!(formatter, "A Provider request is already active."),
+            Self::Busy => write!(formatter, "Another Provider request is still running. Try again in a moment."),
             Self::Cancelled => write!(formatter, "The Provider request was cancelled."),
             Self::AuthRequired => write!(formatter, "Sign in to the selected Provider before sending a cloud request."),
             Self::ContentLimit(reason) => write!(formatter, "{reason}"),

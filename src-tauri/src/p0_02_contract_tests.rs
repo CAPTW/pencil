@@ -468,3 +468,81 @@ fn mission_edited_instant_proof_to_explicit_copy_fallback_keeps_source_binding()
     assert_eq!(platform.clipboard_text.as_deref(), Some("user final draft"));
     assert!(store.begin_apply(&token).is_err());
 }
+
+// Pre-use review: Cancel on the widget stops only Deep. The capture must stay
+// usable (its edited Instant draft can still be copied), and a late end of the
+// cancelled request must not end a Deep request the user started afterwards.
+#[test]
+fn cancel_deep_keeps_the_capture_and_its_instant_draft_usable() {
+    use crate::capture_session::{BoundRewriteIntent, InstantDraftProof};
+    use crate::translation::RewriteIntent;
+    let mut store = CaptureSessionStore::default();
+    let token = capture(&mut store, "cancel", 101, 2001);
+    let bound = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
+    store.begin_rewrite_bound(&token, bound.clone()).unwrap();
+    let first = store.rewrite_attempt(&token).unwrap();
+    assert!(store.owns_rewrite(&token, first));
+
+    assert!(store.cancel_rewrite_keep_capture().is_none(), "no Codex turn was bound");
+    assert!(store.is_captured(&token), "Cancel returns the capture to Captured");
+    assert!(!store.owns_rewrite(&token, first), "the cancelled request no longer owns the capture");
+    assert!(store.cancel_rewrite_keep_capture().is_none(), "a second Cancel changes nothing");
+    let proof: InstantDraftProof = serde_json::from_value(serde_json::json!({
+        "sessionId": token.session_id, "generation": token.generation,
+        "source": "synthetic-source-cancel", "candidate": "local Instant", "draftRevision": 1, "userEdited": true
+    })).unwrap();
+    store.validate_instant_draft(&token, "local Instant", "edited draft", Some(&proof)).unwrap();
+
+    // Deep again: the new request owns the capture, the cancelled one does not.
+    store.begin_rewrite_bound(&token, bound.clone()).unwrap();
+    let second = store.rewrite_attempt(&token).unwrap();
+    assert_ne!(first, second);
+    assert!(store.owns_rewrite(&token, second));
+    assert!(!store.owns_rewrite(&token, first), "a late end of the cancelled request is ignored");
+    store.finish_rewrite_success_bound(&token, &bound).unwrap();
+    assert!(!store.owns_rewrite(&token, second), "a finished request no longer owns the capture");
+}
+
+#[test]
+fn closing_the_widget_still_ends_the_capture() {
+    use crate::capture_session::BoundRewriteIntent;
+    use crate::translation::RewriteIntent;
+    let mut store = CaptureSessionStore::default();
+    let token = capture(&mut store, "close", 101, 2001);
+    let bound = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
+    store.begin_rewrite_bound(&token, bound).unwrap();
+    store.cancel_active_with_turn();
+    assert!(!store.is_captured(&token));
+    assert!(!store.has_active());
+    assert_eq!(store.captured_source(&token), Err(SessionError::InvalidState));
+}
+
+// A busy Provider (an earlier request still finishing, a status probe or a
+// self-test) used to leave the capture in Rewriting: Deep, and Copy of the
+// Instant draft, then failed with invalid_session_state until a new capture.
+#[test]
+fn busy_provider_reservation_returns_the_capture_to_captured() {
+    use crate::capture_session::BoundRewriteIntent;
+    use crate::provider::{ProviderKind, ProviderManager};
+    use crate::translation::RewriteIntent;
+    let mut store = CaptureSessionStore::default();
+    let mut providers = ProviderManager::default();
+    let earlier = capture(&mut store, "earlier", 101, 2001);
+    let bound = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
+    store.begin_rewrite_bound(&earlier, bound.clone()).unwrap();
+    let busy = crate::reserve_rewrite(&mut store, &mut providers, ProviderKind::Codex, &earlier, &bound).unwrap();
+
+    let token = capture(&mut store, "busy", 102, 2002);
+    store.begin_rewrite_bound(&token, bound.clone()).unwrap();
+    let Err(error) = crate::reserve_rewrite(&mut store, &mut providers, ProviderKind::Codex, &token, &bound) else {
+        panic!("a busy Provider must refuse the reservation");
+    };
+    assert_eq!(error, "Another Provider request is still running. Try again in a moment.");
+    assert!(store.is_captured(&token), "nothing started, so the capture is Captured again");
+    assert_eq!(store.captured_source(&token).unwrap(), "synthetic-source-busy");
+
+    assert!(providers.finish(&busy));
+    store.begin_rewrite_bound(&token, bound.clone()).unwrap();
+    assert!(crate::reserve_rewrite(&mut store, &mut providers, ProviderKind::Codex, &token, &bound).is_ok(),
+        "once the earlier request has finished, Deep can run again");
+}

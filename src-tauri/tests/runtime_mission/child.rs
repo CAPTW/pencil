@@ -47,7 +47,14 @@ fn main() {
             fs::write(std::path::Path::new(&dir).join("flags.json"), flags).unwrap();
         }
     }
-    let mode = env::var("P01_FIXTURE_MODE").unwrap_or_else(|_| "slow".into());
+    // The built-app flow switches the behaviour between its steps through a
+    // task-owned file; the other tests set P01_FIXTURE_MODE.
+    let mode = env::var("P01_FIXTURE_MODE_FILE")
+        .ok()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .map(|text| text.trim().to_string())
+        .or_else(|| env::var("P01_FIXTURE_MODE").ok())
+        .unwrap_or_else(|| "slow".into());
     if let Ok(dir) = env::var("P01_CASE_DIR") {
         fs::write(
             std::path::Path::new(&dir).join(if descendant {
@@ -121,7 +128,11 @@ fn main() {
             // observable before normal child-exit teardown races the reader.
             thread::sleep(Duration::from_millis(250));
         }
-        "success" => {
+        "success" | "slow-success" => {
+            if mode == "slow-success" {
+                // Late enough for the local Instant draft to arrive first.
+                thread::sleep(Duration::from_millis(2500));
+            }
             println!("{{\"result\":\"{{\\\"replacement\\\":\\\"Synthetic.\\\",\\\"summary\\\":\\\"fixture\\\",\\\"edits\\\":[]}}\"}}");
         }
         _ => thread::sleep(Duration::from_secs(4)),
