@@ -167,12 +167,13 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  await page.locator('#writing').fill('seperate');await suggestion.waitFor();await suggestion.click();await page.getByRole('button',{name:'Dismiss',exact:true}).click();
  assert.equal(await page.locator('#writing').inputValue(),'seperate');pass('Dismiss no mutation');
  // Copy is explicit and clipboard-only; the document is never mutated by it.
+ // Dismiss keeps the unchanged text's suggestion closed, so the text changes first.
  await context.grantPermissions(['clipboard-read','clipboard-write'],{origin:'http://127.0.0.1:18437'});
- await page.locator('#writing').fill('seperate');await suggestion.waitFor();await suggestion.click();
+ await page.locator('#writing').fill('copy seperate');await suggestion.waitFor();await suggestion.click();
  await page.getByRole('textbox',{name:'Edit replacement',exact:true}).fill('copied draft');
  await page.getByRole('button',{name:'Copy',exact:true}).click();
  assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),'copied draft');
- assert.equal(await page.locator('#writing').inputValue(),'seperate');pass('explicit Copy writes only the clipboard; document unchanged');
+ assert.equal(await page.locator('#writing').inputValue(),'copy seperate');pass('explicit Copy writes only the clipboard; document unchanged');
  // Keyboard only: every card action is focusable and activates without a pointer.
  // The panel lives in a shadow root, whose activeElement is the focused control.
  const tabTo=async(target,key='Tab',limit=20)=>{
