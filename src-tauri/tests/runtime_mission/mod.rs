@@ -1,5 +1,7 @@
 //! Production runtime seams, synthetic data only. Native tests require isolated TEMP.
 use super::*;
+
+mod endurance;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,

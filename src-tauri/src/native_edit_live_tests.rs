@@ -41,6 +41,7 @@ const ES_READONLY: u32 = 0x0800;
 const HARNESS_QUERY: u32 = 0x8101;
 const HARNESS_RESET: u32 = 0x8102;
 const HARNESS_FOCUS: u32 = 0x8103;
+const HARNESS_ARM_SELECTION_RACE: u32 = 0x8104;
 
 // Counter kinds recorded by the harness for messages sent from another thread.
 const KIND_GETTEXT: usize = 0;
@@ -49,6 +50,7 @@ const KIND_GETSEL: usize = 2;
 const KIND_REPLACESEL: usize = 3;
 const KIND_LOCK: usize = 4;
 const KIND_UNLOCK: usize = 5;
+const KIND_UNDO: usize = 7;
 
 // Editor indexes in the harness.
 const PLAIN: usize = 0;
@@ -182,6 +184,14 @@ impl NativeEditHarness {
             }
         }
         panic!("synthetic editor {index} could not be focused");
+    }
+
+    /// Arms the harness to move the selection right after Apply's locked EM_SETSEL.
+    fn arm_selection_race(&self, index: usize) {
+        assert_eq!(
+            unsafe { SendMessageW(self.form as HWND, HARNESS_ARM_SELECTION_RACE, index, 0) },
+            1
+        );
     }
 
     fn close_other_form(&self) {
@@ -551,9 +561,10 @@ fn cloud_owned_desktop_native_apply() {
         let (mut store, token, _) = ready_native_session();
         let edit = harness.edit(PLAIN);
         let stop = Arc::new(AtomicBool::new(false));
+        let early = iteration % 2 == 0;
         let typist = {
             let stop = Arc::clone(&stop);
-            let delay = jitter(iteration);
+            let delay = if early { Duration::ZERO } else { jitter(iteration) };
             thread::spawn(move || {
                 thread::sleep(delay);
                 let started = Instant::now();
@@ -565,6 +576,10 @@ fn cloud_owned_desktop_native_apply() {
                 }
             })
         };
+        if early {
+            // Let posted keystrokes reach the editor before Apply takes its lock.
+            thread::sleep(Duration::from_millis(3));
+        }
         let mut platform = NativeLivePlatform::default();
         let outcome = apply_current_session(&mut store, &token, marker, false, &mut platform);
         thread::sleep(Duration::from_millis(45));
@@ -646,6 +661,24 @@ fn cloud_owned_desktop_native_apply() {
     receipt.check(format!(
         "selection_race_{RACE_ITERATIONS}_iterations_applied{applied}_refused{refused}_undone{undone}_no_misplacement"
     ));
+
+    // Deterministic selection race between the locked EM_SETSEL and EM_REPLACESEL:
+    // the displaced replacement must be undone under the lock and reported.
+    prepare(&harness, PLAIN, SAMPLE, "third");
+    let (mut store, token, _) = ready_native_session();
+    harness.arm_selection_race(PLAIN);
+    harness.reset_counters();
+    let mut platform = NativeLivePlatform::default();
+    assert_eq!(
+        apply_current_session(&mut store, &token, marker, false, &mut platform),
+        ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetSelectionChanged }
+    );
+    assert_eq!(harness.counter(PLAIN, KIND_REPLACESEL), 1);
+    assert!(harness.counter(PLAIN, KIND_UNDO) >= 1);
+    assert_eq!(harness.style(PLAIN) & ES_READONLY, 0);
+    assert_eq!(harness.text(PLAIN), SAMPLE);
+    assert_eq!(clipboard::read_clipboard_text().ok().as_deref(), Some(marker));
+    receipt.check("injected_selection_race_undone_under_lock_and_copy_only");
 
     // Target closed after capture: Copy-only without mutation.
     prepare(&harness, OTHER, "synthetic other editor third", "third");

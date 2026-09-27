@@ -2,7 +2,7 @@
 # Real Edit controls: 0 multiline, 1 password, 2 read-only, 3 ANSI,
 # 4 WinForms TextBox (superclass), 5 multiline in a second top-level window.
 # Each counts text-bearing messages sent from other threads. Drivers use either
-# window messages 0x8101-0x8103 (Rust tests) or one-line stdin commands.
+# window messages 0x8101-0x8104 (Rust tests) or one-line stdin commands.
 # It never reads user documents, the network, or credentials.
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -77,12 +77,29 @@ public sealed class NativeEdit
         previous = ansi ? SetWindowLongPtrA(Handle, -4, pointer) : SetWindowLongPtrW(Handle, -4, pointer);
     }
 
+    [DllImport("user32.dll")]
+    private static extern int GetWindowLongW(IntPtr hwnd, int index);
+    [DllImport("user32.dll")]
+    private static extern uint InSendMessageEx(IntPtr reserved);
+
+    // One-shot fault injection: the next cross-thread EM_SETSEL received while
+    // the control is read-only is followed at once by a selection change, as a
+    // user click would race between an Apply's EM_SETSEL and EM_REPLACESEL.
+    public static volatile int RaceSelectionIndex = -1;
+
     private IntPtr Hook(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam)
     {
         EditCounters.Record(index, (int)message, wParam);
-        return ansi
+        IntPtr result = ansi
             ? CallWindowProcA(previous, hwnd, message, wParam, lParam)
             : CallWindowProcW(previous, hwnd, message, wParam, lParam);
+        if (message == 0x00B1 && RaceSelectionIndex == index && (InSendMessageEx(IntPtr.Zero) & 1u) != 0 &&
+            (GetWindowLongW(hwnd, -16) & 0x0800) != 0)
+        {
+            RaceSelectionIndex = -1;
+            CallWindowProcW(previous, hwnd, 0x00B1, IntPtr.Zero, new IntPtr(1));
+        }
+        return result;
     }
 }
 
@@ -177,6 +194,12 @@ public sealed class NativeEditForm : Form
         if (message.Msg == 0x8103)
         {
             FocusEdit(message.WParam.ToInt32());
+            message.Result = new IntPtr(1);
+            return;
+        }
+        if (message.Msg == 0x8104)
+        {
+            NativeEdit.RaceSelectionIndex = message.WParam.ToInt32();
             message.Result = new IntPtr(1);
             return;
         }

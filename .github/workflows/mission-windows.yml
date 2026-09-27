@@ -145,7 +145,16 @@ jobs:
           $env:MISSION_FIXTURE_EXE="$env:GRAMMAR_EVIDENCE/runtime/child.exe"
           $env:MISSION_EVIDENCE="$env:GRAMMAR_EVIDENCE/runtime"
           $env:TEMP="$env:GRAMMAR_EVIDENCE/temp"; $env:TMP=$env:TEMP
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil runtime_mission:: -- --include-ignored --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/runtime-matrix.log"
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil runtime_mission:: -- --include-ignored --test-threads=1 --nocapture --skip runtime_mission::endurance 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/runtime-matrix.log"
+          exit $LASTEXITCODE
+      - name: Native runtime endurance and loaded reproduction
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: |
+          $env:MISSION_FIXTURE_EXE="$env:GRAMMAR_EVIDENCE/runtime/child.exe"
+          $env:MISSION_EVIDENCE="$env:GRAMMAR_EVIDENCE/runtime"
+          $env:TEMP="$env:GRAMMAR_EVIDENCE/temp"; $env:TMP=$env:TEMP
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil runtime_mission::endurance::native_runtime_endurance -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/runtime-endurance.log"
           exit $LASTEXITCODE
       - name: Install isolated browser test dependency
         if: ${{ !cancelled() }}
@@ -206,5 +215,6 @@ jobs:
             ${{ runner.temp }}/grammar-evidence/logs/*.log
             ${{ runner.temp }}/grammar-evidence/host-deep/receipt.json
             ${{ runner.temp }}/grammar-evidence/app-flow/result.json
+            ${{ runner.temp }}/grammar-evidence/runtime/endurance-receipt.json
             ${{ runner.temp }}/grammar-evidence/browser-*/result.json
             ${{ runner.temp }}/grammar-evidence/browser-*/failure.json
