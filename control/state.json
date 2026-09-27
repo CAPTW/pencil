@@ -118,5 +118,13 @@
   "native_capture_activation": "WITHHELD_PENDING_ISOLATED_POSITIVE_AND_SENSITIVITY_ACCEPTANCE",
   "chromium_deep_activation": "UNCONFIGURED_CANDIDATE_SYNTHETIC_QUALIFICATION_ONLY",
   "mission_completion": "INCOMPLETE",
-  "main_adoption": "NOT_ADOPTED_CANDIDATE_ONLY"
+  "main_adoption": "NOT_ADOPTED_CANDIDATE_ONLY",
+  "github_validation": {
+    "repository": "CAPTW/pencil",
+    "branch": "codex/grammar-autonomous-r1",
+    "push": true,
+    "standard_windows_ci": true,
+    "release": false,
+    "live_provider": false
+  }
 }

@@ -1,6 +1,6 @@
 {
   "task_id": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
-  "owner_decision": "Owner mission prompt 2026-09-25, explicit local autonomous development authorization",
+  "owner_decision": "Owner mission prompt 2026-09-25, explicit local autonomous development authorization; Owner 2026-09-27 explicitly requests GitHub commit/push and cloud tests on the existing repository",
   "objective": "P3-A safety baseline and first Chromium proactive personal-use adapter",
   "base_branch": "main",
   "base_subject": "fix: align fresh-chat expectations with uploaded source snapshot",
@@ -56,7 +56,8 @@
     "src-tauri/src/provider/executor.rs",
     "src-tauri/src/provider/types.rs",
     "scripts/test-r6-provider-transport.mjs",
-    "src-tauri/src/bin/grammar_chromium/cleanup.rs"
+    "src-tauri/src/bin/grammar_chromium/cleanup.rs",
+    ".github/workflows/mission-windows.yml"
   ],
   "forbidden_paths": [],
   "required_reads": [
@@ -95,5 +96,13 @@
   "mission_id": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
   "internal_continuation": true,
   "scope_expansion": false,
-  "remote_publication": false
+  "remote_publication": false,
+  "github_validation": {
+    "repository": "CAPTW/pencil",
+    "branch": "codex/grammar-autonomous-r1",
+    "push": true,
+    "standard_windows_ci": true,
+    "release": false,
+    "live_provider": false
+  }
 }
