@@ -49,9 +49,20 @@ const RUNTIME_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   shortcut_modifiers_still_pressed: "Release the shortcut keys, then try again.",
   rewrite_line_structure_changed:
     "The rewrite changed the selection's line structure, so it was rejected. Select the exact text again or use a single-line selection.",
+  // Session codes the backend returns as-is: never show a raw code.
+  invalid_session_state: "This capture is no longer active. Capture the selection again.",
+  stale_session: "This belongs to an earlier capture. Capture the selection again.",
+  stale_rewrite_intent: "The mode, language or dictionary changed during the request. Run Deep again.",
+  session_token_required: "The widget lost track of the current capture. Capture the selection again.",
+  rewrite_interrupted: "The Deep request was interrupted. Run Deep again.",
+  cloud_processing_disclosure_required: "Review cloud processing before using Deep.",
 };
 
 export function userFacingRuntimeErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  return RUNTIME_ERROR_MESSAGES[message] ?? message;
+  const mapped = RUNTIME_ERROR_MESSAGES[message];
+  if (mapped) return mapped;
+  // "native_no_selection: No text selected. ..." -> the sentence only.
+  const coded = /^[a-z][a-z0-9_]*: (.+)$/s.exec(message);
+  return coded ? coded[1] : message;
 }
