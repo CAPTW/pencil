@@ -1450,17 +1450,24 @@ fn assert_send_input_delivery(evidence: &ProbeEvidence) {
     assert!(v_up < ctrl_up);
 }
 
+/// Owner-authorized CI refs (governance contract 1.2.0 and 1.3.0 amendments).
+const CLOUD_OWNED_DESKTOP_REFS: [&str; 2] = [
+    "refs/heads/codex/grammar-autonomous-r1",
+    "refs/heads/claude/eloquent-faraday-hh62qc",
+];
+
 /// Checks the dedicated CI opt-in before any desktop, clipboard or process use.
 fn require_cloud_owned_desktop() {
     for (key, expected) in [
         ("GITHUB_ACTIONS", "true"),
         ("GITHUB_REPOSITORY", "CAPTW/pencil"),
-        ("GITHUB_REF", "refs/heads/codex/grammar-autonomous-r1"),
         ("RUNNER_ENVIRONMENT", "github-hosted"),
         ("GRAMMAR_OWNED_DESKTOP_TEST", "1"),
     ] {
         assert_eq!(std::env::var(key).as_deref(), Ok(expected), "{key}");
     }
+    let git_ref = std::env::var("GITHUB_REF").unwrap_or_default();
+    assert!(CLOUD_OWNED_DESKTOP_REFS.contains(&git_ref.as_str()), "GITHUB_REF");
 }
 
 // The input-environment and Copy-only checks are separate tests (and separate
