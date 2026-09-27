@@ -1,11 +1,14 @@
 # Grammar Tool-neutral Multi-Agent Development Contract
 
-Contract-Version: 1.1.0
+Contract-Version: 1.2.0
 
 ## Active mission override (Owner authorization, 2026-09-25)
 For GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1, the Owner explicitly authorizes investigation, implementation, tests, local commits, reviewed safe local main integration and continuation through P3-A stabilization and the first Chromium textarea/simple-contenteditable adapter for personal use. This section supersedes conflicting historical one-step gates below, fixed file/iteration/commit budgets, per-step new-worktree requirements and fresh Source UI upload prerequisites. Use one dedicated mission worktree; preserve historical failed candidates and unrelated work. Historical failures remain failures. Review changed main before integration; no history rewrite or forced conflict resolution.
 
 The mission packet records `mission_id`, `internal_continuation=true`, `scope_expansion=false`, `remote_publication=false`; legacy `automatic_continuation=false` means no continuation outside the authorized mission. `next_gate_policy=CONTINUE_WITHIN_MISSION` requires this exact mission and explicit boundary fields. No permission is implied for live Provider inference, paid calls, account/credential changes, user document/profile use, global installation, security weakening, push or release. Only task-owned synthetic environments are permitted. Unknown target/revision/source, protected fields and revoked permission fail closed. All other safety, ownership, evidence and validator requirements remain effective. P3-B activation requires the relevant safety prerequisites; unverified capabilities stay disabled. External ChatGPT Source application remains Owner work.
+
+## GitHub validation amendment (Owner authorization, 2026-09-27)
+The Owner now explicitly authorizes committing and pushing the current candidate to the existing PUBLIC repository CAPTW/pencil, branch codex/grammar-autonomous-r1, and standard GitHub-hosted Windows CI tests. This overrides the earlier no-push boundary only for that destination/branch. No main integration, tag/release, deployment, repository visibility change, paid larger runner, account/credential operation or live Provider inference is authorized. Repository-local source is sent; external local evidence and VM/user files are excluded. The exact optional github_validation object is checked in task/state; remote_publication=false continues to forbid general release/deployment outside this narrow source-push exception. CI synthetic success does not qualify interactive Windows capture/clipboard/Apply. Existing safety and historical failures remain.
 
 ## Historical task defaults (except active mission override)
 

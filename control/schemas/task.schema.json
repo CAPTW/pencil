@@ -173,6 +173,44 @@
     "remote_publication": {
       "type": "boolean",
       "const": false
+    },
+    "github_validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "branch",
+        "push",
+        "standard_windows_ci",
+        "release",
+        "live_provider"
+      ],
+      "properties": {
+        "repository": {
+          "const": "CAPTW/pencil",
+          "type": "string"
+        },
+        "branch": {
+          "const": "codex/grammar-autonomous-r1",
+          "type": "string"
+        },
+        "push": {
+          "const": true,
+          "type": "boolean"
+        },
+        "standard_windows_ci": {
+          "const": true,
+          "type": "boolean"
+        },
+        "release": {
+          "const": false,
+          "type": "boolean"
+        },
+        "live_provider": {
+          "const": false,
+          "type": "boolean"
+        }
+      }
     }
   }
 }

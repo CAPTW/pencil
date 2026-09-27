@@ -100,7 +100,8 @@
         "scripts/build-daily-use-bundle.ps1",
         "scripts/mission/test-provenance.ps1",
         "scripts/mission/build-receipt.ps1",
-        "scripts/test-r6-provider-transport.mjs"
+        "scripts/test-r6-provider-transport.mjs",
+        ".github/workflows/mission-windows.yml"
       ],
       "claim_type": "exclusive",
       "created_at": "2026-09-25T00:00:00Z",

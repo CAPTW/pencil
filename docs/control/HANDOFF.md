@@ -2,6 +2,10 @@
 
 Mission: GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1. This is an incomplete mission checkpoint, not P3-A/P3-B or personal-use acceptance. Read AGENTS.md, the v1.1 contract override, control/mission.json and control/state.json. The Owner has already authorized internal continuation; no fresh per-step approval is needed.
 
+## GitHub cloud validation request (2026-09-27)
+
+Owner authorized source commit/push to existing public CAPTW/pencil candidate branch and standard Windows Actions tests. Contract1.2 pins and exact task/state github_validation scope record this narrow amendment. Main integration, public releases/deployment, paid larger runners and live Providers remain unauthorized. Workflow evidence is separate from local package603764c and native interactive acceptance; exact remote SHA/run results are external in cloud-r1. No local evidence/VM files are included in Git.
+
 ## Activation lifecycle continuation (2026-09-27)
 
 Entry a76b811; evidence `D:/dev/grammar-evidence/grammar-autonomous-r1/resume-r6`. Failed content enable delivery previously retained worker permission/capacity. The enable catch now closes only its still-current generation and exact epoch; an old rejection cannot revoke a newer session. Disable messages carry the saved documentId and epoch, and content ignores stale epochs. Two deterministic production-worker regressions fail before repair (worker-before.log44/46) and pass afterward46/46. Core215/typecheck pass; independent native_host read-only review found no actionable regression.

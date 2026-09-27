@@ -201,6 +201,9 @@ def mission_check(value):
     require(value.get("internal_continuation") is True, "explicit internal continuation required")
     require(value.get("scope_expansion") is False, "mission scope expansion prohibited")
     require(value.get("remote_publication") is False, "remote publication prohibited")
+    if "github_validation" in value:
+        expected = {'repository': 'CAPTW/pencil', 'branch': 'codex/grammar-autonomous-r1', 'push': True, 'standard_windows_ci': True, 'release': False, 'live_provider': False}
+        require(json.dumps(value["github_validation"], sort_keys=True) == json.dumps(expected, sort_keys=True), "GitHub validation scope mismatch")
 
 
 def state_check(state):
@@ -326,6 +329,13 @@ def self_test(root):
     for field in ("scope_expansion", "remote_publication"):
         invalid = dict(mission); invalid[field] = True
         rejects("mission prohibited " + field, lambda invalid=invalid: mission_check(invalid))
+    cloud = dict(mission, github_validation={'repository': 'CAPTW/pencil', 'branch': 'codex/grammar-autonomous-r1', 'push': True, 'standard_windows_ci': True, 'release': False, 'live_provider': False})
+    mission_check(cloud)
+    for field in cloud['github_validation']:
+        invalid = copy.deepcopy(cloud); invalid['github_validation'][field] = 'unauthorized'
+        rejects('GitHub scope ' + field, lambda invalid=invalid: mission_check(invalid))
+    invalid = copy.deepcopy(cloud); invalid['github_validation']['push'] = 1
+    rejects('GitHub boolean type', lambda: mission_check(invalid))
     # Test real pin comparison with in-memory path stand-ins, without writing fixtures.
     class FakePath:
         def __init__(self, rel=""): self.rel = rel
