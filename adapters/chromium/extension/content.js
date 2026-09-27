@@ -304,6 +304,6 @@
     if(sender.id!==chrome.runtime.id)return;
     if(message.op==='enable'&&typeof message.epoch==='string'){enable(message.epoch);respond({ready:true});}
     else if(message.op==='deep-policy'&&message.epoch===epoch){updateDeepPolicy(message.provider);respond({ok:true});}
-    else if(message.op==='disable'){disable();respond({ok:true});}
+    else if(message.op==='disable'&&message.epoch===epoch){disable();respond({ok:true});}
   });
 })();

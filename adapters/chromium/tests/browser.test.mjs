@@ -75,7 +75,7 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  assert.ok(recoveredLedger.slots.every(slot=>slot.state==='FREE'));
  assert.ok(recoveredLedger.slots.some(slot=>slot.token===recoveryToken));
  await recoveryPopup.close();pass('real worker restart recovers exact reserved cleanup without inference');
- await worker.evaluate(()=>{globalThis.fixtureMetrics={analyses:0,units:[],deep:0};chrome.runtime.onMessage.addListener(m=>{if(m.op==='deep')fixtureMetrics.deep++;if(m.op==='analyze'){fixtureMetrics.analyses++;fixtureMetrics.units.push(m.text.length)}})});
+ await worker.evaluate(()=>{globalThis.fixtureMetrics={analyses:0,units:[],deep:0};chrome.runtime.onMessage.addListener(m=>{if(m.op==='deep')fixtureMetrics.deep++;if(m.op==='analyze'){fixtureMetrics.lastEpoch=m.epoch;fixtureMetrics.analyses++;fixtureMetrics.units.push(m.text.length)}})});
  context.setDefaultTimeout(10000);
  const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:18437/');
  if(activeTabFixture) {
@@ -273,6 +273,26 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
    assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,paused);
  }
  pass('empty-placeholder exception does not admit mixed or attributed BR editors');
+ // Restore only the synthetic fixture attribute set by the preceding denial test.
+ await page.locator('#writing').evaluate(el=>el.removeAttribute('data-sensitive'));
+ for(let cycle=0;cycle<4;cycle++) {
+   const prior=(await worker.evaluate(()=>fixtureMetrics));
+   await page.bringToFront();await popup.getByRole('button',{name:'Enable this document',exact:true}).click();await page.bringToFront();
+   await page.locator('#grammar-local-assist').waitFor();
+   await worker.evaluate(async epoch=>{
+     const [tab]=await chrome.tabs.query({url:'http://127.0.0.1:18437/*'});
+     await chrome.tabs.sendMessage(tab.id,{op:'disable',epoch}).catch(()=>{});
+   },prior.lastEpoch);
+   assert.equal(await page.locator('#grammar-local-assist').count(),1,'stale disable cannot remove fresh UI');
+   assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,prior.analyses,'re-enable never restores field permission');
+   await page.locator('#writing').fill('seperate');
+   await page.getByRole('button',{name:'Enable this field',exact:true}).click();await suggestion.waitFor();
+   await suggestion.click();await page.getByRole('button',{name:'Accept',exact:true}).click();
+   assert.equal(await page.locator('#writing').inputValue(),'separate');
+   await page.getByRole('button',{name:'Disable document',exact:true}).click();
+   assert.equal(await page.locator('#grammar-local-assist').count(),0);
+ }
+ pass('four re-enable cycles reject stale disable, require fresh field opt-in and reread explicit Apply');
  await page.reload();assert.equal(await page.locator('#grammar-local-assist').count(),0);pass('navigation revokes opt-in');
  assert.deepEqual(errors,[]);
  await writeFile(join(run,'result.json'),JSON.stringify({status:'PASS',classification:'SYNTHETIC_CHROMIUM_NATIVE_HOST',checks,browser:context.browser().version(),metrics:await worker.evaluate(()=>fixtureMetrics),productionActiveTabGesture:activeTabFixture?'SYNTHETIC_PROTOCOL_ACTION':'NOT_RUN',providerLive:'NOT_RUN',syntheticDeep,hostBinarySha256:createHash('sha256').update(await readFile(hostExecutable)).digest('hex'),sourceDirty:execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim().length>0,sourceHead:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),sourceFiles:Object.fromEntries(await Promise.all(['core.js','content.js','worker.js','popup.js','manifest.json','host-config.js'].map(async f=>[f,createHash('sha256').update(await readFile(join(extensionSource,f))).digest('hex')]))),extensionManifestSha256:createHash('sha256').update(await readFile(join(extension,'manifest.json'))).digest('hex')},null,2));
