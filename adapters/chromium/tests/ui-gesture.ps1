@@ -72,7 +72,7 @@ $scope = [Windows.Automation.TreeScope]
 function Get-BrowserWindows {
   $all = $ae::RootElement.FindAll($scope::Children, [Windows.Automation.Condition]::TrueCondition)
   $main = $null
-  foreach ($window in $all) { if ($window.Current.Name.StartsWith($WindowTitle, [StringComparison]::Ordinal)) { $main = $window; break } }
+  foreach ($window in $all) { if (([string]$window.Current.Name).StartsWith($WindowTitle, [StringComparison]::Ordinal)) { $main = $window; break } }
   if (-not $main) { return $null }
   $owner = $main.Current.ProcessId
   # The main window first, then its bubbles (menus and extension popups).
@@ -84,7 +84,7 @@ function Find-Named($browser) {
   $condition = if ($Match -eq 'Exact') { [Windows.Automation.PropertyCondition]::new($ae::NameProperty, $Name) } else { [Windows.Automation.Condition]::TrueCondition }
   foreach ($window in $browser.Windows) {
     foreach ($candidate in $window.FindAll($scope::Descendants, $condition)) {
-      if ($Match -eq 'Prefix' -and -not $candidate.Current.Name.StartsWith($Name, [StringComparison]::Ordinal)) { continue }
+      if ($Match -eq 'Prefix' -and -not ([string]$candidate.Current.Name).StartsWith($Name, [StringComparison]::Ordinal)) { continue }
       $rect = $candidate.Current.BoundingRectangle
       if (-not $candidate.Current.IsOffscreen -and -not $rect.IsEmpty -and $rect.Width -gt 0 -and $rect.Height -gt 0) {
         return [pscustomobject]@{ Element = $candidate; Window = $window }
@@ -107,61 +107,89 @@ function Test-Hit($element, $window, [int]$x, [int]$y) {
   return $null
 }
 
-# Browser UI labels only (buttons, menu items, windows); never page text or values.
+# Button and menu labels only (never page text, values or suggestion labels),
+# or top-level window classes when the browser window itself is missing.
 function Get-Diagnostics($browser) {
-  if (-not $browser) {
-    return @($ae::RootElement.FindAll($scope::Children, [Windows.Automation.Condition]::TrueCondition) |
-      ForEach-Object { $_.Current.ClassName } | Select-Object -Unique -First 20)
-  }
-  $types = @([Windows.Automation.ControlType]::Button, [Windows.Automation.ControlType]::MenuItem, [Windows.Automation.ControlType]::SplitButton)
-  $labels = foreach ($window in $browser.Windows) {
-    foreach ($type in $types) {
-      $window.FindAll($scope::Descendants, [Windows.Automation.PropertyCondition]::new($ae::ControlTypeProperty, $type)) |
-        ForEach-Object { $_.Current.Name } | Where-Object { $_ }
+  try {
+    if (-not $browser) {
+      return @($ae::RootElement.FindAll($scope::Children, [Windows.Automation.Condition]::TrueCondition) |
+        ForEach-Object { $_.Current.ClassName } | Select-Object -Unique -First 20)
     }
+    $types = @([Windows.Automation.ControlType]::Button, [Windows.Automation.ControlType]::MenuItem, [Windows.Automation.ControlType]::SplitButton)
+    $labels = foreach ($window in $browser.Windows) {
+      foreach ($type in $types) {
+        $window.FindAll($scope::Descendants, [Windows.Automation.PropertyCondition]::new($ae::ControlTypeProperty, $type)) |
+          ForEach-Object { [string]$_.Current.Name } | Where-Object { $_ -and -not $_.StartsWith('Suggestion') }
+      }
+    }
+    return @($labels | Select-Object -Unique -First 60)
+  } catch {
+    return @('diagnostics_unavailable')
   }
-  return @($labels | Select-Object -Unique -First 60)
 }
 
+function Test-Rect($rect) {
+  return -not $rect.IsEmpty -and $rect.Width -gt 0 -and $rect.Height -gt 0 -and
+    -not [double]::IsNaN($rect.X) -and -not [double]::IsInfinity($rect.X) -and
+    -not [double]::IsNaN($rect.Y) -and -not [double]::IsInfinity($rect.Y)
+}
+
+function Write-Result($result, [int]$code) {
+  $result | ConvertTo-Json -Compress
+  exit $code
+}
+
+# Until the deadline: find the element, then (Click) invoke it or, for Mouse,
+# click its centre after checking the click point hits it. Menus re-create
+# their items while they open, so a vanished element, an empty rectangle or a
+# covered point is looked up again rather than clicked.
 $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMs)
-$browser = $null; $found = $null
+$browser = $null
+$last = [ordered]@{ status = 'window_not_found'; name = $Name; method = $Method }
+$settled = $false
 do {
-  $browser = Get-BrowserWindows
-  if ($browser) { $found = Find-Named $browser }
-  if (-not $found) { Start-Sleep -Milliseconds 250 }
-} while (-not $found -and [DateTime]::UtcNow -lt $deadline)
-
-if (-not $found) {
-  [ordered]@{ status = if ($browser) { 'not_found' } else { 'window_not_found' }; name = $Name; labels = Get-Diagnostics $browser } | ConvertTo-Json -Compress
-  exit 2
-}
-$element = $found.Element
-$current = $element.Current
-$result = [ordered]@{ status = 'found'; name = $Name; controlType = $current.ControlType.ProgrammaticName; method = $Method }
-if ($Command -eq 'Exists') { $result | ConvertTo-Json -Compress; exit 0 }
-
-if ($Method -eq 'Invoke') {
-  $pattern = $null
-  if (-not $element.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
-    $result.status = 'no_invoke_pattern'; $result | ConvertTo-Json -Compress; exit 3
+  try {
+    $browser = Get-BrowserWindows
+    $found = if ($browser) { Find-Named $browser } else { $null }
+    if (-not $found) {
+      $last = [ordered]@{ status = if ($browser) { 'not_found' } else { 'window_not_found' }; name = $Name; method = $Method }
+    } else {
+      $element = $found.Element
+      $result = [ordered]@{ status = 'found'; name = $Name; controlType = $element.Current.ControlType.ProgrammaticName; method = $Method }
+      if ($Command -eq 'Exists') { Write-Result $result 0 }
+      if ($Method -eq 'Invoke') {
+        $pattern = $null
+        if (-not $element.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+          $result.status = 'no_invoke_pattern'; Write-Result $result 3
+        }
+        $pattern.Invoke()
+        $result.status = 'clicked'; Write-Result $result 0
+      }
+      # Mouse: bring the main window forward (menus and popups are already above
+      # it) and let an opening animation settle once before the first click.
+      if ([Windows.Automation.Automation]::Compare($found.Window, $browser.Main)) {
+        $result.foreground = [GestureInput]::Foreground([IntPtr]$browser.Main.Current.NativeWindowHandle)
+      }
+      if (-not $settled) { Start-Sleep -Milliseconds 300; $settled = $true }
+      $rect = $element.Current.BoundingRectangle
+      if (-not (Test-Rect $rect)) {
+        $result.status = 'no_rect'; $last = $result
+      } else {
+        $x = [int]($rect.X + $rect.Width / 2); $y = [int]($rect.Y + $rect.Height / 2)
+        $result.point = @($x, $y)
+        $result.hit = Test-Hit $element $found.Window $x $y
+        if ($result.hit) {
+          [GestureInput]::LeftClick($x, $y)
+          $result.status = 'clicked'; Write-Result $result 0
+        }
+        $result.status = 'occluded'; $last = $result
+      }
+    }
+  } catch [Windows.Automation.ElementNotAvailableException] {
+    $last = [ordered]@{ status = 'stale'; name = $Name; method = $Method }
   }
-  $pattern.Invoke()
-  $result.status = 'clicked'; $result | ConvertTo-Json -Compress; exit 0
-}
+  Start-Sleep -Milliseconds 250
+} while ([DateTime]::UtcNow -lt $deadline)
 
-# Mouse: bring the owning top-level window forward when it is the main window
-# (menus and popups are already above it), let any opening animation settle,
-# then click the element's centre.
-if ([Windows.Automation.Automation]::Compare($found.Window, $browser.Main)) {
-  $result.foreground = [GestureInput]::Foreground([IntPtr]$browser.Main.Current.NativeWindowHandle)
-}
-Start-Sleep -Milliseconds 300
-$rect = $element.Current.BoundingRectangle
-$x = [int]($rect.X + $rect.Width / 2); $y = [int]($rect.Y + $rect.Height / 2)
-$result.point = @($x, $y)
-$result.hit = Test-Hit $element $found.Window $x $y
-if (-not $result.hit) { $result.status = 'occluded'; $result | ConvertTo-Json -Compress; exit 4 }
-[GestureInput]::LeftClick($x, $y)
-$result.status = 'clicked'
-$result | ConvertTo-Json -Compress
-exit 0
+if ($last.status -in @('not_found', 'window_not_found')) { $last.labels = Get-Diagnostics $browser }
+Write-Result $last $(switch ($last.status) { 'not_found' { 2 } 'window_not_found' { 2 } 'occluded' { 4 } 'stale' { 5 } default { 6 } })
