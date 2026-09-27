@@ -14,7 +14,7 @@ Owner decisions:
 5. main merge, personal installation and release remain separate decisions.
 
 Changes:
-- One Copy button (`copy-result`). It calls the session-bound backend command (IPC name `apply_replacement` kept). The command checks the capture, intent, terminology binding and Instant draft, formats a translation locally, writes the clipboard, counts terminology usage and ends the capture. The widget shows `Copied — paste it into the field`, keeps the draft visible and disables Copy until the next capture. The former plain Copy (browser clipboard API, no session check) and the `applied` outcome are gone.
+- One Copy button (`copy-result`). It calls the session-bound backend command (IPC name `apply_replacement` kept). The command checks the capture, intent, terminology binding and Instant draft, formats a translation locally, writes the clipboard, counts terminology usage and ends the capture. The widget shows `Copied — paste it into the field`, keeps the draft visible and disables Copy until the next capture; Dismiss and the header Close close it. The former plain Copy (browser clipboard API, no session check) and the `applied` outcome are gone.
 - Deleted:
   - the clipboard-and-`SendInput` paste path: foreground request, widget hide, clipboard snapshot/restore, input injection;
   - its ignored interactive harness `windows_live_target_bound_apply_acceptance` and the paste probes;
@@ -32,9 +32,30 @@ Changes:
   - window chrome: no `applied` branch, and the widget stays open after Copy;
   - built-app flow: the single Copy button for edited and unedited drafts; a cancelled, closed or stale token returns its rejection and never writes the clipboard.
 
-R3 scope (decision 4): accepted for the path verified in 36331068541 only. That path is Chromium, a fresh task-owned profile with the action pinned, and real keyboard input: Alt+Shift+T, arrow keys, and Space on the focused action and on the focused "Enable this document". The installed-package test still tries the mouse and UI Automation first and records which path worked; those attempts are not qualification.
+R3 scope (decision 4): accepted for the path verified in 36331068541 (and again in 36337934296) only. That path is Chromium, a fresh task-owned profile with the action pinned, and real keyboard input: Alt+Shift+T, the Right arrow to the action (Tab is the helper's fallback), Tab to "Enable this document" in the popup, and Space only on the focused target. The installed-package test still tries the mouse and UI Automation first and records which path worked; those attempts are not qualification.
 
-Local checks for this round: Wine 208 passed, 0 failed, 26 ignored (Windows-only live tests); frontend typecheck and build; node contract tests. The CI run on the final commit is in the Owner report.
+Verification:
+- Local: Wine 208 passed, 0 failed, 26 ignored (Windows-only live tests); frontend typecheck and build; node contract tests.
+- CI run 36337934296 on 8e81fc8, the three decision commits. All 34 steps passed, and every owned-desktop receipt is PASS and bound to 8e81fc8.
+  - Built-app flow: PASS, 10 checks, `result_delivery` COPY_ONLY. It covers Copy of an edited and of an unedited draft, cancel, toggle-reselect and stale tokens. All 12 per-editor step records show 0 reads and 0 state-changing messages.
+  - Native receipts, all PASS: Copy-only boundary (8 checks), input environment (11), capture (14), native Copy (10), application edits (7).
+  - Unmodified installed-package browser: PASS, 11 checks, both activations by keyboard. The mouse click opened the popup but "Enable this document" was not found, and UI Automation Invoke failed; the receipt records both.
+  - Modified isolated extension fixture: PASS, 39 checks. The synthetic Deep boundary (4 checks), the host Deep lifecycle (4 synthetic cases, not live) and endurance (72 residue-free runs, 6 loaded timeouts reproduced, no failures) passed.
+  - Personal package from 8e81fc8, tree c53155d5…, tracked bytes 476e5e2d…:
+    - hashes: app 88ae09e6…1512, host ba7f3697…d83c, ZIP 8e78f250…8d80;
+    - extension ID `lhcfloaegpmljmlldiacljbgohccohfo`;
+    - manifest `nativeApply` NONE_DESKTOP_COPY_BUTTON_ONLY_NATIVE_EDITORS_NEVER_MUTATED;
+    - the fresh-root install verified 5 files and one local Instant suggestion, and removal left no residue.
+- Separate review pass: a fresh-context review agent reviewed 959473e..8e81fc8. It was the same model family, read-only and without the shared conversation, so it is not an independent human review. It found no blocking issue and no reachable path that sends input, a focus change or a state-changing message to a captured editor. e7b573f fixes its findings:
+  - should-fix: "never changes text in other apps" had been widened past the desktop app, but the Chromium extension does edit enabled browser fields. The wording now names the desktop app and the extension exception.
+  - minor:
+    - no "window changed" note for a capture without the native binding;
+    - clipboard checks for the closed and stale tokens in the built-app flow;
+    - Dismiss stays enabled for a copied draft, as the header Close already did;
+    - toolbar claims limited to the keyboard path, with its keys in PERSONAL_USE;
+    - CI step names say Copy;
+    - the ignored interactive P1-03 test expected an error code from the clipboard classifier that capture stopped using in Step 2. It now asserts only that capture leaves an image-only clipboard untouched.
+- e7b573f and this docs commit are verified by the run on the final commit, reported in the Owner report.
 
 ## Review round r3 (2026-09-27): R1/R2/R3 corrections
 
