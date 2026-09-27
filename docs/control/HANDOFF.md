@@ -18,7 +18,7 @@ Step 3 - native Apply. A standard-Edit capture keeps a binding: HWND, pid, UTF-1
 - Re-verify the text hash and the exact selection under the lock.
 - Replace with one undoable `EM_REPLACESEL`, then re-read the exact expected text before unlocking.
 
-Cursor, source, editor and target changes, read-only fields and text limits end in Copy-only with a specific reason. Unverifiable outcomes cancel the capture without retry. The applied path never touches the clipboard. Run 36302014460 exposed a real-Windows fact: a standard Edit refuses `EM_UNDO` while read-only, so the original "undo a displaced replacement" design could leave a moved replacement behind. Since b808fc9, when the re-read proves that only our replacement moved, the verified original is restored under the lock with one atomic `WM_SETTEXT`. The modification flag and the user's moved selection are then restored and Apply reports Copy-only. This rare recovery clears that control's single-level undo. The injected race now runs for both flag states. Receipt `cloud_owned_desktop_native_apply`: PASS in run 36302014460 up to the injected race; the restore fix is PENDING in CI run 36303467689 on 013ca67 (in progress when this was written).
+Cursor, source, editor and target changes, read-only fields and text limits end in Copy-only with a specific reason. Unverifiable outcomes cancel the capture without retry. The applied path never touches the clipboard. Run 36302014460 exposed a real-Windows fact: a standard Edit refuses `EM_UNDO` while read-only, so the original "undo a displaced replacement" design could leave a moved replacement behind. Since b808fc9, when the re-read proves that only our replacement moved, the verified original is restored under the lock with one atomic `WM_SETTEXT`. The modification flag and the user's moved selection are then restored and Apply reports Copy-only. This rare recovery clears that control's single-level undo. The injected race now runs for both flag states. Receipt `cloud_owned_desktop_native_apply` PASS with 13 checks, including the injected race for both flag states, in runs 36303467689 (013ca67), 36303738766, 36304934814 and 36306114335 (dbc4fca). The randomized selection races ended either in a clean Apply or a pre-lock refusal (`restored0`); the restore path is covered by the deterministic injection.
 
 Step 4 - built-app user flow (`scripts/test-app-flow-e2e.mjs`). It drives the release build from the installed package with the real global shortcut on the owned desktop, against the synthetic Edit harness. The widget no longer blocks local Instant behind cloud consent: the Deep disclosure is offered beside the draft and declining sends nothing. The primary shortcut is a documented toggle, so each capture starts with the widget hidden and reselection uses the toggle (close and cancel, then capture). Covered checks:
 - Exact capture; an edited Instant-only draft applied with document reread and clipboard untouched.
@@ -28,21 +28,25 @@ Step 4 - built-app user flow (`scripts/test-app-flow-e2e.mjs`). It drives the re
 - Stale tokens are `rejected_stale` and never change a newer document in another window.
 - Both process trees exit.
 
-Run 36302014460 and earlier failed before any flow because the test attached before the widget document committed; this is fixed in 09f4656. Result: PENDING in CI run 36303467689 on 013ca67 (in progress when this was written).
+Earlier failures, all fixed:
+- Runs 36302014460 and before: the test attached before the widget document committed (fixed in 09f4656).
+- Run 36304934814: it expected the result pane before any capture, but with Codex signed out the idle widget shows the sign-in pane. A capture always opens the result pane, so local Instant and Apply need no cloud account (fixed in dbc4fca).
+
+Result: PASS, 10/10 checks, against the installed personal package (`app_kind: installed-personal-package`, idle pane `codex-sign-in`) in run 36306114335 on dbc4fca.
 
 Step 5 - runtime endurance (`src-tauri/tests/runtime_mission/endurance.rs`, own CI step). The test runs 8 rounds of 9 synthetic Provider cases after a warm-up: success, cancel after spawn, pipe-holding and early descendants, workspace file lock, stdout/stderr/dual floods and invalid UTF-8. It adds 20 rounds of 8-way reservation contention. Every run needs:
 - Its expected outcome within the request plus teardown budget.
 - Teardown phase evidence: reader drain/drop, Job zero and filesystem cleanup.
 - No fixture PID and no runtime root afterwards.
 
-Run 36302014460: 72 runs, 0 failures. Handles 146 to 146, threads 6 to 3, private bytes +0.23 MiB, 0 children, 0 roots against a settled baseline. The loaded reproduction (every CPU saturated) reproduced the historical 750ms success-fixture timeout in 6/6 runs as `timeout_during_io` (I/O about 750ms). Those runs ended in 955-1062ms total, versus the historical 1937ms, with cleanup 204-298ms, Job zero, reader drain, filesystem cleanup and 0 PIDs. They are recorded as reproductions, not passes: F-02's loaded timeout is a budget exceeded under saturation, now with bounded and complete teardown. Run 36303467689 repeats it on 013ca67.
+Run 36302014460: 72 runs, 0 failures. Handles 146 to 146, threads 6 to 3, private bytes +0.23 MiB, 0 children, 0 roots against a settled baseline. The loaded reproduction (every CPU saturated) reproduced the historical 750ms success-fixture timeout in 6/6 runs as `timeout_during_io` (I/O about 750ms). Those runs ended in 955-1062ms total, versus the historical 1937ms, with cleanup 204-298ms, Job zero, reader drain, filesystem cleanup and 0 PIDs. They are recorded as reproductions, not passes: F-02's loaded timeout is a budget exceeded under saturation, now with bounded and complete teardown. Runs 36303467689 and run 36306114335 on dbc4fca repeated it: 72/72 each; resources flat (handles 146 to 146, at most 149; threads 6 to 3; private bytes under +0.5 MiB; 0 children and roots). Loaded reproductions were 6/6 each: 1001-1189ms total, cleanup 236-438ms, Job zero, 0 PIDs.
 
 Step 6 - Chromium regression (`adapters/chromium/tests/browser.test.mjs`, synthetic localhost, isolated profile). Additions:
 - Zero page or service-worker network requests while cached suggestions are hovered and opened.
 - Explicit Copy writes the clipboard only.
 - A keyboard-only pass reaches and activates Accept, Apply edit, Copy and Dismiss with document rereads.
 
-Run 36302014460 failed the new Copy check because it refilled text that Dismiss had just closed; unchanged text is intentionally not re-analyzed. The test now changes the text first. Existing checks cover opt-in, changed-line analysis, cache/annotation, Accept/Edit/Dismiss/Ignore, stale/beforeinput/user-edit rejection, navigation, disable, sensitive fields and both editors. Result: checks before the Copy step PASS in run 36302014460; the remainder is PENDING in CI run 36303467689 on 013ca67 (in progress when this was written).
+Run 36302014460 failed the new Copy check because it refilled text that Dismiss had just closed; unchanged text is intentionally not re-analyzed. The test now changes the text first. Existing checks cover opt-in, changed-line analysis, cache/annotation, Accept/Edit/Dismiss/Ignore, stale/beforeinput/user-edit rejection, navigation, disable, sensitive fields and both editors. Result: PASS with 39 checks in runs 36303467689, 36303738766, 36304934814 and run 36306114335 on dbc4fca. The last run used the installed package's host (SHA-256 `ef4b26c7…7762`, equal to the packaged host) and its extension files.
 
 Step 7 - synthetic Deep boundary. `runtime_mission::deep_boundary` drives production `ProviderManager::rewrite` with production terminology matching. The store also holds unmatched, suggested and disabled entries. The fixture records argv and each root spawn. It verified:
 - Only the selected Provider starts, once, with its privacy flags.
@@ -50,37 +54,48 @@ Step 7 - synthetic Deep boundary. `runtime_mission::deep_boundary` drives produc
 - A non-selected Provider is refused before any spawn.
 - A failure and a cancellation each leave exactly one spawn: no replay, no fallback.
 
-The host Deep test checks the browser path sends the field text once with an empty terminology block. The browser test checks Provider spawns never exceed explicit Deep requests. PASS in run 36302014460 (`DEEP_BOUNDARY_PASS`, host Deep receipt). No live or paid Provider was called.
+The host Deep test checks the browser path sends the field text once with an empty terminology block. The browser test checks Provider spawns never exceed explicit Deep requests. PASS in run 36302014460 and every later run, including run 36306114335 on dbc4fca. The boundary receipt records 2 constraints sent, both matched approved terms. The host Deep receipt covers denied, success, cancel and EOF, and verifies the cross-process lock. No live or paid Provider was called.
 
 Step 8 - personal package (`scripts/package`, `scripts/test-personal-package.ps1`). The release app and host come from the receipt-bound build: clean source, fresh target, `--locked --offline`. The package fixes the extension ID with a per-package public key. `MANIFEST.json` binds the source commit/tree/digest, every file hash, the extension ID and the qualified scope. `Install-Grammar.ps1`:
 - Verifies every file before copying and refuses an existing root.
 - Installs for the current user only.
 - Registers the host for the packaged origin.
 
-`Uninstall-Grammar.ps1` stops only processes running from the root and removes only the recorded registration. It deletes the root and, with `-RemoveUserData`, the app's settings and WebView data. CI installs the extracted ZIP into a fresh root and checks file hashes, the registry, the host manifest origin and a protocol call through the registered host. Steps 4 and 6 then run against the installed files, and removal is followed by an independent residue check. Executables are never uploaded. Result: first execution PENDING in CI run 36303467689 on 013ca67 (in progress when this was written).
+`Uninstall-Grammar.ps1` stops only processes running from the root and removes only the recorded registration. It deletes the root and, with `-RemoveUserData`, the app's settings and WebView data. CI installs the extracted ZIP into a fresh root and checks file hashes, the registry, the host manifest origin and a protocol call through the registered host. Steps 4 and 6 then run against the installed files, and removal is followed by an independent residue check. Executables are never uploaded. Runs 36303467689 through 36304934814 failed the build receipt. The failure receipt added in f1b00fd named the cause: on a `core.autocrlf=true` checkout the Tauri CLI rewrites `src-tauri/Cargo.toml` with LF endings, so the post-build source measurement changed. `src-tauri/.gitattributes` now checks that file out with LF everywhere (932f687).
 
-### PASS / FAIL / NOT_RUN (interim)
+Result in run 36306114335 on dbc4fca: build, package, install and removal all PASS.
+- Source: commit dbc4fca, tree `0f5bc1eb3ec9f3176ad69f0a75464de0a6d4bd85`, tracked-bytes SHA-256 `3a5f2415f7529b00e6d52868656eb84105ac08fd4d5eef195c7aed213fa1cd3f`.
+- Receipt build: fresh target, exit 0.
+- App SHA-256 `77fcbf26789f04d5a58355c549a5517f79dc13c980ebb41d38918007a747e20f` (13234176 bytes).
+- Host SHA-256 `ef4b26c742eecea8ac546fb589f2f510844f4349ddec42e1221b2dfda96a7762` (1870336 bytes).
+- Package: 20 files, ZIP SHA-256 `d05f6810c8a13ebca604f3e80b5cc24deddb89d597a6342c3ea0645da168a9d1`, extension ID `djibhkenbanknlolafdopkoigjboloae`.
+- Install: fresh root; 5 key files verified against `MANIFEST.json`; host registered for the packaged origin; local Instant answered through the registered host (1 suggestion, no Provider).
+- Removal: uninstaller complete, and the independent check found no install root, registry key, app data or installed-binary process.
 
-Status as of 2026-09-27T07:40Z. PENDING rows are in CI run 36303467689 on 013ca67 and will be replaced by its outcome.
+These hashes belong to that run's build. A later commit, including a documentation-only one, is a different package with its own receipts.
+
+### PASS / FAIL / NOT_RUN (final evidence run 36306114335 on dbc4fca)
+
+Run 36306114335 on dbc4fca repeated every row below with the same result. The earlier runs listed first established each result.
 
 | Step | Check | Result | Evidence |
 |---|---|---|---|
 | 1 | Independent owned-desktop steps, FAIL receipt and unwind cleanup under injected fault | PASS | 36299835063 (4bd9a73), 36301495139 (4b6705a) |
 | 2 | Standard Edit capture: exact text, denials without text messages, clipboard untouched | PASS | 36301083212 (0fdd2f6), 36302014460 (4d493ba) |
 | 3 | Locked verified Apply, undo by user, cursor/source/editor/read-only/closed-target Copy-only, typing and selection races | PASS | 36302014460 (4d493ba) |
-| 3 | Injected selection race restored under the lock (WM_SETTEXT), flag and selection kept | PENDING | 36303467689 (013ca67) |
-| 4 | Built app: shortcut, Instant, edit, Apply, Copy, cancel, reselect, stale | PENDING | 36303467689 (013ca67) |
+| 3 | Injected selection race restored under the lock (WM_SETTEXT), flag and selection kept | PASS | 36303467689 (013ca67), 36306114335 (dbc4fca) |
+| 4 | Built app from the installed package: shortcut, Instant, edit, Apply, Copy, cancel, reselect, stale | PASS (10/10) | 36306114335 (dbc4fca) |
 | 5 | Endurance 72 runs, contention, resources flat | PASS | 36302014460 (4d493ba) |
 | 5 | Loaded 750ms timeout reproduction with bounded complete cleanup | REPRODUCED 6/6 (recorded, not a pass) | 36302014460 (4d493ba) |
-| 6 | Chromium opt-in, analysis, cache without inference/network, Accept/Edit/Dismiss, stale/user-edit/sensitive/navigation | PASS up to Dismiss | 36302014460 (4d493ba) |
-| 6 | Chromium Copy, keyboard-only actions, Ignore, contenteditable, composition, Deep | PENDING | 36303467689 (013ca67) |
+| 6 | Chromium opt-in, analysis, cache without inference/network, Accept/Edit/Dismiss, stale/user-edit/sensitive/navigation | PASS | 36302014460 (4d493ba), 36306114335 (dbc4fca) |
+| 6 | Chromium Copy, keyboard-only actions, Ignore, contenteditable, composition, Deep (39 checks, installed host and extension) | PASS | 36303467689 (013ca67), 36306114335 (dbc4fca) |
 | 7 | Deep boundary: selected Provider only, matched terms only, no fallback or replay | PASS | 36302014460 (4d493ba) |
-| 8 | Receipt-bound build, package, fresh-root install, registered host, removal without residue | PENDING | 36303467689 (013ca67) |
+| 8 | Receipt-bound build, package, fresh-root install, registered host, removal without residue | PASS | 36306114335 (dbc4fca) |
 | - | Live/paid Provider, accounts, physical keyboard/IME/zoom, toolbar activeTab, normal-profile install, Edge | NOT_RUN | outside the authorized scope |
 
 ### Personal use: scope, how to run, residual limits
 
-Build locally (Windows, from a clean checkout of the evidence commit): `npm ci`, `cargo fetch --locked --manifest-path src-tauri/Cargo.toml`, then `pwsh -File scripts/mission/build-receipt.ps1 -SourceRoot . -ReceiptPath <outside-repo>\build-receipt.json` and `pwsh -File scripts/mission/package.ps1 -ReceiptPath <that receipt> -OutputRoot <fresh dir>`. Install with `pwsh -File <package>\Install-Grammar.ps1` (default `%LOCALAPPDATA%\GrammarPersonal`, `-SkipBrowserHost` without the extension). Load `<root>\extension` unpacked in Chrome; its ID must equal `MANIFEST.json` `extensionId`. Remove with `<root>\Uninstall-Grammar.ps1 -RemoveUserData`. `PERSONAL_USE.md` in the package is the Korean user guide. CI builds the same package per run but never uploads executables. Per-run evidence is in the job log, where the summary step prints every receipt. That includes `personal/package-build.json` (source commit/tree/digest, app/host/ZIP SHA-256, extension ID, file hashes), `package-install.json` and `package-remove.json`.
+Build locally on Windows from a clean checkout of the evidence commit. A clone made before 932f687 must re-check out `src-tauri/Cargo.toml` once, by deleting it and running `git checkout -- src-tauri/Cargo.toml`. Steps: `npm ci`, `cargo fetch --locked --manifest-path src-tauri/Cargo.toml`, then `pwsh -File scripts/mission/build-receipt.ps1 -SourceRoot . -ReceiptPath <outside-repo>\build-receipt.json` and `pwsh -File scripts/mission/package.ps1 -ReceiptPath <that receipt> -OutputRoot <fresh dir>`. Install with `pwsh -File <package>\Install-Grammar.ps1` (default `%LOCALAPPDATA%\GrammarPersonal`, `-SkipBrowserHost` without the extension). Load `<root>\extension` unpacked in Chrome; its ID must equal `MANIFEST.json` `extensionId`. Remove with `<root>\Uninstall-Grammar.ps1 -RemoveUserData`. `PERSONAL_USE.md` in the package is the Korean user guide. CI builds the same package per run but never uploads executables. Per-run evidence is in the job log, where the summary step prints every receipt. That includes `personal/package-build.json` (source commit/tree/digest, app/host/ZIP SHA-256, extension ID, file hashes), `package-install.json` and `package-remove.json`.
 
 Enabled scope (synthetic qualification only):
 - Standard Windows Edit capture.
