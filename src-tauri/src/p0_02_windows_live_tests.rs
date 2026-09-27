@@ -14,9 +14,12 @@ use crate::windows_apply::{
     foreground_window_handle, request_foreground_window, wait_for_stage, window_is_valid,
     window_process_id,
 };
+use crate::process_job::{resume_suspended_primary, ProcessJob};
 use crate::windows_target::{capture_foreground_target, WindowsForegroundTargetPlatform};
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::io::{BufRead, BufReader};
+use std::os::windows::io::AsRawHandle;
 use std::os::windows::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -35,6 +38,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const CREATE_SUSPENDED: u32 = 0x0000_0004;
+const EDITOR_CLEANUP_BUDGET: Duration = Duration::from_secs(5);
 const CF_UNICODETEXT: u32 = 13;
 const EM_GETMODIFY: u32 = 0x00B8;
 const EM_SETSEL: u32 = 0x00B1;
@@ -77,19 +82,226 @@ struct HelperReady {
     sender_integrity: IntegrityRelation,
 }
 
-struct ChildGuard {
-    child: Child,
+/// Content-free result of tearing down one task-owned synthetic editor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct EditorCleanup {
+    editor_pid: u32,
+    process_exited: bool,
+    job_processes_remaining: Option<u32>,
+    windows_destroyed: bool,
 }
 
-impl Drop for ChildGuard {
-    fn drop(&mut self) {
+impl EditorCleanup {
+    fn complete(&self) -> bool {
+        self.process_exited && self.job_processes_remaining == Some(0) && self.windows_destroyed
+    }
+}
+
+thread_local! {
+    // Filled by harness teardown, including teardown during a failing test's unwind.
+    static EDITOR_CLEANUPS: RefCell<Vec<EditorCleanup>> = const { RefCell::new(Vec::new()) };
+}
+
+fn take_editor_cleanups() -> Vec<EditorCleanup> {
+    EDITOR_CLEANUPS.with(|log| std::mem::take(&mut *log.borrow_mut()))
+}
+
+fn assert_editor_cleanups_complete(expected: usize) -> Vec<EditorCleanup> {
+    let cleanups = take_editor_cleanups();
+    eprintln!("OWNED_EDITOR_CLEANUP {cleanups:?}");
+    assert_eq!(cleanups.len(), expected, "every owned editor must report teardown");
+    assert!(cleanups.iter().all(EditorCleanup::complete), "owned editor residue");
+    cleanups
+}
+
+/// The synthetic editor and every descendant (for example the C# compiler that
+/// Add-Type starts) run inside a kill-on-close Job. The process is created
+/// suspended so nothing can run before it is owned.
+struct OwnedEditorProcess {
+    child: Child,
+    job: Option<ProcessJob>,
+    cleanup: Option<EditorCleanup>,
+}
+
+impl OwnedEditorProcess {
+    fn spawn(command: &mut Command) -> Result<Self, &'static str> {
+        command.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
+        let mut child = command.spawn().map_err(|_| "window_harness_spawn_failed")?;
+        let job = match ProcessJob::assign_process_handle(child.as_raw_handle().cast()) {
+            Ok(job) => job,
+            Err(_) => {
+                let _ = child.kill();
+                let process_exited = child.wait().is_ok();
+                // A suspended, unowned process cannot prove descendant cleanup.
+                let cleanup = EditorCleanup {
+                    editor_pid: child.id(),
+                    process_exited,
+                    job_processes_remaining: None,
+                    windows_destroyed: true,
+                };
+                EDITOR_CLEANUPS.with(|log| log.borrow_mut().push(cleanup));
+                return Err("window_harness_job_assignment_failed");
+            }
+        };
+        let mut owned = Self {
+            child,
+            job: Some(job),
+            cleanup: None,
+        };
+        if resume_suspended_primary(owned.child.id()).is_err() {
+            let cleanup = owned.shutdown(&[]);
+            EDITOR_CLEANUPS.with(|log| log.borrow_mut().push(cleanup));
+            return Err("window_harness_resume_failed");
+        }
+        Ok(owned)
+    }
+
+    fn shutdown(&mut self, windows: &[isize]) -> EditorCleanup {
+        if let Some(cleanup) = self.cleanup {
+            return cleanup;
+        }
+        if let Some(job) = &self.job {
+            let _ = job.terminate();
+        }
         let _ = self.child.kill();
-        let _ = self.child.wait();
+        let deadline = Instant::now() + EDITOR_CLEANUP_BUDGET;
+        let mut process_exited = false;
+        while Instant::now() < deadline {
+            if matches!(self.child.try_wait(), Ok(Some(_))) {
+                process_exited = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+        let mut job_processes_remaining = None;
+        if let Some(job) = &self.job {
+            while Instant::now() < deadline {
+                job_processes_remaining = job.active_processes().ok();
+                if job_processes_remaining == Some(0) {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(25));
+            }
+        }
+        let windows_destroyed = wait_until(
+            deadline.saturating_duration_since(Instant::now()),
+            || windows.iter().all(|hwnd| !window_is_valid(*hwnd)),
+        );
+        let cleanup = EditorCleanup {
+            editor_pid: self.child.id(),
+            process_exited,
+            job_processes_remaining,
+            windows_destroyed,
+        };
+        // Closing the kill-on-close handle is the final backstop for descendants.
+        self.job = None;
+        self.cleanup = Some(cleanup);
+        cleanup
+    }
+}
+
+impl Drop for OwnedEditorProcess {
+    fn drop(&mut self) {
+        if self.cleanup.is_none() {
+            let cleanup = self.shutdown(&[]);
+            EDITOR_CLEANUPS.with(|log| log.borrow_mut().push(cleanup));
+        }
+    }
+}
+
+/// Content-free CI receipt for one owned-desktop test. It is written only into
+/// the task-owned evidence directory and binds the outcome to the exact source
+/// commit and workflow run. FAIL is recorded unless the test reaches `pass`.
+struct CloudTestReceipt {
+    test: &'static str,
+    completed_checks: Vec<String>,
+    cleanups: Vec<EditorCleanup>,
+    passed: bool,
+}
+
+impl CloudTestReceipt {
+    fn new(test: &'static str) -> Self {
+        take_editor_cleanups();
+        Self {
+            test,
+            completed_checks: Vec::new(),
+            cleanups: Vec::new(),
+            passed: false,
+        }
+    }
+
+    fn check(&mut self, name: impl Into<String>) {
+        let name = name.into();
+        eprintln!("CLOUD_CHECK_PASS {} {name}", self.test);
+        self.completed_checks.push(name);
+    }
+
+    fn record_cleanups(&mut self, cleanups: Vec<EditorCleanup>) {
+        self.cleanups.extend(cleanups);
+    }
+
+    fn pass(&mut self) {
+        self.passed = true;
+    }
+}
+
+impl Drop for CloudTestReceipt {
+    fn drop(&mut self) {
+        self.cleanups.extend(take_editor_cleanups());
+        let status = if self.passed
+            && !thread::panicking()
+            && self.cleanups.iter().all(EditorCleanup::complete)
+        {
+            "PASS"
+        } else {
+            "FAIL"
+        };
+        eprintln!("CLOUD_TEST_RESULT {} {status}", self.test);
+        let Some(root) = std::env::var_os("GRAMMAR_EVIDENCE") else {
+            return;
+        };
+        let env = |key: &str| std::env::var(key).unwrap_or_default();
+        let cleanups = self
+            .cleanups
+            .iter()
+            .map(|cleanup| {
+                serde_json::json!({
+                    "editor_pid": cleanup.editor_pid,
+                    "process_exited": cleanup.process_exited,
+                    "job_processes_remaining": cleanup.job_processes_remaining,
+                    "windows_destroyed": cleanup.windows_destroyed,
+                })
+            })
+            .collect::<Vec<_>>();
+        let receipt = serde_json::json!({
+            "schema": "grammar-owned-desktop-receipt/v1",
+            "classification": "SYNTHETIC_OWNED_WINDOWS_DESKTOP",
+            "test": self.test,
+            "status": status,
+            "source_sha": env("GITHUB_SHA"),
+            "repository": env("GITHUB_REPOSITORY"),
+            "ref": env("GITHUB_REF"),
+            "run_id": env("GITHUB_RUN_ID"),
+            "run_attempt": env("GITHUB_RUN_ATTEMPT"),
+            "completed_checks": self.completed_checks,
+            "last_completed_check": self.completed_checks.last(),
+            "editor_cleanups": cleanups,
+            "not_qualified": [
+                "production toolbar and global shortcut",
+                "physical keyboard and IME",
+                "live Provider inference",
+            ],
+        });
+        let directory = std::path::Path::new(&root).join("native");
+        let _ = std::fs::create_dir_all(&directory);
+        if let Ok(bytes) = serde_json::to_vec_pretty(&receipt) {
+            let _ = std::fs::write(directory.join(format!("{}.json", self.test)), bytes);
+        }
     }
 }
 
 struct WindowHarness {
-    _child: ChildGuard,
+    editor: OwnedEditorProcess,
     target_window: isize,
     target_textbox: isize,
     widget_window: isize,
@@ -440,7 +652,8 @@ public static class FocusEditorHarness
 [FocusEditorHarness]::Run()
 "#;
         let sender_desktop = current_input_desktop_name().unwrap_or_default();
-        let mut child = Command::new("powershell.exe")
+        let mut command = Command::new("powershell.exe");
+        command
             .args(["-NoProfile", "-STA", "-Command", script])
             .env(
                 "CODEX_PENCIL_TEST_SENDER_PID",
@@ -449,14 +662,15 @@ public static class FocusEditorHarness
             .env("CODEX_PENCIL_TEST_SENDER_DESKTOP", sender_desktop)
             .env("CODEX_PENCIL_TEST_SOURCE", source)
             .env("CODEX_PENCIL_TEST_REPLACEMENT", expected_replacement)
-            .creation_flags(CREATE_NO_WINDOW)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|_| "window_harness_spawn_failed")?;
-        let stdout = child.stdout.take().ok_or("window_harness_pipe_failed")?;
-        let guard = ChildGuard { child };
+            .stderr(Stdio::null());
+        let mut editor = OwnedEditorProcess::spawn(&mut command)?;
+        let stdout = editor
+            .child
+            .stdout
+            .take()
+            .ok_or("window_harness_pipe_failed")?;
         let (sender, receiver) = mpsc::sync_channel(1);
         thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
@@ -470,7 +684,7 @@ public static class FocusEditorHarness
             .recv_timeout(Duration::from_secs(30))
             .map_err(|_| "window_harness_start_timeout")?;
         Ok(Self {
-            _child: guard,
+            editor,
             target_window: handles.handles[0],
             target_textbox: handles.handles[1],
             widget_window: handles.handles[2],
@@ -479,6 +693,15 @@ public static class FocusEditorHarness
             same_input_desktop: handles.same_input_desktop,
             sender_integrity: handles.sender_integrity,
         })
+    }
+}
+
+impl Drop for WindowHarness {
+    fn drop(&mut self) {
+        let cleanup = self
+            .editor
+            .shutdown(&[self.target_window, self.widget_window]);
+        EDITOR_CLEANUPS.with(|log| log.borrow_mut().push(cleanup));
     }
 }
 
@@ -1227,10 +1450,8 @@ fn assert_send_input_delivery(evidence: &ProbeEvidence) {
     assert!(v_up < ctrl_up);
 }
 
-#[test]
-#[ignore = "mutates only an explicitly opted-in GitHub-hosted synthetic desktop"]
-fn cloud_owned_desktop_qualification() {
-    // Check the dedicated CI opt-in before touching any desktop or clipboard.
+/// Checks the dedicated CI opt-in before any desktop, clipboard or process use.
+fn require_cloud_owned_desktop() {
     for (key, expected) in [
         ("GITHUB_ACTIONS", "true"),
         ("GITHUB_REPOSITORY", "CAPTW/pencil"),
@@ -1240,31 +1461,72 @@ fn cloud_owned_desktop_qualification() {
     ] {
         assert_eq!(std::env::var(key).as_deref(), Ok(expected), "{key}");
     }
+}
+
+// The input-environment and Copy-only checks are separate tests (and separate
+// CI steps) so a failure in one never prevents or masks the other.
+#[test]
+#[ignore = "mutates only an explicitly opted-in GitHub-hosted synthetic desktop"]
+fn cloud_owned_desktop_input_environment() {
+    let mut receipt = CloudTestReceipt::new("cloud_owned_desktop_input_environment");
+    require_cloud_owned_desktop();
+    receipt.check("owned_desktop_opt_in");
     assert!(clipboard::write_clipboard_text("synthetic-cloud-prior").is_ok());
     let _clipboard_guard = ClipboardTextGuard::capture().expect("synthetic clipboard roundtrip");
+    receipt.check("synthetic_clipboard_roundtrip");
     for run in 1..=PROBE_REPETITIONS {
         let evidence = run_isolated_send_input_probe(run);
         eprintln!("CLOUD_OWNED_INPUT_EVIDENCE {evidence:?}");
+        receipt.record_cleanups(assert_editor_cleanups_complete(1));
+        receipt.check(format!("run{run}_owned_editor_cleanup"));
         assert_common_probe_preconditions(&evidence);
+        receipt.check(format!("run{run}_same_session_desktop_integrity_focus"));
         assert_send_input_delivery(&evidence);
+        receipt.check(format!("run{run}_sendinput_delivered_and_readback"));
     }
-    eprintln!("CLOUD_OWNED_INPUT_READBACK_PASS; current Copy-only safety follows");
+    receipt.pass();
+}
+
+#[test]
+#[ignore = "mutates only an explicitly opted-in GitHub-hosted synthetic desktop"]
+fn cloud_owned_desktop_copy_only_boundary() {
+    let mut receipt = CloudTestReceipt::new("cloud_owned_desktop_copy_only_boundary");
+    require_cloud_owned_desktop();
+    receipt.check("owned_desktop_opt_in");
+    assert!(clipboard::write_clipboard_text("synthetic-cloud-prior").is_ok());
+    let _clipboard_guard = ClipboardTextGuard::capture().expect("synthetic clipboard roundtrip");
+    receipt.check("synthetic_clipboard_roundtrip");
     // The legacy Apply acceptance expects mutation and predates the fail-closed
     // selection gate. Verify today's production boundary without bypassing it.
     let (harness, target) = prepare_translation_harness(EXPECTED_SOURCE, EXPECTED_SOURCE);
+    receipt.check("owned_editor_ready");
     let (mut store, token) = ready_store(target, 1);
     let mut platform = LiveApplyPlatform::new(
-        harness.widget_window, harness.target_window, harness.target_textbox,
+        harness.widget_window,
+        harness.target_window,
+        harness.target_textbox,
     );
     assert_eq!(
         apply_current_session(&mut store, &token, EXPECTED_REPLACEMENT, false, &mut platform),
-        ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetSelectionUnverified },
+        ApplyOutcome::CopiedFallback {
+            reason: ApplyFallbackReason::TargetSelectionUnverified
+        },
     );
+    receipt.check("copy_only_outcome");
     assert_eq!(platform.paste_calls, 0);
-    assert_eq!(clipboard::read_clipboard_text().ok().as_deref(), Some(EXPECTED_REPLACEMENT));
+    receipt.check("no_paste_input");
+    assert_eq!(
+        clipboard::read_clipboard_text().ok().as_deref(),
+        Some(EXPECTED_REPLACEMENT)
+    );
+    receipt.check("replacement_on_clipboard");
     assert!(content_equals_expected(harness.target_window));
     assert!(content_equals_expected(harness.widget_window));
-    eprintln!("CLOUD_COPY_ONLY_READBACK_PASS; production toolbar and capture remain separately unqualified");
+    receipt.check("editor_readback_unchanged");
+    drop(harness);
+    receipt.record_cleanups(assert_editor_cleanups_complete(1));
+    receipt.check("owned_editor_cleanup");
+    receipt.pass();
 }
 
 #[test]
