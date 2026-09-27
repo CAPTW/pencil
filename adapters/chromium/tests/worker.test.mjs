@@ -406,3 +406,42 @@ test('late rejected enable cannot revoke a newer session',async()=>{
   const disable=f.sent.find(x=>x.message.op==='disable' && x.message.epoch===old);
   assert.ok(disable);assert.equal(disable.options.documentId,'doc-1');
 });
+
+// Pre-use review: after "Check completed cleanup" says a new grant is needed,
+// the grant from before the failure must no longer admit Deep.
+test('cleanup recovery revokes every Deep grant from before the failure',async()=>{
+  const f=fixture();await f.command('enable');
+  assert.match((await f.command('deep-consent',1,{provider:'claude',consent:true})).status,/Deep allowed/);
+  const deep={...f.request(),op:'deep',provider:'claude'};
+  const pending=f.dispatch(deep,f.sender());await tick();await tick();
+  const port=f.ports[0];assert.equal(port.posted.at(-1).op,'deep');
+  port.onDisconnect.emit();await tick();await pending;
+  assert.equal((await f.dispatch({...deep,id:'blocked'},f.sender())).error,'deep_permission_denied');
+  assert.match((await f.command('cleanup-recover')).status,/Grant Deep permission again to send/);
+  assert.ok(f.sent.some(x=>x.tabId===1 && x.message.op==='deep-policy' && x.message.provider===null),'the page is told the grant is gone');
+  const before=f.ports.length;
+  assert.equal((await f.dispatch({...deep,id:'after-recovery'},f.sender())).error,'deep_permission_denied');
+  assert.equal(f.ports.slice(before).some(p=>p.posted.some(m=>m.op==='deep')),false,'no Deep request without a new grant');
+  assert.match((await f.command('deep-consent',1,{provider:'claude',consent:true})).status,/Deep allowed/);
+});
+
+// Pre-use review: cleanup_busy on reserve means the host recorded nothing
+// (another host process held the ledger lock). It must not block Deep until a
+// manual recovery that can never succeed.
+test('cleanup_busy on reserve records nothing and leaves Deep usable',async()=>{
+  const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});
+  f.controlAuto(false);
+  const deep={...f.request(),op:'deep',provider:'claude'};
+  const pending=f.dispatch(deep,f.sender());
+  for(let i=0;i<10 && !f.controlPorts.length;i++)await tick();
+  const reserve=f.controlPorts.at(-1);assert.equal(reserve.posted[0].op,'cleanup-reserve');
+  reserve.onMessage.emit({...reserve.posted[0],error:'cleanup_busy',cleanup_complete:false});
+  assert.equal((await pending).error,'busy');
+  assert.equal((f.stored().deepCleanupPending ?? []).length,0,'no reservation intent is left behind');
+  f.controlAuto(true);
+  const before=f.controlPorts.length;
+  void f.dispatch({...deep,id:'r2'},f.sender());
+  for(let i=0;i<20 && !f.ports.some(p=>p.posted.some(m=>m.op==='deep' && m.id==='r2'));i++)await tick();
+  assert.ok(f.controlPorts.length>before,'the next explicit send reserves again');
+  assert.ok(f.ports.some(p=>p.posted.some(m=>m.op==='deep' && m.id==='r2')),'and is admitted');
+});

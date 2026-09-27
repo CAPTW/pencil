@@ -63,9 +63,17 @@ impl Store {
                 use std::os::windows::fs::OpenOptionsExt;
                 options.share_mode(0);
             }
-            options
-                .open(self.directory.join(LOCK))
-                .map_err(|_| "cleanup_busy")
+            // Two documents can reach the ledger within milliseconds. A short,
+            // bounded wait keeps that from failing a cleanup step (which blocks
+            // Deep until the user checks cleanup) without waiting indefinitely.
+            for attempt in 0..40 {
+                match options.open(self.directory.join(LOCK)) {
+                    Ok(file) => return Ok(file),
+                    Err(_) if attempt < 39 => std::thread::sleep(std::time::Duration::from_millis(25)),
+                    Err(_) => break,
+                }
+            }
+            Err("cleanup_busy")
         }
     }
     fn read(&self) -> Result<Ledger> {
