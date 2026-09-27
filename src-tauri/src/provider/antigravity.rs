@@ -40,6 +40,13 @@ pub(crate) async fn probe_cancel(cancel: Arc<AtomicBool>) -> ProviderStatus {
             "Install Antigravity CLI from https://antigravity.google/docs/cli/install/ then Refresh status.",
         );
     };
+    if let Some(reason) = super::cli::batch_launcher_reason(&path, "Antigravity CLI") {
+        return ProviderStatus::unavailable(
+            ProviderKind::Antigravity,
+            reason,
+            "Use the native agy.exe or set CODEX_PENCIL_AGY_BIN to it, then Refresh status.",
+        );
+    }
     let version = super::cli::run_version_cancel(&path, cancel.clone())
         .await
         .ok();
@@ -73,6 +80,9 @@ pub(crate) async fn rewrite(
     let path = resolve_agy().ok_or_else(|| {
         ProviderError::Unavailable("Antigravity CLI (`agy`) was not found on PATH.".to_string())
     })?;
+    if let Some(reason) = super::cli::batch_launcher_reason(&path, "Antigravity CLI") {
+        return Err(ProviderError::Unavailable(reason));
+    }
     let prompt = rewrite_prompt_with_terminology(selected_text, intent, terminology)
         .map_err(ProviderError::Faulted)?;
     let args = vec![

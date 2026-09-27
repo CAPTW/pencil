@@ -21,10 +21,14 @@ use std::{
 };
 use tokio::sync::Mutex;
 
+const CLAUDE_NATIVE_SETUP: &str =
+    "Install the native Claude Code (claude.exe) or set CODEX_PENCIL_CLAUDE_BIN to it, then Refresh status.";
+
 pub(crate) fn resolve_claude() -> Option<PathBuf> {
     resolve_named_executable(
         std::env::var("CODEX_PENCIL_CLAUDE_BIN").ok().as_deref(),
-        &["claude.cmd", "claude.exe", "claude"],
+        // The native claude.exe first: an npm claude.cmd cannot run requests.
+        &["claude.exe", "claude.cmd", "claude"],
     )
 }
 
@@ -40,6 +44,9 @@ pub(crate) async fn probe_cancel(cancel: Arc<AtomicBool>) -> ProviderStatus {
             "Install Claude Code and ensure `claude` is available, then Refresh status.",
         );
     };
+    if let Some(reason) = super::cli::batch_launcher_reason(&path, "Claude Code") {
+        return ProviderStatus::unavailable(ProviderKind::Claude, reason, CLAUDE_NATIVE_SETUP);
+    }
     let version = super::cli::run_version_cancel(&path, cancel.clone())
         .await
         .ok();
@@ -158,6 +165,9 @@ pub(crate) async fn rewrite(
     let path = resolve_claude().ok_or_else(|| {
         ProviderError::Unavailable("Claude Code CLI was not found on PATH.".to_string())
     })?;
+    if let Some(reason) = super::cli::batch_launcher_reason(&path, "Claude Code") {
+        return Err(ProviderError::Unavailable(format!("{reason} {CLAUDE_NATIVE_SETUP}")));
+    }
     let prompt = rewrite_prompt_with_terminology(selected_text, intent, terminology)
         .map_err(|error| ProviderError::Faulted(error))?;
     let args = vec![
@@ -182,24 +192,34 @@ pub(crate) async fn rewrite(
     if captured.cancelled || cancel.load(Ordering::SeqCst) {
         return Err(ProviderError::Cancelled);
     }
-    let combined = format!("{} {}", captured.stdout, captured.stderr).to_lowercase();
-    if combined.contains("not logged in") || combined.contains("please run /login") {
-        return Err(ProviderError::SignedOut(
-            "Claude Code is signed out.".to_string(),
-        ));
-    }
-    if captured.exit_code != Some(0) {
-        if combined.contains("unknown option") {
-            return Err(ProviderError::CliUsage);
-        }
-        if combined.contains("authentication") {
+    classify_claude_output(captured.exit_code, &captured.stdout, &captured.stderr, intent.mode())
+}
+
+/// A successful run is judged only by its JSON result: the rewritten text may
+/// itself mention logging in. Sign-in wording counts only in a failed run or
+/// in an is_error result.
+fn classify_claude_output(
+    exit_code: Option<i32>,
+    stdout: &str,
+    stderr: &str,
+    mode: RewriteMode,
+) -> Result<RewriteResult, ProviderError> {
+    if exit_code != Some(0) {
+        let combined = format!("{stdout} {stderr}").to_lowercase();
+        if combined.contains("not logged in")
+            || combined.contains("please run /login")
+            || combined.contains("authentication")
+        {
             return Err(ProviderError::SignedOut(
                 "Claude Code is signed out.".to_string(),
             ));
         }
-        return Err(ProviderError::NonzeroExit(captured.exit_code.unwrap_or(1)));
+        if combined.contains("unknown option") {
+            return Err(ProviderError::CliUsage);
+        }
+        return Err(ProviderError::NonzeroExit(exit_code.unwrap_or(1)));
     }
-    parse_claude_result(&captured.stdout, intent.mode())
+    parse_claude_result(stdout, mode)
 }
 
 fn parse_claude_result(stdout: &str, mode: RewriteMode) -> Result<RewriteResult, ProviderError> {
@@ -323,6 +343,47 @@ mod tests {
         assert!(matches!(
             parse_claude_result(stdout, RewriteMode::Grammar),
             Err(ProviderError::SignedOut(_))
+        ));
+        // The same answer with a failing exit code.
+        assert!(matches!(
+            classify_claude_output(Some(1), stdout, "", RewriteMode::Grammar),
+            Err(ProviderError::SignedOut(_))
+        ));
+        assert!(matches!(
+            classify_claude_output(Some(1), "", "Error: Not logged in", RewriteMode::Grammar),
+            Err(ProviderError::SignedOut(_))
+        ));
+    }
+
+    // Pre-use review: an npm-installed claude.cmd showed Ready but failed every
+    // request at spawn (Rust refuses line breaks in batch-file arguments).
+    #[test]
+    fn batch_launchers_are_unavailable_and_native_executables_are_not() {
+        use std::path::Path;
+        for launcher in ["C:\\npm\\claude.cmd", "C:\\npm\\claude.CMD", "C:\\tools\\agy.bat"] {
+            let reason = super::super::cli::batch_launcher_reason(Path::new(launcher), "CLI").unwrap();
+            assert!(reason.contains("multi-line request"), "{reason}");
+        }
+        for native in ["C:\\bin\\claude.exe", "C:\\bin\\claude"] {
+            assert!(super::super::cli::batch_launcher_reason(Path::new(native), "CLI").is_none());
+        }
+    }
+
+    // Pre-use review: a successful rewrite of text that mentions logging in
+    // used to be reported as signed out.
+    #[test]
+    fn successful_result_mentioning_login_is_not_signed_out() {
+        let payload = r#"{\"replacement\":\"Please run /login when you are not logged in.\",\"changed\":true,\"summary\":\"ok\",\"confidence\":0.9}"#;
+        let stdout = format!(r#"{{"type":"result","is_error":false,"result":"{payload}"}}"#);
+        let result = classify_claude_output(Some(0), &stdout, "", RewriteMode::Grammar).unwrap();
+        assert_eq!(result.replacement, "Please run /login when you are not logged in.");
+        assert!(matches!(
+            classify_claude_output(Some(2), "", "error: unknown option '--bare'", RewriteMode::Grammar),
+            Err(ProviderError::CliUsage)
+        ));
+        assert!(matches!(
+            classify_claude_output(Some(3), "", "", RewriteMode::Grammar),
+            Err(ProviderError::NonzeroExit(3))
         ));
     }
 }

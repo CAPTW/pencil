@@ -1173,6 +1173,12 @@ where
                     return;
                 }
             };
+            // The cap bounds one turn (and the traffic before it), not the
+            // life of the app-server: a long-lived client otherwise failed a
+            // healthy request once its total output passed the cap.
+            if message.get("method").and_then(Value::as_str) == Some("turn/completed") {
+                cumulative = 0;
+            }
 
             if is_server_request(&message) {
                 let request_type = server_request_type(
@@ -3428,6 +3434,52 @@ mod tests {
         assert!(prompt.contains(
             "Preserve URLs, code, shell commands, product names, numbers, and email addresses"
         ));
+    }
+
+    // Pre-use review: the 64 MiB stdout cap counted the whole app-server life,
+    // so ordinary use eventually failed a healthy request. It now covers one turn.
+    #[tokio::test]
+    async fn output_cap_covers_one_turn_not_the_client_lifetime() {
+        let (client, mut server, _failure) = fake_transport();
+        complete_handshake(&client, &mut server).await;
+        let chunk = "x".repeat(1024 * 1024);
+        for index in 0..70u32 {
+            let turn = format!("turn-{index}");
+            server
+                .send(json!({
+                    "method": "item/agentMessage/delta",
+                    "params": {"threadId": "thread", "turnId": turn, "itemId": "item", "delta": chunk}
+                }))
+                .await;
+            server
+                .send(json!({
+                    "method": "turn/completed",
+                    "params": {"threadId": "thread", "turn": {"id": turn, "status": "completed"}}
+                }))
+                .await;
+        }
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(client.is_healthy(), "70 MiB over 70 completed turns is ordinary use");
+    }
+
+    #[tokio::test]
+    async fn output_cap_still_stops_a_runaway_turn() {
+        let (client, mut server, _failure) = fake_transport();
+        complete_handshake(&client, &mut server).await;
+        let chunk = "x".repeat(1024 * 1024);
+        // The 65th MiB crosses the cap. The client then stops reading, so a
+        // write may block: each one is bounded.
+        for _ in 0..66u32 {
+            let delta = json!({
+                "method": "item/agentMessage/delta",
+                "params": {"threadId": "thread", "turnId": "runaway", "itemId": "item", "delta": chunk}
+            });
+            if timeout(Duration::from_secs(5), server.send(delta)).await.is_err() {
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(!client.is_healthy(), "more than 64 MiB in one turn is still refused");
     }
 }
 
