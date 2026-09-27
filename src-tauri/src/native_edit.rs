@@ -25,6 +25,9 @@ const ES_READONLY: u32 = 0x0800;
 const WM_GETTEXTLENGTH: u32 = 0x000E;
 const EM_GETSEL: u32 = 0x00B0;
 const EM_GETPASSWORDCHAR: u32 = 0x00D2;
+/// The only messages `Win32EditPort::send` delivers (besides `WM_GETTEXT` in
+/// `read_text`): capture reads, and nothing can change a control through it.
+const READ_ONLY_MESSAGES: [u32; 3] = [EM_GETPASSWORDCHAR, EM_GETSEL, WM_GETTEXTLENGTH];
 /// `EM_GETSEL` reports 16-bit offsets, so larger fields are never admitted.
 pub(crate) const MAX_EDIT_UNITS: usize = 0xFFFE;
 
@@ -46,9 +49,9 @@ const SENSITIVE_PROCESSES: &[&str] = &[
     "roboform.exe",
 ];
 
-/// Win32 primitives used by the reader and Apply. Text-bearing and mutating
-/// calls are bounded cross-process messages; `None` means the outcome is unknown
-/// (timeout, hung or destroyed target, or a UIPI denial).
+/// Win32 primitives used by the capture reader. Text-bearing calls are bounded
+/// cross-process read messages; `None` means the outcome is unknown (timeout,
+/// hung or destroyed target, a UIPI denial, or a message that is not a read).
 pub(crate) trait EditPort {
     fn foreground_window(&mut self) -> isize;
     fn focused_control(&mut self, top_level: isize) -> Option<isize>;
@@ -379,6 +382,9 @@ impl EditPort for Win32EditPort {
     }
 
     fn send(&mut self, hwnd: isize, message: u32, wparam: usize, lparam: isize) -> Option<isize> {
+        if !READ_ONLY_MESSAGES.contains(&message) {
+            return None;
+        }
         self.send_timeout(hwnd, message, wparam, lparam, self.read_timeout_ms)
     }
 
@@ -403,8 +409,9 @@ mod tests {
     use super::*;
     use crate::apply_safety::ApplyFallbackReason;
 
-    // Messages that change an editor's state. Production never sends them;
-    // the fake still models them so any regression is recorded, not ignored.
+    // Messages that change an editor's state. Production cannot send them
+    // (`Win32EditPort::send` delivers only `READ_ONLY_MESSAGES`); the fake still
+    // models them so a test that routes a new path to it records the change.
     const EM_SETSEL: u32 = 0x00B1;
     const EM_SCROLLCARET: u32 = 0x00B7;
     const EM_GETMODIFY: u32 = 0x00B8;
@@ -412,6 +419,7 @@ mod tests {
     const EM_SETREADONLY: u32 = 0x00CF;
     const EM_GETLIMITTEXT: u32 = 0x00D5;
     const EM_UNDO: u32 = 0x00C7;
+    const EM_REPLACESEL: u32 = 0x00C2;
     const WM_SETTEXT: u32 = 0x000C;
     const TOP: isize = 0x100;
     const EDIT: isize = 0x200;
@@ -512,7 +520,7 @@ mod tests {
                 .iter()
                 .copied()
                 .filter(|(message, _)| {
-                    matches!(*message, EM_SETREADONLY | EM_SETSEL | EM_SETMODIFY | EM_UNDO | 0x00C2 | WM_SETTEXT)
+                    matches!(*message, EM_SETREADONLY | EM_SETSEL | EM_SETMODIFY | EM_UNDO | EM_REPLACESEL | WM_SETTEXT)
                 })
                 .collect()
         }
@@ -734,9 +742,12 @@ mod tests {
     // ---- Review findings R1/R2 through the production Apply entry ----
     // `EM_SETREADONLY` only blocks user typing; the application itself can
     // still change its text between any two messages another process sends.
-    // These tests drive `apply_current_session` (the production Apply entry)
-    // with a platform whose native mutation hook routes to the same function
-    // as `WindowsApplyPlatform`, on the fake editor instead of Win32.
+    // These tests capture with the production reader and drive
+    // `apply_current_session` (the production Apply entry). `ApplyPlatform`
+    // has no editor access at all, so the decisive guards are the Copy-only
+    // outcome and the exact platform call sequence; the fake editor's state,
+    // notifications and application text are checked as well. Red at 4400974,
+    // when a platform hook still mutated the editor.
 
     use crate::apply_safety::{apply_current_session, ApplyOutcome, ApplyPlatform, WaitStage};
     use crate::capture_session::{CaptureSessionStore, SessionToken, WindowTarget};
@@ -748,15 +759,20 @@ mod tests {
         clipboard: Option<String>,
         pastes: usize,
         calls: Vec<&'static str>,
+        selection_authority: bool,
     }
 
     impl EditorPlatform {
         fn new(edit: FakeEdit) -> Self {
-            Self { edit, clipboard: None, pastes: 0, calls: Vec::new() }
+            Self { edit, clipboard: None, pastes: 0, calls: Vec::new(), selection_authority: false }
         }
     }
 
     impl ApplyPlatform for EditorPlatform {
+        fn has_verified_selection_authority(&mut self) -> bool {
+            self.calls.push("has_verified_selection_authority");
+            self.selection_authority
+        }
         fn is_window(&mut self, hwnd: isize) -> bool {
             self.calls.push("is_window");
             hwnd == TOP
@@ -874,6 +890,29 @@ mod tests {
         edit.race = Race::MoveSelection(0, 5);
         let (outcome, platform) = apply_through_production(edit, &mut store, &token);
         assert_editor_untouched(&outcome, &platform, "hello world");
+    }
+
+    #[test]
+    fn native_capture_stays_copy_only_even_with_selection_authority() {
+        // A platform that claimed selection authority would enable the paste
+        // path; a native capture must still never reach it.
+        let mut edit = FakeEdit::new(SAMPLE, range_of(SAMPLE, "third"));
+        let (mut store, token) = ready_session(&mut edit);
+        let mut platform = EditorPlatform::new(edit);
+        platform.selection_authority = true;
+        let outcome = apply_current_session(&mut store, &token, "fixed", false, &mut platform);
+        platform.edit.settle();
+        assert_editor_untouched(&outcome, &platform, SAMPLE);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn win32_port_delivers_only_read_messages() {
+        let mut port = Win32EditPort::default();
+        // WM_PASTE and WM_CHAR too.
+        for message in [WM_SETTEXT, EM_SETSEL, EM_SETREADONLY, EM_UNDO, EM_SETMODIFY, EM_REPLACESEL, 0x0302, 0x0102] {
+            assert_eq!(port.send(0, message, 0, 0), None, "message {message:#06x} must never be sent");
+        }
     }
 
     #[test]

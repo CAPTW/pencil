@@ -1,5 +1,6 @@
-//! Owned-desktop qualification of standard Edit capture (step 2) and verified
-//! native Apply (step 3). Every editor is a task-owned synthetic process whose
+//! Owned-desktop qualification of standard Edit capture (step 2) and of
+//! Copy-only native Apply, including the review R1/R2 counterexamples against
+//! application edits. Every editor is a task-owned synthetic process whose
 //! native `Edit` controls count text-bearing messages sent from other threads,
 //! so "never read" is observed at the target rather than inferred.
 
@@ -383,7 +384,8 @@ fn cloud_owned_desktop_native_capture() {
     receipt.pass();
 }
 
-/// Mirrors the production Windows platform; there is no widget in this harness.
+/// Stands in for `WindowsApplyPlatform` (this harness has no widget); only the
+/// built-app flow runs the real platform.
 #[derive(Default)]
 struct NativeLivePlatform {
     clipboard_writes: usize,
@@ -603,7 +605,7 @@ struct RaceObservation {
 
 impl RaceObservation {
     fn safe(&self, expected_app_edits: Option<usize>) -> bool {
-        matches!(self.outcome, ApplyOutcome::CopiedFallback { .. })
+        self.outcome == ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetMutationDisabled }
             && self.state_changes == 0
             && self.foreign_change_notices == 0
             && expected_app_edits.map_or(self.app_edits > 0, |expected| self.app_edits == expected)
@@ -728,9 +730,12 @@ fn cloud_owned_desktop_native_apply_against_application_edits() {
     drop(harness);
     receipt.record_cleanups(assert_editor_cleanups_complete(1));
     receipt.check("owned_editor_cleanup");
+    // Joined without quotes so the content-free descriptions survive the
+    // receipt's removal of quoted values.
     assert!(
         failures.is_empty(),
-        "native Apply changed the editor or overwrote the application's own text: {failures:?}"
+        "native Apply changed the editor or overwrote the application's own text: {}",
+        failures.join("; ")
     );
     receipt.pass();
 }

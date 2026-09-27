@@ -47,7 +47,7 @@ jobs:
           @{
             source=$env:GITHUB_SHA; classification='SYNTHETIC_WINDOWS_CI'
             providerLive='NOT_RUN'; interactiveCapture='NOT_RUN'; ownedDesktop='SEE_NATIVE_RECEIPTS'
-            productionToolbar='NOT_RUN'; release='NOT_AUTHORIZED'
+            productionToolbar='SEE_INSTALLED_BROWSER_RECEIPT'; release='NOT_AUTHORIZED'
           } | ConvertTo-Json > "$e/scope.json"
       # Every check below is its own step and runs after an earlier failure
       # (!cancelled), so one failing check never hides the others. Each step
@@ -120,6 +120,7 @@ jobs:
           exit $LASTEXITCODE
       - name: Owned Windows desktop - native Apply against application edits
         if: ${{ !cancelled() }}
+        timeout-minutes: 5
         run: |
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
           cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil native_edit_live_tests::cloud_owned_desktop_native_apply_against_application_edits -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native/native-apply-application-edits.log"
@@ -226,6 +227,11 @@ jobs:
           $receipts = @(Get-ChildItem "$e/native" -Filter *.json -ErrorAction SilentlyContinue | ForEach-Object {
             $r = Get-Content $_.FullName -Raw | ConvertFrom-Json
             [ordered]@{ test = $r.test; status = $r.status; source_sha = $r.source_sha; last_completed_check = $r.last_completed_check }
+          })
+          # The built-app flow and the installed-package browser test bind to the source too.
+          $receipts += @(Get-Item "$e/app-flow/result.json", "$e/installed-browser/result.json" -ErrorAction SilentlyContinue | ForEach-Object {
+            $r = Get-Content $_.FullName -Raw | ConvertFrom-Json
+            [ordered]@{ test = $_.Directory.Name; status = $r.status; source_sha = $r.source_sha; last_completed_check = @($r.checks)[-1] }
           })
           [ordered]@{
             source_sha = $env:GITHUB_SHA; ref = $env:GITHUB_REF; run_id = $env:GITHUB_RUN_ID; run_attempt = $env:GITHUB_RUN_ATTEMPT

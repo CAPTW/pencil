@@ -18,7 +18,8 @@ pub struct ClipboardCapture {
     pub previous_text: Option<String>,
     pub owned_sequence: Option<u32>,
     pub cursor: CursorPoint,
-    /// Exact editor state that native Apply revalidates before any mutation.
+    /// Set only by the qualified native reader; Apply for such a capture is
+    /// always Copy-only and never touches the editor.
     pub(crate) native_edit: Option<crate::capture_session::NativeEditBinding>,
 }
 

@@ -95,15 +95,24 @@ function Find-Named($browser) {
 }
 
 function Test-Hit($element, $window, [int]$x, [int]$y) {
-  # The element under the click point must be the target (or inside it); when
-  # hit testing stops at a container, no other top-level window may cover it.
+  # The element under the click point must be the target or inside it. If hit
+  # testing stops at a container of the target instead, that container must be
+  # in the target's own top-level window (nothing else covers the point).
   $hit = $ae::FromPoint([Windows.Point]::new($x, $y))
   $walker = [Windows.Automation.TreeWalker]::ControlViewWalker
-  for ($depth = 0; $hit -and $depth -lt 12; $depth++) {
-    if ([Windows.Automation.Automation]::Compare($hit, $element)) { return 'element' }
-    $hit = $walker.GetParent($hit)
+  $node = $hit
+  for ($depth = 0; $node -and $depth -lt 12; $depth++) {
+    if ([Windows.Automation.Automation]::Compare($node, $element)) { return 'element' }
+    $node = $walker.GetParent($node)
   }
-  if ([GestureInput]::RootAt($x, $y) -eq [IntPtr]$window.Current.NativeWindowHandle) { return 'window' }
+  $node = $walker.GetParent($element)
+  for ($depth = 0; $node -and $hit -and $depth -lt 12; $depth++) {
+    if ([Windows.Automation.Automation]::Compare($node, $hit)) {
+      if ([GestureInput]::RootAt($x, $y) -eq [IntPtr]$window.Current.NativeWindowHandle) { return 'container' }
+      return $null
+    }
+    $node = $walker.GetParent($node)
+  }
   return $null
 }
 
