@@ -190,16 +190,23 @@ try {
     await until('onboarding closed', async () => (await onboarding.count()) === 0);
     assert.ok((await loadSettings()).onboardingVersion >= 1, 'onboarding completion persisted');
   }
-  await until('main pane rendered', async () => (await page.getByTestId('apply-result').count()) > 0, 30000);
-  if (await widgetVisible()) await closeWidget();
-  pass('first-run onboarding completed and the widget closed to the tray');
-
   const draft = page.getByLabel('Editable rewrite result text', {exact: true});
   const status = page.locator('.status-pill');
   const apply = page.getByTestId('apply-result');
   const copy = page.getByTestId('copy-result');
   const review = page.getByRole('dialog', {name: 'AI 클라우드 처리 안내'});
   const draftValue = () => draft.inputValue({timeout: 2000}).catch(() => '');
+  // Without a capture the result pane is not rendered while Codex is signed out.
+  const applyEnabled = async () => (await apply.count()) > 0 && (await apply.isEnabled());
+
+  // Idle, the widget shows the main pane, or the Codex sign-in pane when Codex is
+  // not signed in (as on this runner). A capture always opens the main pane, so
+  // local Instant and Apply never depend on a cloud account.
+  const signIn = page.getByRole('heading', {name: 'Sign in with ChatGPT', exact: true});
+  const idlePane = await until('idle widget pane rendered', async () =>
+    ((await apply.count()) > 0 && 'main') || ((await signIn.count()) > 0 && 'codex-sign-in'), 30000);
+  if (await widgetVisible()) await closeWidget();
+  pass(`first-run onboarding completed and the widget closed to the tray (idle pane: ${idlePane})`);
 
   async function prepareSelection(index, text, selected) {
     await editor.set(index, text);
@@ -237,7 +244,7 @@ try {
   pass('shortcut captured the exact selection; local Instant is usable without cloud consent and declining Deep sends nothing');
   const clipboardBefore = await editor.clipboard();
   await draft.fill('Please separate these items carefully.');
-  await until('Apply enabled', async () => apply.isEnabled());
+  await until('Apply enabled', applyEnabled);
   await apply.click();
   await until('document applied', async () => (await editor.text(0)) === doc.replace('Please seperate these items.', 'Please separate these items carefully.'));
   await until('widget hidden after Apply', async () => !(await widgetVisible()));
@@ -259,7 +266,7 @@ try {
   const cancelToken = await captureAndWaitInstant(0, cancelDoc, 'please seperate nothing', 'please separate nothing');
   await declineDeep();
   await closeWidget();
-  await until('capture dismissed', async () => !(await apply.isEnabled({timeout: 2000})));
+  await until('capture dismissed', async () => !(await applyEnabled()));
   const invokeApply = (token, replacement) => page.evaluate(({token, replacement}) =>
     window.__TAURI_INTERNALS__.invoke('apply_replacement', {
       sessionId: token.sessionId,
