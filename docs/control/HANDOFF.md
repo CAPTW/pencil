@@ -6,7 +6,96 @@ Mission: GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1. T
 
 Entry 099baea by fast-forward (no rewrite). The Owner approved Windows CI for this session branch (contract 1.3.0); codex/grammar-autonomous-r1 is untouched and path claims moved to claude-cloud on this branch only. CI evidence lives in the workflow run named below (artifact `grammar-synthetic-evidence-<sha>-<attempt>`, 7-day retention); no local D:/ evidence exists for this session.
 
-Step 1 - independent cloud native tests. `cloud_owned_desktop_qualification` is split into `cloud_owned_desktop_input_environment` and `cloud_owned_desktop_copy_only_boundary`, each its own CI step that runs after earlier failures (`!cancelled`); every other check group is now a separate step too. The synthetic editor starts suspended inside a kill-on-close Job; teardown (including a failing test's unwind) records process exit, zero Job processes and destroyed windows. Each test writes `native/<test>.json` (FAIL unless completed; checks, cleanups, GITHUB_SHA, run id/attempt) and every step tees its log into the artifact; `summary.json` checks that receipts name the checked-out commit. Run 36299835063 on 4bd9a73: input environment PASS (3 runs; each editor cleanup exited/Job 0/windows destroyed), Copy-only boundary PASS (cleanup verified), receipts_bound_to_source=true, all other steps PASS. A workflow_dispatch `fault_injection=input_environment` run deliberately fails run 2 with a live editor to exercise the FAIL receipt, unwind cleanup and step isolation; its result is recorded below when available.
+Step 1 - independent cloud native tests. `cloud_owned_desktop_qualification` is split into `cloud_owned_desktop_input_environment` and `cloud_owned_desktop_copy_only_boundary`, each its own CI step that runs after earlier failures (`!cancelled`); every other check group is now a separate step too. The synthetic editor starts suspended inside a kill-on-close Job; teardown (including a failing test's unwind) records process exit, zero Job processes and destroyed windows. Each test writes `native/<test>.json` (FAIL unless completed; checks, cleanups, GITHUB_SHA, run id/attempt) and every step tees its log into the artifact; `summary.json` checks that receipts name the checked-out commit. Run 36299835063 on 4bd9a73: input environment PASS (3 runs; each editor cleanup exited/Job 0/windows destroyed), Copy-only boundary PASS (cleanup verified), receipts_bound_to_source=true, all other steps PASS. A workflow_dispatch `fault_injection=input_environment` run deliberately fails run 2 with a live editor to exercise the FAIL receipt, unwind cleanup and step isolation. Run 36301495139 on 4b6705a did exactly that: the input step failed with a FAIL receipt (last check `run1_sendinput_delivered_and_readback`; both editors exited with Job 0 and destroyed windows), and every later owned-desktop, build, host, runtime and Chromium step still ran and passed. The built-app step failed on its own unrelated defect, fixed below.
+
+Step 2 - standard Edit capture (`src-tauri/src/native_edit.rs`). The withheld reader is replaced. The hotkey reads only the focused control of the foreground window, and only when that control is admitted. Admission requires class exactly `Edit`, Unicode, visible, enabled, not `ES_PASSWORD` and no password character. The control must belong to the top-level window's process, that process must not be on the password-manager/credential UI list, and the field must be under 65535 UTF-16 units. Everything else is denied before any text-bearing message: RichEdit, WinForms/WPF, browsers, Windows 11 Notepad and elevated apps (UIPI). Empty selections, split surrogates and identity/focus/range/length changes during the read are denied. Capture never uses the clipboard or keys. Owned-desktop receipt `cloud_owned_desktop_native_capture` PASS (run 36301083212 on 0fdd2f6 and every later run) covers:
+- Korean/CRLF/emoji exact selection, whole field and reselection.
+- Zero text messages to password, superclassed and ANSI fields, and on a window switch.
+- A read-only field captured as Copy-only; clipboard untouched.
+
+Step 3 - native Apply. A standard-Edit capture keeps a binding: HWND, pid, UTF-16 range, full-text SHA-256 and read-only flag. Apply sequence:
+- Lock the control with `EM_SETREADONLY` against typing.
+- Re-verify the text hash and the exact selection under the lock.
+- Replace with one undoable `EM_REPLACESEL`, then re-read the exact expected text before unlocking.
+
+Cursor, source, editor and target changes, read-only fields and text limits end in Copy-only with a specific reason. Unverifiable outcomes cancel the capture without retry. The applied path never touches the clipboard. Run 36302014460 exposed a real-Windows fact: a standard Edit refuses `EM_UNDO` while read-only, so the original "undo a displaced replacement" design could leave a moved replacement behind. Since b808fc9, when the re-read proves that only our replacement moved, the verified original is restored under the lock with one atomic `WM_SETTEXT`. The modification flag and the user's moved selection are then restored and Apply reports Copy-only. This rare recovery clears that control's single-level undo. The injected race now runs for both flag states. Receipt `cloud_owned_desktop_native_apply`: PASS in run 36302014460 up to the injected race; the restore fix is PENDING in CI run 36303467689 on 013ca67 (in progress when this was written).
+
+Step 4 - built-app user flow (`scripts/test-app-flow-e2e.mjs`). It drives the release build from the installed package with the real global shortcut on the owned desktop, against the synthetic Edit harness. The widget no longer blocks local Instant behind cloud consent: the Deep disclosure is offered beside the draft and declining sends nothing. The primary shortcut is a documented toggle, so each capture starts with the widget hidden and reselection uses the toggle (close and cancel, then capture). Covered checks:
+- Exact capture; an edited Instant-only draft applied with document reread and clipboard untouched.
+- Copy writes only the clipboard.
+- Cancel: the token fails with `invalid_session_state`.
+- Reselection changes only the new range.
+- Stale tokens are `rejected_stale` and never change a newer document in another window.
+- Both process trees exit.
+
+Run 36302014460 and earlier failed before any flow because the test attached before the widget document committed; this is fixed in 09f4656. Result: PENDING in CI run 36303467689 on 013ca67 (in progress when this was written).
+
+Step 5 - runtime endurance (`src-tauri/tests/runtime_mission/endurance.rs`, own CI step). The test runs 8 rounds of 9 synthetic Provider cases after a warm-up: success, cancel after spawn, pipe-holding and early descendants, workspace file lock, stdout/stderr/dual floods and invalid UTF-8. It adds 20 rounds of 8-way reservation contention. Every run needs:
+- Its expected outcome within the request plus teardown budget.
+- Teardown phase evidence: reader drain/drop, Job zero and filesystem cleanup.
+- No fixture PID and no runtime root afterwards.
+
+Run 36302014460: 72 runs, 0 failures. Handles 146 to 146, threads 6 to 3, private bytes +0.23 MiB, 0 children, 0 roots against a settled baseline. The loaded reproduction (every CPU saturated) reproduced the historical 750ms success-fixture timeout in 6/6 runs as `timeout_during_io` (I/O about 750ms). Those runs ended in 955-1062ms total, versus the historical 1937ms, with cleanup 204-298ms, Job zero, reader drain, filesystem cleanup and 0 PIDs. They are recorded as reproductions, not passes: F-02's loaded timeout is a budget exceeded under saturation, now with bounded and complete teardown. Run 36303467689 repeats it on 013ca67.
+
+Step 6 - Chromium regression (`adapters/chromium/tests/browser.test.mjs`, synthetic localhost, isolated profile). Additions:
+- Zero page or service-worker network requests while cached suggestions are hovered and opened.
+- Explicit Copy writes the clipboard only.
+- A keyboard-only pass reaches and activates Accept, Apply edit, Copy and Dismiss with document rereads.
+
+Run 36302014460 failed the new Copy check because it refilled text that Dismiss had just closed; unchanged text is intentionally not re-analyzed. The test now changes the text first. Existing checks cover opt-in, changed-line analysis, cache/annotation, Accept/Edit/Dismiss/Ignore, stale/beforeinput/user-edit rejection, navigation, disable, sensitive fields and both editors. Result: checks before the Copy step PASS in run 36302014460; the remainder is PENDING in CI run 36303467689 on 013ca67 (in progress when this was written).
+
+Step 7 - synthetic Deep boundary. `runtime_mission::deep_boundary` drives production `ProviderManager::rewrite` with production terminology matching. The store also holds unmatched, suggested and disabled entries. The fixture records argv and each root spawn. It verified:
+- Only the selected Provider starts, once, with its privacy flags.
+- The selected text is sent once, plus only matched approved terms.
+- A non-selected Provider is refused before any spawn.
+- A failure and a cancellation each leave exactly one spawn: no replay, no fallback.
+
+The host Deep test checks the browser path sends the field text once with an empty terminology block. The browser test checks Provider spawns never exceed explicit Deep requests. PASS in run 36302014460 (`DEEP_BOUNDARY_PASS`, host Deep receipt). No live or paid Provider was called.
+
+Step 8 - personal package (`scripts/package`, `scripts/test-personal-package.ps1`). The release app and host come from the receipt-bound build: clean source, fresh target, `--locked --offline`. The package fixes the extension ID with a per-package public key. `MANIFEST.json` binds the source commit/tree/digest, every file hash, the extension ID and the qualified scope. `Install-Grammar.ps1`:
+- Verifies every file before copying and refuses an existing root.
+- Installs for the current user only.
+- Registers the host for the packaged origin.
+
+`Uninstall-Grammar.ps1` stops only processes running from the root and removes only the recorded registration. It deletes the root and, with `-RemoveUserData`, the app's settings and WebView data. CI installs the extracted ZIP into a fresh root and checks file hashes, the registry, the host manifest origin and a protocol call through the registered host. Steps 4 and 6 then run against the installed files, and removal is followed by an independent residue check. Executables are never uploaded. Result: first execution PENDING in CI run 36303467689 on 013ca67 (in progress when this was written).
+
+### PASS / FAIL / NOT_RUN (interim)
+
+Status as of 2026-09-27T07:40Z. PENDING rows are in CI run 36303467689 on 013ca67 and will be replaced by its outcome.
+
+| Step | Check | Result | Evidence |
+|---|---|---|---|
+| 1 | Independent owned-desktop steps, FAIL receipt and unwind cleanup under injected fault | PASS | 36299835063 (4bd9a73), 36301495139 (4b6705a) |
+| 2 | Standard Edit capture: exact text, denials without text messages, clipboard untouched | PASS | 36301083212 (0fdd2f6), 36302014460 (4d493ba) |
+| 3 | Locked verified Apply, undo by user, cursor/source/editor/read-only/closed-target Copy-only, typing and selection races | PASS | 36302014460 (4d493ba) |
+| 3 | Injected selection race restored under the lock (WM_SETTEXT), flag and selection kept | PENDING | 36303467689 (013ca67) |
+| 4 | Built app: shortcut, Instant, edit, Apply, Copy, cancel, reselect, stale | PENDING | 36303467689 (013ca67) |
+| 5 | Endurance 72 runs, contention, resources flat | PASS | 36302014460 (4d493ba) |
+| 5 | Loaded 750ms timeout reproduction with bounded complete cleanup | REPRODUCED 6/6 (recorded, not a pass) | 36302014460 (4d493ba) |
+| 6 | Chromium opt-in, analysis, cache without inference/network, Accept/Edit/Dismiss, stale/user-edit/sensitive/navigation | PASS up to Dismiss | 36302014460 (4d493ba) |
+| 6 | Chromium Copy, keyboard-only actions, Ignore, contenteditable, composition, Deep | PENDING | 36303467689 (013ca67) |
+| 7 | Deep boundary: selected Provider only, matched terms only, no fallback or replay | PASS | 36302014460 (4d493ba) |
+| 8 | Receipt-bound build, package, fresh-root install, registered host, removal without residue | PENDING | 36303467689 (013ca67) |
+| - | Live/paid Provider, accounts, physical keyboard/IME/zoom, toolbar activeTab, normal-profile install, Edge | NOT_RUN | outside the authorized scope |
+
+### Personal use: scope, how to run, residual limits
+
+Build locally (Windows, from a clean checkout of the evidence commit): `npm ci`, `cargo fetch --locked --manifest-path src-tauri/Cargo.toml`, then `pwsh -File scripts/mission/build-receipt.ps1 -SourceRoot . -ReceiptPath <outside-repo>\build-receipt.json` and `pwsh -File scripts/mission/package.ps1 -ReceiptPath <that receipt> -OutputRoot <fresh dir>`. Install with `pwsh -File <package>\Install-Grammar.ps1` (default `%LOCALAPPDATA%\GrammarPersonal`, `-SkipBrowserHost` without the extension). Load `<root>\extension` unpacked in Chrome; its ID must equal `MANIFEST.json` `extensionId`. Remove with `<root>\Uninstall-Grammar.ps1 -RemoveUserData`. `PERSONAL_USE.md` in the package is the Korean user guide. CI builds the same package per run but never uploads executables. Per-run evidence is in the job log, where the summary step prints every receipt. That includes `personal/package-build.json` (source commit/tree/digest, app/host/ZIP SHA-256, extension ID, file hashes), `package-install.json` and `package-remove.json`.
+
+Enabled scope (synthetic qualification only):
+- Standard Windows Edit capture.
+- Locked verified Apply on those controls; Copy-only everywhere else.
+- Local Instant in the desktop widget.
+- Chromium local Instant on explicitly enabled textarea and simple contenteditable fields.
+- Deep only for the selected Provider after explicit consent.
+
+Residual limits:
+- NOT_RUN: live/paid Provider inference and accounts; physical keyboard, IME, zoom, multiple monitors and long human sessions; production toolbar `activeTab` gesture; normal-profile or Web Store installation; Edge.
+- Antigravity Deep stays `provider_privacy_unqualified`. Claude bare mode cannot use OAuth sign-in.
+- Chromium DOM replacement has no guaranteed browser undo.
+- A native Apply briefly makes the field read-only, so keys typed in that instant are dropped. If the app is killed at that moment, the field can stay read-only until the target app is reopened.
+- The selection-race recovery clears that field's undo buffer.
+- Main integration, release, signing and acceptance of the whole product are not claimed.
 
 ## GitHub cloud validation request (2026-09-27)
 
