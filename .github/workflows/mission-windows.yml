@@ -118,6 +118,12 @@ jobs:
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
           cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil native_edit_live_tests::cloud_owned_desktop_native_apply -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native/native-apply.log"
           exit $LASTEXITCODE
+      - name: Owned Windows desktop - native Apply against application edits
+        if: ${{ !cancelled() }}
+        run: |
+          $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil native_edit_live_tests::cloud_owned_desktop_native_apply_against_application_edits -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native/native-apply-application-edits.log"
+          exit $LASTEXITCODE
       - name: Receipt-bound release build and personal package
         if: ${{ !cancelled() }}
         env:

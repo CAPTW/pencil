@@ -44,6 +44,11 @@ const HARNESS_QUERY: u32 = 0x8101;
 const HARNESS_RESET: u32 = 0x8102;
 const HARNESS_FOCUS: u32 = 0x8103;
 const HARNESS_ARM_SELECTION_RACE: u32 = 0x8104;
+const HARNESS_ARM_APP_EDIT: u32 = 0x8105;
+const HARNESS_APP_TIMER: u32 = 0x8106;
+// Application edit modes of the harness.
+const APP_EDIT_AFTER_SELECTION_READ: isize = 1;
+const APP_EDIT_BEFORE_SETTEXT: isize = 2;
 
 // Counter kinds recorded by the harness for messages sent from another thread.
 const KIND_GETTEXT: usize = 0;
@@ -54,6 +59,15 @@ const KIND_LOCK: usize = 4;
 const KIND_UNLOCK: usize = 5;
 const KIND_SETTEXT: usize = 6;
 const KIND_UNDO: usize = 7;
+const KIND_SETSEL: usize = 8;
+const KIND_SETMODIFY: usize = 9;
+/// EN_CHANGE the application received while another process's message ran.
+const KIND_FOREIGN_CHANGE_NOTICE: usize = 10;
+/// Edits made by the application itself.
+const KIND_APP_EDITS: usize = 11;
+/// Messages that change the editor's text, selection, lock or flags.
+const STATE_CHANGING_KINDS: [usize; 7] =
+    [KIND_REPLACESEL, KIND_LOCK, KIND_UNLOCK, KIND_SETTEXT, KIND_UNDO, KIND_SETSEL, KIND_SETMODIFY];
 
 // Editor indexes in the harness.
 const PLAIN: usize = 0;
@@ -201,6 +215,40 @@ impl NativeEditHarness {
             unsafe { SendMessageW(self.form as HWND, HARNESS_ARM_SELECTION_RACE, index, 0) },
             1
         );
+    }
+
+    /// As `arm_selection_race`, moving the selection to `[start, end)`.
+    fn arm_selection_race_to(&self, index: usize, start: usize, end: usize) {
+        let target = (start | (end << 16)) as isize;
+        assert_eq!(
+            unsafe { SendMessageW(self.form as HWND, HARNESS_ARM_SELECTION_RACE, index, target) },
+            1
+        );
+    }
+
+    /// Arms one edit by the application itself inside its own message
+    /// handling; a timer in the application makes it anyway if the triggering
+    /// message never arrives. Mode 0 disarms.
+    fn arm_app_edit(&self, index: usize, mode: isize) {
+        assert_eq!(unsafe { SendMessageW(self.form as HWND, HARNESS_ARM_APP_EDIT, index, mode) }, 1);
+    }
+
+    /// Starts (interval > 0) or stops an application timer that toggles one word.
+    fn app_timer(&self, index: usize, interval_ms: isize) {
+        assert_eq!(unsafe { SendMessageW(self.form as HWND, HARNESS_APP_TIMER, index, interval_ms) }, 1);
+    }
+
+    fn disarm_races(&self) {
+        // An index no editor has (the harness reads wParam as a 32-bit value).
+        unsafe {
+            SendMessageW(self.form as HWND, HARNESS_ARM_SELECTION_RACE, 0xFFFF, 0);
+        }
+        self.arm_app_edit(PLAIN, 0);
+        self.app_timer(PLAIN, 0);
+    }
+
+    fn state_changes(&self, index: usize) -> usize {
+        STATE_CHANGING_KINDS.iter().map(|&kind| self.counter(index, kind)).sum()
     }
 
     fn close_other_form(&self) {
@@ -717,5 +765,150 @@ fn cloud_owned_desktop_native_apply() {
     drop(harness);
     receipt.record_cleanups(assert_editor_cleanups_complete(1));
     receipt.check("owned_editor_cleanup");
+    receipt.pass();
+}
+
+/// Observable result of one Apply against a synthetic editor that the
+/// application itself edits (review findings R1/R2). Content-free.
+struct RaceObservation {
+    outcome: ApplyOutcome,
+    state_changes: usize,
+    foreign_change_notices: usize,
+    app_edits: usize,
+    final_matches: bool,
+    clipboard_has_result: bool,
+}
+
+impl RaceObservation {
+    fn safe(&self, expected_app_edits: Option<usize>) -> bool {
+        matches!(self.outcome, ApplyOutcome::CopiedFallback { .. })
+            && self.state_changes == 0
+            && self.foreign_change_notices == 0
+            && expected_app_edits.map_or(self.app_edits > 0, |expected| self.app_edits == expected)
+            && self.final_matches
+            && self.clipboard_has_result
+    }
+
+    fn describe(&self, name: &str) -> String {
+        format!(
+            "{name}: outcome={:?} state_changes={} foreign_change_notices={} app_edits={} final_is_application_text={} clipboard_has_result={}",
+            self.outcome,
+            self.state_changes,
+            self.foreign_change_notices,
+            self.app_edits,
+            self.final_matches,
+            self.clipboard_has_result
+        )
+    }
+}
+
+/// Captures "world" in "hello world", arms `arm`, applies "fixed" through the
+/// production Apply entry, lets any application timer finish and observes.
+fn apply_against_application(
+    harness: &NativeEditHarness,
+    arm: impl FnOnce(&NativeEditHarness),
+    settle: Duration,
+    final_ok: impl Fn(&str) -> bool,
+) -> RaceObservation {
+    harness.disarm_races();
+    prepare(harness, PLAIN, "hello world", "world");
+    let (mut store, token, _) = ready_native_session();
+    harness.reset_counters();
+    arm(harness);
+    let mut platform = NativeLivePlatform::default();
+    let outcome = apply_current_session(&mut store, &token, "fixed", false, &mut platform);
+    thread::sleep(settle);
+    harness.app_timer(PLAIN, 0);
+    thread::sleep(Duration::from_millis(100));
+    let observation = RaceObservation {
+        outcome,
+        state_changes: harness.state_changes(PLAIN),
+        foreign_change_notices: harness.counter(PLAIN, KIND_FOREIGN_CHANGE_NOTICE),
+        app_edits: harness.counter(PLAIN, KIND_APP_EDITS),
+        final_matches: final_ok(&harness.text(PLAIN)),
+        clipboard_has_result: clipboard::read_clipboard_text().ok().as_deref() == Some("fixed"),
+    };
+    harness.disarm_races();
+    observation
+}
+
+#[test]
+#[ignore = "mutates only an explicitly opted-in GitHub-hosted synthetic desktop"]
+fn cloud_owned_desktop_native_apply_against_application_edits() {
+    let mut receipt = CloudTestReceipt::new("cloud_owned_desktop_native_apply_against_application_edits");
+    require_cloud_owned_desktop();
+    receipt.check("owned_desktop_opt_in");
+    assert!(clipboard::write_clipboard_text("synthetic-native-prior").is_ok());
+    let _clipboard_guard = ClipboardTextGuard::capture().expect("synthetic clipboard roundtrip");
+    let harness = NativeEditHarness::spawn();
+    receipt.check("owned_native_editor_ready");
+    let mut failures = Vec::new();
+    let mut record = |name: &str, observation: RaceObservation, expected_app_edits: Option<usize>| {
+        let description = observation.describe(name);
+        eprintln!("NATIVE_APPLY_RACE {description}");
+        if observation.safe(expected_app_edits) {
+            receipt.check(name.to_string());
+        } else {
+            failures.push(description);
+        }
+    };
+
+    // R1: the application rewrites the text inside its message handling right
+    // after another process reads the selection; "hello newer" must survive.
+    let observation = apply_against_application(
+        &harness,
+        |h| h.arm_app_edit(PLAIN, APP_EDIT_AFTER_SELECTION_READ),
+        Duration::from_millis(700),
+        |text| text == "hello newer",
+    );
+    record("r1_application_edit_after_verification_survives", observation, Some(1));
+
+    // R2: the selection moves to "hello" between Apply's EM_SETSEL and
+    // EM_REPLACESEL; nothing may be replaced, restored or notified.
+    let observation = apply_against_application(
+        &harness,
+        |h| h.arm_selection_race_to(PLAIN, 0, 5),
+        Duration::from_millis(300),
+        |text| text == "hello world",
+    );
+    record("r2_moved_selection_causes_no_mutation_or_restore", observation, Some(0));
+
+    // The application edits its text right before a restore would be processed.
+    let observation = apply_against_application(
+        &harness,
+        |h| {
+            h.arm_selection_race_to(PLAIN, 0, 5);
+            h.arm_app_edit(PLAIN, APP_EDIT_BEFORE_SETTEXT);
+        },
+        Duration::from_millis(700),
+        |text| text == "hello brave world",
+    );
+    record("application_edit_before_restore_survives", observation, Some(1));
+
+    // An application timer keeps rewriting one word while Apply runs.
+    let mut timer_failures = 0;
+    for iteration in 0..RACE_ITERATIONS {
+        let observation = apply_against_application(
+            &harness,
+            |h| h.app_timer(PLAIN, 10),
+            Duration::from_millis(150),
+            |text| text == "hello world" || text == "hello newer",
+        );
+        if !observation.safe(None) {
+            timer_failures += 1;
+            record(&format!("application_timer_iteration_{iteration}"), observation, None);
+        }
+    }
+    if timer_failures == 0 {
+        receipt.check(format!("application_timer_{RACE_ITERATIONS}_iterations_no_state_change"));
+    }
+
+    drop(harness);
+    receipt.record_cleanups(assert_editor_cleanups_complete(1));
+    receipt.check("owned_editor_cleanup");
+    assert!(
+        failures.is_empty(),
+        "native Apply changed the editor or overwrote the application's own text: {failures:?}"
+    );
     receipt.pass();
 }
