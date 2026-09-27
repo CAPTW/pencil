@@ -299,6 +299,8 @@ export default function App() {
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [providerSnapshot, setProviderSnapshot] = useState<ProviderSnapshot | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  // Cloud consent gates only a pending Deep request; local Instant stays usable.
+  const [cloudReviewOpen, setCloudReviewOpen] = useState(false);
   const [selfTestBusy, setSelfTestBusy] = useState<ProviderKind | null>(null);
   const [selfTestNotes, setSelfTestNotes] = useState<Record<string, string>>({});
   const [prerequisites, setPrerequisites] = useState<PrerequisiteReport | null>(null);
@@ -409,7 +411,8 @@ export default function App() {
     if (!requestedToken) {
       return;
     }
-    if (cloudAcknowledgementRef.current < CLOUD_PROCESSING_DISCLOSURE_VERSION) {
+    if (providerAckRef.current < CLOUD_PROCESSING_DISCLOSURE_VERSION) {
+      setCloudReviewOpen(true);
       setStatus("Cloud processing review required");
       return;
     }
@@ -649,6 +652,7 @@ export default function App() {
         sourceText: payload.selectedText,
       });
       setInstantRuntime(captureReset(EMPTY_INSTANT_RUNTIME_STATE, token.sessionId, token.generation));
+      setCloudReviewOpen(false);
       setResult(null);
       setDraft("");
       setIsRewriting(false);
@@ -659,13 +663,13 @@ export default function App() {
       if (sourceLimit) {
         setError(contentLimitMessage(sourceLimit));
         setStatus("Selection too large");
-      } else if (
-        autoRewriteRef.current &&
-        providerAckRef.current >= CLOUD_PROCESSING_DISCLOSURE_VERSION
-      ) {
-        void rewrite(modeRef.current, token, targetLanguageRef.current);
-      } else if (cloudAcknowledgementRef.current < CLOUD_PROCESSING_DISCLOSURE_VERSION) {
-        setStatus("Cloud processing review required");
+      } else if (autoRewriteRef.current) {
+        if (providerAckRef.current >= CLOUD_PROCESSING_DISCLOSURE_VERSION) {
+          void rewrite(modeRef.current, token, targetLanguageRef.current);
+        } else {
+          setCloudReviewOpen(true);
+          setStatus("Instant stays local · review cloud processing for Deep");
+        }
       }
     }).then((unlisten) => {
       unlistenSelection = unlisten;
@@ -682,6 +686,7 @@ export default function App() {
       setDraft("");
       setIsRewriting(false);
       setIsApplying(false);
+      setCloudReviewOpen(false);
       setError(event.payload.message);
       setStatus("No selection");
     }).then((unlisten) => {
@@ -844,8 +849,10 @@ export default function App() {
     if (!saved) return;
     cloudAcknowledgementRef.current = saved.cloudProcessingAcknowledgementVersion;
     providerAckRef.current = cloudAckFor(saved, saved.activeProvider);
+    setCloudReviewOpen(false);
+    // The review only opens for a pending Deep request (automatic or Run Deep).
     const token = currentTokenRef.current;
-    if (token && saved.autoRewrite) {
+    if (token) {
       await rewrite(saved.mode, token, saved.translation.targetLanguage);
     } else {
       setStatus("Selection captured");
@@ -980,10 +987,6 @@ export default function App() {
       ...settings,
       translation: { ...settings.translation, applyFormat },
     });
-  }
-
-  async function toggleRestoreClipboard() {
-    await saveSettings({ ...settings, restoreClipboard: !settings.restoreClipboard });
   }
 
   async function toggleAutoRewrite() {
@@ -1391,6 +1394,7 @@ export default function App() {
   }
 
   async function dismiss() {
+    setCloudReviewOpen(false);
     const token = currentTokenRef.current;
     currentTokenRef.current = null;
     currentIntentRef.current = null;
@@ -1990,33 +1994,40 @@ export default function App() {
               Start device login
             </button>
           </div>
-        ) : selection &&
-          cloudAckFor(settings, settings.activeProvider) < CLOUD_PROCESSING_DISCLOSURE_VERSION ? (
-          <div className="disclosure-pane" role="dialog" aria-labelledby="cloud-disclosure-title">
-            <div className="login-copy">
-              <ShieldCheck size={22} />
-              <div>
-                <h2 id="cloud-disclosure-title">AI 클라우드 처리 안내</h2>
-                <p>전송 전에 내용을 확인해 주세요.</p>
-              </div>
-            </div>
-            <ul className="disclosure-list">
-              <li>선택한 텍스트와 현재 선택에 일치한 승인 용어만 {providerDisplayName(settings.activeProvider)}로 전송되어 AI 처리될 수 있습니다. 다른 Provider로 자동 전환되지 않습니다.</li>
-              <li>전체 용어 사전, 이전 문서, 화면 이미지, 문서 기록은 이 앱이 전송하지 않습니다.</li>
-              <li>용어 관리는 로컬에서 동작하지만 AI 교정·번역은 오프라인 모델이 아닙니다.</li>
-              <li>취소하면 현재 선택은 전송되지 않습니다.</li>
-            </ul>
-            <div className="device-actions">
-              <button className="primary-button" type="button" onClick={acknowledgeCloudProcessing}>
-                동의하고 계속
-              </button>
-              <button className="secondary-button" type="button" onClick={dismiss}>
-                취소
-              </button>
-            </div>
-          </div>
         ) : (
           <>
+            {cloudReviewOpen && selection ? (
+              <div className="disclosure-pane" role="dialog" aria-labelledby="cloud-disclosure-title">
+                <div className="login-copy">
+                  <ShieldCheck size={22} />
+                  <div>
+                    <h2 id="cloud-disclosure-title">AI 클라우드 처리 안내</h2>
+                    <p>전송 전에 내용을 확인해 주세요.</p>
+                  </div>
+                </div>
+                <ul className="disclosure-list">
+                  <li>선택한 텍스트와 현재 선택에 일치한 승인 용어만 {providerDisplayName(settings.activeProvider)}로 전송되어 AI 처리될 수 있습니다. 다른 Provider로 자동 전환되지 않습니다.</li>
+                  <li>전체 용어 사전, 이전 문서, 화면 이미지, 문서 기록은 이 앱이 전송하지 않습니다.</li>
+                  <li>용어 관리는 로컬에서 동작하지만 AI 교정·번역은 오프라인 모델이 아닙니다.</li>
+                  <li>취소하면 현재 선택은 전송되지 않습니다.</li>
+                </ul>
+                <div className="device-actions">
+                  <button className="primary-button" type="button" onClick={acknowledgeCloudProcessing}>
+                    동의하고 계속
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => {
+                      setCloudReviewOpen(false);
+                      setStatus("Deep not sent · Instant stays local");
+                    }}
+                  >
+                    취소
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <div className="status-row">
               <div className="status-copy">
                 <ClipboardCheck size={16} />
@@ -2112,14 +2123,6 @@ export default function App() {
                   onChange={toggleAutoRewrite}
                 />
                 Auto rewrite
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={settings.restoreClipboard}
-                  onChange={toggleRestoreClipboard}
-                />
-                Restore clipboard
               </label>
             </div>
 
