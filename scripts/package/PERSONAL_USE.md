@@ -29,7 +29,7 @@ pwsh -NoProfile -File .\grammar-package\Install-Grammar.ps1
 ## 사용
 
 - 데스크톱: `<설치 위치>\codex-pencil.exe` 를 실행합니다. 표준 Edit 필드에서 텍스트를 선택하고 `Ctrl+Shift+G` 를 누르면 로컬 Instant 초안이 나타납니다. 초안을 고친 뒤 **Apply** 또는 **Copy** 를 누릅니다. 데스크톱에서 Apply는 결과를 클립보드에 복사하고 창에 "Copied — paste manually" 를 표시하며, 원래 필드는 바꾸지 않으므로 직접 붙여넣습니다. 클라우드 동의는 Deep을 요청할 때만 묻습니다.
-- 브라우저: 확장 팝업에서 **Enable this document**, 필드에서 **Enable this field** 를 누릅니다. 제안 카드에서 Accept / Apply edit / Dismiss / Ignore / Copy 를 키보드나 마우스로 선택합니다.
+- 브라우저: 확장 아이콘을 툴바에 고정해 두면(퍼즐 아이콘 → 핀) 바로 누를 수 있습니다. 확장 팝업에서 **Enable this document**, 필드에서 **Enable this field** 를 누릅니다. 제안 카드에서 Accept / Apply edit / Dismiss / Ignore / Copy 를 키보드나 마우스로 선택합니다.
 
 ## 제거
 
@@ -47,4 +47,4 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\GrammarPersonal\Uninstall-Grammar.ps1" 
 - 물리 키보드·IME·확대/축소·다중 모니터·장시간 사용은 자동 합성 환경에서만 확인했습니다.
 - 데스크톱 편집기에 결과를 자동으로 넣는 기능(native Apply)은 완성되지 않았습니다. 다른 프로세스의 편집기에는 "확인한 범위가 그대로일 때만 바꾸기"를 한 번에 수행하는 방법이 없어, 확인 직후 그 앱이 텍스트를 바꾸면 덮어쓸 수 있기 때문입니다. 그래서 Apply는 항상 Copy-only입니다.
 - Chrome 확장의 DOM 교체는 브라우저 실행 취소를 보장하지 않습니다. Edge 등록과 공개 웹스토어 설치는 검증 범위 밖입니다.
-- 설치된 확장을 그대로 쓰는 경로(툴바 클릭 또는 단축키로 activeTab 권한 부여)는 자동 시험에서 실제 사용자 제스처를 만들 수 없으면 NOT_RUN 으로 기록됩니다. 자세한 구분은 HANDOFF.md 를 보세요.
+- 설치된 확장을 그대로 쓰는 경로는 새 프로필에서 확장 버튼을 툴바에 고정한 뒤, 그 버튼과 팝업의 **Enable this document** 를 실제 키보드 입력으로 눌러 검증했습니다(Alt+Shift+T 로 툴바 이동, 방향키, Space). 마우스로 확장 메뉴(퍼즐 아이콘)를 여는 경로는 자동 시험에서 검증되지 않았습니다. 자세한 구분은 HANDOFF.md 를 보세요.

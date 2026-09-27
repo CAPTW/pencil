@@ -7,7 +7,7 @@
   "p3b_status": "CONSENT_BOUND_DEEP_CANDIDATE_NO_LIVE_ACCEPTANCE",
   "first_adapter_decision": "CHROMIUM_TEXTAREA_CONTENTEDITABLE_MV3",
   "active_phase": "MISSION_IMPLEMENTATION",
-  "active_step": "REVIEW_R1_R2_R3_DEFECT_REPAIR_AND_INSTALLED_PACKAGE_REVERIFICATION",
+  "active_step": "REVIEW_R1_R2_R3_REPAIRED_OWNER_DECISIONS_PENDING",
   "active_task": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
   "completed_task": "GRAMMAR-P3B-R0-CURRENT-LOCAL-REPOSITORY-REAUDIT-PRODUCT-TARGET-RESET-MULTI-AGENT-DEVELOPMENT-CONTRACT-PHASE-STEP-ROADMAP-AND-MINIMAL-PROJECT-SOURCE-SUCCESSOR-R1",
   "exact_next_task": "GRAMMAR-P3B-P3-OWNER-PERSONAL-TRIAL-AND-EXTERNAL-BOUNDARY-DECISIONS",
@@ -122,7 +122,9 @@
     "Chromium explicit Copy, keyboard-only actions and zero-network cache regression",
     "Synthetic Deep boundary: selected Provider only, matched approved terms only, no fallback or replay",
     "Personal package receipt build, fresh-root install, registered host and residue-free removal: PASS",
-    "Review R1/R2 reproduced as failing production-path tests; native editor mutation removed (Copy-only, zero editor messages)"
+    "Review R1/R2 reproduced as failing production-path tests; native editor mutation removed (Copy-only, zero editor messages)",
+    "Installed-package Chromium smoke test: unmodified installed extension and installer host registration, fresh sandboxed profile, real keyboard toolbar gesture: PASS (run 36331068541); the 39-check test is reclassified as a modified isolated extension fixture",
+    "Separate fresh-context review pass (same model family, read-only); blocking and should-fix findings addressed"
   ],
   "native_capture_activation": "ACTIVE_STANDARD_EDIT_ONLY_OWNED_DESKTOP_QUALIFIED_OTHERS_DENIED",
   "chromium_deep_activation": "SOURCE_UNCONFIGURED_PERSONAL_INSTALLER_CONFIGURES_HOST_CONSENT_BOUND_SYNTHETIC_ONLY",
