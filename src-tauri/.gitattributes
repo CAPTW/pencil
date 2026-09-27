@@ -1,0 +1,3 @@
+# The Tauri CLI rewrites Cargo.toml with LF line endings while it builds. Keep the
+# checkout LF on every platform so a receipt-bound build sees an unchanged source.
+Cargo.toml text eol=lf
