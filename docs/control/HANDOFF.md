@@ -2,6 +2,12 @@
 
 Mission: GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1. This is an incomplete mission checkpoint, not P3-A/P3-B or personal-use acceptance. Read AGENTS.md, the v1.1 contract override, control/mission.json and control/state.json. The Owner has already authorized internal continuation; no fresh per-step approval is needed.
 
+## Cloud session continuation (2026-09-27, branch claude/eloquent-faraday-hh62qc)
+
+Entry 099baea by fast-forward (no rewrite). The Owner approved Windows CI for this session branch (contract 1.3.0); codex/grammar-autonomous-r1 is untouched and path claims moved to claude-cloud on this branch only. CI evidence lives in the workflow run named below (artifact `grammar-synthetic-evidence-<sha>-<attempt>`, 7-day retention); no local D:/ evidence exists for this session.
+
+Step 1 - independent cloud native tests. `cloud_owned_desktop_qualification` is split into `cloud_owned_desktop_input_environment` and `cloud_owned_desktop_copy_only_boundary`, each its own CI step that runs after earlier failures (`!cancelled`); every other check group is now a separate step too. The synthetic editor starts suspended inside a kill-on-close Job; teardown (including a failing test's unwind) records process exit, zero Job processes and destroyed windows. Each test writes `native/<test>.json` (FAIL unless completed; checks, cleanups, GITHUB_SHA, run id/attempt) and every step tees its log into the artifact; `summary.json` checks that receipts name the checked-out commit. Run 36299835063 on 4bd9a73: input environment PASS (3 runs; each editor cleanup exited/Job 0/windows destroyed), Copy-only boundary PASS (cleanup verified), receipts_bound_to_source=true, all other steps PASS. A workflow_dispatch `fault_injection=input_environment` run deliberately fails run 2 with a live editor to exercise the FAIL receipt, unwind cleanup and step isolation; its result is recorded below when available.
+
 ## GitHub cloud validation request (2026-09-27)
 
 Owner authorized source commit/push to existing public CAPTW/pencil candidate branch and standard Windows Actions tests. Contract1.2 pins and exact task/state github_validation scope record this narrow amendment. Main integration, public releases/deployment, paid larger runners and live Providers remain unauthorized. Workflow evidence is separate from local package603764c and native interactive acceptance; exact remote SHA/run results are external in cloud-r1. No local evidence/VM files are included in Git.
