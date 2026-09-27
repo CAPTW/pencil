@@ -6,7 +6,7 @@ Mission: GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1. T
 
 This section supersedes the Step 3 and Step 4 Apply results and the Step 6 "installed host and extension" classification in the continuation below.
 
-- R1/R2: the locked verify-replace-reread native Apply was not safe. An application edit made after the verification read was overwritten and reported Applied (R1), and a moved selection led to a replacement followed by a `WM_SETTEXT` restore that was reported as Copy-only (R2). Both were reproduced first as failing production-path regression tests (commit 4400974). Grammar now never mutates a captured native editor: Apply is Copy-only (`target_mutation_disabled`) and the editor receives no message. Status: risky path blocked; native Apply feature not implemented.
+- R1/R2: the locked verify-replace-reread native Apply was not safe. An application edit made after the verification read was overwritten and reported Applied (R1), and a moved selection led to a replacement followed by a `WM_SETTEXT` restore that was reported as Copy-only (R2). Both were reproduced first as failing production-path regression tests (commit 4400974). Grammar now never mutates a captured native editor: Apply is Copy-only (`target_mutation_disabled`) and Grammar sends the editor no text, selection or state-changing message. Status: risky path blocked; native Apply feature not implemented.
 - R3: the 39-check browser test runs with the installed host and a modified isolated extension fixture. The copy has a changed key/ID, localhost `host_permissions`, its own `host-config.js` and its own host registration. It is not an unmodified installed-package verification.
 - The final evidence table for this round is recorded below when the round completes.
 
@@ -107,7 +107,7 @@ Build locally on Windows from a clean checkout of the evidence commit. A clone m
 
 Enabled scope (synthetic qualification only):
 - Standard Windows Edit capture.
-- Apply is Copy-only everywhere; Grammar never changes text inside another application's editor (native Apply not implemented).
+- Desktop Apply is Copy-only: Grammar never changes text inside another application's native editor (native Apply not implemented). The Chromium extension still replaces text in explicitly enabled textarea and simple contenteditable fields on explicit Accept or Apply edit, with reread.
 - Local Instant in the desktop widget.
 - Chromium local Instant on explicitly enabled textarea and simple contenteditable fields.
 - Deep only for the selected Provider after explicit consent.

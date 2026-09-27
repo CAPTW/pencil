@@ -23,7 +23,8 @@ public static class EditCounters
     // Kinds: 0 WM_GETTEXT, 1 WM_GETTEXTLENGTH, 2 EM_GETSEL, 3 EM_REPLACESEL,
     // 4 EM_SETREADONLY lock, 5 unlock, 6 WM_SETTEXT, 7 EM_UNDO, 8 EM_SETSEL,
     // 9 EM_SETMODIFY (all sent from another thread), 10 EN_CHANGE raised while
-    // another thread's message was processed, 11 edits made by the application.
+    // another thread's message was processed, 11 edits made by the application,
+    // 12 every EN_CHANGE from any source (posted messages and input included).
     public static readonly int[,] Values = new int[8, 16];
     // Nesting depth of cross-thread messages being processed on the UI thread.
     public static int CrossThreadDepth;
@@ -351,6 +352,8 @@ public sealed class NativeEditForm : Form
             // application observed a text change caused by that process.
             if (code == 0x0300 && id >= 100 && id < 108 && EditCounters.CrossThreadDepth > 0 && !AppChange.Active)
                 EditCounters.Values[id - 100, 10]++;
+            if (code == 0x0300 && id >= 100 && id < 108)
+                EditCounters.Values[id - 100, 12]++;
         }
         base.WndProc(ref message);
     }
@@ -471,7 +474,7 @@ public static class NativeEditHarness
             case "COUNTS":
                 int counted = int.Parse(part[1]);
                 var values = new List<string>();
-                for (int kind = 0; kind < 12; kind++) values.Add(EditCounters.Values[counted, kind].ToString());
+                for (int kind = 0; kind < 13; kind++) values.Add(EditCounters.Values[counted, kind].ToString());
                 return "COUNTS " + String.Join(" ", values);
             case "RESET":
                 EditCounters.Reset();

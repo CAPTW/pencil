@@ -83,7 +83,7 @@ async function extensionState() {
 // Count processes running the installed host binary (installer registration).
 function installedHostProcesses(hostPath) {
   const script = `@(Get-Process -Name grammar-chromium-host -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq '${hostPath}' }).Count`;
-  return Number(execFileSync('powershell.exe', ['-NoProfile', '-Command', script], {encoding: 'utf8'}).trim());
+  return Number(execFileSync('powershell.exe', ['-NoProfile', '-Command', script], {encoding: 'utf8', windowsHide: true}).trim());
 }
 
 async function helper(command, name, {method = 'Mouse', match = 'Exact', timeoutMs = 10000} = {}) {
@@ -91,7 +91,8 @@ async function helper(command, name, {method = 'Mouse', match = 'Exact', timeout
     '-Name', name, '-Method', method, '-Match', match, '-TimeoutMs', String(timeoutMs)];
   let text;
   try {
-    text = (await execFileAsync('powershell.exe', args, {timeout: timeoutMs + 60000})).stdout;
+    // Hidden: a console window would take activation and close Chrome's menus and popups.
+    text = (await execFileAsync('powershell.exe', args, {timeout: timeoutMs + 60000, windowsHide: true})).stdout;
   } catch (error) {
     text = String(error.stdout ?? '');
     if (!text.trim()) {
@@ -123,40 +124,40 @@ async function click(name, effect, {match = 'Exact', timeoutMs = 10000} = {}) {
   return (await effect()) ? result : {...result, status: 'no_effect'};
 }
 
-// The real toolbar path: the pinned action if present, otherwise the Extensions
-// menu and this extension's item. The action must grant page access (activeTab,
-// observed by the probe), then the popup's own button enables the document.
+// The real toolbar path: the extension's toolbar button if it is shown,
+// otherwise the Extensions menu and this extension's item. The click must open
+// the extension popup and leave the page accessible (activeTab, observed by the
+// probe); then the popup's own button enables the document.
 async function toolbarEnable({extensionName, extensionId, page, probe}) {
   await page.bringToFront();
-  const granted = async () => {
-    for (const deadline = Date.now() + 5000; Date.now() < deadline; await sleep(200)) {
-      if ((await probe()) === 'page_access') return true;
-    }
-    return false;
-  };
+  const popupUrl = `chrome-extension://${extensionId}/popup.html`;
+  const popupPage = () => page.context().pages().find((candidate) => candidate.url() === popupUrl);
+  const popupShown = async () => Boolean(popupPage()) || exists('Enable this document', {timeoutMs: 5000});
   let path;
   if (await exists(extensionName, {match: 'Prefix', timeoutMs: 1500})) {
-    path = 'pinned-toolbar-action';
-    const action = await click(extensionName, granted, {match: 'Prefix'});
-    if (action.status !== 'clicked') throw new Error(`pinned toolbar action granted no page access (${action.status})`);
+    path = 'toolbar-action-button';
+    const action = await click(extensionName, popupShown, {match: 'Prefix'});
+    if (action.status !== 'clicked') throw new Error(`toolbar action button opened no popup (${action.status})`);
   } else {
     path = 'extensions-menu';
     const menu = await click('Extensions', () => exists(extensionName, {match: 'Prefix', timeoutMs: 5000}), {timeoutMs: 20000});
+    // The only NOT_RUN: UI Automation cannot see the browser window at all. A
+    // missing button, menu item or popup is a failure to investigate.
     if (menu.status === 'window_not_found') throw new NotRun('browser window not exposed to UI Automation on this desktop');
-    if (menu.status === 'not_found') throw new NotRun('Extensions toolbar button not exposed to UI Automation');
-    if (menu.status !== 'clicked') throw new NotRun(`Extensions menu did not open through mouse input or UI Automation (${menu.status})`);
-    const action = await click(extensionName, granted, {match: 'Prefix'});
-    if (action.status !== 'clicked') throw new Error(`Extensions menu item granted no page access (${action.status})`);
+    if (menu.status !== 'clicked') throw new Error(`Extensions menu did not open or showed no item for the extension (${menu.status})`);
+    const action = await click(extensionName, popupShown, {match: 'Prefix'});
+    if (action.status !== 'clicked') throw new Error(`Extensions menu item opened no popup (${action.status})`);
   }
+  if ((await probe()) !== 'page_access') throw new Error('the toolbar action left no page access (activeTab)');
   const actionInput = inputMethod;
   const enabled = () => page.locator('#grammar-local-assist').waitFor({timeout: 10000}).then(() => true, () => false);
-  let popupInput = inputMethod;
+  let popupInput;
   const enable = await click('Enable this document', enabled);
   if (enable.status === 'not_found') {
     // Popup content not exposed to UI Automation: use Playwright's trusted input
     // on the popup the action opened, if Playwright can see it.
-    const popup = page.context().pages().find((candidate) => candidate.url() === `chrome-extension://${extensionId}/popup.html`);
-    if (!popup) throw new NotRun('extension popup content not exposed to UI Automation or Playwright');
+    const popup = popupPage();
+    if (!popup) throw new Error('extension popup content reachable through neither UI Automation nor Playwright');
     await popup.getByRole('button', {name: 'Enable this document', exact: true}).click();
     popupInput = 'playwright';
     if (!(await enabled())) throw new Error('popup Enable this document did not enable the document');
@@ -208,7 +209,7 @@ try {
     .replace(/[0-9a-f]/g, (c) => String.fromCharCode(97 + parseInt(c, 16)));
   assert.equal(keyId, packageManifest.extensionId);
   assert.equal(installReceipt.extensionId, packageManifest.extensionId);
-  const registry = execFileSync('reg.exe', ['query', `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${hostName}`, '/ve'], {encoding: 'utf8'});
+  const registry = execFileSync('reg.exe', ['query', `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${hostName}`, '/ve'], {encoding: 'utf8', windowsHide: true});
   assert.equal(registry.match(/REG_SZ\s+(.+?)\s*$/m)?.[1], installReceipt.nativeHost.manifest);
   const hostManifest = JSON.parse((await readFile(installReceipt.nativeHost.manifest, 'utf8')).replace(/^\uFEFF/, ''));
   assert.deepEqual(hostManifest.allowed_origins, [`chrome-extension://${packageManifest.extensionId}/`]);
@@ -307,7 +308,17 @@ try {
   assert.ok(!/seperate|separate|distinct/.test(stored.serialized), 'extension storage holds no document text');
   pass('Disable removed the UI; later edits produce no annotation; storage holds no document text');
 
-  // 7. Re-enable needs another toolbar gesture and a fresh field opt-in; nothing cached reappears.
+  // 7. activeTab outlives Disable until a cross-origin navigation. Leave and
+  //    return: no page access and no Grammar UI remain without a new gesture.
+  await page.goto(`http://127.0.0.1:${OTHER_PORT}/`);
+  assert.equal(await probe(), 'denied');
+  await page.goto(`${origin}/`);
+  assert.equal(await probe(), 'denied');
+  assert.equal(await page.locator('#grammar-local-assist').count(), 0);
+  pass('cross-origin navigation revoked page access; returning shows no Grammar UI and no access without a gesture');
+
+  // 8. Only a second toolbar gesture grants access again; the field opt-in is
+  //    required again and nothing cached reappears.
   observations.secondActivation = await toolbarEnable(activation);
   await sleep(1000);
   assert.equal(await page.getByRole('button', {name: /Suggestion/}).count(), 0, 'no annotation before a fresh field opt-in');
@@ -317,17 +328,15 @@ try {
   await suggestion.click();
   await page.getByRole('button', {name: 'Accept', exact: true}).click();
   assert.equal(await page.locator('#writing').inputValue(), 'separate');
-  pass('second toolbar gesture re-enabled the document; field opt-in was required again and Accept reread');
+  pass('second toolbar gesture granted page access again; field opt-in was required again and Accept reread');
 
-  // 8. Navigation: a reload drops the opt-in; a cross-origin navigation revokes activeTab.
+  // 9. A same-origin reload drops the document opt-in. (Chromium keeps activeTab
+  //    on same-origin navigation; recorded as an observation.)
   await page.reload();
   assert.equal(await page.locator('#grammar-local-assist').count(), 0);
   observations.pageAccessAfterSameOriginReload = await probe();
-  await page.goto(`http://127.0.0.1:${OTHER_PORT}/`);
-  assert.equal(await probe(), 'denied');
-  assert.equal(await page.locator('#grammar-local-assist').count(), 0);
   assert.deepEqual(errors, []);
-  pass('reload removed the opt-in and cross-origin navigation revoked page access');
+  pass('reload removed the document opt-in and the Grammar UI');
 } catch (error) {
   if (error instanceof NotRun) {
     status = 'NOT_RUN';
@@ -335,11 +344,12 @@ try {
     console.log('INSTALLED_BROWSER NOT_RUN', notRunCause);
   } else {
     status = 'FAIL';
-    failure = String(error?.message ?? error).slice(0, 500);
+    // Receipts never carry text values: first line, quoted values removed.
+    failure = String(error?.message ?? error).split('\n')[0].replace(/(['"`]).*?\1/g, '<value>').slice(0, 300);
     console.error('FAIL', error?.stack ?? error);
   }
 } finally {
-  // 9. Cleanup: browser closed, installed host exited, task-owned profile removed,
+  // 10. Cleanup: browser closed, installed host exited, task-owned profile removed,
   //    installed extension unchanged. Registration and files are removed later
   //    by the uninstaller, whose residue check is a separate step.
   try {
