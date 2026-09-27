@@ -63,7 +63,7 @@ jobs:
         run: |
           npm run test:provider 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/provider-contracts.log"
           exit $LASTEXITCODE
-      - name: Capture and Apply UI contract
+      - name: Capture and Copy UI contract
         if: ${{ !cancelled() }}
         run: |
           node scripts/test-capture-contract.mjs 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/capture-contract.log"
@@ -111,14 +111,14 @@ jobs:
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
           cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil native_edit_live_tests::cloud_owned_desktop_native_capture -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native/native-capture.log"
           exit $LASTEXITCODE
-      - name: Owned Windows desktop - native Edit Apply
+      - name: Owned Windows desktop - native Edit Copy (no editor change)
         if: ${{ !cancelled() }}
         timeout-minutes: 5
         run: |
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
           cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil native_edit_live_tests::cloud_owned_desktop_native_apply -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native/native-apply.log"
           exit $LASTEXITCODE
-      - name: Owned Windows desktop - native Apply against application edits
+      - name: Owned Windows desktop - native Copy against application edits
         if: ${{ !cancelled() }}
         timeout-minutes: 5
         run: |
@@ -191,7 +191,7 @@ jobs:
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
           node adapters/chromium/tests/installed-package.test.mjs 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/chromium-installed.log"
           exit $LASTEXITCODE
-      - name: Built app user flow (Instant, Copy-only Apply, Copy, cancel, reselect, stale)
+      - name: Built app user flow (Instant, edit, Copy, Dismiss, cancel, reselect, stale)
         if: ${{ !cancelled() }}
         timeout-minutes: 8
         run: |

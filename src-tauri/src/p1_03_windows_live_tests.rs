@@ -62,7 +62,7 @@ fn clear_clipboard() {
 
 #[tokio::test]
 #[ignore = "requires exclusive access to the interactive Windows clipboard"]
-async fn p1_03_windows_live_image_only_clipboard_aborts_before_mutation() {
+async fn p1_03_windows_live_capture_leaves_image_only_clipboard_untouched() {
     let restore = ClipboardRestore(
         OriginalClipboard::capture_supported_only()
             .unwrap_or_else(|_| panic!("live clipboard precondition is not safely restorable")),
@@ -84,8 +84,11 @@ async fn p1_03_windows_live_image_only_clipboard_aborts_before_mutation() {
     assert!(formats_before > 0);
     assert_eq!(unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT) }, 0);
 
-    let result = capture_selected_text().await;
-    assert!(matches!(result, Err(error) if error == "unsupported_non_text_clipboard"));
+    // Capture reads only the focused standard Edit control and never uses the
+    // clipboard (the clipboard classifier behind the earlier error code is
+    // gone). Whatever the foreground control yields, the image-only clipboard
+    // must stay exactly as it was.
+    let _ = capture_selected_text().await;
     assert_eq!(clipboard_sequence_number(), sequence_before);
     assert_eq!(unsafe { CountClipboardFormats() }, formats_before);
 

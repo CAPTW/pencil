@@ -121,12 +121,15 @@ for (const reason of [
 // The normal copy needs no notice; the others only add context and never claim
 // that text was replaced or that the field was changed.
 assert.equal(contract.copiedNotice("target_mutation_disabled"), null);
-for (const reason of ["target_selection_unverified", "target_missing", "target_process_changed"]) {
+// Without the native binding the window is still the captured one: nothing to add.
+assert.equal(contract.copiedNotice("target_selection_unverified"), null);
+for (const reason of ["target_missing", "target_process_changed"]) {
   const notice = contract.copiedNotice(reason);
   assert.match(notice, /clipboard/);
   assert.doesNotMatch(notice, /replaced|applied|pasted into/i);
 }
 assert.match(contract.copiedNotice("target_missing"), /gone/);
+assert.match(contract.copiedNotice("target_process_changed"), /changed/);
 
 assert.equal(contract.applyFailureEndsCapture("invalid_session_state"), true);
 assert.equal(contract.applyFailureEndsCapture("clipboard_write_failed"), false);

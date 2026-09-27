@@ -8,8 +8,9 @@ export type SelectionCapturedPayload = CaptureToken &
     selectedText: string;
   }>;
 
-// The desktop Copy result: the backend never changes text inside another
-// application, so every delivered result is a copy with a reason.
+// The desktop Copy result: the desktop backend never changes text inside
+// another application's editor, so every delivered result is a copy with a
+// reason.
 export type ApplyFallbackReason =
   | "target_selection_unverified"
   | "target_missing"
@@ -42,11 +43,13 @@ const FAILURE_REASONS = new Set<ApplyFailureReason>([
  */
 export function copiedNotice(reason: ApplyFallbackReason): string | null {
   switch (reason) {
+    // The captured window is still there with the same process.
     case "target_mutation_disabled":
+    case "target_selection_unverified":
       return null;
     case "target_missing":
       return "The captured window is gone. The result is on the clipboard; paste it where you need it.";
-    default:
+    case "target_process_changed":
       return "The captured window changed. The result is on the clipboard; paste it where you need it.";
   }
 }
