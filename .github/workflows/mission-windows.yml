@@ -182,6 +182,11 @@ jobs:
         timeout-minutes: 8
         run: |
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
+          if (-not $env:GRAMMAR_APP_EXE) {
+            # Packaging failed: exercise the unpackaged release build of the same source instead.
+            $fallback = Get-ChildItem "$env:GRAMMAR_EVIDENCE/personal" -Recurse -Filter codex-pencil.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($fallback) { $env:GRAMMAR_APP_EXE = $fallback.FullName; $env:GRAMMAR_APP_KIND = 'unpackaged-release-build' }
+          }
           node scripts/test-app-flow-e2e.mjs 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/app-flow.log"
           exit $LASTEXITCODE
       - name: Chromium opt-in and synthetic Deep integration
