@@ -1200,20 +1200,8 @@ fn outcome_code(outcome: &ApplyOutcome) -> &'static str {
             reason: ApplyFailureReason::InputInjectionFailed,
         } => "failed_input_injection",
         ApplyOutcome::CopiedFallback {
-            reason: ApplyFallbackReason::TargetEditorChanged,
-        } => "copied_fallback_target_editor_changed",
-        ApplyOutcome::CopiedFallback {
-            reason: ApplyFallbackReason::TargetSourceChanged,
-        } => "copied_fallback_target_source_changed",
-        ApplyOutcome::CopiedFallback {
-            reason: ApplyFallbackReason::TargetSelectionChanged,
-        } => "copied_fallback_target_selection_changed",
-        ApplyOutcome::Failed {
-            reason: ApplyFailureReason::TargetMutationUnverified,
-        } => "failed_target_mutation_unverified",
-        ApplyOutcome::Failed {
-            reason: ApplyFailureReason::EditorLockNotReleased,
-        } => "failed_editor_lock_not_released",
+            reason: ApplyFallbackReason::TargetMutationDisabled,
+        } => "copied_fallback_target_mutation_disabled",
     }
 }
 

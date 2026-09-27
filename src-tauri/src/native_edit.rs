@@ -1,4 +1,4 @@
-//! Standard Win32 Edit control selection capture and verified Apply.
+//! Standard Win32 Edit control selection capture.
 //!
 //! Support scope: the focused control of the foreground window's GUI thread
 //! whose class is exactly `Edit`, Unicode, visible, enabled, not `ES_PASSWORD`,
@@ -7,17 +7,15 @@
 //! than 65535 UTF-16 units. Every other control is denied before any
 //! text-bearing message is sent to it.
 //!
-//! Apply mutates only an editor captured by this reader. It locks the control
-//! read-only against user text input, verifies the full-text hash and the exact
-//! selection under the lock, replaces the verified range with one undoable
-//! `EM_REPLACESEL`, and verifies the exact resulting text before unlocking.
-//! A selection change can still slip in between `EM_SETSEL` and
-//! `EM_REPLACESEL` (for example a mouse click). If the read-back proves that
-//! only our replacement landed elsewhere, the verified original text is
-//! restored under the same lock with one atomic `WM_SETTEXT` (a standard Edit
-//! control refuses `EM_UNDO` while read-only), the modification flag and the
-//! moved selection are put back, and Apply is reported as not applied. That
-//! rare recovery clears the control's single-level undo buffer.
+//! Grammar never changes the text of a captured editor. The control belongs to
+//! another application that can change its own text between any two messages
+//! another process sends (`EM_SETREADONLY` only blocks user typing), and no
+//! Edit message replaces a range only if it still holds the verified text. A
+//! verify-then-replace sequence therefore overwrote an application edit made
+//! after verification and reported success (review finding R1), and replacing
+//! a range the user had just moved, then restoring the whole text, was two
+//! mutations reported as Copy-only (R2). Apply for a native capture is
+//! Copy-only; see `apply_safety::execute_apply`.
 
 use crate::capture_session::NativeEditBinding;
 use crate::instant_selection::sha256_hex;
@@ -26,18 +24,9 @@ const ES_PASSWORD: u32 = 0x0020;
 const ES_READONLY: u32 = 0x0800;
 const WM_GETTEXTLENGTH: u32 = 0x000E;
 const EM_GETSEL: u32 = 0x00B0;
-const EM_SETSEL: u32 = 0x00B1;
-const EM_SCROLLCARET: u32 = 0x00B7;
-const EM_GETMODIFY: u32 = 0x00B8;
-const EM_SETMODIFY: u32 = 0x00B9;
-const EM_SETREADONLY: u32 = 0x00CF;
 const EM_GETPASSWORDCHAR: u32 = 0x00D2;
-const EM_GETLIMITTEXT: u32 = 0x00D5;
 /// `EM_GETSEL` reports 16-bit offsets, so larger fields are never admitted.
 pub(crate) const MAX_EDIT_UNITS: usize = 0xFFFE;
-/// Bound on the search that proves a moved replacement is ours before restoring.
-const MAX_RELOCATION_CANDIDATES: usize = 4096;
-const LOCK_RELEASE_ATTEMPTS: usize = 3;
 
 /// Password managers and Windows credential UI; their plain fields can hold secrets.
 const SENSITIVE_PROCESSES: &[&str] = &[
@@ -63,7 +52,6 @@ const SENSITIVE_PROCESSES: &[&str] = &[
 pub(crate) trait EditPort {
     fn foreground_window(&mut self) -> isize;
     fn focused_control(&mut self, top_level: isize) -> Option<isize>;
-    fn is_window(&mut self, hwnd: isize) -> bool;
     fn root_window(&mut self, hwnd: isize) -> Option<isize>;
     fn window_pid(&mut self, hwnd: isize) -> Option<u32>;
     fn class_name(&mut self, hwnd: isize) -> Option<Vec<u16>>;
@@ -76,10 +64,6 @@ pub(crate) trait EditPort {
     fn send(&mut self, hwnd: isize, message: u32, wparam: usize, lparam: isize) -> Option<isize>;
     /// `WM_GETTEXT` of at most `units` UTF-16 units.
     fn read_text(&mut self, hwnd: isize, units: usize) -> Option<Vec<u16>>;
-    /// One undoable `EM_REPLACESEL`.
-    fn replace_selection(&mut self, hwnd: isize, text: &[u16]) -> Option<()>;
-    /// One atomic `WM_SETTEXT`, used only to restore verified original text.
-    fn restore_text(&mut self, hwnd: isize, text: &[u16]) -> Option<()>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -126,28 +110,6 @@ impl CaptureDenial {
 pub(crate) struct NativeSelection {
     pub(crate) text: String,
     pub(crate) binding: NativeEditBinding,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum NativeApplyRefusal {
-    /// The editor is gone, no longer admitted, read-only, too small or unlockable.
-    EditorChanged,
-    SourceChanged,
-    /// The selection moved before Apply, or moved concurrently and the
-    /// original text was restored under the lock.
-    SelectionChanged,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum NativeApplyResult {
-    /// The exact expected text was read back while the editor was locked.
-    Applied,
-    /// Nothing was changed (or a misplaced change was undone and verified).
-    Refused(NativeApplyRefusal),
-    /// A mutation may have happened and could be neither verified nor undone.
-    Unverified,
-    /// The temporary read-only lock could not be released.
-    LockNotReleased { applied: bool },
 }
 
 pub(crate) fn is_sensitive_process(image_name: &str) -> bool {
@@ -276,197 +238,15 @@ pub(crate) fn read_focused_selection<P: EditPort>(
     })
 }
 
-/// When `after` equals `original` with exactly one range replaced by
-/// `replacement` somewhere (the only change is a relocated replacement),
-/// returns that original range. Every candidate restores the same original.
-fn relocated_replacement(
-    original: &[u16],
-    after: &[u16],
-    replacement: &[u16],
-) -> Option<(usize, usize)> {
-    let removed = (original.len() + replacement.len()).checked_sub(after.len())?;
-    if removed > original.len() {
-        return None;
-    }
-    let prefix = original
-        .iter()
-        .zip(after)
-        .take_while(|(left, right)| left == right)
-        .count();
-    let suffix = original
-        .iter()
-        .rev()
-        .zip(after.iter().rev())
-        .take_while(|(left, right)| left == right)
-        .count();
-    let lowest = after.len().saturating_sub(replacement.len() + suffix);
-    let highest = prefix.min(original.len() - removed);
-    if lowest > highest || highest - lowest >= MAX_RELOCATION_CANDIDATES {
-        return None;
-    }
-    (lowest..=highest)
-        .find(|&start| {
-            after[start..start + replacement.len()] == *replacement
-                && after[start + replacement.len()..] == original[start + removed..]
-        })
-        .map(|start| (start, start + removed))
-}
-
-fn release_lock<P: EditPort>(port: &mut P, edit: isize) -> bool {
-    for _ in 0..LOCK_RELEASE_ATTEMPTS {
-        if port.send(edit, EM_SETREADONLY, 0, 0).is_some_and(|result| result != 0)
-            && port.style(edit) & ES_READONLY == 0
-        {
-            return true;
-        }
-    }
-    // A destroyed editor retains no lock.
-    !port.is_window(edit)
-}
-
-/// Replaces exactly the captured range of the captured editor, or changes nothing.
-pub(crate) fn apply_to_captured_edit<P: EditPort>(
-    port: &mut P,
-    top_level: isize,
-    pid: u32,
-    binding: &NativeEditBinding,
-    replacement: &str,
-) -> NativeApplyResult {
-    let edit = binding.edit;
-    if !port.is_window(top_level) || !port.is_window(edit) {
-        return NativeApplyResult::Refused(NativeApplyRefusal::EditorChanged);
-    }
-    if !matches!(admit(port, top_level, edit), Ok(current) if current == pid && current == binding.pid)
-        || binding.read_only
-        || port.style(edit) & ES_READONLY != 0
-    {
-        return NativeApplyResult::Refused(NativeApplyRefusal::EditorChanged);
-    }
-    let replacement = replacement.encode_utf16().collect::<Vec<_>>();
-    let removed = binding.end.saturating_sub(binding.start);
-    let final_units = (binding.text_units - removed.min(binding.text_units)) + replacement.len();
-    let limit = port
-        .send(edit, EM_GETLIMITTEXT, 0, 0)
-        .and_then(|limit| usize::try_from(limit).ok());
-    if replacement.is_empty()
-        || binding.start >= binding.end
-        || binding.end > binding.text_units
-        || final_units > MAX_EDIT_UNITS
-        || !limit.is_some_and(|limit| limit >= final_units)
-    {
-        return NativeApplyResult::Refused(NativeApplyRefusal::EditorChanged);
-    }
-    if !port
-        .send(edit, EM_SETREADONLY, 1, 0)
-        .is_some_and(|result| result != 0)
-    {
-        // The lock may or may not have been set; never leave it behind.
-        return if release_lock(port, edit) {
-            NativeApplyResult::Refused(NativeApplyRefusal::EditorChanged)
-        } else {
-            NativeApplyResult::LockNotReleased { applied: false }
-        };
-    }
-    let outcome = locked_replace(port, binding, &replacement);
-    if !release_lock(port, edit) {
-        return NativeApplyResult::LockNotReleased {
-            applied: outcome == NativeApplyResult::Applied,
-        };
-    }
-    outcome
-}
-
-fn locked_replace<P: EditPort>(
-    port: &mut P,
-    binding: &NativeEditBinding,
-    replacement: &[u16],
-) -> NativeApplyResult {
-    use NativeApplyRefusal::{EditorChanged, SelectionChanged, SourceChanged};
-    let edit = binding.edit;
-    let Ok(units) = text_length(port, edit) else {
-        return NativeApplyResult::Refused(EditorChanged);
-    };
-    if units != binding.text_units {
-        return NativeApplyResult::Refused(SourceChanged);
-    }
-    let Some(original) = read_exact(port, edit, units) else {
-        return NativeApplyResult::Refused(EditorChanged);
-    };
-    if utf16_sha256(&original) != binding.text_sha256 {
-        return NativeApplyResult::Refused(SourceChanged);
-    }
-    match selection(port, edit) {
-        Ok(range) if range == (binding.start, binding.end) => {}
-        Ok(_) => return NativeApplyResult::Refused(SelectionChanged),
-        Err(_) => return NativeApplyResult::Refused(EditorChanged),
-    }
-    let Some(modified) = port.send(edit, EM_GETMODIFY, 0, 0) else {
-        return NativeApplyResult::Refused(EditorChanged);
-    };
-    let mut expected = Vec::with_capacity(units - (binding.end - binding.start) + replacement.len());
-    expected.extend_from_slice(&original[..binding.start]);
-    expected.extend_from_slice(replacement);
-    expected.extend_from_slice(&original[binding.end..]);
-
-    // Selection-only message: a failure here changes no text.
-    if port
-        .send(edit, EM_SETSEL, binding.start, binding.end as isize)
-        .is_none()
-    {
-        return NativeApplyResult::Refused(EditorChanged);
-    }
-    // From here on there is exactly one mutation attempt and never a retry.
-    let delivered = port.replace_selection(edit, replacement).is_some();
-    let after = text_length(port, edit)
-        .ok()
-        .and_then(|units| read_exact(port, edit, units));
-    match after {
-        Some(after) if after == expected => {
-            let _ = port.send(edit, EM_SCROLLCARET, 0, 0);
-            NativeApplyResult::Applied
-        }
-        // An undelivered message may still be processed later.
-        Some(after) if after == original && delivered => {
-            NativeApplyResult::Refused(EditorChanged)
-        }
-        Some(after) if delivered => match relocated_replacement(&original, &after, replacement) {
-            // User text input is locked out and the read-back proves the only
-            // change is our replacement at the moved selection: put back the
-            // verified original atomically, then the flag and the user's range.
-            Some((start, end)) => {
-                if port.restore_text(edit, &original).is_none() {
-                    return NativeApplyResult::Unverified;
-                }
-                let restored = text_length(port, edit)
-                    .ok()
-                    .and_then(|units| read_exact(port, edit, units));
-                if restored.as_deref() != Some(original.as_slice()) {
-                    return NativeApplyResult::Unverified;
-                }
-                let _ = port.send(edit, EM_SETMODIFY, usize::from(modified != 0), 0);
-                let _ = port.send(edit, EM_SETSEL, start, end as isize);
-                let _ = port.send(edit, EM_SCROLLCARET, 0, 0);
-                NativeApplyResult::Refused(SelectionChanged)
-            }
-            None => NativeApplyResult::Unverified,
-        },
-        _ => NativeApplyResult::Unverified,
-    }
-}
-
 #[cfg(windows)]
 pub(crate) struct Win32EditPort {
     read_timeout_ms: u32,
-    mutation_timeout_ms: u32,
 }
 
 #[cfg(windows)]
 impl Default for Win32EditPort {
     fn default() -> Self {
-        Self {
-            read_timeout_ms: 100,
-            mutation_timeout_ms: 1000,
-        }
+        Self { read_timeout_ms: 100 }
     }
 }
 
@@ -521,11 +301,6 @@ impl EditPort for Win32EditPort {
             return None;
         }
         Some(info.hwndFocus as isize)
-    }
-
-    fn is_window(&mut self, hwnd: isize) -> bool {
-        use windows_sys::Win32::Foundation::HWND;
-        unsafe { windows_sys::Win32::UI::WindowsAndMessaging::IsWindow(hwnd as HWND) != 0 }
     }
 
     fn root_window(&mut self, hwnd: isize) -> Option<isize> {
@@ -604,12 +379,7 @@ impl EditPort for Win32EditPort {
     }
 
     fn send(&mut self, hwnd: isize, message: u32, wparam: usize, lparam: isize) -> Option<isize> {
-        let timeout = if message == EM_SETREADONLY || message == EM_SETMODIFY || message == EM_SETSEL {
-            self.mutation_timeout_ms
-        } else {
-            self.read_timeout_ms
-        };
-        self.send_timeout(hwnd, message, wparam, lparam, timeout)
+        self.send_timeout(hwnd, message, wparam, lparam, self.read_timeout_ms)
     }
 
     fn read_text(&mut self, hwnd: isize, units: usize) -> Option<Vec<u16>> {
@@ -626,44 +396,21 @@ impl EditPort for Win32EditPort {
         buffer.truncate(copied);
         Some(buffer)
     }
-
-    fn replace_selection(&mut self, hwnd: isize, text: &[u16]) -> Option<()> {
-        const EM_REPLACESEL: u32 = 0x00C2;
-        let mut buffer = Vec::with_capacity(text.len() + 1);
-        buffer.extend_from_slice(text);
-        buffer.push(0);
-        // wParam=1: the replacement can be undone by the user.
-        self.send_timeout(
-            hwnd,
-            EM_REPLACESEL,
-            1,
-            buffer.as_ptr() as isize,
-            self.mutation_timeout_ms,
-        )
-        .map(|_| ())
-    }
-
-    fn restore_text(&mut self, hwnd: isize, text: &[u16]) -> Option<()> {
-        use windows_sys::Win32::UI::WindowsAndMessaging::WM_SETTEXT;
-        let mut buffer = Vec::with_capacity(text.len() + 1);
-        buffer.extend_from_slice(text);
-        buffer.push(0);
-        self.send_timeout(
-            hwnd,
-            WM_SETTEXT,
-            0,
-            buffer.as_ptr() as isize,
-            self.mutation_timeout_ms,
-        )
-        .filter(|&result| result != 0)
-        .map(|_| ())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::apply_safety::ApplyFallbackReason;
 
+    // Messages that change an editor's state. Production never sends them;
+    // the fake still models them so any regression is recorded, not ignored.
+    const EM_SETSEL: u32 = 0x00B1;
+    const EM_SCROLLCARET: u32 = 0x00B7;
+    const EM_GETMODIFY: u32 = 0x00B8;
+    const EM_SETMODIFY: u32 = 0x00B9;
+    const EM_SETREADONLY: u32 = 0x00CF;
+    const EM_GETLIMITTEXT: u32 = 0x00D5;
     const EM_UNDO: u32 = 0x00C7;
     const WM_SETTEXT: u32 = 0x000C;
     const TOP: isize = 0x100;
@@ -673,15 +420,8 @@ mod tests {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     enum Race {
         None,
-        /// The selection moves between `EM_SETSEL` and `EM_REPLACESEL`.
+        /// The user moves the selection right after any `EM_SETSEL`.
         MoveSelection(usize, usize),
-        /// `EM_REPLACESEL` times out without being processed.
-        DropReplace,
-        /// `EM_REPLACESEL` times out but is processed.
-        SlowReplace,
-        /// The selection moves as in `MoveSelection` and the restoring
-        /// `WM_SETTEXT` times out without being processed.
-        MoveSelectionDropRestore(usize, usize),
     }
 
     /// In-memory model of one standard Edit control and its top-level window.
@@ -809,9 +549,6 @@ mod tests {
         fn focused_control(&mut self, top_level: isize) -> Option<isize> {
             (top_level == TOP).then_some(self.focus)
         }
-        fn is_window(&mut self, hwnd: isize) -> bool {
-            hwnd == TOP || (hwnd == EDIT && self.edit_alive)
-        }
         fn root_window(&mut self, hwnd: isize) -> Option<isize> {
             (hwnd == EDIT && self.edit_alive).then_some(TOP)
         }
@@ -858,7 +595,7 @@ mod tests {
                 }
                 EM_SETSEL => {
                     self.selection = (wparam, lparam as usize);
-                    if let Race::MoveSelection(start, end) | Race::MoveSelectionDropRestore(start, end) = self.race {
+                    if let Race::MoveSelection(start, end) = self.race {
                         self.selection = (start, end);
                     }
                     Some(1)
@@ -894,42 +631,6 @@ mod tests {
                 self.app_edit(changed);
             }
             Some(text)
-        }
-        fn replace_selection(&mut self, hwnd: isize, text: &[u16]) -> Option<()> {
-            assert_eq!(hwnd, EDIT);
-            assert!(self.locked(), "mutation happens only under the lock");
-            self.messages.push((0x00C2, 1));
-            if self.race == Race::DropReplace {
-                return None;
-            }
-            let (start, end) = self.selection;
-            self.undo = Some((self.text.clone(), self.selection));
-            let mut next = self.text[..start].to_vec();
-            next.extend_from_slice(text);
-            next.extend_from_slice(&self.text[end..]);
-            self.text = next;
-            self.selection = (start + text.len(), start + text.len());
-            self.modified = true;
-            self.grammar_edit();
-            (self.race != Race::SlowReplace).then_some(())
-        }
-        fn restore_text(&mut self, hwnd: isize, text: &[u16]) -> Option<()> {
-            assert_eq!(hwnd, EDIT);
-            assert!(self.locked(), "restoration happens only under the lock");
-            self.messages.push((WM_SETTEXT, 0));
-            if let Some(changed) = self.change_before_restore.take() {
-                self.app_edit(changed);
-            }
-            if matches!(self.race, Race::MoveSelectionDropRestore(..)) {
-                return None;
-            }
-            // WM_SETTEXT clears the undo buffer and the modification flag.
-            self.text = text.to_vec();
-            self.selection = (0, 0);
-            self.modified = false;
-            self.undo = None;
-            self.grammar_edit();
-            Some(())
         }
     }
 
@@ -1030,153 +731,6 @@ mod tests {
         assert_eq!(captured(&mut edit).text, "third line");
     }
 
-    fn apply(edit: &mut FakeEdit, binding: &NativeEditBinding, replacement: &str) -> NativeApplyResult {
-        apply_to_captured_edit(edit, TOP, PID, binding, replacement)
-    }
-
-    #[test]
-    fn verified_apply_replaces_exact_range_under_lock_and_is_undoable() {
-        let selected = "한국어 선택 😀";
-        let mut edit = FakeEdit::new(SAMPLE, range_of(SAMPLE, selected));
-        let binding = captured(&mut edit).binding;
-        assert_eq!(apply(&mut edit, &binding, "교정된 문장 ✅"), NativeApplyResult::Applied);
-        assert_eq!(edit.text(), SAMPLE.replace(selected, "교정된 문장 ✅"));
-        assert!(!edit.locked(), "lock released");
-        let order = edit.messages.iter().map(|(message, wparam)| (*message, *wparam)).collect::<Vec<_>>();
-        let lock = order.iter().position(|m| *m == (EM_SETREADONLY, 1)).unwrap();
-        let replace = order.iter().position(|m| m.0 == 0x00C2).unwrap();
-        let unlock = order.iter().rposition(|m| *m == (EM_SETREADONLY, 0)).unwrap();
-        assert!(lock < replace && replace < unlock);
-        assert_eq!(edit.send(EDIT, EM_UNDO, 0, 0), Some(1));
-        assert_eq!(edit.text(), SAMPLE, "the user can undo the Apply");
-    }
-
-    #[test]
-    fn cursor_source_and_target_changes_never_mutate() {
-        let range = range_of(SAMPLE, "third");
-        let fresh = || {
-            let mut edit = FakeEdit::new(SAMPLE, range);
-            let binding = captured(&mut edit).binding;
-            (edit, binding)
-        };
-        let refusal = |edit: &mut FakeEdit, binding: &NativeEditBinding| {
-            let result = apply(edit, binding, "REPLACED");
-            assert!(!edit.messages.iter().any(|(message, _)| *message == 0x00C2), "no replace");
-            assert!(!edit.locked());
-            result
-        };
-
-        let (mut edit, binding) = fresh();
-        edit.selection = (0, 2);
-        assert_eq!(refusal(&mut edit, &binding), NativeApplyResult::Refused(NativeApplyRefusal::SelectionChanged));
-        assert_eq!(edit.text(), SAMPLE);
-
-        let (mut edit, binding) = fresh();
-        edit.text[0] = 'X' as u16;
-        let changed = edit.text();
-        assert_eq!(refusal(&mut edit, &binding), NativeApplyResult::Refused(NativeApplyRefusal::SourceChanged));
-        assert_eq!(edit.text(), changed);
-
-        let (mut edit, binding) = fresh();
-        edit.text.push('!' as u16);
-        assert_eq!(refusal(&mut edit, &binding), NativeApplyResult::Refused(NativeApplyRefusal::SourceChanged));
-
-        let (mut edit, binding) = fresh();
-        edit.edit_pid = PID + 7; // HWND reuse by another process
-        assert_eq!(refusal(&mut edit, &binding), NativeApplyResult::Refused(NativeApplyRefusal::EditorChanged));
-
-        let (mut edit, binding) = fresh();
-        edit.edit_alive = false;
-        assert_eq!(apply(&mut edit, &binding, "REPLACED"), NativeApplyResult::Refused(NativeApplyRefusal::EditorChanged));
-
-        let (mut edit, binding) = fresh();
-        edit.style |= ES_PASSWORD;
-        assert_eq!(refusal(&mut edit, &binding), NativeApplyResult::Refused(NativeApplyRefusal::EditorChanged));
-        assert_eq!(edit.text(), SAMPLE);
-    }
-
-    #[test]
-    fn read_only_and_limited_editors_stay_copy_only_without_lock() {
-        let mut edit = FakeEdit::new(SAMPLE, (0, 3));
-        edit.style |= ES_READONLY;
-        let binding = captured(&mut edit).binding;
-        assert!(binding.read_only);
-        assert_eq!(apply(&mut edit, &binding, "x"), NativeApplyResult::Refused(NativeApplyRefusal::EditorChanged));
-        assert!(!edit.messages.iter().any(|(message, _)| *message == EM_SETREADONLY));
-
-        let mut edit = FakeEdit::new(SAMPLE, (0, 3));
-        let binding = captured(&mut edit).binding;
-        edit.limit = units(SAMPLE) as isize;
-        assert_eq!(apply(&mut edit, &binding, "longer replacement"), NativeApplyResult::Refused(NativeApplyRefusal::EditorChanged));
-        assert!(!edit.messages.iter().any(|(message, _)| *message == EM_SETREADONLY));
-        assert_eq!(edit.text(), SAMPLE);
-    }
-
-    #[test]
-    fn concurrent_selection_move_is_restored_under_lock_and_reported() {
-        for modified in [false, true] {
-            let mut edit = FakeEdit::new(SAMPLE, range_of(SAMPLE, "third"));
-            edit.modified = modified;
-            let binding = captured(&mut edit).binding;
-            edit.race = Race::MoveSelection(0, 1);
-            assert_eq!(apply(&mut edit, &binding, "REPLACED"), NativeApplyResult::Refused(NativeApplyRefusal::SelectionChanged));
-            assert_eq!(edit.text(), SAMPLE, "misplaced replacement was replaced by the verified original");
-            assert!(!edit.locked());
-            assert_eq!(edit.modified, modified, "modification flag restored");
-            assert_eq!(edit.selection, (0, 1), "the user's moved selection is kept");
-            let order = edit.messages.iter().map(|(message, wparam)| (*message, *wparam)).collect::<Vec<_>>();
-            let restore = order.iter().position(|m| m.0 == WM_SETTEXT).unwrap();
-            let unlock = order.iter().rposition(|m| *m == (EM_SETREADONLY, 0)).unwrap();
-            assert!(restore < unlock, "restored before the lock is released");
-            assert!(!order.iter().any(|m| m.0 == EM_UNDO), "no undo is attempted under the lock");
-        }
-    }
-
-    #[test]
-    fn failed_restoration_is_reported_unverified() {
-        let mut edit = FakeEdit::new(SAMPLE, range_of(SAMPLE, "third"));
-        let binding = captured(&mut edit).binding;
-        edit.race = Race::MoveSelectionDropRestore(0, 1);
-        assert_eq!(apply(&mut edit, &binding, "REPLACED"), NativeApplyResult::Unverified);
-        assert!(!edit.locked());
-    }
-
-    #[test]
-    fn undo_under_the_lock_is_refused_like_a_real_edit_control() {
-        let mut edit = FakeEdit::new(SAMPLE, (0, 3));
-        edit.undo = Some(("x".encode_utf16().collect(), (0, 0)));
-        edit.style |= ES_READONLY;
-        assert_eq!(edit.send(EDIT, EM_UNDO, 0, 0), Some(0));
-        assert_eq!(edit.text(), SAMPLE);
-    }
-
-    #[test]
-    fn replace_timeouts_are_verified_or_reported_unverified() {
-        let mut edit = FakeEdit::new(SAMPLE, range_of(SAMPLE, "third"));
-        let binding = captured(&mut edit).binding;
-        edit.race = Race::SlowReplace;
-        assert_eq!(apply(&mut edit, &binding, "REPLACED"), NativeApplyResult::Applied);
-        assert_eq!(edit.text(), SAMPLE.replace("third", "REPLACED"));
-
-        let mut edit = FakeEdit::new(SAMPLE, range_of(SAMPLE, "third"));
-        let binding = captured(&mut edit).binding;
-        edit.race = Race::DropReplace;
-        assert_eq!(apply(&mut edit, &binding, "REPLACED"), NativeApplyResult::Unverified);
-        assert_eq!(edit.text(), SAMPLE);
-        assert!(!edit.locked());
-    }
-
-    #[test]
-    fn lock_release_failure_is_reported() {
-        let mut edit = FakeEdit::new(SAMPLE, range_of(SAMPLE, "third"));
-        let binding = captured(&mut edit).binding;
-        edit.refuse_unlock = true;
-        assert_eq!(
-            apply(&mut edit, &binding, "REPLACED"),
-            NativeApplyResult::LockNotReleased { applied: true }
-        );
-    }
-
     // ---- Review findings R1/R2 through the production Apply entry ----
     // `EM_SETREADONLY` only blocks user typing; the application itself can
     // still change its text between any two messages another process sends.
@@ -1187,57 +741,65 @@ mod tests {
     use crate::apply_safety::{apply_current_session, ApplyOutcome, ApplyPlatform, WaitStage};
     use crate::capture_session::{CaptureSessionStore, SessionToken, WindowTarget};
 
+    /// Records every platform call. The editor is the application's; the
+    /// platform exposes no way to change it, and Apply must not need one.
     struct EditorPlatform {
         edit: FakeEdit,
         clipboard: Option<String>,
         pastes: usize,
+        calls: Vec<&'static str>,
     }
 
     impl EditorPlatform {
         fn new(edit: FakeEdit) -> Self {
-            Self { edit, clipboard: None, pastes: 0 }
+            Self { edit, clipboard: None, pastes: 0, calls: Vec::new() }
         }
     }
 
     impl ApplyPlatform for EditorPlatform {
-        fn apply_native_edit(
-            &mut self,
-            top_level: isize,
-            pid: u32,
-            binding: &NativeEditBinding,
-            replacement: &str,
-        ) -> NativeApplyResult {
-            apply_to_captured_edit(&mut self.edit, top_level, pid, binding, replacement)
-        }
         fn is_window(&mut self, hwnd: isize) -> bool {
+            self.calls.push("is_window");
             hwnd == TOP
         }
         fn window_pid(&mut self, hwnd: isize) -> Option<u32> {
+            self.calls.push("window_pid");
             (hwnd == TOP).then_some(PID)
         }
         fn hide_widget(&mut self) -> Result<(), ()> {
+            self.calls.push("hide_widget");
             Ok(())
         }
-        fn show_widget(&mut self) {}
-        fn request_foreground(&mut self, _hwnd: isize) {}
+        fn show_widget(&mut self) {
+            self.calls.push("show_widget");
+        }
+        fn request_foreground(&mut self, _hwnd: isize) {
+            self.calls.push("request_foreground");
+        }
         fn foreground_window(&mut self) -> isize {
+            self.calls.push("foreground_window");
             TOP
         }
         fn clipboard_sequence(&mut self) -> u32 {
+            self.calls.push("clipboard_sequence");
             0
         }
         fn read_clipboard_text(&mut self) -> Option<String> {
+            self.calls.push("read_clipboard_text");
             self.clipboard.clone()
         }
         fn write_clipboard_text(&mut self, text: &str) -> Result<(), ()> {
+            self.calls.push("write_clipboard_text");
             self.clipboard = Some(text.to_string());
             Ok(())
         }
         fn send_paste(&mut self) -> u32 {
+            self.calls.push("send_paste");
             self.pastes += 1;
             0
         }
-        fn wait(&mut self, _stage: WaitStage) {}
+        fn wait(&mut self, _stage: WaitStage) {
+            self.calls.push("wait");
+        }
     }
 
     /// Captures with the production reader and drives the session to Ready.
@@ -1275,6 +837,12 @@ mod tests {
         assert_eq!(edit.text, edit.app_text);
         assert_eq!(platform.clipboard.as_deref(), Some("fixed"), "Copy-only puts the result on the clipboard");
         assert_eq!(platform.pastes, 0);
+        assert_eq!(
+            outcome,
+            &ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetMutationDisabled }
+        );
+        // Target identity checks, then the clipboard: no widget, focus or input activity.
+        assert_eq!(platform.calls, ["is_window", "window_pid", "write_clipboard_text"]);
     }
 
     #[test]
@@ -1316,19 +884,5 @@ mod tests {
         edit.change_before_restore = Some("hello brave world".encode_utf16().collect());
         let (outcome, platform) = apply_through_production(edit, &mut store, &token);
         assert_editor_untouched(&outcome, &platform, "hello brave world");
-    }
-
-    #[test]
-    fn relocation_proof_accepts_only_one_moved_replacement() {
-        let original = "abc def ghi".encode_utf16().collect::<Vec<_>>();
-        let replacement = "XY".encode_utf16().collect::<Vec<_>>();
-        let moved = "XYc def ghi".encode_utf16().collect::<Vec<_>>();
-        assert_eq!(relocated_replacement(&original, &moved, &replacement), Some((0, 2)));
-        let inserted = "abc XYdef ghi".encode_utf16().collect::<Vec<_>>();
-        assert_eq!(relocated_replacement(&original, &inserted, &replacement), Some((4, 4)));
-        let other = "abc Zef ghi".encode_utf16().collect::<Vec<_>>();
-        assert_eq!(relocated_replacement(&original, &other, &replacement), None);
-        let two = "XYc def XYi".encode_utf16().collect::<Vec<_>>();
-        assert_eq!(relocated_replacement(&original, &two, &replacement), None);
     }
 }
