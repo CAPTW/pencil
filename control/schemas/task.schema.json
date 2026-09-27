@@ -191,7 +191,10 @@
           "type": "string"
         },
         "branch": {
-          "const": "codex/grammar-autonomous-r1",
+          "enum": [
+            "codex/grammar-autonomous-r1",
+            "claude/eloquent-faraday-hh62qc"
+          ],
           "type": "string"
         },
         "push": {

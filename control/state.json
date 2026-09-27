@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state_version": "2026-09-27.autonomous-r1-resume-r6",
+  "state_version": "2026-09-27.cloud-session-r1",
   "repository_branch": "main",
   "product_target": "P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST",
   "p3a_status": "SAFETY_REPAIRS_SYNTHETIC_VERIFIED_NATIVE_CAPTURE_NOT_QUALIFIED",
@@ -121,7 +121,7 @@
   "main_adoption": "NOT_ADOPTED_CANDIDATE_ONLY",
   "github_validation": {
     "repository": "CAPTW/pencil",
-    "branch": "codex/grammar-autonomous-r1",
+    "branch": "claude/eloquent-faraday-hh62qc",
     "push": true,
     "standard_windows_ci": true,
     "release": false,
