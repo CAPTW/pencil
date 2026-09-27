@@ -131,8 +131,6 @@ pub(crate) struct InstantDraftProof {
 pub(crate) struct ApplyContext {
     pub(crate) token: SessionToken,
     pub(crate) target: WindowTarget,
-    pub(crate) previous_clipboard_text: Option<String>,
-    pub(crate) capture_clipboard_sequence: Option<u32>,
     pub(crate) native_edit: Option<NativeEditBinding>,
 }
 
@@ -142,8 +140,6 @@ struct CaptureSession {
     selected_text: String,
     target: WindowTarget,
     lifecycle: CaptureLifecycle,
-    previous_clipboard_text: Option<String>,
-    capture_clipboard_sequence: Option<u32>,
     native_edit: Option<NativeEditBinding>,
     rewrite_intent: Option<BoundRewriteIntent>,
     active_turn: Option<ActiveTurn>,
@@ -162,17 +158,8 @@ impl CaptureSessionStore {
         session_id: String,
         selected_text: String,
         target: WindowTarget,
-        previous_clipboard_text: Option<String>,
-        capture_clipboard_sequence: Option<u32>,
     ) -> Result<SessionToken, SessionError> {
-        self.capture_bound(
-            session_id,
-            selected_text,
-            target,
-            previous_clipboard_text,
-            capture_clipboard_sequence,
-            None,
-        )
+        self.capture_bound(session_id, selected_text, target, None)
     }
 
     /// Captures a selection read by the qualified native Edit reader. Only such
@@ -187,7 +174,7 @@ impl CaptureSessionStore {
         if binding.pid != target.pid {
             return Err(SessionError::InvalidState);
         }
-        self.capture_bound(session_id, selected_text, target, None, None, Some(binding))
+        self.capture_bound(session_id, selected_text, target, Some(binding))
     }
 
     fn capture_bound(
@@ -195,8 +182,6 @@ impl CaptureSessionStore {
         session_id: String,
         selected_text: String,
         target: WindowTarget,
-        previous_clipboard_text: Option<String>,
-        capture_clipboard_sequence: Option<u32>,
         native_edit: Option<NativeEditBinding>,
     ) -> Result<SessionToken, SessionError> {
         let generation = self
@@ -218,8 +203,6 @@ impl CaptureSessionStore {
             selected_text,
             target,
             lifecycle: CaptureLifecycle::Captured,
-            previous_clipboard_text,
-            capture_clipboard_sequence,
             native_edit,
             rewrite_intent: None,
             active_turn: None,
@@ -489,8 +472,6 @@ impl CaptureSessionStore {
         Ok(ApplyContext {
             token: current.token.clone(),
             target: current.target,
-            previous_clipboard_text: current.previous_clipboard_text.clone(),
-            capture_clipboard_sequence: current.capture_clipboard_sequence,
             native_edit: current.native_edit.clone(),
         })
     }
@@ -506,22 +487,13 @@ impl CaptureSessionStore {
         )
     }
 
-    pub(crate) fn finish_apply_before_paste_failure(
+    /// Nothing was delivered (for example the clipboard write failed): the
+    /// session returns to Ready so the user can try again.
+    pub(crate) fn finish_apply_failure(
         &mut self,
         token: &SessionToken,
     ) -> Result<(), SessionError> {
         self.transition(token, CaptureLifecycle::Applying, CaptureLifecycle::Ready)
-    }
-
-    pub(crate) fn finish_apply_uncertain_input(
-        &mut self,
-        token: &SessionToken,
-    ) -> Result<(), SessionError> {
-        self.transition(
-            token,
-            CaptureLifecycle::Applying,
-            CaptureLifecycle::Cancelled,
-        )
     }
 
     pub(crate) fn cancel(&mut self, token: &SessionToken) -> Result<(), SessionError> {
@@ -646,7 +618,7 @@ mod mission_draft_tests {
     #[test]
     fn edited_instant_keeps_capture_source_candidate_and_revision_binding() {
         let mut store = CaptureSessionStore::default();
-        let token = store.capture("mission".into(), "source".into(), WindowTarget::new(1, 2), None, None).unwrap();
+        let token = store.capture("mission".into(), "source".into(), WindowTarget::new(1, 2)).unwrap();
         let mut proof = InstantDraftProof { session_id: token.session_id.clone(), generation: token.generation,
             source: "source".into(), candidate: "candidate".into(), draft_revision: 1, user_edited: true };
         assert!(store.validate_instant_draft(&token, "candidate", "my edit", Some(&proof)).is_ok());

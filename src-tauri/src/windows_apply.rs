@@ -1,12 +1,5 @@
-use crate::apply_safety::{ApplyPlatform, WaitStage};
+use crate::apply_safety::ApplyPlatform;
 use crate::clipboard;
-use std::thread;
-use std::time::Duration;
-use tauri::{AppHandle, Manager};
-
-const ACTIVATION_WAIT: Duration = Duration::from_millis(50);
-const PRE_PASTE_WAIT: Duration = Duration::from_millis(40);
-const POST_PASTE_WAIT: Duration = Duration::from_millis(160);
 
 #[cfg(windows)]
 pub(crate) fn window_is_valid(hwnd: isize) -> bool {
@@ -40,7 +33,9 @@ pub(crate) fn window_process_id(_hwnd: isize) -> Option<u32> {
     None
 }
 
-#[cfg(windows)]
+/// Brings a task-owned test window forward (live tests only; the product never
+/// changes the foreground window of another application).
+#[cfg(all(test, windows))]
 pub(crate) fn request_foreground_window(hwnd: isize) {
     use windows_sys::Win32::Foundation::HWND;
     use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
@@ -86,8 +81,6 @@ pub(crate) fn request_foreground_window(hwnd: isize) {
     }
 }
 
-#[cfg(not(windows))]
-pub(crate) fn request_foreground_window(_hwnd: isize) {}
 
 #[cfg(windows)]
 pub(crate) fn foreground_window_handle() -> isize {
@@ -101,23 +94,13 @@ pub(crate) fn foreground_window_handle() -> isize {
     0
 }
 
-pub(crate) fn wait_for_stage(stage: WaitStage) {
-    let duration = match stage {
-        WaitStage::AfterActivation => ACTIVATION_WAIT,
-        WaitStage::BeforePaste => PRE_PASTE_WAIT,
-        WaitStage::AfterPaste => POST_PASTE_WAIT,
-    };
-    thread::sleep(duration);
-}
-
-#[derive(Clone)]
-pub(crate) struct WindowsApplyPlatform {
-    app: AppHandle,
-}
+/// Copy-only result delivery: checks the captured window and writes the clipboard.
+#[derive(Clone, Default)]
+pub(crate) struct WindowsApplyPlatform;
 
 impl WindowsApplyPlatform {
-    pub(crate) fn new(app: AppHandle) -> Self {
-        Self { app }
+    pub(crate) fn new() -> Self {
+        Self
     }
 }
 
@@ -131,44 +114,8 @@ impl ApplyPlatform for WindowsApplyPlatform {
         window_process_id(hwnd)
     }
 
-    fn hide_widget(&mut self) -> Result<(), ()> {
-        let window = self.app.get_webview_window("main").ok_or(())?;
-        window.hide().map_err(|_| ())
-    }
-
-    fn show_widget(&mut self) {
-        if let Some(window) = self.app.get_webview_window("main") {
-            let _ = window.show();
-            let _ = window.set_focus();
-        }
-    }
-
-    fn request_foreground(&mut self, hwnd: isize) {
-        request_foreground_window(hwnd);
-    }
-
-    fn foreground_window(&mut self) -> isize {
-        foreground_window_handle()
-    }
-
-    fn clipboard_sequence(&mut self) -> u32 {
-        clipboard::clipboard_sequence_number()
-    }
-
-    fn read_clipboard_text(&mut self) -> Option<String> {
-        clipboard::read_clipboard_text().ok()
-    }
-
     fn write_clipboard_text(&mut self, text: &str) -> Result<(), ()> {
         clipboard::write_clipboard_text(text).map_err(|_| ())
-    }
-
-    fn send_paste(&mut self) -> u32 {
-        clipboard::send_paste_shortcut_count()
-    }
-
-    fn wait(&mut self, stage: WaitStage) {
-        wait_for_stage(stage);
     }
 }
 
@@ -182,33 +129,7 @@ impl ApplyPlatform for WindowsApplyPlatform {
         None
     }
 
-    fn hide_widget(&mut self) -> Result<(), ()> {
-        Err(())
-    }
-
-    fn show_widget(&mut self) {}
-
-    fn request_foreground(&mut self, _hwnd: isize) {}
-
-    fn foreground_window(&mut self) -> isize {
-        0
-    }
-
-    fn clipboard_sequence(&mut self) -> u32 {
-        0
-    }
-
-    fn read_clipboard_text(&mut self) -> Option<String> {
-        None
-    }
-
     fn write_clipboard_text(&mut self, _text: &str) -> Result<(), ()> {
         Err(())
     }
-
-    fn send_paste(&mut self) -> u32 {
-        0
-    }
-
-    fn wait(&mut self, _stage: WaitStage) {}
 }

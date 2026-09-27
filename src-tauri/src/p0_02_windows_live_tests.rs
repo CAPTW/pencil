@@ -1,8 +1,5 @@
 use crate::apply_current_terminology_bound;
-use crate::apply_safety::{
-    apply_current_session, ApplyFailureReason, ApplyFallbackReason, ApplyOutcome, ApplyPlatform,
-    WaitStage,
-};
+use crate::apply_safety::{apply_current_session, ApplyFallbackReason, ApplyOutcome, ApplyPlatform};
 use crate::capture_session::{BoundRewriteIntent, TerminologyIntent};
 use crate::capture_session::{CaptureSessionStore, SessionToken, WindowTarget};
 use crate::clipboard;
@@ -11,8 +8,7 @@ use crate::translation::{
     format_translation, RewriteIntent, TranslationApplyFormat, TranslationTargetLanguage,
 };
 use crate::windows_apply::{
-    foreground_window_handle, request_foreground_window, wait_for_stage, window_is_valid,
-    window_process_id,
+    foreground_window_handle, request_foreground_window, window_is_valid, window_process_id,
 };
 use crate::process_job::{resume_suspended_primary, ProcessJob};
 use crate::windows_target::{capture_foreground_target, WindowsForegroundTargetPlatform};
@@ -34,7 +30,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetGUIThreadInfo, GetWindowLongPtrW, GetWindowThreadProcessId, IsWindow, IsWindowVisible,
     SendMessageW, SetWindowTextW, ShowWindow, ES_READONLY, GUITHREADINFO, GWL_STYLE, SW_HIDE,
-    SW_SHOW, WM_CLOSE,
+    WM_CLOSE,
 };
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -44,7 +40,6 @@ const CF_UNICODETEXT: u32 = 13;
 const EM_GETMODIFY: u32 = 0x00B8;
 const EM_SETSEL: u32 = 0x00B1;
 const EM_SETMODIFY: u32 = 0x00B9;
-const WM_PASTE: u32 = 0x0302;
 const WM_PROBE_EVENT_COUNT: u32 = 0x8001;
 const WM_PROBE_EVENT_CODE: u32 = 0x8002;
 const WM_PROBE_EVENT_MILLIS: u32 = 0x8003;
@@ -899,31 +894,16 @@ struct InjectionObservation {
     last_error: u32,
 }
 
+/// The production result delivery can only check the window and write the
+/// clipboard; this stand-in also counts clipboard writes.
+#[derive(Default)]
 struct LiveApplyPlatform {
-    widget_window: isize,
-    target_window: isize,
-    target_textbox: isize,
-    paste_calls: usize,
     clipboard_writes: usize,
-    started_at: Instant,
-    injection: Option<InjectionObservation>,
-    restore_started_millis: Option<u128>,
-    restore_completed_millis: Option<u128>,
 }
 
 impl LiveApplyPlatform {
-    fn new(widget_window: isize, target_window: isize, target_textbox: isize) -> Self {
-        Self {
-            widget_window,
-            target_window,
-            target_textbox,
-            paste_calls: 0,
-            clipboard_writes: 0,
-            started_at: Instant::now(),
-            injection: None,
-            restore_started_millis: None,
-            restore_completed_millis: None,
-        }
+    fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -936,86 +916,44 @@ impl ApplyPlatform for LiveApplyPlatform {
         window_process_id(hwnd)
     }
 
-    fn hide_widget(&mut self) -> Result<(), ()> {
-        unsafe {
-            ShowWindow(self.widget_window as HWND, SW_HIDE);
-        }
-        if unsafe { IsWindowVisible(self.widget_window as HWND) } == 0 {
-            Ok(())
-        } else {
-            Err(())
-        }
-    }
-
-    fn show_widget(&mut self) {
-        unsafe {
-            ShowWindow(self.widget_window as HWND, SW_SHOW);
-        }
-        request_foreground_window(self.widget_window);
-    }
-
-    fn request_foreground(&mut self, hwnd: isize) {
-        request_foreground_window(hwnd);
-    }
-
-    fn foreground_window(&mut self) -> isize {
-        foreground_window_handle()
-    }
-
-    fn clipboard_sequence(&mut self) -> u32 {
-        clipboard::clipboard_sequence_number()
-    }
-
-    fn read_clipboard_text(&mut self) -> Option<String> {
-        clipboard::read_clipboard_text().ok()
-    }
-
     fn write_clipboard_text(&mut self, text: &str) -> Result<(), ()> {
-        let is_restore = self.paste_calls > 0;
-        if is_restore {
-            self.restore_started_millis = Some(self.started_at.elapsed().as_millis());
-        }
         clipboard::write_clipboard_text(text).map_err(|_| ())?;
         self.clipboard_writes += 1;
-        if is_restore {
-            self.restore_completed_millis = Some(self.started_at.elapsed().as_millis());
-        }
         Ok(())
     }
+}
 
-    fn send_paste(&mut self) -> u32 {
-        self.paste_calls += 1;
-        let target_is_foreground = foreground_window_handle() == self.target_window;
-        let expected_control_has_focus =
-            focused_window(self.target_window) == Some(self.target_textbox);
-        let modifiers = modifier_state();
-        let unicode_text_available = unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT) != 0 };
-        let clipboard_matches_expected =
-            clipboard::read_clipboard_text().ok().as_deref() == Some(EXPECTED_REPLACEMENT);
-        let replacement_sequence = clipboard::clipboard_sequence_number();
-        unsafe {
-            SetLastError(0);
+/// Test-only Ctrl+V through SendInput into the owned harness editor: it
+/// qualifies synthetic input delivery on the CI desktop. The product has no
+/// input injection.
+fn send_test_paste_shortcut() -> u32 {
+    use std::mem::size_of;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+    };
+
+    fn keyboard_input(vk: u16, flags: u32) -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: 0,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
         }
-        let returned_count = clipboard::send_paste_shortcut_count();
-        let last_error = unsafe { GetLastError() };
-        self.injection = Some(InjectionObservation {
-            target_is_foreground,
-            expected_control_has_focus,
-            nonempty_selection: selection_is_nonempty(self.target_textbox),
-            modifiers,
-            unicode_text_available,
-            clipboard_matches_expected,
-            replacement_sequence,
-            requested_count: 4,
-            returned_count,
-            last_error,
-        });
-        returned_count
     }
 
-    fn wait(&mut self, stage: WaitStage) {
-        wait_for_stage(stage);
-    }
+    let mut inputs = [
+        keyboard_input(VK_CONTROL, 0),
+        keyboard_input(VK_V, 0),
+        keyboard_input(VK_V, KEYEVENTF_KEYUP),
+        keyboard_input(VK_CONTROL, KEYEVENTF_KEYUP),
+    ];
+    unsafe { SendInput(inputs.len() as u32, inputs.as_mut_ptr(), size_of::<INPUT>() as i32) }
 }
 
 fn key_is_pressed(virtual_key: u16) -> bool {
@@ -1159,17 +1097,8 @@ pub(crate) fn focused_window(hwnd: isize) -> Option<isize> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ProbeKind {
-    CurrentCandidate,
-    RestoreSuppressed,
-    DirectWindowPaste,
-    IsolatedSendInput,
-}
-
 #[derive(Debug)]
 struct ProbeEvidence {
-    kind: ProbeKind,
     run: usize,
     control: ControlState,
     same_session: Option<bool>,
@@ -1188,55 +1117,9 @@ struct ProbeEvidence {
     target_en_update_count: usize,
     target_en_change_count: usize,
     edit_modified: bool,
-    restore_started_millis: Option<u128>,
-    restore_completed_millis: Option<u128>,
     first_equal_millis: Option<u64>,
     final_content_equal: bool,
     widget_content_unchanged: bool,
-    outcome: &'static str,
-}
-
-fn outcome_code(outcome: &ApplyOutcome) -> &'static str {
-    match outcome {
-        ApplyOutcome::Applied => "applied",
-        ApplyOutcome::CopiedFallback {
-            reason: ApplyFallbackReason::TargetSelectionUnverified,
-        } => "copied_selection_unverified",
-        ApplyOutcome::CopiedFallback {
-            reason: ApplyFallbackReason::TargetMissing,
-        } => "copied_fallback_target_missing",
-        ApplyOutcome::CopiedFallback {
-            reason: ApplyFallbackReason::TargetProcessChanged,
-        } => "copied_fallback_target_process_changed",
-        ApplyOutcome::CopiedFallback {
-            reason: ApplyFallbackReason::TargetNotForeground,
-        } => "copied_fallback_target_not_foreground",
-        ApplyOutcome::CopiedFallback {
-            reason: ApplyFallbackReason::TargetChangedBeforePaste,
-        } => "copied_fallback_target_changed_before_paste",
-        ApplyOutcome::RejectedStale => "rejected_stale",
-        ApplyOutcome::Failed {
-            reason: ApplyFailureReason::EmptyReplacement,
-        } => "failed_empty_replacement",
-        ApplyOutcome::Failed {
-            reason: ApplyFailureReason::InvalidSessionState,
-        } => "failed_invalid_session_state",
-        ApplyOutcome::Failed {
-            reason: ApplyFailureReason::WidgetHideFailed,
-        } => "failed_widget_hide",
-        ApplyOutcome::Failed {
-            reason: ApplyFailureReason::ClipboardWriteFailed,
-        } => "failed_clipboard_write",
-        ApplyOutcome::Failed {
-            reason: ApplyFailureReason::ClipboardOwnershipLost,
-        } => "failed_clipboard_ownership_lost",
-        ApplyOutcome::Failed {
-            reason: ApplyFailureReason::InputInjectionFailed,
-        } => "failed_input_injection",
-        ApplyOutcome::CopiedFallback {
-            reason: ApplyFallbackReason::TargetMutationDisabled,
-        } => "copied_fallback_target_mutation_disabled",
-    }
 }
 
 fn prepare_probe_harness() -> (WindowHarness, WindowTarget, ControlState) {
@@ -1280,15 +1163,12 @@ fn activate_target_for_setup(harness: &WindowHarness) -> bool {
 
 fn ready_store(target: WindowTarget, run: usize) -> (CaptureSessionStore, SessionToken) {
     assert!(clipboard::write_clipboard_text("synthetic-live-prior").is_ok());
-    let capture_sequence = clipboard::clipboard_sequence_number();
     let mut store = CaptureSessionStore::default();
     let token = store
         .capture(
             format!("synthetic-probe-session-{run}"),
             EXPECTED_SOURCE.to_string(),
             target,
-            Some("synthetic-live-prior".to_string()),
-            Some(capture_sequence),
         )
         .unwrap_or_else(|_| panic!("probe session capture failed"));
     assert!(store.begin_rewrite(&token).is_ok());
@@ -1327,7 +1207,7 @@ fn hide_widget_and_activate_target(harness: &WindowHarness) -> bool {
     }
     for _ in 0..3 {
         request_foreground_window(harness.target_window);
-        wait_for_stage(WaitStage::AfterActivation);
+        thread::sleep(Duration::from_millis(50));
         if foreground_window_handle() == harness.target_window
             && focused_window(harness.target_window) == Some(harness.target_textbox)
         {
@@ -1338,14 +1218,10 @@ fn hide_widget_and_activate_target(harness: &WindowHarness) -> bool {
 }
 
 fn finish_probe_evidence(
-    kind: ProbeKind,
     run: usize,
     harness: &WindowHarness,
     control: ControlState,
     injection: Option<InjectionObservation>,
-    restore_started_millis: Option<u128>,
-    restore_completed_millis: Option<u128>,
-    outcome: &'static str,
 ) -> ProbeEvidence {
     let final_content_equal = wait_until(Duration::from_secs(2), || {
         content_equals_expected(harness.target_window)
@@ -1357,7 +1233,6 @@ fn finish_probe_evidence(
         .find(|event| event.code == 9)
         .map(|event| event.millis);
     ProbeEvidence {
-        kind,
         run,
         control,
         same_session: harness.same_session,
@@ -1375,62 +1250,11 @@ fn finish_probe_evidence(
         target_en_update_count: event_count(&target_events, 7),
         target_en_change_count: event_count(&target_events, 8),
         edit_modified: edit_is_modified(harness.target_textbox),
-        restore_started_millis,
-        restore_completed_millis,
         first_equal_millis,
         final_content_equal,
         widget_content_unchanged: content_equals_expected(harness.widget_window),
-        outcome,
         target_events,
     }
-}
-
-fn run_apply_probe(kind: ProbeKind, run: usize, restore_clipboard: bool) -> ProbeEvidence {
-    let (harness, target, control) = prepare_probe_harness();
-    let (mut store, token) = ready_store(target, run);
-    let mut platform = LiveApplyPlatform::new(
-        harness.widget_window,
-        harness.target_window,
-        harness.target_textbox,
-    );
-    let outcome = apply_current_session(
-        &mut store,
-        &token,
-        EXPECTED_REPLACEMENT,
-        restore_clipboard,
-        &mut platform,
-    );
-    finish_probe_evidence(
-        kind,
-        run,
-        &harness,
-        control,
-        platform.injection,
-        platform.restore_started_millis,
-        platform.restore_completed_millis,
-        outcome_code(&outcome),
-    )
-}
-
-fn run_direct_window_paste_probe(run: usize) -> ProbeEvidence {
-    let (harness, _target, control) = prepare_probe_harness();
-    assert!(hide_widget_and_activate_target(&harness));
-    assert!(clipboard::write_clipboard_text(EXPECTED_REPLACEMENT).is_ok());
-    wait_for_stage(WaitStage::BeforePaste);
-    let injection = current_injection_observation(&harness, 0, 0, 0);
-    unsafe {
-        SendMessageW(harness.target_textbox as HWND, WM_PASTE, 0, 0);
-    }
-    finish_probe_evidence(
-        ProbeKind::DirectWindowPaste,
-        run,
-        &harness,
-        control,
-        Some(injection),
-        None,
-        None,
-        "reference_only",
-    )
 }
 
 fn run_isolated_send_input_probe(run: usize) -> ProbeEvidence {
@@ -1446,24 +1270,15 @@ fn run_isolated_send_input_probe(run: usize) -> ProbeEvidence {
     unsafe {
         SetLastError(0);
     }
-    let returned_count = clipboard::send_paste_shortcut_count();
+    let returned_count = send_test_paste_shortcut();
     let last_error = unsafe { GetLastError() };
     let injection = InjectionObservation {
         returned_count,
         last_error,
         ..pre
     };
-    wait_for_stage(WaitStage::AfterPaste);
-    finish_probe_evidence(
-        ProbeKind::IsolatedSendInput,
-        run,
-        &harness,
-        control,
-        Some(injection),
-        None,
-        None,
-        "reference_only",
-    )
+    thread::sleep(Duration::from_millis(160));
+    finish_probe_evidence(run, &harness, control, Some(injection))
 }
 
 fn assert_common_probe_preconditions(evidence: &ProbeEvidence) {
@@ -1583,24 +1398,24 @@ fn cloud_owned_desktop_copy_only_boundary() {
     assert!(clipboard::write_clipboard_text("synthetic-cloud-prior").is_ok());
     let _clipboard_guard = ClipboardTextGuard::capture().expect("synthetic clipboard roundtrip");
     receipt.check("synthetic_clipboard_roundtrip");
-    // The legacy Apply acceptance expects mutation and predates the fail-closed
-    // selection gate. Verify today's production boundary without bypassing it.
+    // Result delivery is Copy-only: verify it against a real owned editor.
     let (harness, target) = prepare_translation_harness(EXPECTED_SOURCE, EXPECTED_SOURCE);
     receipt.check("owned_editor_ready");
     let (mut store, token) = ready_store(target, 1);
-    let mut platform = LiveApplyPlatform::new(
-        harness.widget_window,
-        harness.target_window,
-        harness.target_textbox,
-    );
+    let mut platform = LiveApplyPlatform::new();
     assert_eq!(
-        apply_current_session(&mut store, &token, EXPECTED_REPLACEMENT, false, &mut platform),
+        apply_current_session(&mut store, &token, EXPECTED_REPLACEMENT, &mut platform),
         ApplyOutcome::CopiedFallback {
             reason: ApplyFallbackReason::TargetSelectionUnverified
         },
     );
     receipt.check("copy_only_outcome");
-    assert_eq!(platform.paste_calls, 0);
+    // Observed at the target: no key, character, paste or change notification.
+    thread::sleep(Duration::from_millis(200));
+    let target_events = probe_events(harness.target_window);
+    for code in [1, 2, 3, 4, 5, 6, 8] {
+        assert_eq!(event_count(&target_events, code), 0, "target event {code}");
+    }
     receipt.check("no_paste_input");
     assert_eq!(
         clipboard::read_clipboard_text().ok().as_deref(),
@@ -1614,175 +1429,6 @@ fn cloud_owned_desktop_copy_only_boundary() {
     receipt.record_cleanups(assert_editor_cleanups_complete(1));
     receipt.check("owned_editor_cleanup");
     receipt.pass();
-}
-
-#[test]
-#[ignore = "requires an interactive Windows desktop"]
-fn windows_live_sendinput_root_cause_probes() {
-    let clipboard_guard = ClipboardTextGuard::capture();
-    assert!(clipboard_guard.is_ok());
-    let _clipboard_guard = clipboard_guard.ok();
-
-    let mut evidence = Vec::with_capacity(PROBE_REPETITIONS * 4);
-    for run in 1..=PROBE_REPETITIONS {
-        evidence.push(run_apply_probe(ProbeKind::CurrentCandidate, run, true));
-        evidence.push(run_apply_probe(ProbeKind::RestoreSuppressed, run, false));
-        evidence.push(run_direct_window_paste_probe(run));
-        evidence.push(run_isolated_send_input_probe(run));
-    }
-
-    for item in &evidence {
-        eprintln!("P0_02B_CONTENT_FREE_EVIDENCE {item:?}");
-        assert_common_probe_preconditions(item);
-        match item.kind {
-            ProbeKind::CurrentCandidate => {
-                assert_send_input_delivery(item);
-                assert_eq!(item.outcome, "applied");
-                assert!(item.restore_started_millis.is_some());
-                assert!(item.restore_completed_millis.is_some());
-                assert!(item.restore_started_millis <= item.restore_completed_millis);
-            }
-            ProbeKind::RestoreSuppressed => {
-                assert_send_input_delivery(item);
-                assert_eq!(item.outcome, "applied");
-                assert!(item.restore_started_millis.is_none());
-                assert!(item.restore_completed_millis.is_none());
-            }
-            ProbeKind::DirectWindowPaste => {
-                let injection = item
-                    .injection
-                    .unwrap_or_else(|| panic!("WM_PASTE reference evidence missing"));
-                assert_eq!(injection.requested_count, 0);
-                assert_eq!(injection.returned_count, 0);
-                assert_eq!(item.target_ctrl_down_count, 0);
-                assert_eq!(item.target_ctrl_up_count, 0);
-                assert_eq!(item.target_v_down_count, 0);
-                assert_eq!(item.target_v_up_count, 0);
-                assert_eq!(item.target_paste_count, 1);
-                assert!(
-                    event_position(&item.target_events, 6) < event_position(&item.target_events, 9)
-                );
-            }
-            ProbeKind::IsolatedSendInput => assert_send_input_delivery(item),
-        }
-    }
-}
-
-#[test]
-#[ignore = "requires an interactive Windows desktop"]
-fn windows_live_target_bound_apply_acceptance() {
-    let clipboard_guard = ClipboardTextGuard::capture();
-    assert!(clipboard_guard.is_ok());
-    let _clipboard_guard = clipboard_guard.ok();
-    let (harness, target, control) = prepare_probe_harness();
-    assert!(control.top_level_created);
-    assert!(control.edit_created);
-    assert!(control.edit_enabled);
-    assert!(control.edit_writable);
-    assert!(control.edit_visible);
-    assert!(control.edit_not_read_only);
-    assert!(control.exact_selection);
-    assert_eq!(harness.same_session, Some(true));
-    assert_eq!(harness.same_input_desktop, Some(true));
-    assert_eq!(harness.sender_integrity, IntegrityRelation::Equal);
-
-    assert!(clipboard::write_clipboard_text("synthetic-live-prior").is_ok());
-    let capture_sequence = clipboard::clipboard_sequence_number();
-    let mut store = CaptureSessionStore::default();
-    let first = store
-        .capture(
-            "synthetic-live-session-1".to_string(),
-            "synthetic-target-start".to_string(),
-            target,
-            Some("synthetic-live-prior".to_string()),
-            Some(capture_sequence),
-        )
-        .unwrap_or_else(|_| unreachable!());
-    assert!(store.begin_rewrite(&first).is_ok());
-    assert!(store.finish_rewrite_success(&first).is_ok());
-    let mut platform = LiveApplyPlatform::new(
-        harness.widget_window,
-        harness.target_window,
-        harness.target_textbox,
-    );
-
-    let success = apply_current_session(
-        &mut store,
-        &first,
-        "synthetic-target-replaced",
-        false,
-        &mut platform,
-    );
-    assert_eq!(success, ApplyOutcome::Applied);
-    assert_eq!(platform.paste_calls, 1);
-    assert!(
-        foreground_window_handle() == harness.target_window,
-        "synthetic target lost foreground during accepted input"
-    );
-    assert!(
-        focused_window(harness.target_window) == Some(harness.target_textbox),
-        "synthetic target did not own keyboard focus after activation"
-    );
-    let target_was_replaced = wait_until(Duration::from_secs(2), || {
-        content_equals_expected(harness.target_window)
-    });
-    assert!(content_equals_expected(harness.widget_window));
-
-    let second = store
-        .capture(
-            "synthetic-live-session-2".to_string(),
-            "synthetic-second-source".to_string(),
-            target,
-            Some("synthetic-live-prior".to_string()),
-            Some(clipboard::clipboard_sequence_number()),
-        )
-        .unwrap_or_else(|_| unreachable!());
-    assert!(store.begin_rewrite(&second).is_ok());
-    assert!(store.finish_rewrite_success(&second).is_ok());
-    let writes_before_stale = platform.clipboard_writes;
-    let paste_before_stale = platform.paste_calls;
-    assert_eq!(
-        apply_current_session(
-            &mut store,
-            &first,
-            "synthetic-stale-replacement",
-            true,
-            &mut platform,
-        ),
-        ApplyOutcome::RejectedStale
-    );
-    assert_eq!(platform.clipboard_writes, writes_before_stale);
-    assert_eq!(platform.paste_calls, paste_before_stale);
-
-    unsafe {
-        SendMessageW(harness.target_window as HWND, WM_CLOSE, 0, 0);
-    }
-    assert!(wait_until(Duration::from_secs(2), || {
-        !window_is_valid(harness.target_window)
-    }));
-    let paste_before_fallback = platform.paste_calls;
-    assert_eq!(
-        apply_current_session(
-            &mut store,
-            &second,
-            "synthetic-manual-paste",
-            true,
-            &mut platform,
-        ),
-        ApplyOutcome::CopiedFallback {
-            reason: ApplyFallbackReason::TargetMissing,
-        }
-    );
-    assert_eq!(platform.paste_calls, paste_before_fallback);
-    assert!(matches!(
-        clipboard::read_clipboard_text().ok().as_deref(),
-        Some("synthetic-manual-paste")
-    ));
-    assert!(content_equals_expected(harness.widget_window));
-    assert!(
-        target_was_replaced,
-        "SendInput was accepted but the synthetic target did not consume the paste"
-    );
 }
 
 fn prepare_translation_harness(source: &str, expected: &str) -> (WindowHarness, WindowTarget) {
@@ -1837,36 +1483,29 @@ fn p1_01_windows_live_translation_formats_acceptance() {
         for (case_index, (source, translated, format)) in cases.iter().enumerate() {
             let expected = format_translation(source, translated, *format)
                 .unwrap_or_else(|_| panic!("translation format fixture failed"));
-            let (harness, target) = prepare_translation_harness(source, &expected);
+            // Copy-only: the owned editor must still hold the source afterwards.
+            let (harness, target) = prepare_translation_harness(source, source);
             assert_eq!(harness.same_session, Some(true));
             assert_eq!(harness.same_input_desktop, Some(true));
             assert_eq!(harness.sender_integrity, IntegrityRelation::Equal);
             assert!(clipboard::write_clipboard_text("synthetic-translation-prior").is_ok());
-            let capture_sequence = clipboard::clipboard_sequence_number();
             let mut store = CaptureSessionStore::default();
             let token = store
                 .capture(
                     format!("synthetic-translation-{repetition}-{case_index}"),
                     (*source).to_string(),
                     target,
-                    Some("synthetic-translation-prior".to_string()),
-                    Some(capture_sequence),
                 )
                 .unwrap_or_else(|_| panic!("translation capture fixture failed"));
             assert!(store.begin_rewrite_for(&token, intent).is_ok());
             assert!(store.finish_rewrite_success_for(&token, intent).is_ok());
 
-            let mut platform = LiveApplyPlatform::new(
-                harness.widget_window,
-                harness.target_window,
-                harness.target_textbox,
-            );
+            let mut platform = LiveApplyPlatform::new();
             assert!(store.invalidate_intent(stale_intent).is_ok());
             assert_eq!(
                 store.ready_source_for(&token, intent),
                 Err(crate::capture_session::SessionError::StaleIntent)
             );
-            assert_eq!(platform.paste_calls, 0);
             assert_eq!(platform.clipboard_writes, 0);
             assert!(store.begin_rewrite_for(&token, intent).is_ok());
             assert!(store.finish_rewrite_success_for(&token, intent).is_ok());
@@ -1878,14 +1517,20 @@ fn p1_01_windows_live_translation_formats_acceptance() {
                 .unwrap_or_else(|_| panic!("backend translation composition failed"));
             assert_eq!(final_replacement, expected);
             assert_eq!(
-                apply_current_session(&mut store, &token, &final_replacement, false, &mut platform,),
-                ApplyOutcome::Applied
+                apply_current_session(&mut store, &token, &final_replacement, &mut platform),
+                ApplyOutcome::CopiedFallback {
+                    reason: ApplyFallbackReason::TargetSelectionUnverified,
+                }
             );
-            assert_eq!(platform.paste_calls, 1);
-            assert!(wait_until(Duration::from_secs(2), || {
-                content_equals_expected(harness.target_window)
-            }));
+            // The exact formatted result is on the clipboard; the editor is unchanged.
+            assert_eq!(
+                clipboard::read_clipboard_text().ok().as_deref(),
+                Some(final_replacement.as_str())
+            );
+            thread::sleep(Duration::from_millis(200));
+            assert!(content_equals_expected(harness.target_window));
             assert!(content_equals_expected(harness.widget_window));
+            assert_eq!(event_count(&probe_events(harness.target_window), 6), 0);
             assert_eq!(event_count(&probe_events(harness.widget_window), 6), 0);
 
             let fallback = store
@@ -1893,8 +1538,6 @@ fn p1_01_windows_live_translation_formats_acceptance() {
                     format!("synthetic-translation-fallback-{repetition}-{case_index}"),
                     (*source).to_string(),
                     target,
-                    Some("synthetic-translation-prior".to_string()),
-                    Some(clipboard::clipboard_sequence_number()),
                 )
                 .unwrap_or_else(|_| panic!("fallback capture fixture failed"));
             assert!(store.begin_rewrite_for(&fallback, intent).is_ok());
@@ -1905,20 +1548,12 @@ fn p1_01_windows_live_translation_formats_acceptance() {
             assert!(wait_until(Duration::from_secs(2), || {
                 !window_is_valid(harness.target_window)
             }));
-            let paste_before_fallback = platform.paste_calls;
             assert_eq!(
-                apply_current_session(
-                    &mut store,
-                    &fallback,
-                    &final_replacement,
-                    false,
-                    &mut platform,
-                ),
+                apply_current_session(&mut store, &fallback, &final_replacement, &mut platform),
                 ApplyOutcome::CopiedFallback {
                     reason: ApplyFallbackReason::TargetMissing,
                 }
             );
-            assert_eq!(platform.paste_calls, paste_before_fallback);
             assert_eq!(
                 clipboard::read_clipboard_text().ok().as_deref(),
                 Some(final_replacement.as_str())
@@ -1934,7 +1569,8 @@ pub(crate) fn run_p1_02_live_target_bound_terminology_apply() {
     let _clipboard_guard = clipboard_guard.ok();
     let source = "자유수면효과 CargoMax";
     let replacement = "free surface effect CargoMax";
-    let (harness, target) = prepare_translation_harness(source, replacement);
+    // Copy-only: the owned editor must still hold the source afterwards.
+    let (harness, target) = prepare_translation_harness(source, source);
     assert_eq!(harness.same_session, Some(true));
     assert_eq!(harness.same_input_desktop, Some(true));
     assert_eq!(harness.sender_integrity, IntegrityRelation::Equal);
@@ -1966,17 +1602,11 @@ pub(crate) fn run_p1_02_live_target_bound_terminology_apply() {
             "synthetic-terminology-live-1".to_string(),
             source.to_string(),
             target,
-            Some("synthetic-terminology-prior".to_string()),
-            Some(clipboard::clipboard_sequence_number()),
         )
         .unwrap_or_else(|_| panic!("terminology capture fixture failed"));
     assert!(store.begin_rewrite_bound(&token, bound.clone()).is_ok());
     assert!(store.finish_rewrite_success_bound(&token, &bound).is_ok());
-    let mut platform = LiveApplyPlatform::new(
-        harness.widget_window,
-        harness.target_window,
-        harness.target_textbox,
-    );
+    let mut platform = LiveApplyPlatform::new();
 
     assert_eq!(
         apply_current_terminology_bound(
@@ -1987,13 +1617,11 @@ pub(crate) fn run_p1_02_live_target_bound_terminology_apply() {
             &settings,
             Some(8),
             replacement,
-            false,
             &mut platform,
         ),
         ApplyOutcome::RejectedStale
     );
     assert_eq!(platform.clipboard_writes, 0);
-    assert_eq!(platform.paste_calls, 0);
 
     assert_eq!(
         apply_current_terminology_bound(
@@ -2004,16 +1632,17 @@ pub(crate) fn run_p1_02_live_target_bound_terminology_apply() {
             &settings,
             Some(7),
             replacement,
-            false,
             &mut platform,
         ),
-        ApplyOutcome::Applied
+        ApplyOutcome::CopiedFallback {
+            reason: ApplyFallbackReason::TargetSelectionUnverified,
+        }
     );
-    assert_eq!(platform.paste_calls, 1);
-    assert!(wait_until(Duration::from_secs(2), || {
-        content_equals_expected(harness.target_window)
-    }));
+    assert_eq!(clipboard::read_clipboard_text().ok().as_deref(), Some(replacement));
+    thread::sleep(Duration::from_millis(200));
+    assert!(content_equals_expected(harness.target_window));
     assert!(content_equals_expected(harness.widget_window));
+    assert_eq!(event_count(&probe_events(harness.target_window), 6), 0);
     assert_eq!(event_count(&probe_events(harness.widget_window), 6), 0);
 
     let fallback_token = store
@@ -2021,8 +1650,6 @@ pub(crate) fn run_p1_02_live_target_bound_terminology_apply() {
             "synthetic-terminology-live-2".to_string(),
             source.to_string(),
             target,
-            Some("synthetic-terminology-prior".to_string()),
-            Some(clipboard::clipboard_sequence_number()),
         )
         .unwrap_or_else(|_| panic!("fallback terminology capture fixture failed"));
     assert!(store
@@ -2037,7 +1664,6 @@ pub(crate) fn run_p1_02_live_target_bound_terminology_apply() {
     assert!(wait_until(Duration::from_secs(2), || {
         !window_is_valid(harness.target_window)
     }));
-    let paste_before_fallback = platform.paste_calls;
     assert_eq!(
         apply_current_terminology_bound(
             &mut store,
@@ -2047,14 +1673,12 @@ pub(crate) fn run_p1_02_live_target_bound_terminology_apply() {
             &settings,
             Some(7),
             replacement,
-            false,
             &mut platform,
         ),
         ApplyOutcome::CopiedFallback {
             reason: ApplyFallbackReason::TargetMissing,
         }
     );
-    assert_eq!(platform.paste_calls, paste_before_fallback);
     assert_eq!(
         clipboard::read_clipboard_text().ok().as_deref(),
         Some(replacement)

@@ -591,8 +591,6 @@ fn translation_intent_is_bound_to_session_mode_and_target() {
             "p1-session".to_string(),
             "source-owned-by-backend".to_string(),
             WindowTarget::new(100, 200),
-            None,
-            Some(5),
         )
         .expect("capture should succeed");
     let japanese = RewriteIntent::new(RewriteMode::Translate, Some(TranslationTargetLanguage::Ja))
@@ -851,8 +849,6 @@ fn ready_translation_source_is_returned_only_for_the_exact_backend_intent() {
             "source-session".to_string(),
             " exact backend source\r\n".to_string(),
             WindowTarget::new(300, 400),
-            None,
-            None,
         )
         .expect("capture should succeed");
     let english = RewriteIntent::new(RewriteMode::Translate, Some(TranslationTargetLanguage::En))

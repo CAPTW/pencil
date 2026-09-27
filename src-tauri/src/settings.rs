@@ -59,6 +59,9 @@ pub struct AppSettings {
     pub schema_version: u32,
     pub cloud_processing_acknowledgement_version: u32,
     pub mode: RewriteMode,
+    /// Kept so existing settings files stay valid. It restored the clipboard
+    /// after the removed paste path; Copy leaves the result on the clipboard
+    /// on purpose, so nothing reads it.
     pub restore_clipboard: bool,
     pub auto_rewrite: bool,
     pub shortcut: ShortcutSettings,

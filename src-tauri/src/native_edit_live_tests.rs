@@ -4,9 +4,7 @@
 //! native `Edit` controls count text-bearing messages sent from other threads,
 //! so "never read" is observed at the target rather than inferred.
 
-use crate::apply_safety::{
-    apply_current_session, ApplyFallbackReason, ApplyOutcome, ApplyPlatform, WaitStage,
-};
+use crate::apply_safety::{apply_current_session, ApplyFallbackReason, ApplyOutcome, ApplyPlatform};
 use crate::capture_session::{CaptureSessionStore, SessionToken, WindowTarget};
 use crate::clipboard::{self, ClipboardCapture};
 use crate::p0_02_windows_live_tests::{
@@ -14,8 +12,7 @@ use crate::p0_02_windows_live_tests::{
     ClipboardTextGuard, CloudTestReceipt, OwnedEditorProcess, EDITOR_CLEANUPS,
 };
 use crate::windows_apply::{
-    foreground_window_handle, request_foreground_window, wait_for_stage, window_is_valid,
-    window_process_id,
+    foreground_window_handle, request_foreground_window, window_is_valid, window_process_id,
 };
 use crate::windows_target::{capture_foreground_target, WindowsForegroundTargetPlatform};
 use std::io::{BufRead, BufReader};
@@ -384,7 +381,7 @@ fn cloud_owned_desktop_native_capture() {
     receipt.pass();
 }
 
-/// Stands in for `WindowsApplyPlatform` (this harness has no widget); only the
+/// Stands in for `WindowsApplyPlatform` (it also counts clipboard writes); the
 /// built-app flow runs the real platform.
 #[derive(Default)]
 struct NativeLivePlatform {
@@ -400,39 +397,9 @@ impl ApplyPlatform for NativeLivePlatform {
         window_process_id(hwnd)
     }
 
-    fn hide_widget(&mut self) -> Result<(), ()> {
-        Ok(())
-    }
-
-    fn show_widget(&mut self) {}
-
-    fn request_foreground(&mut self, hwnd: isize) {
-        request_foreground_window(hwnd);
-    }
-
-    fn foreground_window(&mut self) -> isize {
-        foreground_window_handle()
-    }
-
-    fn clipboard_sequence(&mut self) -> u32 {
-        clipboard::clipboard_sequence_number()
-    }
-
-    fn read_clipboard_text(&mut self) -> Option<String> {
-        clipboard::read_clipboard_text().ok()
-    }
-
     fn write_clipboard_text(&mut self, text: &str) -> Result<(), ()> {
         self.clipboard_writes += 1;
         clipboard::write_clipboard_text(text).map_err(|_| ())
-    }
-
-    fn send_paste(&mut self) -> u32 {
-        panic!("native Apply never injects paste input");
-    }
-
-    fn wait(&mut self, stage: WaitStage) {
-        wait_for_stage(stage);
     }
 }
 
@@ -493,7 +460,7 @@ fn assert_copy_only_untouched(
     harness.reset_counters();
     let mut platform = NativeLivePlatform::default();
     assert_eq!(
-        apply_current_session(store, token, replacement, false, &mut platform),
+        apply_current_session(store, token, replacement, &mut platform),
         ApplyOutcome::CopiedFallback { reason: expected }
     );
     assert_eq!(harness.state_changes(index), 0, "Grammar changed editor {index}");
@@ -564,7 +531,7 @@ fn cloud_owned_desktop_native_apply() {
     });
     let mut platform = NativeLivePlatform::default();
     assert_eq!(
-        apply_current_session(&mut store, &token, "REPLACED", false, &mut platform),
+        apply_current_session(&mut store, &token, "REPLACED", &mut platform),
         ApplyOutcome::CopiedFallback { reason: disabled }
     );
     typist.join().expect("typing thread");
@@ -580,7 +547,7 @@ fn cloud_owned_desktop_native_apply() {
     harness.close_other_form();
     let mut platform = NativeLivePlatform::default();
     assert_eq!(
-        apply_current_session(&mut store, &token, "REPLACED", false, &mut platform),
+        apply_current_session(&mut store, &token, "REPLACED", &mut platform),
         ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetMissing }
     );
     assert_eq!(clipboard::read_clipboard_text().ok().as_deref(), Some("REPLACED"));
@@ -640,7 +607,7 @@ fn apply_against_application(
     harness.reset_counters();
     arm(harness);
     let mut platform = NativeLivePlatform::default();
-    let outcome = apply_current_session(&mut store, &token, "fixed", false, &mut platform);
+    let outcome = apply_current_session(&mut store, &token, "fixed", &mut platform);
     thread::sleep(settle);
     harness.app_timer(PLAIN, 0);
     thread::sleep(Duration::from_millis(100));
