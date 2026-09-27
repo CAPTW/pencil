@@ -31,6 +31,9 @@ pub(crate) enum ApplyFallbackReason {
 pub(crate) enum ApplyFailureReason {
     EmptyReplacement,
     InvalidSessionState,
+    /// The capture is still usable, but the Instant draft no longer matches
+    /// it (the mode or dictionary changed after the draft was made).
+    DraftOutdated,
     ClipboardWriteFailed,
 }
 
