@@ -37,7 +37,7 @@ pub(crate) enum ApplyFallbackReason {
     TargetProcessChanged,
     TargetNotForeground,
     TargetChangedBeforePaste,
-    /// Grammar never changes text inside another application's editor.
+    /// Grammar never changes text inside another application's native editor.
     TargetMutationDisabled,
 }
 

@@ -72,7 +72,8 @@ impl WindowTarget {
 }
 
 /// Exact state of a standard Edit control observed by the qualified native
-/// reader. Only a hash of the full field text is retained, never the text.
+/// reader. Apply uses it only to recognise a native capture, which is always
+/// Copy-only. Only a hash of the full field text is retained, never the text.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct NativeEditBinding {
     pub(crate) edit: isize,
@@ -175,7 +176,7 @@ impl CaptureSessionStore {
     }
 
     /// Captures a selection read by the qualified native Edit reader. Only such
-    /// sessions carry the editor binding that native Apply revalidates.
+    /// sessions carry the editor binding; Apply for them is always Copy-only.
     pub(crate) fn capture_native(
         &mut self,
         session_id: String,

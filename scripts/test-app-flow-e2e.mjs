@@ -122,7 +122,7 @@ class Editor {
   async counts(index) {
     const reply = await this.command(`COUNTS ${index}`);
     const values = reply.split(' ').slice(1).map(Number);
-    assert.equal(values.length, 12, reply);
+    assert.equal(values.length, 13, reply);
     return values;
   }
   async resetCounts() {
@@ -132,8 +132,10 @@ class Editor {
 
 // Synthetic editor counters: 0-2 are reads; 3-9 are state-changing messages sent
 // from another thread (EM_REPLACESEL, EM_SETREADONLY lock/unlock, WM_SETTEXT,
-// EM_UNDO, EM_SETSEL, EM_SETMODIFY); 10 counts change notifications they raised.
-const STATE_CHANGING_KINDS = [3, 4, 5, 6, 7, 8, 9, 10];
+// EM_UNDO, EM_SETSEL, EM_SETMODIFY); 10 counts change notifications they raised
+// and 12 every change notification from any source (posted messages or input).
+// Text and selection are also reread, so a change the counters miss still fails.
+const STATE_CHANGING_KINDS = [3, 4, 5, 6, 7, 8, 9, 10, 12];
 const EDITORS = [0, 5];
 const editorMessages = [];
 
@@ -155,7 +157,20 @@ let app;
 let browser;
 let page;
 let widgetState = null;
-async function assertEditorsUntouched(step) {
+// Receipts never carry text values: the first line of a failure, quoted values removed.
+const scrub = (error) => String(error?.message ?? error).split('\n')[0].replace(/(['"`]).*?\1/g, '<value>').slice(0, 300);
+async function editorSnapshot() {
+  const state = [];
+  for (const index of EDITORS) state.push({text: await editor.text(index), selection: await editor.command(`SEL ${index}`)});
+  return state;
+}
+// Resets the counters and returns the text and selection of both editors.
+async function beginUntouched() {
+  await editor.resetCounts();
+  return editorSnapshot();
+}
+async function assertEditorsUntouched(step, before) {
+  assert.ok(JSON.stringify(await editorSnapshot()) === JSON.stringify(before), `${step}: editor text or selection changed`);
   for (const index of EDITORS) {
     const values = await editor.counts(index);
     const stateChanging = STATE_CHANGING_KINDS.reduce((sum, kind) => sum + values[kind], 0);
@@ -271,14 +286,14 @@ try {
   // widget, result on the clipboard, and no state-changing editor message.
   async function applyCopyOnly(step, expectedClipboard) {
     await until('Apply enabled', applyEnabled);
-    await editor.resetCounts();
+    const before = await beginUntouched();
     await apply.click();
     await until('Copy-only Apply outcome', async () => (await status.textContent()) === 'Copied — paste manually');
     assert.match(await errorRow.textContent(), /does not change text inside other apps/);
     await until('Apply result on the clipboard', async () => (await editor.clipboard()) === expectedClipboard);
     assert.equal(await widgetVisible(), true, 'the widget stays open to show the Copy-only outcome');
     assert.equal(await applyEnabled(), false, 'the capture ended with the Copy-only Apply');
-    await assertEditorsUntouched(step);
+    await assertEditorsUntouched(step, before);
   }
 
   // 1. Instant-only draft, edited by the user; Apply is Copy-only for native editors.
@@ -297,11 +312,11 @@ try {
   const copyDoc = 'Copy source line.\r\nthe results is final.';
   await captureAndWaitInstant(0, copyDoc, 'the results is final.', 'the results are final.');
   await declineDeep();
-  await editor.resetCounts();
+  const beforeCopy = await beginUntouched();
   await copy.click();
   await until('draft copied', async () => (await editor.clipboard()) === 'the results are final.');
   assert.equal(await editor.text(0), copyDoc);
-  await assertEditorsUntouched('explicit-copy');
+  await assertEditorsUntouched('explicit-copy', beforeCopy);
   await closeWidget();
   pass('explicit Copy wrote only the clipboard and never changed the document');
 
@@ -322,13 +337,13 @@ try {
       restoreClipboard: false,
       instantDraft: null,
     }), {token, replacement});
-  await editor.resetCounts();
+  const beforeCancelled = await beginUntouched();
   assert.deepEqual(await invokeApply(cancelToken, 'CANCELLED-SHOULD-NOT-APPLY'), {
     status: 'failed',
     reason: 'invalid_session_state',
   });
   assert.equal(await editor.text(0), cancelDoc);
-  await assertEditorsUntouched('cancelled-token');
+  await assertEditorsUntouched('cancelled-token', beforeCancelled);
   pass('cancel invalidated the capture and its token was rejected without mutation');
 
   // 4. Reselect: the user selects another range while the widget is open. The
@@ -362,13 +377,13 @@ try {
   const otherDoc = 'Other window: please seperate me.';
   const otherToken = await captureAndWaitInstant(5, otherDoc, 'please seperate me.', 'please separate me.');
   await declineDeep();
-  await editor.resetCounts();
+  const beforeStale = await beginUntouched();
   for (const token of [staleToken, token1, reselectToken]) {
     assert.deepEqual(await invokeApply(token, 'STALE-SHOULD-NOT-APPLY'), {status: 'rejected_stale'});
   }
   assert.equal(await editor.text(5), otherDoc);
   assert.equal(await editor.text(0), reselectDoc);
-  await assertEditorsUntouched('stale-tokens');
+  await assertEditorsUntouched('stale-tokens', beforeStale);
   await applyCopyOnly('apply-other-window', 'please separate me.');
   assert.equal(await editor.text(5), otherDoc);
   assert.equal(await editor.text(0), reselectDoc);
@@ -410,7 +425,7 @@ try {
     checks,
     // Message counts only (no text): reads and state-changing messages per step.
     editor_messages: editorMessages,
-    failure: failure ? String(failure.message ?? failure).slice(0, 500) : null,
+    failure: failure ? scrub(failure) : null,
     widget_state: widgetState,
     not_qualified: ['physical keyboard and IME', 'live Provider Deep', 'user profiles and real documents'],
   };

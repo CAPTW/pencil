@@ -227,6 +227,40 @@ thread_local! {
 /// Keeps the default panic output and also records the location and message so
 /// a FAIL receipt names its cause even when the step log is not retrievable.
 /// Owned-desktop tests handle synthetic text only.
+/// Receipts carry no text values: every quoted string in a panic message (for
+/// example `assert_eq!` operands) is replaced before it is recorded.
+fn without_quoted_values(message: &str) -> String {
+    let mut out = String::with_capacity(message.len());
+    let mut chars = message.chars();
+    while let Some(c) = chars.next() {
+        if c != '"' {
+            out.push(c);
+            continue;
+        }
+        out.push_str("\"<value>\"");
+        let mut escaped = false;
+        for inner in chars.by_ref() {
+            if escaped {
+                escaped = false;
+            } else if inner == '\\' {
+                escaped = true;
+            } else if inner == '"' {
+                break;
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn receipt_failures_drop_quoted_values() {
+    assert_eq!(
+        without_quoted_values(r#"x.rs:1: assertion failed\n  left: "hello \"q\" world"\n right: "synthetic""#),
+        r#"x.rs:1: assertion failed\n  left: "<value>"\n right: "<value>""#
+    );
+    assert_eq!(without_quoted_values("r1: outcome=Applied state_changes=4"), "r1: outcome=Applied state_changes=4");
+}
+
 fn record_cloud_test_panics() {
     static INSTALL: std::sync::Once = std::sync::Once::new();
     INSTALL.call_once(|| {
@@ -242,7 +276,7 @@ fn record_cloud_test_panics() {
                 .location()
                 .map(|location| format!("{}:{}", location.file(), location.line()))
                 .unwrap_or_default();
-            let summary: String = format!("{location}: {message}").chars().take(600).collect();
+            let summary: String = without_quoted_values(&format!("{location}: {message}")).chars().take(1200).collect();
             CLOUD_TEST_PANIC.with(|slot| *slot.borrow_mut() = Some(summary));
             previous(info);
         }));
