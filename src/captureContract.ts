@@ -14,9 +14,7 @@ export type ApplyFallbackReason =
   | "target_process_changed"
   | "target_not_foreground"
   | "target_changed_before_paste"
-  | "target_editor_changed"
-  | "target_source_changed"
-  | "target_selection_changed";
+  | "target_mutation_disabled";
 
 export type ApplyFailureReason =
   | "empty_replacement"
@@ -24,9 +22,7 @@ export type ApplyFailureReason =
   | "widget_hide_failed"
   | "clipboard_write_failed"
   | "clipboard_ownership_lost"
-  | "input_injection_failed"
-  | "target_mutation_unverified"
-  | "editor_lock_not_released";
+  | "input_injection_failed";
 
 export type ApplyOutcome =
   | Readonly<{ status: "applied" }>
@@ -40,9 +36,7 @@ const FALLBACK_REASONS = new Set<ApplyFallbackReason>([
   "target_process_changed",
   "target_not_foreground",
   "target_changed_before_paste",
-  "target_editor_changed",
-  "target_source_changed",
-  "target_selection_changed",
+  "target_mutation_disabled",
 ]);
 
 const FAILURE_REASONS = new Set<ApplyFailureReason>([
@@ -52,19 +46,13 @@ const FAILURE_REASONS = new Set<ApplyFailureReason>([
   "clipboard_write_failed",
   "clipboard_ownership_lost",
   "input_injection_failed",
-  "target_mutation_unverified",
-  "editor_lock_not_released",
 ]);
 
 /** Copy-only explanation for each fallback; the replacement is on the clipboard. */
 export function copiedFallbackMessage(reason: ApplyFallbackReason): string {
   switch (reason) {
-    case "target_selection_changed":
-      return "The selection changed after capture, so nothing was replaced. The result is on the clipboard; paste it manually or capture again.";
-    case "target_source_changed":
-      return "The text changed after capture, so nothing was replaced. The result is on the clipboard; paste it manually or capture again.";
-    case "target_editor_changed":
-      return "This field cannot be changed safely (read-only, closed or no longer supported). The result is on the clipboard; paste it manually.";
+    case "target_mutation_disabled":
+      return "Grammar does not change text inside other apps: it cannot rule out that the app changes the text at the same moment. The result is on the clipboard; paste it into the field yourself.";
     case "target_missing":
       return "The captured window is gone. The result is on the clipboard; paste it manually.";
     default:
@@ -74,12 +62,20 @@ export function copiedFallbackMessage(reason: ApplyFallbackReason): string {
 
 /** True when the backend cancelled the capture; a retry needs a new capture. */
 export function applyFailureEndsCapture(reason: ApplyFailureReason): boolean {
-  return (
-    reason === "input_injection_failed" ||
-    reason === "invalid_session_state" ||
-    reason === "target_mutation_unverified" ||
-    reason === "editor_lock_not_released"
-  );
+  return reason === "input_injection_failed" || reason === "invalid_session_state";
+}
+
+/**
+ * True when part of the Apply may have reached the target, so the result is
+ * unknown and must never be reported as a safe failure.
+ */
+export function applyFailureIsUncertain(reason: ApplyFailureReason): boolean {
+  return reason === "input_injection_failed";
+}
+
+/** Status line for a failed Apply; uncertain outcomes are never called safe. */
+export function applyFailureStatus(reason: ApplyFailureReason): string {
+  return applyFailureIsUncertain(reason) ? "Apply result uncertain" : "Apply failed safely";
 }
 
 export function applyFailureMessage(reason: ApplyFailureReason): string {
@@ -87,11 +83,7 @@ export function applyFailureMessage(reason: ApplyFailureReason): string {
     case "clipboard_ownership_lost":
       return "The clipboard changed before paste. Nothing was pasted; review and try again.";
     case "input_injection_failed":
-      return "Windows did not confirm the complete paste input. Automatic retry is disabled; capture again.";
-    case "target_mutation_unverified":
-      return "The field changed while applying and the result could not be verified. Check the document; nothing will be retried.";
-    case "editor_lock_not_released":
-      return "The field's temporary read-only lock could not be confirmed released. Check the field before typing; nothing will be retried.";
+      return "Windows did not confirm the complete paste input, so part of it may have reached the field. Check the field; automatic retry is disabled, capture again.";
     default:
       return "Nothing was pasted. Review the target and try again.";
   }

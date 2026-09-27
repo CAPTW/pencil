@@ -6,24 +6,22 @@
 use crate::apply_safety::{
     apply_current_session, ApplyFallbackReason, ApplyOutcome, ApplyPlatform, WaitStage,
 };
-use crate::capture_session::{CaptureSessionStore, NativeEditBinding, SessionToken, WindowTarget};
+use crate::capture_session::{CaptureSessionStore, SessionToken, WindowTarget};
 use crate::clipboard::{self, ClipboardCapture};
-use crate::native_edit::NativeApplyResult;
 use crate::p0_02_windows_live_tests::{
     assert_editor_cleanups_complete, focused_window, require_cloud_owned_desktop, wait_until,
     ClipboardTextGuard, CloudTestReceipt, OwnedEditorProcess, EDITOR_CLEANUPS,
 };
 use crate::windows_apply::{
-    apply_native_edit_win32, foreground_window_handle, request_foreground_window, wait_for_stage,
-    window_is_valid, window_process_id,
+    foreground_window_handle, request_foreground_window, wait_for_stage, window_is_valid,
+    window_process_id,
 };
 use crate::windows_target::{capture_foreground_target, WindowsForegroundTargetPlatform};
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetWindowLongW, IsWindowUnicode, PostMessageW, SendMessageTimeoutW, SendMessageW, GWL_STYLE,
@@ -35,10 +33,6 @@ const WM_GETTEXT: u32 = 0x000D;
 const WM_GETTEXTLENGTH: u32 = 0x000E;
 const WM_CHAR: u32 = 0x0102;
 const EM_SETSEL: u32 = 0x00B1;
-const EM_GETMODIFY: u32 = 0x00B8;
-const EM_SETMODIFY: u32 = 0x00B9;
-const EM_CANUNDO: u32 = 0x00C6;
-const EM_UNDO: u32 = 0x00C7;
 const ES_READONLY: u32 = 0x0800;
 const HARNESS_QUERY: u32 = 0x8101;
 const HARNESS_RESET: u32 = 0x8102;
@@ -185,12 +179,6 @@ impl NativeEditHarness {
         unsafe { GetWindowLongW(self.edit(index) as HWND, GWL_STYLE) as u32 }
     }
 
-    fn selection(&self, index: usize) -> (usize, usize) {
-        const EM_GETSEL: u32 = 0x00B0;
-        let packed = unsafe { SendMessageW(self.edit(index) as HWND, EM_GETSEL, 0, 0) } as usize;
-        (packed & 0xFFFF, (packed >> 16) & 0xFFFF)
-    }
-
     /// Makes `index` the focused control of its foreground top-level window.
     fn focus(&self, index: usize) {
         let form = self.form_of(index);
@@ -209,15 +197,8 @@ impl NativeEditHarness {
         panic!("synthetic editor {index} could not be focused");
     }
 
-    /// Arms the harness to move the selection right after Apply's locked EM_SETSEL.
-    fn arm_selection_race(&self, index: usize) {
-        assert_eq!(
-            unsafe { SendMessageW(self.form as HWND, HARNESS_ARM_SELECTION_RACE, index, 0) },
-            1
-        );
-    }
-
-    /// As `arm_selection_race`, moving the selection to `[start, end)`.
+    /// Arms the harness to move the selection to `[start, end)` right after a
+    /// locked EM_SETSEL from another process (a click between select and replace).
     fn arm_selection_race_to(&self, index: usize, start: usize, end: usize) {
         let target = (start | (end << 16)) as isize;
         assert_eq!(
@@ -406,22 +387,9 @@ fn cloud_owned_desktop_native_capture() {
 #[derive(Default)]
 struct NativeLivePlatform {
     clipboard_writes: usize,
-    native_results: Vec<NativeApplyResult>,
 }
 
 impl ApplyPlatform for NativeLivePlatform {
-    fn apply_native_edit(
-        &mut self,
-        top_level: isize,
-        pid: u32,
-        binding: &NativeEditBinding,
-        replacement: &str,
-    ) -> NativeApplyResult {
-        let result = apply_native_edit_win32(top_level, pid, binding, replacement);
-        self.native_results.push(result);
-        result
-    }
-
     fn is_window(&mut self, hwnd: isize) -> bool {
         window_is_valid(hwnd)
     }
@@ -508,10 +476,30 @@ fn flush_posted_input(harness: &NativeEditHarness) {
     }
 }
 
-/// Small deterministic generator for race timing; no external randomness.
-fn jitter(iteration: u64) -> Duration {
-    let mixed = iteration.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
-    Duration::from_micros((mixed >> 33) % 6_000)
+/// Applies through the production entry and requires Copy-only, no message of
+/// any kind to the editor (not even a re-read), its text left as it was, and
+/// the replacement on the clipboard.
+fn assert_copy_only_untouched(
+    harness: &NativeEditHarness,
+    index: usize,
+    store: &mut CaptureSessionStore,
+    token: &SessionToken,
+    replacement: &str,
+    expected: ApplyFallbackReason,
+) {
+    let before = harness.text(index);
+    harness.reset_counters();
+    let mut platform = NativeLivePlatform::default();
+    assert_eq!(
+        apply_current_session(store, token, replacement, false, &mut platform),
+        ApplyOutcome::CopiedFallback { reason: expected }
+    );
+    assert_eq!(harness.state_changes(index), 0, "Grammar changed editor {index}");
+    assert_eq!(harness.counter(index, KIND_FOREIGN_CHANGE_NOTICE), 0);
+    assert_eq!(harness.text_messages(index), 0, "Apply sent a message to editor {index}");
+    assert_eq!(harness.text(index), before);
+    assert_eq!(platform.clipboard_writes, 1);
+    assert_eq!(clipboard::read_clipboard_text().ok().as_deref(), Some(replacement));
 }
 
 #[test]
@@ -524,233 +512,67 @@ fn cloud_owned_desktop_native_apply() {
     let _clipboard_guard = ClipboardTextGuard::capture().expect("synthetic clipboard roundtrip");
     let harness = NativeEditHarness::spawn();
     receipt.check("owned_native_editor_ready");
+    let disabled = ApplyFallbackReason::TargetMutationDisabled;
 
-    let selected = "한국어 선택 😀";
-    let replacement = "교정된 문장 ✅";
-    prepare(&harness, PLAIN, SAMPLE, selected);
+    // Native Apply never changes a captured editor (review findings R1/R2).
+    prepare(&harness, PLAIN, SAMPLE, "한국어 선택 😀");
     let (mut store, token, _) = ready_native_session();
-    let clipboard_sequence = clipboard::clipboard_sequence_number();
-    harness.reset_counters();
-    let mut platform = NativeLivePlatform::default();
-    assert_eq!(
-        apply_current_session(&mut store, &token, replacement, false, &mut platform),
-        ApplyOutcome::Applied
-    );
-    assert_eq!(harness.counter(PLAIN, KIND_LOCK), 1);
-    assert_eq!(harness.counter(PLAIN, KIND_REPLACESEL), 1);
-    assert!(harness.counter(PLAIN, KIND_UNLOCK) >= 1);
-    assert_eq!(harness.style(PLAIN) & ES_READONLY, 0);
-    assert_eq!(harness.text(PLAIN), SAMPLE.replacen(selected, replacement, 1));
-    assert_eq!(platform.clipboard_writes, 0);
-    assert_eq!(clipboard::clipboard_sequence_number(), clipboard_sequence);
-    receipt.check("verified_apply_exact_reread_lock_released_clipboard_untouched");
-    assert_ne!(unsafe { SendMessageW(harness.edit(PLAIN) as HWND, EM_CANUNDO, 0, 0) }, 0);
-    unsafe {
-        SendMessageW(harness.edit(PLAIN) as HWND, EM_UNDO, 0, 0);
-    }
-    assert_eq!(harness.text(PLAIN), SAMPLE);
-    receipt.check("apply_is_undoable_by_user");
+    assert_copy_only_untouched(&harness, PLAIN, &mut store, &token, "교정된 문장 ✅", disabled);
+    receipt.check("copy_only_clean_capture_no_editor_message_clipboard_has_result");
 
-    // Cursor change after capture: no mutation, Copy-only.
     prepare(&harness, PLAIN, SAMPLE, "third");
     let (mut store, token, _) = ready_native_session();
     harness.select(PLAIN, 0, 2);
-    harness.reset_counters();
-    let mut platform = NativeLivePlatform::default();
-    assert_eq!(
-        apply_current_session(&mut store, &token, "REPLACED", false, &mut platform),
-        ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetSelectionChanged }
-    );
-    assert_eq!(harness.counter(PLAIN, KIND_REPLACESEL), 0);
-    assert_eq!(harness.style(PLAIN) & ES_READONLY, 0);
-    assert_eq!(harness.text(PLAIN), SAMPLE);
-    assert_eq!(clipboard::read_clipboard_text().ok().as_deref(), Some("REPLACED"));
-    receipt.check("cursor_change_zero_mutation_copy_only");
+    assert_copy_only_untouched(&harness, PLAIN, &mut store, &token, "REPLACED", disabled);
+    receipt.check("copy_only_after_cursor_move");
 
-    // Source change after capture: no mutation, Copy-only.
     prepare(&harness, PLAIN, SAMPLE, "third");
     let (mut store, token, _) = ready_native_session();
-    let edited = SAMPLE.replace("synthetic", "user-edited");
-    harness.set_text(PLAIN, &edited);
-    harness.reset_counters();
-    let mut platform = NativeLivePlatform::default();
-    assert_eq!(
-        apply_current_session(&mut store, &token, "REPLACED", false, &mut platform),
-        ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetSourceChanged }
-    );
-    assert_eq!(harness.counter(PLAIN, KIND_REPLACESEL), 0);
-    assert_eq!(harness.text(PLAIN), edited);
-    receipt.check("source_change_zero_mutation_copy_only");
+    harness.set_text(PLAIN, &SAMPLE.replace("synthetic", "user-edited"));
+    assert_copy_only_untouched(&harness, PLAIN, &mut store, &token, "REPLACED", disabled);
+    receipt.check("copy_only_after_text_change");
 
-    // Another window in the foreground: the bound editor is still the only target.
+    prepare(&harness, READ_ONLY, "synthetic read-only text", "read-only");
+    let (mut store, token, _) = ready_native_session();
+    assert_copy_only_untouched(&harness, READ_ONLY, &mut store, &token, "REPLACED", disabled);
+    receipt.check("copy_only_read_only_editor");
+
+    // Another window in the foreground: neither editor is touched.
     prepare(&harness, PLAIN, SAMPLE, "third");
     let (mut store, token, _) = ready_native_session();
-    harness.set_text(OTHER, "synthetic other editor third");
-    harness.select(OTHER, 0, 9);
-    harness.focus(OTHER);
-    let mut platform = NativeLivePlatform::default();
-    assert_eq!(
-        apply_current_session(&mut store, &token, "REPLACED", false, &mut platform),
-        ApplyOutcome::Applied
-    );
-    assert_eq!(harness.text(PLAIN), SAMPLE.replacen("third", "REPLACED", 1));
-    assert_eq!(harness.text(OTHER), "synthetic other editor third");
-    receipt.check("foreground_switch_mutates_only_bound_editor");
+    prepare(&harness, OTHER, "synthetic other editor third", "third");
+    let other_before = harness.text(OTHER);
+    assert_copy_only_untouched(&harness, PLAIN, &mut store, &token, "REPLACED", disabled);
+    assert_eq!(harness.state_changes(OTHER), 0);
+    assert_eq!(harness.text(OTHER), other_before);
+    receipt.check("copy_only_with_other_window_foreground_neither_editor_touched");
 
-    // Read-only editors are never locked or mutated.
-    prepare(&harness, READ_ONLY, "synthetic read-only field", "read-only");
+    // The user keeps typing while Apply runs: never blocked, never overwritten.
+    prepare(&harness, PLAIN, SAMPLE, "third");
     let (mut store, token, _) = ready_native_session();
     harness.reset_counters();
+    let edit = harness.edit(PLAIN);
+    let typist = thread::spawn(move || {
+        for _ in 0..5 {
+            unsafe {
+                PostMessageW(edit as HWND, WM_CHAR, 'x' as usize, 0);
+            }
+            thread::sleep(Duration::from_millis(2));
+        }
+    });
     let mut platform = NativeLivePlatform::default();
     assert_eq!(
         apply_current_session(&mut store, &token, "REPLACED", false, &mut platform),
-        ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetEditorChanged }
+        ApplyOutcome::CopiedFallback { reason: disabled }
     );
-    assert_eq!(harness.counter(READ_ONLY, KIND_LOCK), 0);
-    assert_eq!(harness.text(READ_ONLY), "synthetic read-only field");
-    receipt.check("read_only_editor_copy_only_without_lock");
+    typist.join().expect("typing thread");
+    flush_posted_input(&harness);
+    assert_eq!(harness.state_changes(PLAIN), 0);
+    assert_eq!(harness.style(PLAIN) & ES_READONLY, 0, "no read-only lock was ever set");
+    assert_eq!(harness.text(PLAIN), SAMPLE.replacen("third", "xxxxx", 1));
+    receipt.check("user_typing_during_apply_never_blocked_or_overwritten");
 
-    // Typing races: posted characters must never be overwritten or displaced.
-    let marker = "⟦교정⟧";
-    let (mut applied, mut refused) = (0, 0);
-    for iteration in 0..RACE_ITERATIONS {
-        prepare(&harness, PLAIN, SAMPLE, "third");
-        let (mut store, token, _) = ready_native_session();
-        let edit = harness.edit(PLAIN);
-        let stop = Arc::new(AtomicBool::new(false));
-        let early = iteration % 2 == 0;
-        let typist = {
-            let stop = Arc::clone(&stop);
-            let delay = if early { Duration::ZERO } else { jitter(iteration) };
-            thread::spawn(move || {
-                thread::sleep(delay);
-                let started = Instant::now();
-                while !stop.load(Ordering::SeqCst) && started.elapsed() < Duration::from_millis(40) {
-                    unsafe {
-                        PostMessageW(edit as HWND, WM_CHAR, 'x' as usize, 0);
-                    }
-                    thread::sleep(Duration::from_micros(300));
-                }
-            })
-        };
-        if early {
-            // Let posted keystrokes reach the editor before Apply takes its lock.
-            thread::sleep(Duration::from_millis(3));
-        }
-        let mut platform = NativeLivePlatform::default();
-        let outcome = apply_current_session(&mut store, &token, marker, false, &mut platform);
-        thread::sleep(Duration::from_millis(45));
-        stop.store(true, Ordering::SeqCst);
-        typist.join().expect("typist thread");
-        flush_posted_input(&harness);
-        let text = harness.text(PLAIN);
-        match outcome {
-            ApplyOutcome::Applied => {
-                applied += 1;
-                let (start, _) = utf16_range(SAMPLE, "third");
-                let head = SAMPLE.encode_utf16().take(start).collect::<Vec<_>>();
-                let wide = text.encode_utf16().collect::<Vec<_>>();
-                let tail = SAMPLE.encode_utf16().skip(start + units("third")).collect::<Vec<_>>();
-                assert!(
-                    wide.len() >= head.len() + tail.len() && wide.starts_with(&head) && wide.ends_with(&tail),
-                    "{iteration}: {text:?}"
-                );
-                let body = String::from_utf16(&wide[head.len()..wide.len() - tail.len()]).expect("valid body");
-                let typed = body.strip_prefix(marker).unwrap_or_else(|| panic!("{iteration}: {text:?}"));
-                assert!(typed.chars().all(|character| character == 'x'), "{iteration}: {text:?}");
-            }
-            ApplyOutcome::CopiedFallback { .. } => {
-                refused += 1;
-                assert!(!text.contains(marker), "{iteration}: {text:?}");
-            }
-            other => panic!("{iteration}: unexpected typing-race outcome {other:?}"),
-        }
-        assert_eq!(harness.style(PLAIN) & ES_READONLY, 0);
-    }
-    receipt.check(format!("typing_race_{RACE_ITERATIONS}_iterations_applied{applied}_refused{refused}_no_misplacement"));
-
-    // Selection races: the replacement lands only on the verified range or the
-    // verified original is restored under the lock.
-    let (mut applied, mut refused, mut restored) = (0, 0, 0);
-    for iteration in 0..RACE_ITERATIONS {
-        prepare(&harness, PLAIN, SAMPLE, "third");
-        let (mut store, token, _) = ready_native_session();
-        let edit = harness.edit(PLAIN);
-        let stop = Arc::new(AtomicBool::new(false));
-        let mover = {
-            let stop = Arc::clone(&stop);
-            let delay = jitter(iteration + 100);
-            thread::spawn(move || {
-                thread::sleep(delay);
-                let started = Instant::now();
-                while !stop.load(Ordering::SeqCst) && started.elapsed() < Duration::from_millis(40) {
-                    let mut result = 0usize;
-                    unsafe {
-                        SendMessageTimeoutW(edit as HWND, EM_SETSEL, 0, 1, SMTO_ABORTIFHUNG, 200, &mut result);
-                    }
-                }
-            })
-        };
-        harness.reset_counters();
-        let mut platform = NativeLivePlatform::default();
-        let outcome = apply_current_session(&mut store, &token, marker, false, &mut platform);
-        stop.store(true, Ordering::SeqCst);
-        mover.join().expect("selection mover thread");
-        let text = harness.text(PLAIN);
-        match outcome {
-            ApplyOutcome::Applied => {
-                applied += 1;
-                assert_eq!(text, SAMPLE.replacen("third", marker, 1), "{iteration}");
-            }
-            ApplyOutcome::CopiedFallback { reason } => {
-                refused += 1;
-                if platform.native_results.last()
-                    == Some(&NativeApplyResult::Refused(crate::native_edit::NativeApplyRefusal::SelectionChanged))
-                    && reason == ApplyFallbackReason::TargetSelectionChanged
-                {
-                    restored += usize::from(harness.counter(PLAIN, KIND_REPLACESEL) > 0);
-                }
-                assert_eq!(text, SAMPLE, "{iteration}: fallback left a mutation");
-            }
-            other => panic!("{iteration}: unexpected selection-race outcome {other:?}"),
-        }
-        assert_eq!(harness.style(PLAIN) & ES_READONLY, 0);
-    }
-    receipt.check(format!(
-        "selection_race_{RACE_ITERATIONS}_iterations_applied{applied}_refused{refused}_restored{restored}_no_misplacement"
-    ));
-
-    // Deterministic selection race between the locked EM_SETSEL and EM_REPLACESEL:
-    // the displaced replacement must be replaced by the verified original under
-    // the lock (a real Edit control refuses EM_UNDO while read-only), with the
-    // modification flag and the user's moved selection restored, and reported.
-    for modified in [0usize, 1] {
-        prepare(&harness, PLAIN, SAMPLE, "third");
-        let (mut store, token, _) = ready_native_session();
-        let edit = harness.edit(PLAIN) as HWND;
-        unsafe {
-            SendMessageW(edit, EM_SETMODIFY, modified, 0);
-        }
-        harness.arm_selection_race(PLAIN);
-        harness.reset_counters();
-        let mut platform = NativeLivePlatform::default();
-        assert_eq!(
-            apply_current_session(&mut store, &token, marker, false, &mut platform),
-            ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetSelectionChanged },
-            "modified={modified}"
-        );
-        assert_eq!(harness.counter(PLAIN, KIND_REPLACESEL), 1);
-        assert_eq!(harness.counter(PLAIN, KIND_SETTEXT), 1);
-        assert_eq!(harness.counter(PLAIN, KIND_UNDO), 0);
-        assert_eq!(harness.style(PLAIN) & ES_READONLY, 0);
-        assert_eq!(harness.text(PLAIN), SAMPLE);
-        assert_eq!(usize::from(unsafe { SendMessageW(edit, EM_GETMODIFY, 0, 0) } != 0), modified);
-        assert_eq!(harness.selection(PLAIN), (0, 1), "the moved selection is kept");
-        assert_eq!(clipboard::read_clipboard_text().ok().as_deref(), Some(marker));
-    }
-    receipt.check("injected_selection_race_restored_under_lock_modify_flag_and_selection_kept_copy_only");
-
-    // Target closed after capture: Copy-only without mutation.
+    // Target closed after capture: Copy-only without any message.
     prepare(&harness, OTHER, "synthetic other editor third", "third");
     let (mut store, token, _) = ready_native_session();
     harness.close_other_form();
@@ -759,7 +581,7 @@ fn cloud_owned_desktop_native_apply() {
         apply_current_session(&mut store, &token, "REPLACED", false, &mut platform),
         ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetMissing }
     );
-    assert!(platform.native_results.is_empty());
+    assert_eq!(clipboard::read_clipboard_text().ok().as_deref(), Some("REPLACED"));
     receipt.check("closed_target_copy_only");
 
     drop(harness);

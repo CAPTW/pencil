@@ -82,20 +82,33 @@ assert.equal(
   null,
 );
 
+// Native editors are never mutated (review findings R1/R2): Copy-only, and the
+// message must not claim a verified Apply or that a mutation was prevented.
+assert.deepEqual(
+  contract.parseApplyOutcome({ status: "copied_fallback", reason: "target_mutation_disabled" }),
+  { status: "copied_fallback", reason: "target_mutation_disabled" },
+);
+assert.match(contract.copiedFallbackMessage("target_mutation_disabled"), /does not change text inside other apps/);
+assert.match(contract.copiedFallbackMessage("target_mutation_disabled"), /clipboard/);
+// The removed native mutation outcomes are no longer part of the contract.
 for (const reason of ["target_editor_changed", "target_source_changed", "target_selection_changed"]) {
-  assert.deepEqual(contract.parseApplyOutcome({ status: "copied_fallback", reason }), {
-    status: "copied_fallback",
-    reason,
-  });
-  assert.match(contract.copiedFallbackMessage(reason), /nothing was replaced|cannot be changed safely/);
-  assert.match(contract.copiedFallbackMessage(reason), /clipboard/);
+  assert.equal(contract.parseApplyOutcome({ status: "copied_fallback", reason }), null);
 }
 for (const reason of ["target_mutation_unverified", "editor_lock_not_released"]) {
-  assert.deepEqual(contract.parseApplyOutcome({ status: "failed", reason }), { status: "failed", reason });
-  assert.equal(contract.applyFailureEndsCapture(reason), true);
-  assert.match(contract.applyFailureMessage(reason), /nothing will be retried/);
+  assert.equal(contract.parseApplyOutcome({ status: "failed", reason }), null);
+}
+for (const reason of ["target_missing", "target_not_foreground", "target_mutation_disabled"]) {
+  assert.doesNotMatch(contract.copiedFallbackMessage(reason), /nothing was replaced/);
 }
 assert.equal(contract.applyFailureEndsCapture("clipboard_write_failed"), false);
+// Input that may have partly reached the target is uncertain, never "failed safely".
+assert.equal(contract.applyFailureIsUncertain("input_injection_failed"), true);
+assert.equal(contract.applyFailureStatus("input_injection_failed"), "Apply result uncertain");
+assert.match(contract.applyFailureMessage("input_injection_failed"), /may have reached the field/);
+for (const reason of ["empty_replacement", "invalid_session_state", "widget_hide_failed", "clipboard_write_failed", "clipboard_ownership_lost"]) {
+  assert.equal(contract.applyFailureIsUncertain(reason), false);
+  assert.equal(contract.applyFailureStatus(reason), "Apply failed safely");
+}
 assert.equal(
   contract.parseApplyOutcome({ status: "copied_fallback", reason: "target_unknown_reason" }),
   null,

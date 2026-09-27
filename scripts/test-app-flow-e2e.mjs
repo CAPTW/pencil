@@ -1,6 +1,10 @@
 // Built-app user flow on an owned GitHub-hosted Windows desktop:
 // select -> global shortcut -> local Instant -> edit -> explicit Apply/Copy,
 // plus cancel, reselect and a stale session that must not touch a new document.
+// Grammar never changes text inside a captured native editor (review findings
+// R1/R2), so Apply is Copy-only there: the document is reread unchanged, the
+// result is on the clipboard and the editor's counters show no state-changing
+// message from another thread.
 // The editor is the task-owned synthetic native Edit harness; no Provider,
 // account, user document or real profile is used. The primary shortcut is a
 // toggle (documented widget behavior): pressed while the widget is visible it
@@ -115,7 +119,23 @@ class Editor {
   async hotkey() {
     assert.equal(await this.command('HOTKEY'), 'SENT 6');
   }
+  async counts(index) {
+    const reply = await this.command(`COUNTS ${index}`);
+    const values = reply.split(' ').slice(1).map(Number);
+    assert.equal(values.length, 12, reply);
+    return values;
+  }
+  async resetCounts() {
+    assert.equal(await this.command('RESET'), 'OK');
+  }
 }
+
+// Synthetic editor counters: 0-2 are reads; 3-9 are state-changing messages sent
+// from another thread (EM_REPLACESEL, EM_SETREADONLY lock/unlock, WM_SETTEXT,
+// EM_UNDO, EM_SETSEL, EM_SETMODIFY); 10 counts change notifications they raised.
+const STATE_CHANGING_KINDS = [3, 4, 5, 6, 7, 8, 9, 10];
+const EDITORS = [0, 5];
+const editorMessages = [];
 
 function killTree(pid) {
   try {
@@ -135,6 +155,16 @@ let app;
 let browser;
 let page;
 let widgetState = null;
+async function assertEditorsUntouched(step) {
+  for (const index of EDITORS) {
+    const values = await editor.counts(index);
+    const stateChanging = STATE_CHANGING_KINDS.reduce((sum, kind) => sum + values[kind], 0);
+    editorMessages.push({step, editor: index, reads: values[0] + values[1] + values[2], state_changing: stateChanging});
+    for (const kind of STATE_CHANGING_KINDS) {
+      assert.equal(values[kind], 0, `${step}: editor ${index} received state-changing kind ${kind} (${values.join(' ')})`);
+    }
+  }
+}
 try {
   await editor.ready();
   pass('owned synthetic native editor ready');
@@ -195,6 +225,7 @@ try {
   const apply = page.getByTestId('apply-result');
   const copy = page.getByTestId('copy-result');
   const review = page.getByRole('dialog', {name: 'AI 클라우드 처리 안내'});
+  const errorRow = page.locator('.error-row');
   const draftValue = () => draft.inputValue({timeout: 2000}).catch(() => '');
   // Without a capture the result pane is not rendered while Codex is signed out.
   const applyEnabled = async () => (await apply.count()) > 0 && (await apply.isEnabled());
@@ -236,28 +267,41 @@ try {
       (await review.count()) === 0 && (await status.textContent()) === 'Deep not sent · Instant stays local');
   }
 
-  // 1. Instant-only draft, edited by the user, applied on the supported path.
+  // Apply on a captured native editor: Copy-only outcome shown in the open
+  // widget, result on the clipboard, and no state-changing editor message.
+  async function applyCopyOnly(step, expectedClipboard) {
+    await until('Apply enabled', applyEnabled);
+    await editor.resetCounts();
+    await apply.click();
+    await until('Copy-only Apply outcome', async () => (await status.textContent()) === 'Copied — paste manually');
+    assert.match(await errorRow.textContent(), /does not change text inside other apps/);
+    await until('Apply result on the clipboard', async () => (await editor.clipboard()) === expectedClipboard);
+    assert.equal(await widgetVisible(), true, 'the widget stays open to show the Copy-only outcome');
+    assert.equal(await applyEnabled(), false, 'the capture ended with the Copy-only Apply');
+    await assertEditorsUntouched(step);
+  }
+
+  // 1. Instant-only draft, edited by the user; Apply is Copy-only for native editors.
   const doc = 'Line one stays.\r\nPlease seperate these items.\r\nLine three stays.';
   const token1 = await captureAndWaitInstant(0, doc, 'Please seperate these items.', 'Please separate these items.');
   await declineDeep();
   assert.equal(await draftValue(), 'Please separate these items.');
   pass('shortcut captured the exact selection; local Instant is usable without cloud consent and declining Deep sends nothing');
-  const clipboardBefore = await editor.clipboard();
   await draft.fill('Please separate these items carefully.');
-  await until('Apply enabled', applyEnabled);
-  await apply.click();
-  await until('document applied', async () => (await editor.text(0)) === doc.replace('Please seperate these items.', 'Please separate these items carefully.'));
-  await until('widget hidden after Apply', async () => !(await widgetVisible()));
-  assert.equal(await editor.clipboard(), clipboardBefore);
-  pass('edited Instant-only draft applied exactly with document reread, clipboard untouched and widget closed');
+  await applyCopyOnly('apply-edited-draft', 'Please separate these items carefully.');
+  assert.equal(await editor.text(0), doc);
+  await closeWidget();
+  pass('Apply of the edited draft was Copy-only: exact draft on the clipboard, document reread unchanged, no state-changing editor message');
 
   // 2. Copy leaves the document unchanged and places the draft on the clipboard.
   const copyDoc = 'Copy source line.\r\nthe results is final.';
   await captureAndWaitInstant(0, copyDoc, 'the results is final.', 'the results are final.');
   await declineDeep();
+  await editor.resetCounts();
   await copy.click();
   await until('draft copied', async () => (await editor.clipboard()) === 'the results are final.');
   assert.equal(await editor.text(0), copyDoc);
+  await assertEditorsUntouched('explicit-copy');
   await closeWidget();
   pass('explicit Copy wrote only the clipboard and never changed the document');
 
@@ -278,16 +322,18 @@ try {
       restoreClipboard: false,
       instantDraft: null,
     }), {token, replacement});
+  await editor.resetCounts();
   assert.deepEqual(await invokeApply(cancelToken, 'CANCELLED-SHOULD-NOT-APPLY'), {
     status: 'failed',
     reason: 'invalid_session_state',
   });
   assert.equal(await editor.text(0), cancelDoc);
+  await assertEditorsUntouched('cancelled-token');
   pass('cancel invalidated the capture and its token was rejected without mutation');
 
   // 4. Reselect: the user selects another range while the widget is open. The
   //    first shortcut press closes the widget and cancels the old capture, the
-  //    second captures the new range; Apply changes only the new range.
+  //    second captures the new range; Apply copies only the new range's result.
   const reselectDoc = 'First: please seperate this.\r\nSecond: this are wrong.';
   const staleToken = await captureAndWaitInstant(0, reselectDoc, 'please seperate this.', 'please separate this.');
   const beforeToggle = (await captures()).length;
@@ -306,27 +352,28 @@ try {
   assert.deepEqual(await invokeApply(staleToken, 'STALE-SHOULD-NOT-APPLY'), {status: 'rejected_stale'});
   assert.equal(await editor.text(0), reselectDoc);
   await declineDeep();
-  await apply.click();
-  const reselected = reselectDoc.replace('this are wrong.', 'this is wrong.');
-  await until('reselected range applied', async () => (await editor.text(0)) === reselected);
-  await until('widget hidden after Apply', async () => !(await widgetVisible()));
+  await applyCopyOnly('apply-reselected', 'this is wrong.');
+  assert.equal(await editor.text(0), reselectDoc);
+  await closeWidget();
   assert.notEqual(reselectToken.sessionId, staleToken.sessionId);
-  pass('shortcut toggle closed and cancelled the old capture; reselection bound Apply to the new range only');
+  pass('shortcut toggle closed and cancelled the old capture; reselection bound Apply (Copy-only) to the new range only');
 
   // 5. A stale session never changes a newer document in another window.
   const otherDoc = 'Other window: please seperate me.';
   const otherToken = await captureAndWaitInstant(5, otherDoc, 'please seperate me.', 'please separate me.');
   await declineDeep();
+  await editor.resetCounts();
   for (const token of [staleToken, token1, reselectToken]) {
     assert.deepEqual(await invokeApply(token, 'STALE-SHOULD-NOT-APPLY'), {status: 'rejected_stale'});
   }
   assert.equal(await editor.text(5), otherDoc);
-  assert.equal(await editor.text(0), reselected);
-  await apply.click();
-  await until('new document applied', async () => (await editor.text(5)) === 'Other window: please separate me.');
-  assert.equal(await editor.text(0), reselected);
+  assert.equal(await editor.text(0), reselectDoc);
+  await assertEditorsUntouched('stale-tokens');
+  await applyCopyOnly('apply-other-window', 'please separate me.');
+  assert.equal(await editor.text(5), otherDoc);
+  assert.equal(await editor.text(0), reselectDoc);
   assert.notEqual(otherToken.sessionId, staleToken.sessionId);
-  pass('stale sessions were rejected and only the current document changed');
+  pass('stale sessions were rejected and the current capture was Copy-only; neither document changed');
 } catch (error) {
   failure = error;
   console.error('FAIL', error?.stack ?? error);
@@ -359,7 +406,10 @@ try {
     run_id: process.env.GITHUB_RUN_ID,
     classification: 'SYNTHETIC_OWNED_WINDOWS_DESKTOP_BUILT_APP',
     app_kind: process.env.GRAMMAR_APP_KIND ?? 'unspecified',
+    native_apply: 'COPY_ONLY',
     checks,
+    // Message counts only (no text): reads and state-changing messages per step.
+    editor_messages: editorMessages,
     failure: failure ? String(failure.message ?? failure).slice(0, 500) : null,
     widget_state: widgetState,
     not_qualified: ['physical keyboard and IME', 'live Provider Deep', 'user profiles and real documents'],
