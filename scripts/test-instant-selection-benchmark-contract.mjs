@@ -17,6 +17,10 @@ const authorizedPaths = [
   "scripts/generate-instant-selection-corpus.mjs",
   "scripts/evaluate-instant-selection-benchmark.mjs",
   "scripts/test-instant-selection-benchmark-contract.mjs",
+  // Added later by the authorized P3-02 engine foundation (fda1d08) in the same
+  // namespace. The set stays closed: any other new file here still fails.
+  "scripts/run-instant-selection-product-benchmark.ps1",
+  "scripts/test-instant-selection-engine-contract.mjs",
 ];
 
 const requiredBaselineFiles = [
