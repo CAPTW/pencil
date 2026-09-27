@@ -1,12 +1,13 @@
 # CI driver for the personal package (step 8). Phases run as separate workflow
 # steps: build (receipt-bound release build + package), install (fresh root,
-# registration wiring and registered-host protocol check), remove (uninstall
-# and independent residue check). The built-app and browser tests run between
+# registration wiring and registered-host protocol check), failures (install
+# and uninstall failure and recovery paths with task-owned roots, registry keys
+# and stand-in processes), remove (uninstall and independent residue check). The built-app and browser tests run between
 # install and remove against the installed files (the installed-package
 # browser smoke test loads the installed extension unmodified). Receipts are
 # content-free.
 [CmdletBinding()]
-param([Parameter(Mandatory)][ValidateSet('build', 'install', 'remove')][string]$Phase)
+param([Parameter(Mandatory)][ValidateSet('build', 'install', 'failures', 'remove')][string]$Phase)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -127,6 +128,106 @@ switch ($Phase) {
         registeredHostLocalInstant = [ordered]@{ suggestions = @($response.suggestions).Count; provider = $null }
         installRootIsFresh = $true
       })
+  }
+  'failures' {
+    Require-OwnedDesktop
+    if (-not $env:GRAMMAR_PACKAGE_ZIP) { throw 'package build did not produce a ZIP' }
+    $work = Join-Path $env:RUNNER_TEMP ('grammar-failures-' + [Guid]::NewGuid().ToString('N'))
+    $extracted = Join-Path $work 'package'
+    Expand-Archive -LiteralPath $env:GRAMMAR_PACKAGE_ZIP -DestinationPath $extracted
+    # Task-owned registry tree standing in for a profile without Chrome's key.
+    $testKey = 'HKCU:\Software\GrammarCi' + [Guid]::NewGuid().ToString('N')
+    $hosts = "$testKey\Google\Chrome\NativeMessagingHosts"
+    $checks = [ordered]@{}
+    $stand = @()
+    function Invoke-Pwsh([string]$Script, [string[]]$Arguments) {
+      $out = & pwsh -NoProfile -File $Script @Arguments 2>&1
+      [pscustomobject]@{ exit = $LASTEXITCODE; text = ($out | Out-String) }
+    }
+    function Start-StandIn([string]$Directory) {
+      # A harmless program named codex-pencil.exe stands in for a running copy.
+      New-Item -ItemType Directory -Force -Path $Directory | Out-Null
+      $exe = Join-Path $Directory 'codex-pencil.exe'
+      Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\PING.EXE') -Destination $exe -Force
+      $process = Start-Process -FilePath $exe -ArgumentList '-n', '120', '127.0.0.1' -WindowStyle Hidden -PassThru
+      $script:stand += $process
+      Start-Sleep -Milliseconds 500
+      $process
+    }
+    try {
+      # 1. No NativeMessagingHosts key yet: install creates the missing levels
+      #    and registers; uninstall removes only its own registration.
+      $rootA = Join-Path $work 'install-a'
+      $a = & (Join-Path $extracted 'Install-Grammar.ps1') -InstallRoot $rootA -NativeHostsKey $hosts | ConvertFrom-Json
+      $checks.missingParentKeysCreatedAndRegistered = [bool]((Test-Path -LiteralPath $a.nativeHost.registryKey) -and
+        (Get-Item -LiteralPath $a.nativeHost.registryKey).GetValue('') -eq $a.nativeHost.manifest -and $a.state -eq 'installed')
+      $unrelated = "$hosts\org.grammar.personal.t" + [Guid]::NewGuid().ToString('N')
+      New-Item -Path $unrelated | Out-Null
+      Set-Item -LiteralPath $unrelated -Value 'C:\unrelated\host.json'
+      $u = Invoke-Pwsh (Join-Path $rootA 'Uninstall-Grammar.ps1') @()
+      $checks.uninstallRemovedOnlyItsRegistration = ($u.exit -eq 0) -and -not (Test-Path -LiteralPath $a.nativeHost.registryKey) -and
+        (Test-Path -LiteralPath $unrelated) -and -not (Test-Path -LiteralPath $rootA)
+
+      # 2. Registration fails: the install is rolled back completely.
+      $rootB = Join-Path $work 'install-b'
+      $b = Invoke-Pwsh (Join-Path $extracted 'Install-Grammar.ps1') @('-InstallRoot', $rootB, '-NativeHostsKey', 'HKZZ:\GrammarNoSuchDrive\NativeMessagingHosts')
+      $checks.registrationFailureRolledBack = ($b.exit -ne 0) -and ($b.text -match 'Nothing was left installed') -and -not (Test-Path -LiteralPath $rootB)
+
+      # 3. Existing root, changed file and unlisted file are refused before anything is created.
+      $rootC = Join-Path $work 'install-c'
+      New-Item -ItemType Directory -Path $rootC | Out-Null
+      $c = Invoke-Pwsh (Join-Path $extracted 'Install-Grammar.ps1') @('-InstallRoot', $rootC, '-SkipBrowserHost')
+      $checks.existingRootRefused = ($c.exit -ne 0) -and ($c.text -match 'To upgrade') -and (@(Get-ChildItem -LiteralPath $rootC -Force).Count -eq 0)
+      Remove-Item -LiteralPath $rootC
+      $tampered = Join-Path $work 'tampered'
+      Copy-Item -LiteralPath $extracted -Destination $tampered -Recurse
+      Add-Content -LiteralPath (Join-Path $tampered 'extension/content.js') -Value '// changed'
+      $t = Invoke-Pwsh (Join-Path $tampered 'Install-Grammar.ps1') @('-InstallRoot', $rootC, '-SkipBrowserHost')
+      $checks.changedFileRefused = ($t.exit -ne 0) -and ($t.text -match 'Packaged file changed') -and -not (Test-Path -LiteralPath $rootC)
+      $extra = Join-Path $work 'extra'
+      Copy-Item -LiteralPath $extracted -Destination $extra -Recurse
+      Set-Content -LiteralPath (Join-Path $extra 'extension/extra.js') -Value 'void 0;'
+      $x = Invoke-Pwsh (Join-Path $extra 'Install-Grammar.ps1') @('-InstallRoot', $rootC, '-SkipBrowserHost')
+      $checks.unlistedFileRefused = ($x.exit -ne 0) -and ($x.text -match 'does not list') -and -not (Test-Path -LiteralPath $rootC)
+
+      # 4. A locked file: uninstall stops incomplete, keeps its receipt and
+      #    script, and a second run finishes once the lock is gone.
+      $rootD = Join-Path $work 'install-d'
+      $null = & (Join-Path $extracted 'Install-Grammar.ps1') -InstallRoot $rootD -SkipBrowserHost
+      $lock = [IO.File]::Open((Join-Path $rootD 'README.md'), 'Open', 'Read', 'None')
+      try {
+        $first = Invoke-Pwsh (Join-Path $rootD 'Uninstall-Grammar.ps1') @()
+      } finally { $lock.Dispose() }
+      $checks.lockedUninstallIncompleteAndRepeatable = ($first.exit -ne 0) -and ($first.text -match 'run this uninstaller again') -and
+        (Test-Path -LiteralPath (Join-Path $rootD 'install-receipt.json')) -and (Test-Path -LiteralPath (Join-Path $rootD 'Uninstall-Grammar.ps1'))
+      $second = Invoke-Pwsh (Join-Path $rootD 'Uninstall-Grammar.ps1') @()
+      $checks.repeatedUninstallCompleted = ($second.exit -eq 0) -and -not (Test-Path -LiteralPath $rootD)
+
+      # 5. A running copy of this install is stopped; -RemoveUserData is refused
+      #    while another copy runs, and then nothing is removed.
+      $rootE = Join-Path $work 'install-e'
+      $null = & (Join-Path $extracted 'Install-Grammar.ps1') -InstallRoot $rootE -SkipBrowserHost
+      $own = Start-StandIn $rootE
+      $other = Start-StandIn (Join-Path $work 'other-copy')
+      $refused = Invoke-Pwsh (Join-Path $rootE 'Uninstall-Grammar.ps1') @('-RemoveUserData')
+      $checks.removeUserDataRefusedWhileAnotherCopyRuns = ($refused.exit -ne 0) -and ($refused.text -match 'Another Grammar copy is running') -and
+        (Test-Path -LiteralPath $rootE) -and -not $own.HasExited
+      Stop-Process -Id $other.Id -Force
+      $stopped = Invoke-Pwsh (Join-Path $rootE 'Uninstall-Grammar.ps1') @()
+      $own.WaitForExit(10000) | Out-Null
+      $checks.runningOwnCopyStoppedAndRemoved = ($stopped.exit -eq 0) -and $own.HasExited -and -not (Test-Path -LiteralPath $rootE)
+    } finally {
+      foreach ($process in $stand) { if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } }
+      if (Test-Path -LiteralPath $testKey) { Remove-Item -LiteralPath $testKey -Recurse }
+      foreach ($root in @('install-a', 'install-b', 'install-c', 'install-d', 'install-e')) {
+        $path = Join-Path $work $root
+        if (Test-Path -LiteralPath (Join-Path $path 'Uninstall-Grammar.ps1')) { $null = Invoke-Pwsh (Join-Path $path 'Uninstall-Grammar.ps1') @() }
+      }
+    }
+    $checks.taskOwnedRegistryTreeRemoved = -not (Test-Path -LiteralPath $testKey)
+    Write-Receipt 'package-failures.json' $checks
+    $failed = @($checks.Keys | Where-Object { -not $checks[$_] })
+    if ($failed.Count) { throw "install/uninstall failure paths: $($failed -join ', ')" }
   }
   'remove' {
     Require-OwnedDesktop

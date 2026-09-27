@@ -17,13 +17,15 @@
 PowerShell 7에서 실행합니다.
 
 ```powershell
-Expand-Archive .\<패키지>.zip -DestinationPath .\grammar-package
+Get-FileHash .\<패키지>.zip -Algorithm SHA256   # package.ps1 이 출력한 zipSha256 과 같아야 합니다
+Expand-Archive .\<패키지>.zip -DestinationPath .\grammar-package   # 빈 새 폴더에 풉니다
 pwsh -NoProfile -File .\grammar-package\Install-Grammar.ps1
 ```
 
 - 기본 설치 위치는 `%LOCALAPPDATA%\GrammarPersonal` 입니다. 다른 위치는 `-InstallRoot <경로>` 로 지정합니다. 이미 있는 폴더에는 설치하지 않습니다.
-- 설치 스크립트는 복사 전에 모든 파일의 해시를 `MANIFEST.json` 과 비교하고, 하나라도 다르면 중단합니다.
-- Chrome 네이티브 호스트를 현재 사용자(HKCU)에만 등록합니다. 브라우저 확장을 쓰지 않으려면 `-SkipBrowserHost` 를 붙입니다.
+- 설치 스크립트는 복사 전에 모든 파일의 해시를 `MANIFEST.json` 과 비교합니다. 하나라도 다르거나 `MANIFEST.json` 에 없는 파일이 있으면 아무것도 만들지 않고 중단합니다.
+- Chrome 네이티브 호스트를 현재 사용자(HKCU)에만 등록합니다. Chrome에 아직 네이티브 호스트 키가 없으면 그 키를 만듭니다. 브라우저 확장을 쓰지 않으려면 `-SkipBrowserHost` 를 붙입니다.
+- 설치 중 오류가 나면 만든 폴더와 등록을 되돌리고 "Nothing was left installed" 로 끝납니다. 되돌리기가 일부 실패하면 오류 문구가 알려 주는 `<설치 위치>\Uninstall-Grammar.ps1` 을 실행해 마무리합니다.
 - Chrome에서 `chrome://extensions` → 개발자 모드 → **압축해제된 확장 프로그램 로드** → `<설치 위치>\extension` 을 선택합니다. 확장 ID는 `MANIFEST.json` 의 `extensionId` 와 같아야 합니다.
 
 ## 사용
@@ -33,13 +35,22 @@ pwsh -NoProfile -File .\grammar-package\Install-Grammar.ps1
 
 ## 제거
 
+먼저 트레이 메뉴의 Quit 으로 Grammar 를 끄고, 설치 폴더를 연 탐색기·터미널 창을 닫습니다.
+
 ```powershell
-pwsh -NoProfile -File "$env:LOCALAPPDATA\GrammarPersonal\Uninstall-Grammar.ps1" -RemoveUserData
+pwsh -NoProfile -File "$env:LOCALAPPDATA\GrammarPersonal\Uninstall-Grammar.ps1"
 ```
 
-- 설치 위치에서 실행 중인 프로세스만 종료하고, 설치 영수증에 기록된 네이티브 호스트 등록만 지운 뒤 설치 폴더를 삭제합니다.
-- `-RemoveUserData` 는 설정, 개인 사전, WebView 데이터, 앱 전용 Codex 홈(`%APPDATA%\com.local.codexpencil`, `%LOCALAPPDATA%\com.local.codexpencil`)도 삭제합니다.
+- 설치 위치에서 실행 중인 프로세스만 종료하고, 설치 영수증에 기록된 네이티브 호스트 등록만 지운 뒤 설치 폴더를 삭제합니다. 다른 위치에 설치했다면 그 폴더의 `Uninstall-Grammar.ps1` 을 실행합니다(자기 폴더를 지웁니다).
+- 파일이 잠겨 일부가 남으면 결과에 `complete: false` 와 남은 항목이 나옵니다. 영수증과 제거 스크립트는 마지막까지 남으므로, 잠근 프로그램을 닫고 같은 명령을 다시 실행하면 이어서 지웁니다.
+- 설정과 개인 사전은 남습니다. 모두 지우려면 `-RemoveUserData` 를 붙입니다. 이 옵션은 설정, 개인 사전, WebView 데이터, 앱 전용 Codex 로그인(`%APPDATA%\com.local.codexpencil`, `%LOCALAPPDATA%\com.local.codexpencil`)을 지우며, 같은 Windows 사용자의 다른 Grammar 사본(이전 번들 포함)도 같은 데이터를 씁니다. 다른 Grammar 가 실행 중이면 거부합니다.
 - Chrome의 확장은 `chrome://extensions` 에서 직접 제거합니다.
+
+## 새 패키지로 바꾸기
+
+1. 위의 제거 명령을 `-RemoveUserData` 없이 실행합니다. 설정과 사전은 유지됩니다.
+2. 새 패키지를 같은 위치에 설치합니다.
+3. 패키지마다 확장 ID가 새로 정해집니다. `chrome://extensions` 에서 이전 Grammar 확장을 제거하고 새 `<설치 위치>\extension` 을 다시 로드합니다.
 
 ## 남은 제한 (자세한 PASS/FAIL/NOT_RUN 은 HANDOFF.md)
 

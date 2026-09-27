@@ -18,6 +18,9 @@ function GitValue([string[]]$Arguments) {
 if ([IO.Path]::GetFullPath((GitValue @('rev-parse','--show-toplevel'))) -ine $source) { throw 'SourceRoot must be the repository root' }
 function Measure-Source {
   if (GitValue @('status','--porcelain=v1','--untracked-files=all')) { throw 'Source must be clean, including untracked files' }
+  # git status hides edits under assume-unchanged (lowercase tag) and
+  # skip-worktree (S), so such a tree could differ from the commit it names.
+  if (@(& git -C $source ls-files -v | Where-Object { $_ -cmatch '^(?:[a-z]|S) ' }).Count) { throw 'Source has assume-unchanged or skip-worktree entries' }
   $headBefore = GitValue @('rev-parse','HEAD')
   $lines = foreach ($relative in (& git -C $source -c core.quotepath=false ls-files)) {
     if ($LASTEXITCODE -ne 0) { throw 'Source enumeration failed' }
