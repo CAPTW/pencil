@@ -606,7 +606,7 @@ There is no auto-update. Update by quitting, verifying a newer private bundle, a
 
 Preferences and terminology are stored locally in the app's Windows data boundary; selected text, generated replacements, clipboard content, and writing history are not stored there. The app processes a user selection only. It does not capture screenshots, perform OCR, or implement keylogging.
 
-Clipboard capture and restore are text-focused. Password fields and other protected controls may refuse copying. An unelevated Codex Pencil process cannot safely inject input into an elevated editor; use matching integrity levels or paste manually when the app reports copy-only fallback.
+Capture reads only standard Edit fields and denies password fields and other protected controls. Copy puts the result on the clipboard as plain text, replacing what was there; paste it yourself. The app never types into or changes text in another application.
 
 Verify an extracted bundle from its directory:
 

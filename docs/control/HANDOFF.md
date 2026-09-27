@@ -2,6 +2,40 @@
 
 Mission: GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1. This is an incomplete mission checkpoint, not P3-A/P3-B or personal-use acceptance. Read AGENTS.md, the v1.1 contract override, control/mission.json and control/state.json. The Owner has already authorized internal continuation; no fresh per-step approval is needed.
 
+## Review round r4 (2026-09-27): Owner decisions after round r3
+
+This section supersedes the "Kept, as Owner decisions" list and the Apply wording of round r3 below. `mission_completion` stays INCOMPLETE.
+
+Owner decisions:
+1. Native Copy-only stays. No new editor or adapter is added to bring back replacement in desktop editors.
+2. The desktop Apply button is merged into Copy.
+3. The unreachable legacy paste code is deleted; the regression tests stay.
+4. R3 is accepted only for the verified keyboard toolbar path. The mouse path through the Extensions menu or the popup, a normal profile and Edge are not verified and must not be claimed.
+5. main merge, personal installation and release remain separate decisions.
+
+Changes:
+- One Copy button (`copy-result`). It calls the session-bound backend command (IPC name `apply_replacement` kept). The command checks the capture, intent, terminology binding and Instant draft, formats a translation locally, writes the clipboard, counts terminology usage and ends the capture. The widget shows `Copied — paste it into the field`, keeps the draft visible and disables Copy until the next capture. The former plain Copy (browser clipboard API, no session check) and the `applied` outcome are gone.
+- Deleted:
+  - the clipboard-and-`SendInput` paste path: foreground request, widget hide, clipboard snapshot/restore, input injection;
+  - its ignored interactive harness `windows_live_target_bound_apply_acceptance` and the paste probes;
+  - the paste-era reasons `target_not_foreground`, `target_changed_before_paste`, `widget_hide_failed`, `clipboard_ownership_lost` and `input_injection_failed`;
+  - the capture's clipboard fields.
+- The `ApplyPlatform` trait now has only `is_window`, `window_pid` and `write_clipboard_text`. It cannot send input, change focus or message the captured editor.
+- Kept:
+  - the R1/R2 regression tests through `apply_current_session`;
+  - the live application-edit scenarios and the Copy-only boundary;
+  - the read-only Win32 port test;
+  - a new unit test: a capture without the native binding is Copy-only too.
+- The stored `restoreClipboard` preference stays so existing settings files remain valid; nothing reads it.
+- Tests were updated for the new UI, not loosened:
+  - frontend contract: only Copy outcomes parse; `applied` and the paste-era reasons are rejected;
+  - window chrome: no `applied` branch, and the widget stays open after Copy;
+  - built-app flow: the single Copy button for edited and unedited drafts; a cancelled, closed or stale token returns its rejection and never writes the clipboard.
+
+R3 scope (decision 4): accepted for the path verified in 36331068541 only. That path is Chromium, a fresh task-owned profile with the action pinned, and real keyboard input: Alt+Shift+T, arrow keys, and Space on the focused action and on the focused "Enable this document". The installed-package test still tries the mouse and UI Automation first and records which path worked; those attempts are not qualification.
+
+Local checks for this round: Wine 208 passed, 0 failed, 26 ignored (Windows-only live tests); frontend typecheck and build; node contract tests. The CI run on the final commit is in the Owner report.
+
 ## Review round r3 (2026-09-27): R1/R2/R3 corrections
 
 This section supersedes the Step 3 and Step 4 Apply results and the Step 6 "installed host and extension" classification in the continuation below. `mission_completion` stays INCOMPLETE.
@@ -80,7 +114,7 @@ Fixed:
   - receipt source binding;
   - hit test limited to the target or its container.
 
-Kept, as Owner decisions:
+Kept at the time, as Owner decisions (round r4 deleted the paste path and merged Apply into Copy):
 - the compiled but unreachable paste path (gated and tested);
 - the in-memory capture binding fields;
 - the desktop "Apply" label, which now copies.
