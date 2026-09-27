@@ -1,17 +1,17 @@
 {
   "schema_version": 1,
-  "state_version": "2026-09-27.cloud-session-r1",
+  "state_version": "2026-09-27.cloud-session-r2",
   "repository_branch": "main",
   "product_target": "P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST",
-  "p3a_status": "SAFETY_REPAIRS_SYNTHETIC_VERIFIED_NATIVE_CAPTURE_NOT_QUALIFIED",
+  "p3a_status": "SAFETY_REPAIRS_SYNTHETIC_VERIFIED_STANDARD_EDIT_CAPTURE_AND_LOCKED_APPLY_OWNED_DESKTOP_QUALIFIED",
   "p3b_status": "CONSENT_BOUND_DEEP_CANDIDATE_NO_LIVE_ACCEPTANCE",
   "first_adapter_decision": "CHROMIUM_TEXTAREA_CONTENTEDITABLE_MV3",
   "active_phase": "MISSION_IMPLEMENTATION",
-  "active_step": "DEEP_ADAPTER_QUALIFICATION",
+  "active_step": "PERSONAL_PACKAGE_AND_HANDOFF",
   "active_task": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
   "completed_task": "GRAMMAR-P3B-R0-CURRENT-LOCAL-REPOSITORY-REAUDIT-PRODUCT-TARGET-RESET-MULTI-AGENT-DEVELOPMENT-CONTRACT-PHASE-STEP-ROADMAP-AND-MINIMAL-PROJECT-SOURCE-SUCCESSOR-R1",
-  "exact_next_task": "GRAMMAR-P3B-P2-SYNTHETIC-DEEP-AND-EDITOR-QUALIFICATION",
-  "next_task_status": "AUTHORIZED_WITHIN_MISSION",
+  "exact_next_task": "GRAMMAR-P3B-P3-OWNER-PERSONAL-TRIAL-AND-EXTERNAL-BOUNDARY-DECISIONS",
+  "next_task_status": "REQUIRES_OWNER_DECISION",
   "acceptance_boundary": "CANDIDATE_SYNTHETIC_ONLY_NO_WHOLE_PRODUCT_ACCEPTANCE",
   "provider_kinds": [
     "codex",
@@ -32,7 +32,7 @@
       ]
     },
     {
-      "verdict": "REPAIRED_SYNTHETIC_PASS_WITH_LOADED_RUN_TIMEOUT_UNRESOLVED",
+      "verdict": "REPAIRED_SYNTHETIC_PASS_LOADED_TIMEOUT_REPRODUCED_WITH_BOUNDED_COMPLETE_CLEANUP",
       "id": "F-02",
       "historical_verdict": "CONFIRMED_CURRENT_DEFECT",
       "historical_evidence": [
@@ -66,7 +66,7 @@
       ]
     },
     {
-      "verdict": "SYNTHETIC_VERIFIED_NATIVE_NOT_QUALIFIED",
+      "verdict": "SYNTHETIC_VERIFIED_OWNED_DESKTOP_BUILT_APP",
       "id": "F-05",
       "historical_verdict": "CONFIRMED_CURRENT_DEFECT",
       "historical_evidence": [
@@ -78,7 +78,7 @@
       ]
     },
     {
-      "verdict": "CONTAINED_COPY_ONLY_NATIVE_NOT_QUALIFIED",
+      "verdict": "STANDARD_EDIT_LOCKED_VERIFIED_APPLY_OWNED_DESKTOP_QUALIFIED_OTHERS_COPY_ONLY",
       "id": "F-06",
       "historical_verdict": "CONFIRMED_CURRENT_DEFECT",
       "historical_evidence": [
@@ -113,10 +113,18 @@
     "Chromium composition, deferred Instant publication and empty-editor safety regressions",
     "Collapsible annotation panel with preserved draft, page pointer access and hidden-source invalidation regressions",
     "Viewport resize and page scroll reanchor bounded annotation panel without text reads or inference",
-    "Failed activation releases exact permission owner; stale document disable cannot clear a newer epoch"
+    "Failed activation releases exact permission owner; stale document disable cannot clear a newer epoch",
+    "Independent owned-desktop CI steps with FAIL receipts, unwind cleanup and injected-fault isolation",
+    "Standard Edit selection capture; sensitive and unsupported controls denied before any text message",
+    "Locked verify-replace-reread native Apply with atomic verified restore on a selection race; other editors Copy-only",
+    "Built-app shortcut, local Instant, edit, Apply, Copy, cancel, reselect and stale flow on the owned desktop: PASS",
+    "Runtime endurance, reservation contention and loaded-timeout reproduction with bounded complete cleanup",
+    "Chromium explicit Copy, keyboard-only actions and zero-network cache regression",
+    "Synthetic Deep boundary: selected Provider only, matched approved terms only, no fallback or replay",
+    "Personal package receipt build, fresh-root install, registered host and residue-free removal: PASS"
   ],
-  "native_capture_activation": "WITHHELD_PENDING_ISOLATED_POSITIVE_AND_SENSITIVITY_ACCEPTANCE",
-  "chromium_deep_activation": "UNCONFIGURED_CANDIDATE_SYNTHETIC_QUALIFICATION_ONLY",
+  "native_capture_activation": "ACTIVE_STANDARD_EDIT_ONLY_OWNED_DESKTOP_QUALIFIED_OTHERS_DENIED",
+  "chromium_deep_activation": "SOURCE_UNCONFIGURED_PERSONAL_INSTALLER_CONFIGURES_HOST_CONSENT_BOUND_SYNTHETIC_ONLY",
   "mission_completion": "INCOMPLETE",
   "main_adoption": "NOT_ADOPTED_CANDIDATE_ONLY",
   "github_validation": {

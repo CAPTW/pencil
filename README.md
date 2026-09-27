@@ -108,6 +108,8 @@ src-tauri\target\release\bundle\nsis\Codex Pencil_0.1.0_x64-setup.exe
 
 ### Private portable personal bundle
 
+For the currently qualified scope, use the receipt-bound personal package. That scope is standard Edit capture with locked verified Apply, plus the Chromium extension and native host. Build it with `scripts/mission/build-receipt.ps1` and `scripts/mission/package.ps1`, then use `Install-Grammar.ps1` and `Uninstall-Grammar.ps1` inside the package. [`scripts/package/PERSONAL_USE.md`](scripts/package/PERSONAL_USE.md) is the user guide and `docs/control/HANDOFF.md` holds the evidence. The older bundles below predate that qualification.
+
 For current daily use, build the R8 portable folder with `scripts/build-daily-use-bundle.ps1`. The historical P2-01 personal-use deliverable below remains the reproducible portable ZIP used by that earlier packaging chain, not the developer bundle output above. It is unsigned, has no updater or public publication step, and keeps exact `codex-cli 0.144.6` as an external prerequisite. Packaging uses existing locked dependencies only; do not run an install or update command as part of this workflow.
 
 After the packaging workflow source commit exists and the worktree is clean:
