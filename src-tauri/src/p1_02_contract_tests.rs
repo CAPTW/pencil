@@ -1,6 +1,6 @@
 use crate::{
     apply_current_terminology_bound,
-    apply_safety::{ApplyOutcome, ApplyPlatform, WaitStage},
+    apply_safety::{ApplyOutcome, ApplyPlatform},
     capture_session::{BoundRewriteIntent, CaptureSessionStore, TerminologyIntent, WindowTarget},
     codex_client::{parse_rewrite_result, rewrite_prompt_with_terminology},
     settings::{decode_settings, RewriteMode, SettingsRecoveryCode},
@@ -1273,8 +1273,6 @@ fn rewrite_intent_binds_terminology_revision_profile_flags_and_matched_ids() {
             "session-p1-02".to_string(),
             "synthetic source".to_string(),
             WindowTarget::new(101, 202),
-            None,
-            None,
         )
         .expect("capture should succeed");
     let bound = BoundRewriteIntent::new(
@@ -1581,38 +1579,9 @@ impl ApplyPlatform for NoTouchApplyPlatform {
         self.calls += 1;
         Some(202)
     }
-    fn hide_widget(&mut self) -> Result<(), ()> {
-        self.calls += 1;
-        Ok(())
-    }
-    fn show_widget(&mut self) {
-        self.calls += 1;
-    }
-    fn request_foreground(&mut self, _hwnd: isize) {
-        self.calls += 1;
-    }
-    fn foreground_window(&mut self) -> isize {
-        self.calls += 1;
-        101
-    }
-    fn clipboard_sequence(&mut self) -> u32 {
-        self.calls += 1;
-        1
-    }
-    fn read_clipboard_text(&mut self) -> Option<String> {
-        self.calls += 1;
-        None
-    }
     fn write_clipboard_text(&mut self, _text: &str) -> Result<(), ()> {
         self.calls += 1;
         Ok(())
-    }
-    fn send_paste(&mut self) -> u32 {
-        self.calls += 1;
-        4
-    }
-    fn wait(&mut self, _stage: WaitStage) {
-        self.calls += 1;
     }
 }
 
@@ -1624,8 +1593,6 @@ fn changed_terminology_revision_rejects_apply_before_any_platform_or_clipboard_c
             "session-stale-terminology".to_string(),
             "synthetic source".to_string(),
             WindowTarget::new(101, 202),
-            None,
-            None,
         )
         .expect("capture should succeed");
     let settings = crate::settings::TerminologySettings::default();
@@ -1656,7 +1623,6 @@ fn changed_terminology_revision_rejects_apply_before_any_platform_or_clipboard_c
         &settings,
         Some(8),
         "synthetic replacement",
-        true,
         &mut platform,
     );
 

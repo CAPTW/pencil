@@ -749,30 +749,25 @@ mod tests {
     // notifications and application text are checked as well. Red at 4400974,
     // when a platform hook still mutated the editor.
 
-    use crate::apply_safety::{apply_current_session, ApplyOutcome, ApplyPlatform, WaitStage};
+    use crate::apply_safety::{apply_current_session, ApplyOutcome, ApplyPlatform};
     use crate::capture_session::{CaptureSessionStore, SessionToken, WindowTarget};
 
     /// Records every platform call. The editor is the application's; the
-    /// platform exposes no way to change it, and Apply must not need one.
+    /// platform exposes no way to change it (only window checks and the
+    /// clipboard), and Copy must not need one.
     struct EditorPlatform {
         edit: FakeEdit,
         clipboard: Option<String>,
-        pastes: usize,
         calls: Vec<&'static str>,
-        selection_authority: bool,
     }
 
     impl EditorPlatform {
         fn new(edit: FakeEdit) -> Self {
-            Self { edit, clipboard: None, pastes: 0, calls: Vec::new(), selection_authority: false }
+            Self { edit, clipboard: None, calls: Vec::new() }
         }
     }
 
     impl ApplyPlatform for EditorPlatform {
-        fn has_verified_selection_authority(&mut self) -> bool {
-            self.calls.push("has_verified_selection_authority");
-            self.selection_authority
-        }
         fn is_window(&mut self, hwnd: isize) -> bool {
             self.calls.push("is_window");
             hwnd == TOP
@@ -781,40 +776,10 @@ mod tests {
             self.calls.push("window_pid");
             (hwnd == TOP).then_some(PID)
         }
-        fn hide_widget(&mut self) -> Result<(), ()> {
-            self.calls.push("hide_widget");
-            Ok(())
-        }
-        fn show_widget(&mut self) {
-            self.calls.push("show_widget");
-        }
-        fn request_foreground(&mut self, _hwnd: isize) {
-            self.calls.push("request_foreground");
-        }
-        fn foreground_window(&mut self) -> isize {
-            self.calls.push("foreground_window");
-            TOP
-        }
-        fn clipboard_sequence(&mut self) -> u32 {
-            self.calls.push("clipboard_sequence");
-            0
-        }
-        fn read_clipboard_text(&mut self) -> Option<String> {
-            self.calls.push("read_clipboard_text");
-            self.clipboard.clone()
-        }
         fn write_clipboard_text(&mut self, text: &str) -> Result<(), ()> {
             self.calls.push("write_clipboard_text");
             self.clipboard = Some(text.to_string());
             Ok(())
-        }
-        fn send_paste(&mut self) -> u32 {
-            self.calls.push("send_paste");
-            self.pastes += 1;
-            0
-        }
-        fn wait(&mut self, _stage: WaitStage) {
-            self.calls.push("wait");
         }
     }
 
@@ -834,7 +799,7 @@ mod tests {
 
     fn apply_through_production(edit: FakeEdit, store: &mut CaptureSessionStore, token: &SessionToken) -> (ApplyOutcome, EditorPlatform) {
         let mut platform = EditorPlatform::new(edit);
-        let outcome = apply_current_session(store, token, "fixed", false, &mut platform);
+        let outcome = apply_current_session(store, token, "fixed", &mut platform);
         platform.edit.settle();
         (outcome, platform)
     }
@@ -852,12 +817,11 @@ mod tests {
         assert_eq!(edit.text(), expected_text, "the application's own text must survive");
         assert_eq!(edit.text, edit.app_text);
         assert_eq!(platform.clipboard.as_deref(), Some("fixed"), "Copy-only puts the result on the clipboard");
-        assert_eq!(platform.pastes, 0);
         assert_eq!(
             outcome,
             &ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetMutationDisabled }
         );
-        // Target identity checks, then the clipboard: no widget, focus or input activity.
+        // Target identity checks, then the clipboard: nothing else exists to call.
         assert_eq!(platform.calls, ["is_window", "window_pid", "write_clipboard_text"]);
     }
 
@@ -893,16 +857,25 @@ mod tests {
     }
 
     #[test]
-    fn native_capture_stays_copy_only_even_with_selection_authority() {
-        // A platform that claimed selection authority would enable the paste
-        // path; a native capture must still never reach it.
-        let mut edit = FakeEdit::new(SAMPLE, range_of(SAMPLE, "third"));
-        let (mut store, token) = ready_session(&mut edit);
-        let mut platform = EditorPlatform::new(edit);
-        platform.selection_authority = true;
-        let outcome = apply_current_session(&mut store, &token, "fixed", false, &mut platform);
+    fn a_capture_without_the_native_binding_is_copy_only_too() {
+        // Production captures always come from the native reader; any other
+        // session is still only copied, with the same three platform calls.
+        let mut store = CaptureSessionStore::default();
+        let token = store
+            .capture("review".into(), "third".into(), WindowTarget::new(TOP, PID))
+            .expect("session");
+        assert!(store.begin_rewrite(&token).is_ok());
+        assert!(store.finish_rewrite_success(&token).is_ok());
+        let mut platform = EditorPlatform::new(FakeEdit::new(SAMPLE, range_of(SAMPLE, "third")));
+        let outcome = apply_current_session(&mut store, &token, "fixed", &mut platform);
         platform.edit.settle();
-        assert_editor_untouched(&outcome, &platform, SAMPLE);
+        assert_eq!(
+            outcome,
+            ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetSelectionUnverified }
+        );
+        assert_eq!(platform.edit.state_changes(), vec![]);
+        assert_eq!(platform.clipboard.as_deref(), Some("fixed"));
+        assert_eq!(platform.calls, ["is_window", "window_pid", "write_clipboard_text"]);
     }
 
     #[cfg(windows)]

@@ -638,7 +638,6 @@ pub(crate) fn apply_current_terminology_bound<P: ApplyPlatform>(
     settings: &TerminologySettings,
     current_store_revision: Option<u64>,
     replacement: &str,
-    restore_clipboard: bool,
     platform: &mut P,
 ) -> ApplyOutcome {
     if capture.validate_ready_bound_intent(token, bound).is_err()
@@ -653,7 +652,7 @@ pub(crate) fn apply_current_terminology_bound<P: ApplyPlatform>(
     {
         return ApplyOutcome::RejectedStale;
     }
-    apply_current_session(capture, token, replacement, restore_clipboard, platform)
+    apply_current_session(capture, token, replacement, platform)
 }
 
 #[tauri::command]
@@ -664,9 +663,7 @@ async fn apply_replacement(
     mode: RewriteMode,
     target_language: Option<TranslationTargetLanguage>,
     auto_reference_language: Option<TranslationTargetLanguage>,
-    restore_clipboard: bool,
     instant_draft: Option<capture_session::InstantDraftProof>,
-    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<ApplyOutcome, String> {
     validate_text_limit(ContentLimitKind::FinalApply, &replacement)
@@ -734,7 +731,7 @@ async fn apply_replacement(
     };
     validate_text_limit(ContentLimitKind::FinalApply, &final_replacement)
         .map_err(|error| error.to_string())?;
-    let mut platform = WindowsApplyPlatform::new(app);
+    let mut platform = WindowsApplyPlatform::new();
     let outcome = apply_current_terminology_bound(
         &mut capture,
         &token,
@@ -743,13 +740,9 @@ async fn apply_replacement(
         &configuration.settings.terminology,
         current_store_revision,
         &final_replacement,
-        restore_clipboard,
         &mut platform,
     );
-    if matches!(
-        outcome,
-        ApplyOutcome::Applied | ApplyOutcome::CopiedFallback { .. }
-    ) {
+    if matches!(outcome, ApplyOutcome::CopiedFallback { .. }) {
         let _ =
             terminology.increment_usage(&bound_intent.terminology().matched_entry_ids, now_ms());
         if let Ok(mut instant) = state.instant.lock() {
@@ -1910,8 +1903,6 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
                             Uuid::new_v4().to_string(),
                             capture.selected_text.clone(),
                             target,
-                            capture.previous_text,
-                            capture.owned_sequence,
                         ),
                     }
                     .map_err(|error| error.code().to_string())?

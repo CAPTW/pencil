@@ -1,6 +1,5 @@
 use crate::apply_safety::{
     apply_current_session, ApplyFailureReason, ApplyFallbackReason, ApplyOutcome, ApplyPlatform,
-    WaitStage,
 };
 use crate::capture_session::{CaptureSessionStore, SessionError, SessionToken, WindowTarget};
 use crate::windows_target::{
@@ -21,8 +20,6 @@ fn capture(
             session_id.to_string(),
             format!("synthetic-source-{session_id}"),
             WindowTarget::new(hwnd, pid),
-            Some(format!("synthetic-prior-{session_id}")),
-            Some(41),
         )
         .unwrap()
 }
@@ -113,72 +110,43 @@ fn cancel_or_dismiss_invalidates_apply() {
 }
 
 #[test]
-fn clipboard_write_failure_before_paste_returns_applying_to_ready() {
+fn clipboard_write_failure_returns_applying_to_ready() {
     let (mut store, token) = ready_session();
 
     store.begin_apply(&token).unwrap();
-    store.finish_apply_before_paste_failure(&token).unwrap();
+    store.finish_apply_failure(&token).unwrap();
 
     assert!(store.begin_apply(&token).is_ok());
 }
 
-#[test]
-fn zero_or_partial_input_cancels_the_session_and_prevents_retry() {
-    let (mut store, token) = ready_session();
-
-    store.begin_apply(&token).unwrap();
-    store.finish_apply_uncertain_input(&token).unwrap();
-
-    assert_eq!(store.begin_apply(&token), Err(SessionError::InvalidState));
-}
-
+/// Synthetic state-machine fixture: the platform can only check the captured
+/// window and write the clipboard.
 #[derive(Debug)]
 struct FakeApplyPlatform {
-    verified_selection: bool,
     target: isize,
     target_exists: bool,
     target_pid: Option<u32>,
-    foreground: isize,
-    activation_succeeds: bool,
-    hide_succeeds: bool,
     clipboard_text: Option<String>,
-    clipboard_sequence: u32,
     write_fails: bool,
-    paste_events_sent: u32,
-    paste_calls: usize,
     clipboard_writes: usize,
-    widget_shows: usize,
-    external_change_at: Option<WaitStage>,
     events: Vec<&'static str>,
 }
 
 impl Default for FakeApplyPlatform {
     fn default() -> Self {
         Self {
-            verified_selection: true,
             target: 101,
             target_exists: true,
             target_pid: Some(2001),
-            foreground: 909,
-            activation_succeeds: true,
-            hide_succeeds: true,
             clipboard_text: Some("synthetic-prior-ready".to_string()),
-            clipboard_sequence: 41,
             write_fails: false,
-            paste_events_sent: 4,
-            paste_calls: 0,
             clipboard_writes: 0,
-            widget_shows: 0,
-            external_change_at: None,
             events: Vec::new(),
         }
     }
 }
 
 impl ApplyPlatform for FakeApplyPlatform {
-    // Synthetic state-machine fixture only, not Windows editor acceptance.
-    fn has_verified_selection_authority(&mut self) -> bool { self.verified_selection }
-
     fn is_window(&mut self, hwnd: isize) -> bool {
         self.events.push("is_window");
         hwnd == self.target && self.target_exists
@@ -189,81 +157,19 @@ impl ApplyPlatform for FakeApplyPlatform {
         self.target_pid
     }
 
-    fn hide_widget(&mut self) -> Result<(), ()> {
-        self.events.push("hide_widget");
-        if self.hide_succeeds {
-            Ok(())
-        } else {
-            Err(())
-        }
-    }
-
-    fn show_widget(&mut self) {
-        self.events.push("show_widget");
-        self.widget_shows += 1;
-    }
-
-    fn request_foreground(&mut self, hwnd: isize) {
-        self.events.push("request_foreground");
-        if self.activation_succeeds {
-            self.foreground = hwnd;
-        }
-    }
-
-    fn foreground_window(&mut self) -> isize {
-        self.events.push("foreground_window");
-        self.foreground
-    }
-
-    fn clipboard_sequence(&mut self) -> u32 {
-        self.events.push("clipboard_sequence");
-        self.clipboard_sequence
-    }
-
-    fn read_clipboard_text(&mut self) -> Option<String> {
-        self.events.push("read_clipboard_text");
-        self.clipboard_text.clone()
-    }
-
     fn write_clipboard_text(&mut self, text: &str) -> Result<(), ()> {
         self.events.push("write_clipboard_text");
         if self.write_fails {
             return Err(());
         }
         self.clipboard_text = Some(text.to_string());
-        self.clipboard_sequence = self.clipboard_sequence.wrapping_add(1);
         self.clipboard_writes += 1;
         Ok(())
     }
-
-    fn send_paste(&mut self) -> u32 {
-        self.events.push("send_paste");
-        self.paste_calls += 1;
-        self.paste_events_sent
-    }
-
-    fn wait(&mut self, stage: WaitStage) {
-        match stage {
-            WaitStage::AfterActivation => self.events.push("wait_after_activation"),
-            WaitStage::BeforePaste => self.events.push("wait_before_paste"),
-            WaitStage::AfterPaste => self.events.push("wait_after_paste"),
-        }
-        if self.external_change_at == Some(stage) {
-            self.clipboard_text = Some("synthetic-external-change".to_string());
-            self.clipboard_sequence = self.clipboard_sequence.wrapping_add(1);
-        }
-    }
-}
-
-fn event_index(events: &[&str], wanted: &str) -> usize {
-    events
-        .iter()
-        .position(|event| *event == wanted)
-        .unwrap_or(usize::MAX)
 }
 
 #[test]
-fn verified_apply_orders_hide_activation_clipboard_and_one_paste() {
+fn copy_checks_the_window_then_writes_only_the_clipboard_and_completes() {
     let (mut store, token) = ready_session();
     let mut platform = FakeApplyPlatform::default();
 
@@ -271,28 +177,25 @@ fn verified_apply_orders_hide_activation_clipboard_and_one_paste() {
         &mut store,
         &token,
         "synthetic-approved-replacement",
-        true,
         &mut platform,
     );
 
-    assert_eq!(outcome, ApplyOutcome::Applied);
-    assert_eq!(platform.paste_calls, 1);
-    assert!(
-        event_index(&platform.events, "hide_widget")
-            < event_index(&platform.events, "request_foreground")
+    assert_eq!(
+        outcome,
+        ApplyOutcome::CopiedFallback {
+            reason: ApplyFallbackReason::TargetSelectionUnverified,
+        }
     );
-    assert!(
-        event_index(&platform.events, "foreground_window")
-            < event_index(&platform.events, "write_clipboard_text")
+    assert_eq!(platform.events, ["is_window", "window_pid", "write_clipboard_text"]);
+    assert_eq!(
+        platform.clipboard_text.as_deref(),
+        Some("synthetic-approved-replacement")
     );
-    assert!(
-        event_index(&platform.events, "write_clipboard_text")
-            < event_index(&platform.events, "send_paste")
-    );
+    assert_eq!(store.begin_apply(&token), Err(SessionError::InvalidState));
 }
 
 #[test]
-fn missing_target_uses_copy_fallback_and_sends_no_paste() {
+fn missing_target_still_copies_with_its_reason() {
     let (mut store, token) = ready_session();
     let mut platform = FakeApplyPlatform {
         target_exists: false,
@@ -303,7 +206,6 @@ fn missing_target_uses_copy_fallback_and_sends_no_paste() {
         &mut store,
         &token,
         "synthetic-approved-replacement",
-        true,
         &mut platform,
     );
 
@@ -313,7 +215,6 @@ fn missing_target_uses_copy_fallback_and_sends_no_paste() {
             reason: ApplyFallbackReason::TargetMissing,
         }
     );
-    assert_eq!(platform.paste_calls, 0);
     assert_eq!(platform.clipboard_writes, 1);
     assert!(matches!(
         platform.clipboard_text.as_deref(),
@@ -322,7 +223,7 @@ fn missing_target_uses_copy_fallback_and_sends_no_paste() {
 }
 
 #[test]
-fn pid_mismatch_uses_copy_fallback_and_sends_no_paste() {
+fn pid_mismatch_still_copies_with_its_reason() {
     let (mut store, token) = ready_session();
     let mut platform = FakeApplyPlatform {
         target_pid: Some(9999),
@@ -333,7 +234,6 @@ fn pid_mismatch_uses_copy_fallback_and_sends_no_paste() {
         &mut store,
         &token,
         "synthetic-approved-replacement",
-        true,
         &mut platform,
     );
 
@@ -343,33 +243,7 @@ fn pid_mismatch_uses_copy_fallback_and_sends_no_paste() {
             reason: ApplyFallbackReason::TargetProcessChanged,
         }
     );
-    assert_eq!(platform.paste_calls, 0);
-}
-
-#[test]
-fn focus_failure_uses_copy_fallback_sends_no_paste_and_reshows_widget() {
-    let (mut store, token) = ready_session();
-    let mut platform = FakeApplyPlatform {
-        activation_succeeds: false,
-        ..FakeApplyPlatform::default()
-    };
-
-    let outcome = apply_current_session(
-        &mut store,
-        &token,
-        "synthetic-approved-replacement",
-        true,
-        &mut platform,
-    );
-
-    assert_eq!(
-        outcome,
-        ApplyOutcome::CopiedFallback {
-            reason: ApplyFallbackReason::TargetNotForeground,
-        }
-    );
-    assert_eq!(platform.paste_calls, 0);
-    assert_eq!(platform.widget_shows, 1);
+    assert_eq!(platform.clipboard_writes, 1);
 }
 
 #[test]
@@ -382,18 +256,16 @@ fn stale_apply_makes_zero_clipboard_or_input_changes() {
         &mut store,
         &stale,
         "synthetic-approved-replacement",
-        true,
         &mut platform,
     );
 
     assert_eq!(outcome, ApplyOutcome::RejectedStale);
     assert_eq!(platform.clipboard_writes, 0);
-    assert_eq!(platform.paste_calls, 0);
     assert!(platform.events.is_empty());
 }
 
 #[test]
-fn replacement_write_failure_sends_no_paste_and_allows_safe_retry() {
+fn replacement_write_failure_allows_safe_retry() {
     let (mut store, token) = ready_session();
     let mut platform = FakeApplyPlatform {
         write_fails: true,
@@ -404,7 +276,6 @@ fn replacement_write_failure_sends_no_paste_and_allows_safe_retry() {
         &mut store,
         &token,
         "synthetic-approved-replacement",
-        true,
         &mut platform,
     );
 
@@ -414,7 +285,6 @@ fn replacement_write_failure_sends_no_paste_and_allows_safe_retry() {
             reason: ApplyFailureReason::ClipboardWriteFailed,
         }
     );
-    assert_eq!(platform.paste_calls, 0);
 
     platform.write_fails = false;
     assert_eq!(
@@ -422,117 +292,16 @@ fn replacement_write_failure_sends_no_paste_and_allows_safe_retry() {
             &mut store,
             &token,
             "synthetic-approved-replacement",
-            true,
             &mut platform,
         ),
-        ApplyOutcome::Applied
+        ApplyOutcome::CopiedFallback {
+            reason: ApplyFallbackReason::TargetSelectionUnverified,
+        }
     );
-}
-
-#[test]
-fn newer_supported_text_before_apply_becomes_the_restore_candidate() {
-    let (mut store, token) = ready_session();
-    let mut platform = FakeApplyPlatform {
-        clipboard_text: Some("synthetic-newer-before-apply".to_string()),
-        clipboard_sequence: 42,
-        ..FakeApplyPlatform::default()
-    };
-
     assert_eq!(
-        apply_current_session(
-            &mut store,
-            &token,
-            "synthetic-approved-replacement",
-            true,
-            &mut platform,
-        ),
-        ApplyOutcome::Applied
-    );
-    assert!(matches!(
         platform.clipboard_text.as_deref(),
-        Some("synthetic-newer-before-apply")
-    ));
-}
-
-#[test]
-fn newer_supported_text_after_replacement_is_not_overwritten_by_restore() {
-    let (mut store, token) = ready_session();
-    let mut platform = FakeApplyPlatform {
-        external_change_at: Some(WaitStage::AfterPaste),
-        ..FakeApplyPlatform::default()
-    };
-
-    assert_eq!(
-        apply_current_session(
-            &mut store,
-            &token,
-            "synthetic-approved-replacement",
-            true,
-            &mut platform,
-        ),
-        ApplyOutcome::Applied
+        Some("synthetic-approved-replacement")
     );
-    assert!(matches!(
-        platform.clipboard_text.as_deref(),
-        Some("synthetic-external-change")
-    ));
-}
-
-#[test]
-fn app_owned_capture_sequence_allows_supported_text_restore() {
-    let (mut store, token) = ready_session();
-    let mut platform = FakeApplyPlatform::default();
-
-    assert_eq!(
-        apply_current_session(
-            &mut store,
-            &token,
-            "synthetic-approved-replacement",
-            true,
-            &mut platform,
-        ),
-        ApplyOutcome::Applied
-    );
-    assert!(matches!(
-        platform.clipboard_text.as_deref(),
-        Some("synthetic-prior-ready")
-    ));
-}
-
-#[test]
-fn unowned_capture_sequence_uses_current_supported_text_for_restore() {
-    let mut store = CaptureSessionStore::default();
-    let token = store
-        .capture(
-            "unowned".to_string(),
-            "synthetic-source-unowned".to_string(),
-            WindowTarget::new(101, 2001),
-            Some("synthetic-old-prior".to_string()),
-            None,
-        )
-        .unwrap();
-    store.begin_rewrite(&token).unwrap();
-    store.finish_rewrite_success(&token).unwrap();
-    let mut platform = FakeApplyPlatform {
-        clipboard_text: Some("synthetic-current-supported".to_string()),
-        clipboard_sequence: 41,
-        ..FakeApplyPlatform::default()
-    };
-
-    assert_eq!(
-        apply_current_session(
-            &mut store,
-            &token,
-            "synthetic-approved-replacement",
-            true,
-            &mut platform,
-        ),
-        ApplyOutcome::Applied
-    );
-    assert!(matches!(
-        platform.clipboard_text.as_deref(),
-        Some("synthetic-current-supported")
-    ));
 }
 
 #[test]
@@ -547,7 +316,6 @@ fn copy_fallback_intentionally_leaves_replacement_in_clipboard() {
         &mut store,
         &token,
         "synthetic-approved-replacement",
-        true,
         &mut platform,
     );
 
@@ -556,44 +324,6 @@ fn copy_fallback_intentionally_leaves_replacement_in_clipboard() {
         platform.clipboard_text.as_deref(),
         Some("synthetic-approved-replacement")
     ));
-}
-
-#[test]
-fn partial_send_input_is_failed_and_the_session_cannot_auto_retry() {
-    let (mut store, token) = ready_session();
-    let mut platform = FakeApplyPlatform {
-        paste_events_sent: 2,
-        ..FakeApplyPlatform::default()
-    };
-
-    let first = apply_current_session(
-        &mut store,
-        &token,
-        "synthetic-approved-replacement",
-        true,
-        &mut platform,
-    );
-
-    assert_eq!(
-        first,
-        ApplyOutcome::Failed {
-            reason: ApplyFailureReason::InputInjectionFailed,
-        }
-    );
-    let paste_calls = platform.paste_calls;
-    assert_eq!(
-        apply_current_session(
-            &mut store,
-            &token,
-            "synthetic-approved-replacement",
-            true,
-            &mut platform,
-        ),
-        ApplyOutcome::Failed {
-            reason: ApplyFailureReason::InvalidSessionState,
-        }
-    );
-    assert_eq!(platform.paste_calls, paste_calls);
 }
 
 #[derive(Debug)]
@@ -710,14 +440,11 @@ fn selection_event_exposes_only_token_and_selected_text() {
 #[test]
 fn mission_unverified_selection_is_copy_only_without_focus_or_paste() {
     let (mut store, token) = ready_session();
-    let mut platform = FakeApplyPlatform { verified_selection: false, ..FakeApplyPlatform::default() };
-    let outcome = apply_current_session(&mut store, &token, "edited draft", true, &mut platform);
+    let mut platform = FakeApplyPlatform::default();
+    let outcome = apply_current_session(&mut store, &token, "edited draft", &mut platform);
     assert_eq!(outcome, ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetSelectionUnverified });
     assert_eq!(platform.clipboard_text.as_deref(), Some("edited draft"));
-    assert_eq!(platform.paste_calls, 0);
-    assert!(!platform.events.contains(&"hide_widget"));
-    assert!(!platform.events.contains(&"request_foreground"));
-    assert!(!platform.events.contains(&"read_clipboard_text"));
+    assert_eq!(platform.events, ["is_window", "window_pid", "write_clipboard_text"]);
 }
 
 #[test]
@@ -735,10 +462,9 @@ fn mission_edited_instant_proof_to_explicit_copy_fallback_keeps_source_binding()
     store.begin_rewrite_bound(&token, bound.clone()).unwrap();
     store.finish_rewrite_success_bound(&token, &bound).unwrap();
     assert_eq!(store.ready_source_for(&token, RewriteIntent::grammar()).unwrap(), "synthetic-source-edited");
-    let mut platform = FakeApplyPlatform { verified_selection: false, ..FakeApplyPlatform::default() };
-    assert_eq!(apply_current_session(&mut store, &token, "user final draft", true, &mut platform),
+    let mut platform = FakeApplyPlatform::default();
+    assert_eq!(apply_current_session(&mut store, &token, "user final draft", &mut platform),
         ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetSelectionUnverified });
     assert_eq!(platform.clipboard_text.as_deref(), Some("user final draft"));
-    assert_eq!(platform.paste_calls, 0);
     assert!(store.begin_apply(&token).is_err());
 }
