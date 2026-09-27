@@ -118,14 +118,21 @@ jobs:
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
           cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil native_edit_live_tests::cloud_owned_desktop_native_apply -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native/native-apply.log"
           exit $LASTEXITCODE
-      - name: Build release app with embedded frontend
+      - name: Receipt-bound release build and personal package
         if: ${{ !cancelled() }}
         env:
           CARGO_BUILD_JOBS: '4'
         run: |
-          npx tauri build --no-bundle -- --locked 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/app-release-build.log"
+          cargo fetch --locked --manifest-path src-tauri/Cargo.toml
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          "GRAMMAR_APP_EXE=$env:GITHUB_WORKSPACE/src-tauri/target/release/codex-pencil.exe" >> $env:GITHUB_ENV
+          pwsh -NoProfile -File scripts/test-personal-package.ps1 -Phase build 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/personal-build.log"
+          exit $LASTEXITCODE
+      - name: Install personal package into a fresh root
+        if: ${{ !cancelled() }}
+        run: |
+          $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
+          pwsh -NoProfile -File scripts/test-personal-package.ps1 -Phase install 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/personal-install.log"
+          exit $LASTEXITCODE
       - name: Build native host and synthetic process
         if: ${{ !cancelled() }}
         run: |
@@ -184,7 +191,15 @@ jobs:
           $env:CODEX_PENCIL_CLAUDE_BIN="$env:GRAMMAR_EVIDENCE/runtime/child.exe"
           $env:P01_FIXTURE_MODE='success'
           $env:P01_CASE_DIR="$env:GRAMMAR_EVIDENCE/resume-r1/browser-deep"
+          # Regress the installed package when it exists; otherwise the source build.
+          if ($env:GRAMMAR_INSTALLED_HOST) { $env:GRAMMAR_HOST_EXE=$env:GRAMMAR_INSTALLED_HOST; $env:GRAMMAR_EXTENSION_DIR=$env:GRAMMAR_INSTALLED_EXTENSION }
           node adapters/chromium/tests/browser.test.mjs 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/chromium-browser.log"
+          exit $LASTEXITCODE
+      - name: Remove personal package and verify no residue
+        if: ${{ always() && env.GRAMMAR_PACKAGE_ZIP != '' }}
+        run: |
+          $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
+          pwsh -NoProfile -File scripts/test-personal-package.ps1 -Phase remove 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/personal-remove.log"
           exit $LASTEXITCODE
       - name: Bind step receipts to the exact source commit
         if: ${{ always() }}
@@ -201,7 +216,12 @@ jobs:
           } | ConvertTo-Json -Depth 4 | Set-Content "$e/summary.json"
           Get-Content "$e/summary.json"
           # Receipts are content-free; print them so the log alone is sufficient evidence.
-          Get-ChildItem "$e/native" -Filter *.json -ErrorAction SilentlyContinue | ForEach-Object { "RECEIPT $($_.Name)"; Get-Content $_.FullName -Raw }
+          $printed = @(
+            Get-ChildItem "$e/native", "$e/personal" -Filter *.json -ErrorAction SilentlyContinue
+            Get-Item "$e/app-flow/result.json", "$e/runtime/endurance-receipt.json", "$e/runtime/deep-boundary-receipt.json", "$e/host-deep/receipt.json" -ErrorAction SilentlyContinue
+            Get-ChildItem "$e" -Directory -Filter 'browser-*' -ErrorAction SilentlyContinue | ForEach-Object { Get-Item "$($_.FullName)/result.json", "$($_.FullName)/failure.json" -ErrorAction SilentlyContinue }
+          )
+          foreach ($file in $printed) { "RECEIPT $([IO.Path]::GetRelativePath($e, $file.FullName))"; Get-Content $file.FullName -Raw }
       - name: Upload synthetic evidence (no executable release)
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -218,5 +238,7 @@ jobs:
             ${{ runner.temp }}/grammar-evidence/host-deep/receipt.json
             ${{ runner.temp }}/grammar-evidence/app-flow/result.json
             ${{ runner.temp }}/grammar-evidence/runtime/endurance-receipt.json
+            ${{ runner.temp }}/grammar-evidence/runtime/deep-boundary-receipt.json
+            ${{ runner.temp }}/grammar-evidence/personal/*.json
             ${{ runner.temp }}/grammar-evidence/browser-*/result.json
             ${{ runner.temp }}/grammar-evidence/browser-*/failure.json
