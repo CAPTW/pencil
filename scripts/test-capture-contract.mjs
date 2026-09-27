@@ -79,7 +79,7 @@ for (const reason of [
 assert.deepEqual(contract.parseApplyOutcome({ status: "rejected_stale" }), {
   status: "rejected_stale",
 });
-for (const reason of ["empty_replacement", "invalid_session_state", "clipboard_write_failed"]) {
+for (const reason of ["empty_replacement", "invalid_session_state", "draft_outdated", "clipboard_write_failed"]) {
   assert.deepEqual(contract.parseApplyOutcome({ status: "failed", reason }), { status: "failed", reason });
 }
 assert.equal(
@@ -134,10 +134,14 @@ assert.match(contract.copiedNotice("target_process_changed"), /changed/);
 assert.equal(contract.applyFailureEndsCapture("invalid_session_state"), true);
 assert.equal(contract.applyFailureEndsCapture("clipboard_write_failed"), false);
 assert.equal(contract.applyFailureEndsCapture("empty_replacement"), false);
+// An outdated Instant draft does not end a capture that is still usable.
+assert.equal(contract.applyFailureEndsCapture("draft_outdated"), false);
+assert.match(contract.applyFailureMessage("draft_outdated"), /Run Deep, or capture the selection again/);
+assert.doesNotMatch(contract.applyFailureMessage("draft_outdated"), /no longer active/);
 assert.match(contract.applyFailureMessage("clipboard_write_failed"), /try Copy again/);
 assert.match(contract.applyFailureMessage("invalid_session_state"), /Capture the selection again/);
 assert.match(contract.applyFailureMessage("empty_replacement"), /nothing to copy/);
-for (const reason of ["empty_replacement", "invalid_session_state", "clipboard_write_failed"]) {
+for (const reason of ["empty_replacement", "invalid_session_state", "draft_outdated", "clipboard_write_failed"]) {
   assert.doesNotMatch(contract.applyFailureMessage(reason), /may have reached the field|Apply/);
 }
 console.log("capture contract: PASS");

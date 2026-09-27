@@ -108,3 +108,10 @@ assert.ok(
   appSource.includes("Saved entries ({filteredTerminologyEntries.length})"),
   "saved terminology list must expose its filtered count",
 );
+// Coded backend messages show only their sentence; unknown bare codes stay as-is.
+assert.equal(
+  contract.userFacingRuntimeErrorMessage("native_sensitive_editor: Password and credential fields are never read."),
+  "Password and credential fields are never read.",
+);
+assert.equal(contract.userFacingRuntimeErrorMessage("invalid_session_state"), "This capture is no longer active. Capture the selection again.");
+assert.equal(contract.userFacingRuntimeErrorMessage("some_unknown_code"), "some_unknown_code");

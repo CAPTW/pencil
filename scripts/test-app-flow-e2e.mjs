@@ -14,6 +14,7 @@ import {createRequire} from 'node:module';
 import {spawn, execFileSync} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {mkdir, writeFile} from 'node:fs/promises';
+import {existsSync} from 'node:fs';
 import {resolve, join} from 'node:path';
 
 const OWNED_REFS = ['refs/heads/codex/grammar-autonomous-r1', 'refs/heads/claude/eloquent-faraday-hh62qc'];
@@ -36,6 +37,14 @@ const harnessScript = resolve('src-tauri/tests/native_edit_harness.ps1');
 const cdpPort = 9361;
 const out = join(evidence, 'app-flow');
 await mkdir(out, {recursive: true});
+// Deep runs only through the task-owned synthetic executable in place of the
+// Claude CLI (no Provider, account or network). Its behaviour per step comes
+// from a task-owned mode file.
+const syntheticProvider = resolve(evidence, 'runtime/child.exe');
+assert.ok(existsSync(syntheticProvider), 'the synthetic Provider executable was built');
+const providerModeFile = join(out, 'provider-mode.txt');
+const setProviderMode = (mode) => writeFile(providerModeFile, mode);
+await setProviderMode('success');
 
 const checks = [];
 let failure = null;
@@ -184,37 +193,49 @@ try {
   await editor.ready();
   pass('owned synthetic native editor ready');
 
-  app = spawn(appExe, [], {
-    env: {...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}`},
-    stdio: 'ignore',
-  });
-  await until('WebView2 debugging endpoint', async () => {
-    try {
-      return (await fetch(`http://127.0.0.1:${cdpPort}/json/version`)).ok;
-    } catch {
-      return false;
-    }
-  }, 90000);
-  browser = await chromium.connectOverCDP(`http://127.0.0.1:${cdpPort}`);
-  // The debugging endpoint answers before the widget document commits, so wait
-  // for the app origin itself and for Tauri's injected IPC bridge. Polling is by
-  // interval, not animation frames, because the widget may start hidden.
-  const appPage = (candidate) => /^(https?:\/\/tauri\.localhost|tauri:\/\/localhost)\//.test(candidate.url());
-  page = await until('widget page', async () =>
-    browser.contexts().flatMap((context) => context.pages()).find(appPage), 60000);
-  await page.waitForFunction(() => typeof window.__TAURI_INTERNALS__?.transformCallback === 'function', null, {
-    polling: 100,
-    timeout: 60000,
-  });
+  // Starts the built app with a WebView2 debugging port and connects to it.
+  async function launchApp() {
+    app = spawn(appExe, [], {
+      env: {
+        ...process.env,
+        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}`,
+        CODEX_PENCIL_CLAUDE_BIN: syntheticProvider,
+        P01_FIXTURE_MODE_FILE: providerModeFile,
+      },
+      stdio: 'ignore',
+    });
+    await until('WebView2 debugging endpoint', async () => {
+      try {
+        return (await fetch(`http://127.0.0.1:${cdpPort}/json/version`)).ok;
+      } catch {
+        return false;
+      }
+    }, 90000);
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${cdpPort}`);
+    // The debugging endpoint answers before the widget document commits, so wait
+    // for the app origin itself and for Tauri's injected IPC bridge.
+    const appPage = (candidate) => /^(https?:\/\/tauri\.localhost|tauri:\/\/localhost)\//.test(candidate.url());
+    page = await until('widget page', async () =>
+      browser.contexts().flatMap((context) => context.pages()).find(appPage), 60000);
+    await waitForBridge();
+  }
+  // Polling is by interval, not animation frames, because the widget may be hidden.
+  async function waitForBridge() {
+    await page.waitForFunction(() => typeof window.__TAURI_INTERNALS__?.transformCallback === 'function', null, {
+      polling: 100,
+      timeout: 60000,
+    });
+    // Record capture tokens exactly as the app's own listener receives them.
+    await page.evaluate(() => {
+      window.__grammarCaptures = [];
+      const internals = window.__TAURI_INTERNALS__;
+      const handler = internals.transformCallback((event) => window.__grammarCaptures.push(event.payload));
+      return internals.invoke('plugin:event|listen', {event: 'selection-captured', target: {kind: 'Any'}, handler});
+    });
+  }
+  await launchApp();
   pass('built app started with its widget WebView and IPC bridge');
 
-  // Record capture tokens exactly as the app's own listener receives them.
-  await page.evaluate(() => {
-    window.__grammarCaptures = [];
-    const internals = window.__TAURI_INTERNALS__;
-    const handler = internals.transformCallback((event) => window.__grammarCaptures.push(event.payload));
-    return internals.invoke('plugin:event|listen', {event: 'selection-captured', target: {kind: 'Any'}, handler});
-  });
   const captures = () => page.evaluate(() => window.__grammarCaptures.slice());
   const widgetVisible = () =>
     page.evaluate(() => window.__TAURI_INTERNALS__.invoke('plugin:window|is_visible', {label: 'main'}));
@@ -285,7 +306,7 @@ try {
   // widget stays open with the draft, and the editor gets no state-changing
   // message. The normal case shows no warning; Copy stays disabled until the
   // next capture.
-  async function copyResult(step, expectedClipboard) {
+  async function copyResult(step, expectedClipboard, expectedDraft = expectedClipboard) {
     await until('Copy enabled', copyEnabled);
     const before = await beginUntouched();
     await copy.click();
@@ -293,7 +314,7 @@ try {
     assert.equal(await errorRow.count(), 0, 'a normal Copy shows no warning');
     await until('result on the clipboard', async () => (await editor.clipboard()) === expectedClipboard);
     assert.equal(await widgetVisible(), true, 'the widget stays open after Copy');
-    assert.equal(await draftValue(), expectedClipboard, 'the copied draft stays visible');
+    assert.equal(await draftValue(), expectedDraft, 'the copied draft stays visible');
     assert.equal(await copyEnabled(), false, 'the capture ended with the Copy');
     await assertEditorsUntouched(step, before);
   }
@@ -400,6 +421,161 @@ try {
   assert.equal(await editor.text(0), reselectDoc);
   assert.notEqual(otherToken.sessionId, staleToken.sessionId);
   pass('stale sessions were rejected without a clipboard write and the current capture was copied; neither document changed');
+
+  // Steps 6-13 use Deep through the synthetic executable. The Provider choice
+  // and consent are saved the way the consent dialog saves them; the widget
+  // reloads to pick them up.
+  const saved = await loadSettings();
+  await page.evaluate((settings) => window.__TAURI_INTERNALS__.invoke('save_settings', {settings}), {
+    ...saved,
+    activeProvider: 'claude',
+    claudeCloudAcknowledgementVersion: 1,
+    translation: {...saved.translation, targetLanguage: 'en', applyFormat: 'source_with_translation'},
+  });
+  await page.reload();
+  await waitForBridge();
+  const cancelDeep = page.getByTestId('cancel-rewrite');
+  const runDeep = page.getByTestId('run-deep');
+  const cancelDeepIfRunning = async () => {
+    await sleep(300);
+    if ((await cancelDeep.count()) > 0 && (await cancelDeep.isEnabled())) {
+      await cancelDeep.click();
+      await until('Deep cancelled', async () => (await status.textContent()) === 'Deep cancelled · the draft is still available');
+    }
+  };
+  const errorText = async () => ((await errorRow.count()) > 0 ? (await errorRow.textContent()) ?? '' : '');
+
+  // 6. A Deep result that arrives after the Instant draft never replaces it;
+  //    switching to Translate shows the new Deep translation, and Copy joins
+  //    the exact captured source and the translation locally.
+  await setProviderMode('slow-success');
+  const translateDoc = 'Translate me: please seperate this line.';
+  await captureAndWaitInstant(0, translateDoc, 'please seperate this line.', 'please separate this line.');
+  await until('the Deep result of the capture arrived', async () => (await status.textContent()) === 'Replacement ready', 20000);
+  assert.equal(await draftValue(), 'please separate this line.', 'a later Deep result never replaces the shown draft');
+  await page.getByRole('button', {name: 'Translate', exact: true}).click();
+  await until('Deep translation shown after the mode change', async () => (await draftValue()) === 'Synthetic.', 20000);
+  await copyResult('copy-translation-with-source', 'please seperate this line.\n\n(Synthetic.)', 'Synthetic.');
+  assert.equal(await editor.text(0), translateDoc);
+  await page.getByRole('button', {name: 'Grammar', exact: true}).click();
+  await closeWidget();
+  pass('after a mode change the new Deep translation appeared; Copy joined source and translation; the document never changed');
+
+  // 7. Cancel stops only Deep: no error, the draft stays and can be copied,
+  //    even after Deep is started again at once.
+  await setProviderMode('slow');
+  const cancelDeepDoc = 'Cancel Deep: this are wrong.';
+  await captureAndWaitInstant(0, cancelDeepDoc, 'this are wrong.', 'this is wrong.');
+  await until('Deep running', async () => (await cancelDeep.count()) > 0 && (await cancelDeep.isEnabled()));
+  await cancelDeep.click();
+  await until('Deep cancelled', async () => (await status.textContent()) === 'Deep cancelled · the draft is still available');
+  await sleep(1000);
+  assert.equal(await errorText(), '', 'Cancel shows no error and no raw code');
+  assert.equal(await draftValue(), 'this is wrong.');
+  // An earlier request may still be finishing: either Deep starts, or it says
+  // so. The capture must stay usable either way.
+  if (await runDeep.isEnabled()) {
+    await runDeep.click();
+    await cancelDeepIfRunning();
+  }
+  assert.doesNotMatch(await errorText(), /invalid_session_state|no longer active/);
+  await copyResult('copy-after-cancel', 'this is wrong.');
+  await closeWidget();
+  pass('Cancel stopped only Deep; the Instant draft stayed and was copied');
+
+  // 8. The shortcut toggle ends the capture in the backend and tells the widget.
+  const hideDoc = 'Hide check: please seperate here.';
+  const hideToken = await captureAndWaitInstant(0, hideDoc, 'please seperate here.', 'please separate here.');
+  await cancelDeepIfRunning();
+  await editor.hotkey();
+  await until('shortcut hid the widget', async () => !(await widgetVisible()));
+  await until('widget told the capture ended', async () => (await status.textContent()) === 'Capture closed');
+  assert.equal(await draftValue(), '', 'the ended capture left no draft behind');
+  assert.equal(await copyEnabled(), false);
+  assert.deepEqual(await invokeCopy(hideToken, 'ENDED-SHOULD-NOT-COPY'), {status: 'failed', reason: 'invalid_session_state'});
+  pass('the shortcut toggle ended the capture and the widget no longer offered Copy for it');
+
+  // 9. Another program holds the clipboard: Copy fails without changing
+  //    anything, says so, and a retry after the clipboard is free copies once.
+  const lockDoc = 'Lock check: please seperate it.';
+  await captureAndWaitInstant(0, lockDoc, 'please seperate it.', 'please separate it.');
+  await cancelDeepIfRunning();
+  const beforeLock = await beginUntouched();
+  assert.equal(await editor.command('CLIPLOCK'), 'OK');
+  try {
+    await copy.click();
+    await until('Copy failed while the clipboard was held', async () => (await status.textContent()) === 'Copy failed');
+    assert.match(await errorText(), /clipboard could not be written/);
+    assert.equal(await copyEnabled(), true, 'Copy stays available for a retry');
+  } finally {
+    assert.equal(await editor.command('CLIPUNLOCK'), 'OK');
+  }
+  await assertEditorsUntouched('clipboard-held', beforeLock);
+  await copyResult('copy-after-clipboard-held', 'please separate it.');
+  await closeWidget();
+  pass('a held clipboard failed Copy safely with a clear message; the retry copied once');
+
+  // 10. Korean, emoji and CRLF: the capture is exact, and an edited Unicode
+  //     draft is copied exactly.
+  const unicodeDoc = '첫 줄은 그대로.\r\n둘째 줄 😀 please seperate this.\r\n셋째 줄.';
+  const unicodeSelection = '둘째 줄 😀 please seperate this.\r\n셋째';
+  assert.equal(await widgetVisible(), false, 'each capture starts with the widget hidden');
+  const beforeUnicode = (await captures()).length;
+  await prepareSelection(0, unicodeDoc, unicodeSelection);
+  await editor.hotkey();
+  const unicodeToken = await until('Unicode selection captured', async () => (await captures())[beforeUnicode], 15000);
+  assert.equal(unicodeToken.selectedText, unicodeSelection, 'the capture is exact');
+  await until('widget shown for the Unicode capture', widgetVisible);
+  await until('a local Instant draft to edit', async () => (await draftValue()).length > 0, 15000);
+  await cancelDeepIfRunning();
+  const unicodeDraft = '한국어 초안을 고쳤습니다 ✍️ 확인 😀';
+  await draft.fill(unicodeDraft);
+  await copyResult('copy-unicode-draft', unicodeDraft);
+  assert.equal(await editor.text(0), unicodeDoc);
+  await closeWidget();
+  pass('Korean, emoji and CRLF were captured exactly and an edited Unicode draft was copied exactly');
+
+  // 11. A password field is refused before any text is read.
+  const beforePassword = (await captures()).length;
+  await editor.set(1, 'synthetic-secret-value');
+  await editor.select(1, 0, 9);
+  await editor.focus(1);
+  await editor.resetCounts();
+  await editor.hotkey();
+  await until('password field refused', async () => /Password and credential fields are never read/.test(await errorText()));
+  assert.doesNotMatch(await errorText(), /native_sensitive_editor/, 'no raw code');
+  assert.equal((await captures()).length, beforePassword, 'no capture from a password field');
+  const passwordCounts = await editor.counts(1);
+  assert.equal(passwordCounts[0] + passwordCounts[1], 0, 'no text or length was read from the password field');
+  if (await widgetVisible()) await closeWidget();
+
+  // 12. No selection: a clear message and no capture.
+  await editor.set(0, 'Nothing is selected here.');
+  await editor.select(0, 3, 3);
+  await editor.focus(0);
+  await editor.hotkey();
+  await until('empty selection reported', async () => /No text selected/.test(await errorText()));
+  assert.equal((await captures()).length, beforePassword, 'no capture without a selection');
+  if (await widgetVisible()) await closeWidget();
+  pass('a password field and an empty selection were refused with a clear message and no capture');
+
+  // 13. Restart: settings persist; no capture, draft or selection comes back.
+  const settingsBeforeRestart = await loadSettings();
+  await browser.close();
+  killTree(app.pid);
+  await until('app exited for the restart', async () => !alive(app.pid), 20000);
+  await launchApp();
+  // Locators belong to a page; the restarted app has a new one.
+  const restartedCopy = page.getByTestId('copy-result');
+  const restartedDraft = page.getByLabel('Editable rewrite result text', {exact: true});
+  await until('widget pane rendered after the restart', async () =>
+    (await restartedCopy.count()) > 0 || (await page.getByRole('heading', {name: 'Sign in with ChatGPT', exact: true}).count()) > 0, 30000);
+  assert.equal(await page.getByRole('button', {name: 'Continue', exact: true}).count(), 0, 'onboarding does not return');
+  assert.deepEqual(await loadSettings(), settingsBeforeRestart, 'settings persisted across the restart');
+  assert.equal(await restartedDraft.inputValue({timeout: 2000}).catch(() => ''), '', 'no draft after the restart');
+  assert.equal((await restartedCopy.count()) > 0 && (await restartedCopy.isEnabled()), false, 'nothing to copy after the restart');
+  assert.deepEqual(await invokeCopy(unicodeToken, 'OLD-SHOULD-NOT-COPY'), {status: 'rejected_stale'});
+  pass('after a restart no capture, draft or selection came back and settings persisted');
 } catch (error) {
   failure = error;
   console.error('FAIL', error?.stack ?? error);

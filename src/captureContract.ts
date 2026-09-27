@@ -17,7 +17,11 @@ export type ApplyFallbackReason =
   | "target_process_changed"
   | "target_mutation_disabled";
 
-export type ApplyFailureReason = "empty_replacement" | "invalid_session_state" | "clipboard_write_failed";
+export type ApplyFailureReason =
+  | "empty_replacement"
+  | "invalid_session_state"
+  | "draft_outdated"
+  | "clipboard_write_failed";
 
 export type ApplyOutcome =
   | Readonly<{ status: "copied_fallback"; reason: ApplyFallbackReason }>
@@ -34,6 +38,7 @@ const FALLBACK_REASONS = new Set<ApplyFallbackReason>([
 const FAILURE_REASONS = new Set<ApplyFailureReason>([
   "empty_replacement",
   "invalid_session_state",
+  "draft_outdated",
   "clipboard_write_failed",
 ]);
 
@@ -65,6 +70,8 @@ export function applyFailureMessage(reason: ApplyFailureReason): string {
       return "The clipboard could not be written. Nothing changed; try Copy again.";
     case "invalid_session_state":
       return "This capture is no longer active. Capture the selection again.";
+    case "draft_outdated":
+      return "The mode or dictionary changed after this draft was made, so it cannot be copied. Run Deep, or capture the selection again.";
     default:
       return "There is nothing to copy.";
   }

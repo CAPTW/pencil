@@ -337,6 +337,11 @@ export default function App() {
   const rewritingIntentRef = useRef<RewriteIntentToken | null>(null);
   const resultIntentRef = useRef<RewriteIntentToken | null>(null);
   const copyingTokenRef = useRef<CaptureToken | null>(null);
+  // Only the latest Deep request of the widget may change its state: Cancel,
+  // a new capture or an intent change make every earlier request's late
+  // result or error irrelevant.
+  const rewriteCallRef = useRef(0);
+  const dismissButtonRef = useRef<HTMLButtonElement | null>(null);
   const terminologyEpochRef = useRef(0);
 
   useEffect(() => {
@@ -430,6 +435,7 @@ export default function App() {
     if (sameRewriteIntent(rewritingIntentRef.current, requestedIntent)) {
       return;
     }
+    const call = ++rewriteCallRef.current;
     rewritingIntentRef.current = requestedIntent;
     setIsRewriting(true);
     setError(null);
@@ -450,6 +456,7 @@ export default function App() {
         throw new Error(contentLimitMessage(replacementLimit));
       }
       if (
+        call !== rewriteCallRef.current ||
         terminologyEpochRef.current !== requestedTerminologyEpoch ||
         !sameRewriteIntent(currentIntentRef.current, requestedIntent)
       ) {
@@ -473,34 +480,57 @@ export default function App() {
       setStatus("Replacement ready");
     } catch (nextError) {
       if (
+        call !== rewriteCallRef.current ||
         terminologyEpochRef.current !== requestedTerminologyEpoch ||
         !sameRewriteIntent(currentIntentRef.current, requestedIntent)
       ) {
         return;
       }
-      const message = toErrorMessage(nextError);
-      if (/cancel|interrupt/i.test(message)) {
+      const raw = nextError instanceof Error ? nextError.message : String(nextError);
+      if (/cancel|interrupt/i.test(raw)) {
         setError(null);
-        setStatus("Rewrite cancelled");
+        setStatus("Deep cancelled · the draft is still available");
         return;
       }
-      setError(message);
+      setError(toErrorMessage(nextError));
       setStatus("Rewrite failed");
     } finally {
-      if (sameRewriteIntent(rewritingIntentRef.current, requestedIntent)) {
+      if (call === rewriteCallRef.current) {
         rewritingIntentRef.current = null;
         setIsRewriting(false);
       }
     }
   }, []);
 
+  // Cancel stops only Deep: the capture and its (possibly edited) draft stay.
   const cancelRewrite = useCallback(async () => {
+    rewriteCallRef.current += 1;
+    rewritingIntentRef.current = null;
+    setIsRewriting(false);
+    setStatus("Deep cancelled · the draft is still available");
     try {
       await invoke("cancel_rewrite");
-      setStatus("Rewrite cancelled");
     } catch (nextError) {
       setError(toErrorMessage(nextError));
     }
+  }, []);
+
+  // Forgets the current capture everywhere in the widget (both draft stores,
+  // the result and every in-flight request).
+  const clearCapture = useCallback(() => {
+    currentTokenRef.current = null;
+    currentIntentRef.current = null;
+    rewritingIntentRef.current = null;
+    resultIntentRef.current = null;
+    copyingTokenRef.current = null;
+    rewriteCallRef.current += 1;
+    setSelection(null);
+    setResult(null);
+    setDraft("");
+    setInstantRuntime(EMPTY_INSTANT_RUNTIME_STATE);
+    setIsRewriting(false);
+    setIsCopying(false);
+    setCloudReviewOpen(false);
   }, []);
 
   useEffect(() => {
@@ -517,6 +547,7 @@ export default function App() {
     let unlistenProcessExited: UnlistenFn | undefined;
     let unlistenOpenSettings: UnlistenFn | undefined;
     let unlistenInstant: UnlistenFn | undefined;
+    let unlistenCaptureEnded: UnlistenFn | undefined;
 
     void invoke<unknown>("load_settings")
       .then((value) => {
@@ -601,16 +632,7 @@ export default function App() {
     void listen<unknown>("selection-captured", (event) => {
       const payload = parseSelectionCaptured(event.payload);
       if (!payload) {
-        currentTokenRef.current = null;
-        currentIntentRef.current = null;
-        rewritingIntentRef.current = null;
-        resultIntentRef.current = null;
-        copyingTokenRef.current = null;
-        setSelection(null);
-        setResult(null);
-        setDraft("");
-        setIsRewriting(false);
-        setIsCopying(false);
+        clearCapture();
         setError("The capture token was invalid. Capture the selection again.");
         setStatus("Capture rejected");
         return;
@@ -634,6 +656,7 @@ export default function App() {
       rewritingIntentRef.current = null;
       resultIntentRef.current = null;
       copyingTokenRef.current = null;
+      rewriteCallRef.current += 1;
       setSelection({
         token,
         charCount: Array.from(payload.selectedText).length,
@@ -664,21 +687,21 @@ export default function App() {
     });
 
     void listen<CaptureError>("capture-error", (event) => {
-      currentTokenRef.current = null;
-      currentIntentRef.current = null;
-      rewritingIntentRef.current = null;
-      resultIntentRef.current = null;
-      copyingTokenRef.current = null;
-      setSelection(null);
-      setResult(null);
-      setDraft("");
-      setIsRewriting(false);
-      setIsCopying(false);
-      setCloudReviewOpen(false);
-      setError(event.payload.message);
+      clearCapture();
+      setError(toErrorMessage(event.payload.message));
       setStatus("No selection");
     }).then((unlisten) => {
       unlistenError = unlisten;
+    });
+
+    // The backend ended the capture itself (shortcut toggle, tray Hide or
+    // closing the window): nothing of it may stay copyable in the widget.
+    void listen<unknown>("capture-ended", () => {
+      clearCapture();
+      setError(null);
+      setStatus("Capture closed");
+    }).then((unlisten) => {
+      unlistenCaptureEnded = unlisten;
     });
 
     void listen<LoginCompleted>("login-completed", (event) => {
@@ -737,8 +760,9 @@ export default function App() {
       unlistenProcessExited?.();
       unlistenOpenSettings?.();
       unlistenInstant?.();
+      unlistenCaptureEnded?.();
     };
-  }, [refreshAuth, refreshProviders, refreshTerminology, rewrite]);
+  }, [clearCapture, refreshAuth, refreshProviders, refreshTerminology, rewrite]);
 
   useEffect(() => {
     if (!deviceLogin) {
@@ -864,8 +888,29 @@ export default function App() {
     }
   }
 
+  // A mode, language or dictionary change makes the current capture's drafts
+  // stale. An edited draft is the user's work: ask before discarding it.
+  function confirmDiscardEditedDraft(change: string): boolean {
+    if (!selection || !instantRuntime.dirty) {
+      return true;
+    }
+    return window.confirm(`${change} discards your edited draft for this selection. Continue?`);
+  }
+
+  // Both draft stores (the text box and the Instant/Deep runtime) start over
+  // for the same capture, so the next result can fill the box.
+  function resetDraftForNewIntent(token: CaptureToken) {
+    resultIntentRef.current = null;
+    setResult(null);
+    setDraft("");
+    setInstantRuntime(captureReset(EMPTY_INSTANT_RUNTIME_STATE, token.sessionId, token.generation));
+  }
+
   async function chooseMode(mode: RewriteMode) {
     if (mode === settings.mode) {
+      return;
+    }
+    if (!confirmDiscardEditedDraft("Changing the mode")) {
       return;
     }
     const next = { ...settings, mode };
@@ -889,9 +934,7 @@ export default function App() {
         ),
       };
       currentIntentRef.current = intent;
-      resultIntentRef.current = null;
-      setResult(null);
-      setDraft("");
+      resetDraftForNewIntent(selection.token);
       setStatus("Selection captured");
       if (saved.autoRewrite) {
         void rewrite(saved.mode, selection.token, saved.translation.targetLanguage);
@@ -900,6 +943,9 @@ export default function App() {
   }
 
   async function chooseTargetLanguage(targetLanguage: TranslationTargetLanguage) {
+    if (settings.mode === "translate" && !confirmDiscardEditedDraft("Changing the target language")) {
+      return;
+    }
     const next = {
       ...settings,
       translation: { ...settings.translation, targetLanguage },
@@ -922,9 +968,7 @@ export default function App() {
         ),
       };
       currentIntentRef.current = intent;
-      resultIntentRef.current = null;
-      setResult(null);
-      setDraft("");
+      resetDraftForNewIntent(selection.token);
       setStatus("Translation target changed");
       if (saved.autoRewrite) {
         void rewrite("translate", selection.token, saved.translation.targetLanguage);
@@ -935,6 +979,13 @@ export default function App() {
   async function chooseAutoReferenceLanguage(
     autoReferenceLanguage: TranslationReferenceLanguage,
   ) {
+    if (
+      settings.mode === "translate" &&
+      settings.translation.targetLanguage === "auto" &&
+      !confirmDiscardEditedDraft("Changing the reference language")
+    ) {
+      return;
+    }
     const saved = await saveSettings({
       ...settings,
       translation: { ...settings.translation, autoReferenceLanguage },
@@ -955,9 +1006,7 @@ export default function App() {
         autoReferenceLanguage: saved.translation.autoReferenceLanguage,
       };
       currentIntentRef.current = intent;
-      resultIntentRef.current = null;
-      setResult(null);
-      setDraft("");
+      resetDraftForNewIntent(selection.token);
       setStatus("Auto reference language changed");
       if (saved.autoRewrite) {
         void rewrite(
@@ -1061,9 +1110,15 @@ export default function App() {
 
   function invalidateTerminologyResult(message: string) {
     terminologyEpochRef.current += 1;
-    resultIntentRef.current = null;
-    setResult(null);
-    setDraft("");
+    const token = currentTokenRef.current;
+    if (token) {
+      resetDraftForNewIntent(token);
+    } else {
+      resultIntentRef.current = null;
+      setResult(null);
+      setDraft("");
+      setInstantRuntime(EMPTY_INSTANT_RUNTIME_STATE);
+    }
     setImportPreview(null);
     setStatus(message);
   }
@@ -1073,6 +1128,9 @@ export default function App() {
     args: Record<string, unknown>,
     message: string,
   ): Promise<boolean> {
+    if (!confirmDiscardEditedDraft("This dictionary change")) {
+      return false;
+    }
     try {
       const snapshot = requireTerminologySnapshot(await invoke<unknown>(command, args));
       setTerminology(snapshot);
@@ -1089,6 +1147,9 @@ export default function App() {
   async function toggleTerminologySetting(
     field: "enabled" | "useApprovedTerminology" | "suggestTerminology",
   ) {
+    if (!confirmDiscardEditedDraft("This dictionary setting")) {
+      return;
+    }
     const saved = await saveSettings({
       ...settings,
       terminology: {
@@ -1128,6 +1189,9 @@ export default function App() {
   }
 
   async function chooseTerminologyProfile(profileId: string) {
+    if (!confirmDiscardEditedDraft("Changing the dictionary profile")) {
+      return;
+    }
     try {
       const saved = parseAppSettings(await invoke<unknown>("set_active_terminology_profile", { profileId }));
       if (!saved) throw new Error("Active-profile response was invalid.");
@@ -1254,6 +1318,7 @@ export default function App() {
 
   async function applyImport() {
     if (!importPreview) return;
+    if (!confirmDiscardEditedDraft("Importing into the dictionary")) return;
     try {
       const report = parseImportReport(await invoke<unknown>("apply_terminology_import", {
         planId: importPreview.planId,
@@ -1331,15 +1396,12 @@ export default function App() {
         setStatus("Copied — paste it into the field");
         void refreshTerminology();
         setError(copiedNotice(outcome.reason));
+        // Copy is now disabled; keep keyboard focus in the widget.
+        window.setTimeout(() => dismissButtonRef.current?.focus(), 0);
         return;
       }
       if (outcome.status === "rejected_stale") {
-        currentTokenRef.current = null;
-        currentIntentRef.current = null;
-        resultIntentRef.current = null;
-        setSelection(null);
-        setResult(null);
-        setDraft("");
+        clearCapture();
         setStatus("Stale result rejected");
         setError("This result no longer belongs to the current capture. Capture the selection again.");
         return;
@@ -1374,18 +1436,8 @@ export default function App() {
   }
 
   async function dismiss() {
-    setCloudReviewOpen(false);
     const token = currentTokenRef.current;
-    currentTokenRef.current = null;
-    currentIntentRef.current = null;
-    rewritingIntentRef.current = null;
-    resultIntentRef.current = null;
-    copyingTokenRef.current = null;
-    setSelection(null);
-    setResult(null);
-    setDraft("");
-    setIsRewriting(false);
-    setIsCopying(false);
+    clearCapture();
     try {
       await invoke("dismiss_window", {
         sessionId: token?.sessionId ?? null,
@@ -2162,7 +2214,7 @@ export default function App() {
                 )}
               </div>
 
-              {settings.mode === "grammar" && visibleChoices(instantRuntime).length > 0 ? (
+              {visibleChoices(instantRuntime).length > 0 ? (
                 <div className="candidate-choices" role="list" aria-label="Instant and Deep candidates">
                   {visibleChoices(instantRuntime).map((choice) => (
                     <button
@@ -2298,6 +2350,7 @@ export default function App() {
                   Cancel
                 </button>
                 <button
+                  ref={dismissButtonRef}
                   className="secondary-button"
                   type="button"
                   data-testid="dismiss-result"
@@ -2314,7 +2367,7 @@ export default function App() {
         )}
 
         {error ? (
-          <div className="error-row">
+          <div className="error-row" role="alert">
             <ShieldCheck size={14} />
             <span>{error}</span>
           </div>
