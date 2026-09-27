@@ -11,6 +11,15 @@ $destination=[IO.Path]::GetFullPath($OutputRoot)
 New-Item -ItemType Directory -Path $destination | Out-Null
 Copy-Item -LiteralPath $verified.executablePath -Destination (Join-Path $destination 'codex-pencil.exe')
 Copy-Item -LiteralPath $verified.hostExecutablePath -Destination (Join-Path $destination 'grammar-chromium-host.exe')
+# Whole folders are copied, so they must hold exactly the files of the commit:
+# no ignored, untracked or hidden extras (build-receipt already refused edits).
+foreach ($folder in @('adapters/chromium/extension', 'adapters/chromium/host')) {
+  $tracked = @(& git -C $source -c core.quotepath=false ls-files -- $folder)
+  if ($LASTEXITCODE -ne 0) { throw 'Source enumeration failed' }
+  $present = @(Get-ChildItem -LiteralPath (Join-Path $source $folder) -File -Recurse -Force | ForEach-Object { [IO.Path]::GetRelativePath($source, $_.FullName).Replace('\','/') })
+  $extra = @($present | Where-Object { $_ -cnotin $tracked })
+  if ($extra.Count) { throw "Packaged source folder has files outside the commit: $($extra -join ', ')" }
+}
 Copy-Item -LiteralPath (Join-Path $source 'adapters/chromium/extension') -Destination (Join-Path $destination 'extension') -Recurse
 # Fix the packaged extension's ID with a per-package public key (the private key
 # is never needed to load an unpacked extension and is discarded), so the
@@ -32,7 +41,7 @@ Copy-Item -LiteralPath (Join-Path $source 'adapters/chromium/README.md') -Destin
 Copy-Item -LiteralPath (Join-Path $source 'docs/control/HANDOFF.md') -Destination (Join-Path $destination 'HANDOFF.md')
 Copy-Item -LiteralPath $ReceiptPath -Destination (Join-Path $destination 'BUILD_RECEIPT.json')
 $null=& (Join-Path $PSScriptRoot 'build-receipt.ps1') -SourceRoot $source -ReceiptPath $ReceiptPath -VerifyOnly -ExecutablePath (Join-Path $destination 'codex-pencil.exe') -HostExecutablePath (Join-Path $destination 'grammar-chromium-host.exe')
-$files=@(Get-ChildItem -LiteralPath $destination -File -Recurse | Sort-Object FullName | ForEach-Object {
+$files=@(Get-ChildItem -LiteralPath $destination -File -Recurse -Force | Sort-Object FullName | ForEach-Object {
   [ordered]@{path=[IO.Path]::GetRelativePath($destination,$_.FullName).Replace('\','/');sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower();bytes=$_.Length}
 })
 $manifest=[ordered]@{classification='PERSONAL_USE_CANDIDATE_SYNTHETIC_QUALIFIED_SCOPE';sourceCommit=$verified.after.commit;sourceTree=$verified.after.tree;sourcePhysicalDigest=$verified.after.trackedBytesSha256;extensionId=$extensionId;nativeCapture='STANDARD_EDIT_ONLY_SYNTHETIC_QUALIFIED';nativeApply='NONE_DESKTOP_COPY_BUTTON_ONLY_NATIVE_EDITORS_NEVER_MUTATED';chromiumInstant='TEXTAREA_SIMPLE_CONTENTEDITABLE_SYNTHETIC_QUALIFIED';chromiumDeep='CONSENT_BOUND_SYNTHETIC_PROVIDER_ONLY';antigravityDeep='PRIVACY_UNQUALIFIED';claudeOAuth='UNAVAILABLE_WITH_BARE';providerLive='NOT_RUN';physicalKeyboardIme='NOT_RUN';files=$files}

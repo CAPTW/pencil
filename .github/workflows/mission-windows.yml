@@ -160,6 +160,13 @@ jobs:
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
           pwsh -NoProfile -File scripts/test-personal-package.ps1 -Phase install 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/personal-install.log"
           exit $LASTEXITCODE
+      - name: Personal package failure and recovery paths
+        if: ${{ !cancelled() && env.GRAMMAR_PACKAGE_ZIP != '' }}
+        timeout-minutes: 10
+        run: |
+          $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
+          pwsh -NoProfile -File scripts/test-personal-package.ps1 -Phase failures 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/personal-failures.log"
+          exit $LASTEXITCODE
       - name: Build native host and synthetic process
         if: ${{ !cancelled() }}
         run: |
