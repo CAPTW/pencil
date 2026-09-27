@@ -92,7 +92,7 @@ async function helper(command, name, {method = 'Mouse', match = 'Exact', timeout
   let text;
   try {
     // Hidden: a console window would take activation and close Chrome's menus and popups.
-    text = (await execFileAsync('powershell.exe', args, {timeout: timeoutMs + 60000, windowsHide: true})).stdout;
+    text = (await execFileAsync('powershell.exe', args, {timeout: 4 * timeoutMs + 60000, windowsHide: true})).stdout;
   } catch (error) {
     text = String(error.stdout ?? '');
     if (!text.trim()) {
@@ -101,73 +101,52 @@ async function helper(command, name, {method = 'Mouse', match = 'Exact', timeout
   }
   const result = JSON.parse(text.trim().split(/\r?\n/).at(-1));
   // Browser UI labels only; never page text.
-  if (command === 'Click') gestures.push({name, method, status: result.status, hit: result.hit ?? null, foreground: result.foreground ?? null});
+  for (const step of result.steps ?? (command === 'Click' ? [result] : [])) {
+    gestures.push({name: step.name, method: step.method, status: step.status, hit: step.hit ?? null, foreground: step.foreground ?? null});
+  }
   if (!['clicked', 'found'].includes(result.status)) console.log('GESTURE', command, JSON.stringify(result));
   // A broken helper is a test failure, never a reason for NOT_RUN.
   if (result.status === 'helper_failed') throw new Error(`gesture helper failed: ${result.detail}`);
   return result;
 }
-const exists = async (name, options) => (await helper('Exists', name, options)).status === 'found';
 
-// Clicks `name` and waits for `effect()`. When an OS mouse click stays covered
-// by another window, finds no stable on-screen rectangle or has no visible
-// effect, the rest of the run uses UI Automation Invoke and this click is retried.
+// The real toolbar path, run as one helper sequence so a menu or popup opened
+// by one click is still open for the next: the Extensions menu button, this
+// extension's item (or its toolbar button, when shown, which skips the menu)
+// and the popup's own Enable button. OS mouse clicks first; UI Automation
+// Invoke only if a mouse sequence is covered or has no effect; Playwright's
+// trusted input on the popup only if UI Automation cannot reach its content.
+// Every fallback is recorded. The action must leave page access (activeTab).
 let inputMethod = 'Mouse';
-async function click(name, effect, {match = 'Exact', timeoutMs = 10000} = {}) {
-  let result = await helper('Click', name, {method: inputMethod, match, timeoutMs});
-  if (result.status === 'clicked' && (await effect())) return result;
-  if (!['clicked', 'occluded', 'no_rect', 'stale'].includes(result.status)) return result;
-  if (inputMethod !== 'Mouse') return {...result, status: 'no_effect'};
-  inputMethod = 'Invoke';
-  result = await helper('Click', name, {method: inputMethod, match, timeoutMs: 3000});
-  if (result.status !== 'clicked') return {...result, status: 'no_effect'};
-  return (await effect()) ? result : {...result, status: 'no_effect'};
-}
-
-// The real toolbar path: the extension's toolbar button if it is shown,
-// otherwise the Extensions menu and this extension's item. The click must open
-// the extension popup and leave the page accessible (activeTab, observed by the
-// probe); then the popup's own button enables the document.
 async function toolbarEnable({extensionName, extensionId, page, probe}) {
   await page.bringToFront();
   const popupUrl = `chrome-extension://${extensionId}/popup.html`;
   const popupPage = () => page.context().pages().find((candidate) => candidate.url() === popupUrl);
-  const popupShown = async () => Boolean(popupPage()) || exists('Enable this document', {timeoutMs: 5000});
-  let path;
-  if (await exists(extensionName, {match: 'Prefix', timeoutMs: 1500})) {
-    path = 'toolbar-action-button';
-    const action = await click(extensionName, popupShown, {match: 'Prefix'});
-    if (action.status !== 'clicked') throw new Error(`toolbar action button opened no popup (${action.status})`);
-  } else {
-    path = 'extensions-menu';
-    const menu = await click('Extensions', () => exists(extensionName, {match: 'Prefix', timeoutMs: 5000}), {timeoutMs: 20000});
-    // The only NOT_RUN: UI Automation cannot see the browser window at all. A
-    // missing button, menu item or popup is a failure to investigate.
-    if (menu.status === 'window_not_found') throw new NotRun('browser window not exposed to UI Automation on this desktop');
-    if (menu.status !== 'clicked') throw new Error(`Extensions menu did not open or showed no item for the extension (${menu.status})`);
-    const action = await click(extensionName, popupShown, {match: 'Prefix'});
-    if (action.status !== 'clicked') throw new Error(`Extensions menu item opened no popup (${action.status})`);
+  const enabled = () => page.locator('#grammar-local-assist').waitFor({timeout: 10000}).then(() => true, () => false);
+  const sequence = ['Extensions', `prefix:${extensionName}`, 'Enable this document'].join('|');
+  let run = await helper('Sequence', sequence, {method: inputMethod});
+  // The only NOT_RUN: UI Automation cannot see the browser window at all.
+  if (run.steps[0]?.status === 'window_not_found') throw new NotRun('browser window not exposed to UI Automation on this desktop');
+  let done = run.status === 'clicked' && (await enabled());
+  if (!done && inputMethod === 'Mouse') {
+    inputMethod = 'Invoke';
+    run = await helper('Sequence', sequence, {method: inputMethod});
+    done = run.status === 'clicked' && (await enabled());
+  }
+  let popupInput = inputMethod;
+  const last = run.steps.at(-1);
+  if (!done && last?.name === 'Enable this document' && last.status === 'not_found' && popupPage()) {
+    await popupPage().getByRole('button', {name: 'Enable this document', exact: true}).click();
+    popupInput = 'playwright';
+    done = await enabled();
+  }
+  if (!done) {
+    throw new Error(`toolbar path did not enable the document (${run.steps.map((step) => `${step.name.slice(0, 24)}:${step.status}`).join(', ')})`);
   }
   if ((await probe()) !== 'page_access') throw new Error('the toolbar action left no page access (activeTab)');
-  const actionInput = inputMethod;
-  const enabled = () => page.locator('#grammar-local-assist').waitFor({timeout: 10000}).then(() => true, () => false);
-  let popupInput;
-  const enable = await click('Enable this document', enabled);
-  if (enable.status === 'not_found') {
-    // Popup content not exposed to UI Automation: use Playwright's trusted input
-    // on the popup the action opened, if Playwright can see it.
-    const popup = popupPage();
-    if (!popup) throw new Error('extension popup content reachable through neither UI Automation nor Playwright');
-    await popup.getByRole('button', {name: 'Enable this document', exact: true}).click();
-    popupInput = 'playwright';
-    if (!(await enabled())) throw new Error('popup Enable this document did not enable the document');
-  } else if (enable.status !== 'clicked') {
-    throw new Error(`popup Enable this document had no effect (${enable.status})`);
-  } else {
-    popupInput = inputMethod;
-  }
   await page.bringToFront();
-  return {path, actionInput, popupInput};
+  const path = run.steps[0]?.status === 'skipped_next_shown' ? 'toolbar-action-button' : 'extensions-menu';
+  return {path, input: inputMethod, popupInput};
 }
 
 const html = (title) => `<!doctype html><html lang=en><meta charset=utf-8><title>${title}</title><body>
