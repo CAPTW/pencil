@@ -47,6 +47,12 @@ impl Drop for OwnedHandle {
 
 fn resume_owned_primary(child: &Child) -> Result<(), String> {
     let pid = child.id().ok_or("provider_process_id_unavailable")?;
+    resume_suspended_primary(pid)
+}
+
+/// Resumes the single primary thread of a process that was created suspended
+/// and has already been assigned to its owning Job.
+pub(crate) fn resume_suspended_primary(pid: u32) -> Result<(), String> {
     let snapshot = unsafe { CreateToolhelp32Snapshot(4, 0) }; // TH32CS_SNAPTHREAD
     if snapshot == INVALID_HANDLE_VALUE {
         return Err(last_error("provider_thread_snapshot_failed"));
@@ -201,6 +207,14 @@ impl ProcessJob {
     }
 
     pub(crate) fn assign(child: &Child) -> Result<Self, String> {
+        let Some(process_handle) = child.raw_handle() else {
+            return Err("app_server_process_handle_unavailable".to_string());
+        };
+        Self::assign_process_handle(process_handle.cast())
+    }
+
+    /// Creates a kill-on-close Job and assigns one live process handle to it.
+    pub(crate) fn assign_process_handle(process_handle: HANDLE) -> Result<Self, String> {
         let handle = unsafe { CreateJobObjectW(ptr::null(), ptr::null()) };
         if handle.is_null() {
             return Err(last_error("app_server_job_create_failed"));
@@ -222,10 +236,7 @@ impl ProcessJob {
             return Err(last_error("app_server_job_configure_failed"));
         }
 
-        let Some(process_handle) = child.raw_handle() else {
-            return Err("app_server_process_handle_unavailable".to_string());
-        };
-        let assigned = unsafe { AssignProcessToJobObject(job.handle, process_handle.cast()) };
+        let assigned = unsafe { AssignProcessToJobObject(job.handle, process_handle) };
         if assigned == 0 {
             return Err(last_error("app_server_job_assignment_failed"));
         }
