@@ -7,7 +7,7 @@
 | 기능 | 상태 |
 |---|---|
 | Windows 표준 `Edit` 컨트롤(예: 클래식 메모장, 대화상자 입력칸)의 선택문 읽기 | 켜짐. 비밀번호·자격 증명·비표준(리치에디트, WinForms 파생, ANSI) 필드는 텍스트를 읽기 전에 거부 |
-| 데스크톱 결과 사용 | **Copy** 버튼 하나. 결과를 클립보드에 복사하고, 붙여넣기는 사용자가 직접 합니다. Grammar는 다른 앱 편집기의 텍스트를 바꾸지 않습니다. 그 앱이 같은 순간 스스로 텍스트를 바꾸는 경우를 배제할 방법이 없어 자동 교체는 하지 않습니다(Owner 결정: Copy-only 유지, 예전 Apply 버튼은 Copy로 통합) |
+| 데스크톱 결과 사용 | **Copy** 버튼 하나. 결과를 클립보드에 복사하고, 붙여넣기는 사용자가 직접 합니다. 데스크톱 앱은 다른 앱 편집기의 텍스트를 바꾸지 않습니다. 그 앱이 같은 순간 스스로 텍스트를 바꾸는 경우를 배제할 방법이 없어 자동 교체는 하지 않습니다(Owner 결정: Copy-only 유지, 예전 Apply 버튼은 Copy로 통합) |
 | 그 밖의 편집기 | 선택문 읽기도 하지 않음. 결과는 Copy로만 사용 |
 | Chromium 확장: textarea / 단순 contenteditable | 문서와 필드를 각각 명시적으로 켠 경우에만 로컬 Instant 제안 |
 | Deep (클라우드 Provider) | 선택한 Provider 하나와 명시적 동의가 있을 때만. 실제 Provider 호출은 검증되지 않음(NOT_RUN) |
@@ -29,7 +29,7 @@ pwsh -NoProfile -File .\grammar-package\Install-Grammar.ps1
 ## 사용
 
 - 데스크톱: `<설치 위치>\codex-pencil.exe` 를 실행합니다. 표준 Edit 필드에서 텍스트를 선택하고 `Ctrl+Shift+G` 를 누르면 로컬 Instant 초안이 나타납니다. 초안을 고친 뒤 **Copy** 를 누릅니다. 결과가 클립보드에 복사되고 창에 "Copied — paste it into the field" 가 표시됩니다. 원래 필드는 바뀌지 않으므로 직접 붙여넣습니다. 초안은 창에 남고, 다음 선택을 캡처할 때까지 Copy는 비활성화됩니다. 번역의 "원문 + 번역" 형식도 Copy할 때 적용됩니다. 클라우드 동의는 Deep을 요청할 때만 묻습니다.
-- 브라우저: 확장 아이콘을 툴바에 고정해 두면(퍼즐 아이콘 → 핀) 바로 누를 수 있습니다. 확장 팝업에서 **Enable this document**, 필드에서 **Enable this field** 를 누릅니다. 제안 카드에서 Accept / Apply edit / Dismiss / Ignore / Copy 를 키보드나 마우스로 선택합니다.
+- 브라우저: 먼저 확장 아이콘을 툴바에 고정합니다(퍼즐 아이콘 → 핀. 시험은 버튼이 미리 고정된 새 프로필을 썼습니다). 검증된 경로는 키보드입니다. `Alt+Shift+T` 로 툴바로 이동하고, 오른쪽 방향키(필요하면 Tab)로 Grammar 버튼에 초점을 맞춘 뒤 Space 를 누릅니다. 팝업에서 Tab 으로 **Enable this document** 에 초점을 맞추고 Space 를 누릅니다. 마우스로 누르는 경로는 검증되지 않았습니다. 그다음 필드에서 **Enable this field** 를 누릅니다. 제안 카드에서 Accept / Apply edit / Dismiss / Ignore / Copy 를 키보드나 마우스로 선택합니다.
 
 ## 제거
 

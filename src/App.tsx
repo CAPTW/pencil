@@ -1280,7 +1280,7 @@ export default function App() {
 
   // The one result action on the desktop: the backend checks the current
   // capture, formats a translation locally and puts the approved result on the
-  // clipboard. Grammar never changes text inside another application.
+  // clipboard. The desktop app never changes text inside another application.
   async function copyResult() {
     const token = currentTokenRef.current;
     const intent = currentIntentRef.current;
@@ -1403,7 +1403,9 @@ export default function App() {
   const providerReady = activeProviderStatus?.state === "ready" || (settings.activeProvider === "codex" && auth?.loggedIn === true);
   const canRunDeep = Boolean(selection && providerReady && !isRewriting && !isCopying);
   const canCancel = isRewriting;
-  const canDismissResult = Boolean(selection && !isCopying);
+  // After Copy the capture has ended but the copied draft stays visible, so
+  // Dismiss still closes it (the same action as the header Close).
+  const canDismissResult = Boolean((selection || draft.length > 0) && !isCopying);
   const reviewSpans = useMemo(
     () => (selection && draft ? reviewDiff(selection.sourceText, draft) : []),
     [selection, draft],
@@ -1465,7 +1467,7 @@ export default function App() {
             <div className="settings-heading">
               <div>
                 <h2>Welcome to Grammar</h2>
-                <p>Local Instant edits stay on this device. Deep sends selected text to one chosen Provider. Copy is always explicit, and Grammar never changes text in other apps.</p>
+                <p>Local Instant edits stay on this device. Deep sends selected text to one chosen Provider. Copy is always explicit: this widget puts the result on the clipboard and never changes text in other apps.</p>
               </div>
             </div>
             <ul className="disclosure-list">
