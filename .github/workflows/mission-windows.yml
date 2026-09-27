@@ -36,37 +36,60 @@ jobs:
       - name: Prepare owned evidence and declare limits
         run: |
           $e = Join-Path $env:RUNNER_TEMP 'grammar-evidence'
-          New-Item -ItemType Directory -Path "$e/runtime","$e/resume-r1","$e/temp" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$e/runtime","$e/resume-r1","$e/temp","$e/native","$e/logs" -Force | Out-Null
           "GRAMMAR_EVIDENCE=$e" >> $env:GITHUB_ENV
           @{
             source=$env:GITHUB_SHA; classification='SYNTHETIC_WINDOWS_CI'
-            providerLive='NOT_RUN'; interactiveCapture='NOT_RUN'; clipboardApply='SEE_NATIVE_DESKTOP_LOG'
+            providerLive='NOT_RUN'; interactiveCapture='NOT_RUN'; ownedDesktop='SEE_NATIVE_RECEIPTS'
             productionToolbar='NOT_RUN'; release='NOT_AUTHORIZED'
           } | ConvertTo-Json > "$e/scope.json"
-      - name: Frontend and production JS contracts
+      # Every check below is its own step and runs after an earlier failure
+      # (!cancelled), so one failing check never hides the others. Each step
+      # tees its output into the evidence directory uploaded at the end.
+      - name: Install locked frontend dependencies and build
         run: |
           npm ci --ignore-scripts
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          npm run build:frontend
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          npm run test:provider
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node adapters/chromium/tests/core.test.mjs
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node adapters/chromium/tests/worker.test.mjs
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python scripts/validate_governance.py --root . --self-test
+          npm run build:frontend 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/frontend-build.log"
+          exit $LASTEXITCODE
+      - name: Provider and runtime JS contracts
+        if: ${{ !cancelled() }}
+        run: |
+          npm run test:provider 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/provider-contracts.log"
+          exit $LASTEXITCODE
+      - name: Chromium core contract
+        if: ${{ !cancelled() }}
+        run: |
+          node adapters/chromium/tests/core.test.mjs 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/chromium-core.log"
+          exit $LASTEXITCODE
+      - name: Chromium worker contract
+        if: ${{ !cancelled() }}
+        run: |
+          node adapters/chromium/tests/worker.test.mjs 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/chromium-worker.log"
+          exit $LASTEXITCODE
+      - name: Governance self-test
+        if: ${{ !cancelled() }}
+        run: |
+          python scripts/validate_governance.py --root . --self-test 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/governance.log"
           exit $LASTEXITCODE
       - name: Rust regression tests (no ignored live tests)
+        if: ${{ !cancelled() }}
         run: |
-          cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=1
+          cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=1 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/rust-regression.log"
           exit $LASTEXITCODE
-      - name: Qualify owned Windows input desktop and native Apply
+      - name: Owned Windows desktop - input environment
         if: ${{ !cancelled() }}
         timeout-minutes: 5
         run: |
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil cloud_owned_desktop_qualification -- --ignored --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native-desktop.log"
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil p0_02_windows_live_tests::cloud_owned_desktop_input_environment -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native/input-environment.log"
+          exit $LASTEXITCODE
+      - name: Owned Windows desktop - Copy-only boundary
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: |
+          $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil p0_02_windows_live_tests::cloud_owned_desktop_copy_only_boundary -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native/copy-only-boundary.log"
           exit $LASTEXITCODE
       - name: Build native host and synthetic process
         if: ${{ !cancelled() }}
@@ -79,9 +102,9 @@ jobs:
       - name: Native framing and synthetic Deep lifecycle
         if: ${{ !cancelled() }}
         run: |
-          python adapters/chromium/host/test_host.py "$env:GRAMMAR_HOST_EXE"
+          python adapters/chromium/host/test_host.py "$env:GRAMMAR_HOST_EXE" 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/host-framing.log"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          python adapters/chromium/host/test_host_deep.py "$env:GRAMMAR_HOST_EXE" "$env:GRAMMAR_EVIDENCE/runtime/child.exe" "$env:GRAMMAR_EVIDENCE/host-deep"
+          python adapters/chromium/host/test_host_deep.py "$env:GRAMMAR_HOST_EXE" "$env:GRAMMAR_EVIDENCE/runtime/child.exe" "$env:GRAMMAR_EVIDENCE/host-deep" 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/host-deep.log"
           exit $LASTEXITCODE
       - name: Native runtime matrix (original budgets)
         if: ${{ !cancelled() }}
@@ -89,7 +112,7 @@ jobs:
           $env:MISSION_FIXTURE_EXE="$env:GRAMMAR_EVIDENCE/runtime/child.exe"
           $env:MISSION_EVIDENCE="$env:GRAMMAR_EVIDENCE/runtime"
           $env:TEMP="$env:GRAMMAR_EVIDENCE/temp"; $env:TMP=$env:TEMP
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil runtime_mission:: -- --include-ignored --test-threads=1 --nocapture
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil runtime_mission:: -- --include-ignored --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/runtime-matrix.log"
           exit $LASTEXITCODE
       - name: Install isolated browser test dependency
         if: ${{ !cancelled() }}
@@ -110,18 +133,35 @@ jobs:
           $env:CODEX_PENCIL_CLAUDE_BIN="$env:GRAMMAR_EVIDENCE/runtime/child.exe"
           $env:P01_FIXTURE_MODE='success'
           $env:P01_CASE_DIR="$env:GRAMMAR_EVIDENCE/resume-r1/browser-deep"
-          node adapters/chromium/tests/browser.test.mjs
+          node adapters/chromium/tests/browser.test.mjs 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/chromium-browser.log"
           exit $LASTEXITCODE
+      - name: Bind step receipts to the exact source commit
+        if: ${{ always() }}
+        run: |
+          $e = $env:GRAMMAR_EVIDENCE
+          $receipts = @(Get-ChildItem "$e/native" -Filter *.json -ErrorAction SilentlyContinue | ForEach-Object {
+            $r = Get-Content $_.FullName -Raw | ConvertFrom-Json
+            [ordered]@{ test = $r.test; status = $r.status; source_sha = $r.source_sha; last_completed_check = $r.last_completed_check }
+          })
+          [ordered]@{
+            source_sha = $env:GITHUB_SHA; ref = $env:GITHUB_REF; run_id = $env:GITHUB_RUN_ID; run_attempt = $env:GITHUB_RUN_ATTEMPT
+            owned_desktop_receipts = $receipts
+            receipts_bound_to_source = (@($receipts | Where-Object { $_.source_sha -ne $env:GITHUB_SHA }).Count -eq 0)
+          } | ConvertTo-Json -Depth 4 | Set-Content "$e/summary.json"
+          Get-Content "$e/summary.json"
       - name: Upload synthetic evidence (no executable release)
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: grammar-synthetic-evidence-${{ github.sha }}
+          name: grammar-synthetic-evidence-${{ github.sha }}-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: warn
           path: |
             ${{ runner.temp }}/grammar-evidence/scope.json
-            ${{ runner.temp }}/grammar-evidence/native-desktop.log
+            ${{ runner.temp }}/grammar-evidence/summary.json
+            ${{ runner.temp }}/grammar-evidence/native/*.json
+            ${{ runner.temp }}/grammar-evidence/native/*.log
+            ${{ runner.temp }}/grammar-evidence/logs/*.log
             ${{ runner.temp }}/grammar-evidence/host-deep/receipt.json
             ${{ runner.temp }}/grammar-evidence/browser-*/result.json
             ${{ runner.temp }}/grammar-evidence/browser-*/failure.json
