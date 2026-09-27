@@ -147,8 +147,13 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  assert.equal(await page.locator('#writing').inputValue(),'changed while collapsed');
  pass('collapsed source edits invalidate old mutation authority; keyboard reopen stays safe');
  await page.locator('#writing').fill('seperate');await suggestion.waitFor();
+ // Page and service-worker requests are counted too: a cache lookup is neither inference nor network.
+ const requests=[];const onRequest=request=>requests.push(request.url());context.on('request',onRequest);
  const before=(await worker.evaluate(()=>fixtureMetrics)).analyses;await suggestion.hover();await suggestion.click();await page.waitForTimeout(400);
- assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,before);pass('hover and click use cache; inference count unchanged');
+ await page.getByRole('button',{name:'Dismiss',exact:true}).hover();await page.waitForTimeout(200);
+ context.off('request',onRequest);
+ assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,before);assert.deepEqual(requests,[]);
+ pass('hover and click use cache; inference count unchanged and zero network requests');
  await page.getByRole('button',{name:'Accept',exact:true}).click();assert.equal(await page.locator('#writing').inputValue(),'separate');pass('textarea explicit Accept reread');
  await page.locator('#writing').fill('seperate');await suggestion.waitFor();await suggestion.click();
  await page.getByRole('textbox',{name:'Edit replacement',exact:true}).fill('distinct');await page.getByRole('button',{name:'Apply edit',exact:true}).click();
@@ -161,6 +166,31 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  await page.getByRole('button',{name:'Accept',exact:true}).click();assert.equal(await page.locator('#writing').inputValue(),'handler changed');pass('synchronous beforeinput edit rejects replacement');
  await page.locator('#writing').fill('seperate');await suggestion.waitFor();await suggestion.click();await page.getByRole('button',{name:'Dismiss',exact:true}).click();
  assert.equal(await page.locator('#writing').inputValue(),'seperate');pass('Dismiss no mutation');
+ // Copy is explicit and clipboard-only; the document is never mutated by it.
+ await context.grantPermissions(['clipboard-read','clipboard-write'],{origin:'http://127.0.0.1:18437'});
+ await page.locator('#writing').fill('seperate');await suggestion.waitFor();await suggestion.click();
+ await page.getByRole('textbox',{name:'Edit replacement',exact:true}).fill('copied draft');
+ await page.getByRole('button',{name:'Copy',exact:true}).click();
+ assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),'copied draft');
+ assert.equal(await page.locator('#writing').inputValue(),'seperate');pass('explicit Copy writes only the clipboard; document unchanged');
+ // Keyboard only: every card action is focusable and activates without a pointer.
+ // The panel lives in a shadow root, whose activeElement is the focused control.
+ const tabTo=async(target,key='Tab',limit=20)=>{
+   for(let n=0;n<limit;n++){if(await target.evaluate(el=>el.getRootNode().activeElement===el))return;await page.keyboard.press(key);}
+   throw Error('control not reachable by '+key);
+ };
+ const keyboardCard=async()=>{await page.locator('#writing').fill('seperate');await suggestion.waitFor();await suggestion.focus();await page.keyboard.press('Enter');};
+ await keyboardCard();await tabTo(page.getByRole('button',{name:'Accept',exact:true}));await page.keyboard.press('Space');
+ assert.equal(await page.locator('#writing').inputValue(),'separate');
+ await keyboardCard();await tabTo(page.getByRole('textbox',{name:'Edit replacement',exact:true}));
+ await page.keyboard.press('Control+A');await page.keyboard.type('keyboard draft');
+ await tabTo(page.getByRole('button',{name:'Apply edit',exact:true}));await page.keyboard.press('Enter');
+ assert.equal(await page.locator('#writing').inputValue(),'keyboard draft');
+ await keyboardCard();await tabTo(page.getByRole('button',{name:'Copy',exact:true}));await page.keyboard.press('Enter');
+ assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),'separate');
+ await tabTo(page.getByRole('button',{name:'Dismiss',exact:true}),'Shift+Tab');await page.keyboard.press('Enter');
+ assert.equal(await page.locator('#writing').inputValue(),'seperate');
+ pass('keyboard only reaches and activates Accept, Apply edit, Copy and Dismiss with rereads');
  await page.locator('#writing').fill('seperate!');await suggestion.waitFor();await suggestion.click();await page.getByRole('button',{name:'Ignore',exact:true}).click();
  await page.locator('#writing').fill('seperate!!');await page.waitForTimeout(700);assert.equal(await suggestion.count(),0);pass('Ignore suppresses recurring rule in session');
  await page.locator('#editable').click();await page.getByRole('button',{name:'Enable this field',exact:true}).click();await suggestion.waitFor();await suggestion.click();await page.getByRole('button',{name:'Accept',exact:true}).click();
@@ -247,6 +277,9 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
    assert.equal(await page.locator('#writing').inputValue(),'user changed');assert.equal(await page.getByRole('button',{name:'Suggestion 1: Deep claude',exact:true}).count(),0);pass('user edit cancels or discards Deep across its lifecycle');
    await popup.getByRole('button',{name:'Revoke Deep',exact:true}).click();await page.bringToFront();
    assert.equal(await page.getByRole('button',{name:'Deep requires document permission in the popup',exact:true}).isDisabled(),true);pass('Deep permission revoked');assert.equal((await worker.evaluate(()=>fixtureMetrics)).deep,3);
+   // Every Provider process maps to an explicit Deep request: no silent replay or fallback.
+   const spawned=(await readFile(join(process.env.P01_CASE_DIR,'spawns.log'),'utf8')).split(/\r?\n/).filter(Boolean).length;
+   assert.ok(spawned>=2 && spawned<=3,`provider spawns ${spawned} for 3 explicit requests`);pass('Provider processes never exceed explicit Deep requests');
  }
  await page.getByRole('button',{name:'Pause field',exact:true}).click();const paused=(await worker.evaluate(()=>fixtureMetrics)).analyses;
  await page.locator('#writing').fill('seperate');await page.waitForTimeout(1200);assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,paused);pass('pause clears cache and prevents inference');

@@ -120,6 +120,8 @@ jobs:
           exit $LASTEXITCODE
       - name: Build release app with embedded frontend
         if: ${{ !cancelled() }}
+        env:
+          CARGO_BUILD_JOBS: '4'
         run: |
           npx tauri build --no-bundle -- --locked 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/app-release-build.log"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
