@@ -123,7 +123,7 @@ function close(tabId) {
     if (s.pending?.op === 'deep') { retiring.add(s); cancelDeep(s); s.pending.resolve({error:'disabled'}); }
     else { clearTimeout(s.timer); s.pending?.resolve({error:'disabled'}); s.pending = null; s.port?.disconnect(); }
   }
-  chrome.tabs.sendMessage(tabId, {op: 'disable'}).catch(() => {});
+  if(s) chrome.tabs.sendMessage(tabId, {op: 'disable', epoch:s.epoch}, {documentId:s.documentId}).catch(() => {});
 }
 async function enable(tabId) {
   if (policyChanging) return {status: 'Domain policy changing; enable again after completion'};
@@ -141,7 +141,13 @@ async function enable(tabId) {
   if (sessions.size + retiring.size >= 4) return {status: 'Disable another document first (limit 4)'};
   const epoch = crypto.randomUUID();
   sessions.set(tabId, {origin, epoch, documentId, port: null, pending: null, timer: null, deepProvider: null, grantGeneration: 0, closed: false});
-  const response = await chrome.tabs.sendMessage(tabId, {op: 'enable', epoch}, {documentId});
+  let response;
+  try { response = await chrome.tabs.sendMessage(tabId, {op: 'enable', epoch}, {documentId}); }
+  catch {
+    // A failed old delivery must not revoke a newer grant on the same tab.
+    if(current() && sessions.get(tabId)?.epoch===epoch) close(tabId);
+    return {status:'Document unavailable'};
+  }
   if (!current()) return {status: 'Enable cancelled'};
   if (!response?.ready) { close(tabId); return {status: 'Document unavailable'}; }
   return {status: 'Document enabled. Select a field, then Enable this field.'};

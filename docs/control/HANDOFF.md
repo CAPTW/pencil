@@ -2,6 +2,12 @@
 
 Mission: GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1. This is an incomplete mission checkpoint, not P3-A/P3-B or personal-use acceptance. Read AGENTS.md, the v1.1 contract override, control/mission.json and control/state.json. The Owner has already authorized internal continuation; no fresh per-step approval is needed.
 
+## Activation lifecycle continuation (2026-09-27)
+
+Entry a76b811; evidence `D:/dev/grammar-evidence/grammar-autonomous-r1/resume-r6`. Failed content enable delivery previously retained worker permission/capacity. The enable catch now closes only its still-current generation and exact epoch; an old rejection cannot revoke a newer session. Disable messages carry the saved documentId and epoch, and content ignores stale epochs. Two deterministic production-worker regressions fail before repair (worker-before.log44/46) and pass afterward46/46. Core215/typecheck pass; independent native_host read-only review found no actionable regression.
+
+Browser-wSEvxV is a retained FAIL: the new lifecycle loop reused the fixture's explicitly sensitive-marked textarea, so analysis was correctly denied. The harness restores only that task-owned marker and returns its own tab to front. Browser-5Bcj4p29 local checks PASS, including four re-enable cycles: stale disable does not clear fresh UI, field opt-in is never restored, explicit Apply content rereads succeed and disable removes the UI. This bounded sequence is not prolonged endurance acceptance. No timeout, privacy gate, Provider or native capture activation changed. Exact-source package and full synthetic Deep results must be read from resume-r6 external receipts if produced; old a76b811 artifacts omit this repair.
+
 ## Viewport and scroll continuation (2026-09-26)
 
 Entry9818425; new evidence `D:/dev/grammar-evidence/grammar-autonomous-r1/resume-r5`. A real synthetic resize to320x240 exposed the panel remaining at its old offscreen coordinate (browser-aOq955, retained FAIL). Geometry-only, frame-coalesced resize/scroll updates now clamp measured panel bounds; border-box panel height reserves space for the visible toggle. A ResizeObserver handles content size changes. Disable disconnects observer/listeners and cancels the pending frame. No text read, inference, draft replacement or safety-budget change is part of layout.

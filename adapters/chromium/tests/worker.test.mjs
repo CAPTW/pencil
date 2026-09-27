@@ -13,7 +13,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function event() { const listeners=[];return {addListener(fn){listeners.push(fn);},emit(...args){for(const fn of listeners)fn(...args);}}; }
 function fixture(initial={deniedOrigins:[]}) {
   const sent=[],ports=[],controlPorts=[],timers=new Map();let nextTimer=0,epoch=0,storageGate=null,injectionGate=null,writeGate=null,stored=structuredClone(initial);
-  const injectionGates=new Map(),writes=[];let controlAuto=true;
+  const injectionGates=new Map(),writes=[];let controlAuto=true, enableReplyGate=null;
   const ticket=token=>({installation:'a'.repeat(32),slot:0,generation:1,token});
   const onMessage=event(),onUpdated=event(),onRemoved=event();
   const chrome={
@@ -31,7 +31,7 @@ function fixture(initial={deniedOrigins:[]}) {
           }
         },disconnect(){this.closed++;this.onDisconnect.emit();}};ports.push(port);return port;}},
     tabs:{onUpdated,onRemoved,async get(tabId){return {url:'https://example.test/document/'+tabId};},
-      async sendMessage(tabId,message,options){sent.push({tabId,message,options});return {ready:true};}},
+      async sendMessage(tabId,message,options){sent.push({tabId,message,options});if(message.op==='enable' && enableReplyGate){const gate=enableReplyGate;enableReplyGate=null;return gate.promise;}return {ready:true};}},
     scripting:{async executeScript({target}){const gate=injectionGates.get(target.tabId)||injectionGate;injectionGates.delete(target.tabId);injectionGate=null;return gate?gate.promise:[{frameId:0,documentId:'doc-'+target.tabId}];}},
   };
   const context=vm.createContext({chrome,URL,crypto:{randomUUID:()=>`00000000-0000-4000-8000-${String(++epoch).padStart(12,'0')}`},
@@ -44,6 +44,7 @@ function fixture(initial={deniedOrigins:[]}) {
   const currentEpoch=(tabId=1)=>sent.filter(x=>x.tabId===tabId&&x.message.op==='enable').at(-1)?.message.epoch;
   const request=(id='r1',tabId=1)=>({version:1,op:'analyze',id,epoch:currentEpoch(tabId),revision:1,text:'seperate'});
   return {sent,ports,controlPorts,ticket,controlAuto(value){controlAuto=value;},stored(){return structuredClone(stored);},timers,writes,command,dispatch,sender,request,currentEpoch,onUpdated,onRemoved,
+    delayEnableReply(){return enableReplyGate=deferred();},
     delayStorage(){return storageGate=deferred();},delayWrite(){return writeGate=deferred();},
     delayInjection(tabId){if(tabId!==undefined){const gate=deferred();injectionGates.set(tabId,gate);return gate;}return injectionGate=deferred();},
     fireTimer(){const [id,fn]=timers.entries().next().value;timers.delete(id);fn();}};
@@ -384,4 +385,24 @@ test('disable during receipt acknowledgement leaves no stale cancellation timer'
  f.ports[0].onMessage.emit({id:request.id,epoch:request.epoch,revision:1,provider:'claude',cleanup_complete:true});await tick();
  await f.command('disable');assert.equal((await pending).error,'disabled');replyControl(f);await tick();
  assert.equal(f.timers.size,0);assert.deepEqual(f.stored().deepCleanupPending,[]);assert.equal(f.ports[0].closed,1);
+});
+
+
+test('failed enable delivery releases capacity and content permission',async()=>{
+  const f=fixture();
+  for(let id=1;id<=4;id++) {
+    const gate=f.delayEnableReply(),pending=f.command('enable',id);await tick();
+    gate.reject(Error('document receiver gone'));await pending;
+    assert.equal((await f.dispatch({op:'heartbeat',epoch:f.currentEpoch(id)},f.sender(id))).error,'permission_denied');
+  }
+  assert.match((await f.command('enable',5)).status,/Document enabled/);
+});
+
+test('late rejected enable cannot revoke a newer session',async()=>{
+  const f=fixture(),gate=f.delayEnableReply(),pending=f.command('enable');await tick();
+  const old=f.currentEpoch();await f.command('enable');const current=f.currentEpoch();assert.notEqual(current,old);
+  gate.reject(Error('old receiver gone'));await pending;
+  assert.equal((await f.dispatch({op:'heartbeat',epoch:current},f.sender())).ok,true);
+  const disable=f.sent.find(x=>x.message.op==='disable' && x.message.epoch===old);
+  assert.ok(disable);assert.equal(disable.options.documentId,'doc-1');
 });
