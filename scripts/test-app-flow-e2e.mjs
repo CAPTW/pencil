@@ -311,15 +311,19 @@ try {
   pass('Copy of the edited draft: exact draft on the clipboard, document reread unchanged, no state-changing editor message');
 
   // 2. Copy of the unedited Instant draft: the same single button, and a second
-  //    Copy of the ended capture is not possible.
+  //    Copy of the ended capture is not possible. Dismiss still closes the
+  //    copied draft.
   const copyDoc = 'Copy source line.\r\nthe results is final.';
   await captureAndWaitInstant(0, copyDoc, 'the results is final.', 'the results are final.');
   await declineDeep();
   await copyResult('copy-instant-draft', 'the results are final.');
   assert.equal(await editor.text(0), copyDoc);
   assert.equal(await copy.isDisabled(), true, 'Copy stays disabled until the next capture');
-  await closeWidget();
-  pass('Copy of the unedited Instant draft wrote only the clipboard, never changed the document and ended the capture');
+  const dismissResult = page.getByTestId('dismiss-result');
+  assert.equal(await dismissResult.isEnabled(), true, 'Dismiss stays available for the copied draft');
+  await dismissResult.click();
+  await until('widget hidden by Dismiss', async () => !(await widgetVisible()));
+  pass('Copy of the unedited Instant draft wrote only the clipboard, never changed the document and ended the capture; Dismiss closed the copied draft');
 
   // 3. Cancel: dismissing the capture invalidates it; its token cannot Copy later.
   const cancelDoc = 'Cancel check: please seperate nothing here.';
@@ -361,6 +365,7 @@ try {
   await editor.hotkey();
   await until('shortcut closed the open widget', async () => !(await widgetVisible()));
   assert.equal((await captures()).length, beforeToggle, 'closing press captures nothing');
+  const clipboardBeforeClosed = await editor.clipboard();
   assert.deepEqual(await invokeCopy(staleToken, 'CLOSED-SHOULD-NOT-COPY'), {
     status: 'failed',
     reason: 'invalid_session_state',
@@ -369,6 +374,7 @@ try {
   const reselectToken = await captureAndWaitInstant(0, reselectDoc, 'this are wrong.', 'this is wrong.');
   assert.deepEqual(await invokeCopy(staleToken, 'STALE-SHOULD-NOT-COPY'), {status: 'rejected_stale'});
   assert.equal(await editor.text(0), reselectDoc);
+  assert.equal(await editor.clipboard(), clipboardBeforeClosed, 'closed and stale tokens never write the clipboard');
   await declineDeep();
   await copyResult('copy-reselected', 'this is wrong.');
   assert.equal(await editor.text(0), reselectDoc);
