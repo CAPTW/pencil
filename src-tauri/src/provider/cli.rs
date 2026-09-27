@@ -77,6 +77,24 @@ fn which(name: &str) -> Option<PathBuf> {
     executable_candidates(name).into_iter().next()
 }
 
+/// Rust refuses to pass an argument with a line break to a .cmd or .bat
+/// launcher (an injection guard: "batch file arguments are invalid"), and every
+/// writing request has line breaks. Such a launcher answers the status probe
+/// but can never run a request, so it is reported as unavailable up front
+/// instead of failing every request at spawn.
+pub(crate) fn batch_launcher_reason(path: &Path, cli: &str) -> Option<String> {
+    let batch = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("cmd") || extension.eq_ignore_ascii_case("bat"));
+    batch.then(|| {
+        format!(
+            "{cli} was found only as a batch launcher ({}), which cannot receive a multi-line request on Windows.",
+            path.file_name().and_then(|name| name.to_str()).unwrap_or("script")
+        )
+    })
+}
+
 static CLEANUP_BLOCKED: AtomicBool = AtomicBool::new(false);
 pub(crate) fn cleanup_status() -> Result<(), &'static str> {
     if CLEANUP_BLOCKED.load(Ordering::SeqCst) {
