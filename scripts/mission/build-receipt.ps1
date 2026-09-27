@@ -23,7 +23,7 @@ function Measure-Source {
     if ($LASTEXITCODE -ne 0) { throw 'Source enumeration failed' }
     $path = Join-Path $source $relative
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'Tracked source file missing' }
-    if ((Get-Item -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse source files unsupported' }
+    if ((Get-Item -Force -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse source files unsupported' }
     $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
     "$relative`0$hash"
   }

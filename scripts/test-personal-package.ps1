@@ -44,19 +44,30 @@ function Invoke-HostAnalyze([string]$Executable, [string]$Origin) {
   return $utf8.GetString($bytes, 4, $bytes.Length - 4) | ConvertFrom-Json
 }
 
+# A failed phase leaves a content-free failure receipt (error, position, source
+# status and build log tails) that the job summary prints at the end of the log.
+function Write-Failure($Failure) {
+  $logs = @(Get-ChildItem -LiteralPath $evidence -Recurse -Include 'build-output.log', 'host-build-output.log' -ErrorAction SilentlyContinue |
+    ForEach-Object { [ordered]@{ log = $_.Name; tail = @(Get-Content -LiteralPath $_.FullName -Tail 40) } })
+  $status = @(& git -C $repository status --porcelain=v1 --untracked-files=all 2>$null | Select-Object -First 20)
+  Write-Receipt "$Phase-failure.json" ([ordered]@{
+      phase = $Phase
+      error = $Failure.Exception.Message
+      position = $Failure.InvocationInfo.PositionMessage
+      scriptStack = $Failure.ScriptStackTrace
+      sourceStatus = $status
+      buildLogTails = $logs
+    })
+}
+
+try {
 switch ($Phase) {
   'build' {
     $receiptPath = Join-Path $evidence 'build-receipt.json'
-    try {
-      & (Join-Path $repository 'scripts/mission/build-receipt.ps1') -SourceRoot $repository -ReceiptPath $receiptPath | Out-Null
-    } catch {
-      # The build output is kept out of the step log; show its end on failure.
-      Get-ChildItem -LiteralPath $evidence -Recurse -Include 'build-output.log', 'host-build-output.log' -ErrorAction SilentlyContinue |
-        ForEach-Object { "BUILD_LOG_TAIL $($_.Name)"; Get-Content -LiteralPath $_.FullName -Tail 60 }
-      throw
-    }
+    & (Join-Path $repository 'scripts/mission/build-receipt.ps1') -SourceRoot $repository -ReceiptPath $receiptPath | Out-Null
     $build = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
     Add-Env 'GRAMMAR_APP_EXE' $build.executablePath
+    Add-Env 'GRAMMAR_APP_KIND' 'receipt-bound-release-build'
     $short = $build.after.commit.Substring(0, 12)
     $package = & (Join-Path $repository 'scripts/mission/package.ps1') -ReceiptPath $receiptPath -OutputRoot (Join-Path $env:RUNNER_TEMP "grammar-package-$short") | ConvertFrom-Json
     Add-Env 'GRAMMAR_PACKAGE_ZIP' $package.zip
@@ -102,6 +113,7 @@ switch ($Phase) {
     $response = Invoke-HostAnalyze $hostManifest.path $origin
     if ($response.id -cne 'package' -or @($response.suggestions).Count -lt 1) { throw 'registered host produced no local Instant suggestion' }
     Add-Env 'GRAMMAR_APP_EXE' $install.appExecutable
+    Add-Env 'GRAMMAR_APP_KIND' 'installed-personal-package'
     Add-Env 'GRAMMAR_INSTALLED_HOST' $hostManifest.path
     Add-Env 'GRAMMAR_INSTALLED_EXTENSION' $install.extensionDirectory
     Write-Receipt 'package-install.json' ([ordered]@{
@@ -134,4 +146,8 @@ switch ($Phase) {
       throw 'uninstall left residue'
     }
   }
+}
+} catch {
+  Write-Failure $_
+  throw
 }

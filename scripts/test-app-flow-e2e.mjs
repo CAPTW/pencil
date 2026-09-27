@@ -26,6 +26,7 @@ assert.ok(OWNED_REFS.includes(process.env.GITHUB_REF), 'owned desktop opt-in: GI
 const require = createRequire(import.meta.url);
 const {chromium} = require(process.env.GRAMMAR_PLAYWRIGHT);
 const evidence = resolve(process.env.GRAMMAR_EVIDENCE);
+assert.ok(process.env.GRAMMAR_APP_EXE, 'GRAMMAR_APP_EXE names the built app under test');
 const appExe = resolve(process.env.GRAMMAR_APP_EXE);
 const harnessScript = resolve('src-tauri/tests/native_edit_harness.ps1');
 const cdpPort = 9361;
@@ -350,6 +351,7 @@ try {
     source_sha: process.env.GITHUB_SHA,
     run_id: process.env.GITHUB_RUN_ID,
     classification: 'SYNTHETIC_OWNED_WINDOWS_DESKTOP_BUILT_APP',
+    app_kind: process.env.GRAMMAR_APP_KIND ?? 'unspecified',
     checks,
     failure: failure ? String(failure.message ?? failure).slice(0, 500) : null,
     widget_state: widgetState,
