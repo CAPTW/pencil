@@ -1,4 +1,7 @@
-use crate::capture_session::{ApplyContext, CaptureSessionStore, SessionError, SessionToken};
+use crate::capture_session::{
+    ApplyContext, CaptureSessionStore, NativeEditBinding, SessionError, SessionToken,
+};
+use crate::native_edit::{NativeApplyRefusal, NativeApplyResult};
 use serde::Serialize;
 
 const ACTIVATION_ATTEMPTS: usize = 3;
@@ -12,9 +15,22 @@ pub(crate) enum WaitStage {
 }
 
 pub(crate) trait ApplyPlatform {
-    // HWND/PID and successful SendInput are not document/range authority.
-    // Native platforms remain Copy-only until an atomic editor adapter exists.
+    // HWND/PID and successful SendInput are not document/range authority, so
+    // production platforms never enable the clipboard-paste path below.
     fn has_verified_selection_authority(&mut self) -> bool { false }
+
+    /// The only production mutation path: the lock-verify-replace-reread
+    /// protocol for a standard Edit captured by the qualified native reader.
+    /// Platforms without it change nothing, which yields Copy-only.
+    fn apply_native_edit(
+        &mut self,
+        _top_level: isize,
+        _pid: u32,
+        _binding: &NativeEditBinding,
+        _replacement: &str,
+    ) -> NativeApplyResult {
+        NativeApplyResult::Refused(NativeApplyRefusal::EditorChanged)
+    }
 
     fn is_window(&mut self, hwnd: isize) -> bool;
     fn window_pid(&mut self, hwnd: isize) -> Option<u32>;
@@ -37,6 +53,9 @@ pub(crate) enum ApplyFallbackReason {
     TargetProcessChanged,
     TargetNotForeground,
     TargetChangedBeforePaste,
+    TargetEditorChanged,
+    TargetSourceChanged,
+    TargetSelectionChanged,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -48,6 +67,10 @@ pub(crate) enum ApplyFailureReason {
     ClipboardWriteFailed,
     ClipboardOwnershipLost,
     InputInjectionFailed,
+    /// A native mutation may have happened and could not be verified or undone.
+    TargetMutationUnverified,
+    /// The editor's temporary read-only lock could not be confirmed released.
+    EditorLockNotReleased,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -90,7 +113,10 @@ pub(crate) fn apply_current_session<P: ApplyPlatform>(
             store.finish_apply_success(&context.token)
         }
         ApplyOutcome::Failed {
-            reason: ApplyFailureReason::InputInjectionFailed,
+            reason:
+                ApplyFailureReason::InputInjectionFailed
+                | ApplyFailureReason::TargetMutationUnverified
+                | ApplyFailureReason::EditorLockNotReleased,
         } => store.finish_apply_uncertain_input(&context.token),
         ApplyOutcome::Failed { .. } => store.finish_apply_before_paste_failure(&context.token),
         ApplyOutcome::RejectedStale => Err(SessionError::InvalidState),
@@ -126,6 +152,10 @@ fn execute_apply<P: ApplyPlatform>(
             ApplyFallbackReason::TargetProcessChanged,
             false,
         );
+    }
+
+    if let Some(binding) = &context.native_edit {
+        return apply_native(context, binding, replacement, platform);
     }
 
     if !platform.has_verified_selection_authority() {
@@ -225,6 +255,37 @@ fn execute_apply<P: ApplyPlatform>(
     }
 
     ApplyOutcome::Applied
+}
+
+fn apply_native<P: ApplyPlatform>(
+    context: &ApplyContext,
+    binding: &NativeEditBinding,
+    replacement: &str,
+    platform: &mut P,
+) -> ApplyOutcome {
+    match platform.apply_native_edit(context.target.hwnd, context.target.pid, binding, replacement) {
+        NativeApplyResult::Applied => {
+            // The mutation is already verified; returning focus is best effort.
+            if platform.hide_widget().is_ok() {
+                platform.request_foreground(context.target.hwnd);
+            }
+            ApplyOutcome::Applied
+        }
+        NativeApplyResult::Refused(refusal) => {
+            let reason = match refusal {
+                NativeApplyRefusal::EditorChanged => ApplyFallbackReason::TargetEditorChanged,
+                NativeApplyRefusal::SourceChanged => ApplyFallbackReason::TargetSourceChanged,
+                NativeApplyRefusal::SelectionChanged => ApplyFallbackReason::TargetSelectionChanged,
+            };
+            copy_fallback(platform, replacement, reason, false)
+        }
+        NativeApplyResult::Unverified => ApplyOutcome::Failed {
+            reason: ApplyFailureReason::TargetMutationUnverified,
+        },
+        NativeApplyResult::LockNotReleased { .. } => ApplyOutcome::Failed {
+            reason: ApplyFailureReason::EditorLockNotReleased,
+        },
+    }
 }
 
 fn copy_fallback<P: ApplyPlatform>(
