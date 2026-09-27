@@ -108,7 +108,7 @@ src-tauri\target\release\bundle\nsis\Codex Pencil_0.1.0_x64-setup.exe
 
 ### Private portable personal bundle
 
-For the currently qualified scope, use the receipt-bound personal package. That scope is standard Edit capture with Copy-only desktop Apply (Grammar never changes text inside another application's native editor), plus the Chromium extension and native host (which replaces text only in explicitly enabled browser fields, on explicit Accept or Apply edit, with reread). Build it with `scripts/mission/build-receipt.ps1` and `scripts/mission/package.ps1`, then use `Install-Grammar.ps1` and `Uninstall-Grammar.ps1` inside the package. [`scripts/package/PERSONAL_USE.md`](scripts/package/PERSONAL_USE.md) is the user guide and `docs/control/HANDOFF.md` holds the evidence. The older bundles below predate that qualification.
+For the currently qualified scope, use the receipt-bound personal package. That scope is standard Edit capture with a single desktop Copy button (Grammar never changes text inside another application; the separate Apply button was merged into Copy), plus the Chromium extension and native host (which replaces text only in explicitly enabled browser fields, on explicit Accept or Apply edit, with reread). Build it with `scripts/mission/build-receipt.ps1` and `scripts/mission/package.ps1`, then use `Install-Grammar.ps1` and `Uninstall-Grammar.ps1` inside the package. [`scripts/package/PERSONAL_USE.md`](scripts/package/PERSONAL_USE.md) is the user guide and `docs/control/HANDOFF.md` holds the evidence. The older bundles below predate that qualification.
 
 For current daily use, build the R8 portable folder with `scripts/build-daily-use-bundle.ps1`. The historical P2-01 personal-use deliverable below remains the reproducible portable ZIP used by that earlier packaging chain, not the developer bundle output above. It is unsigned, has no updater or public publication step, and keeps exact `codex-cli 0.144.6` as an external prerequisite. Packaging uses existing locked dependencies only; do not run an install or update command as part of this workflow.
 
@@ -170,7 +170,7 @@ The helper prints Node/npm/Codex/Rust tool versions, runs the frontend checks, a
 - On hotkey press, Rust reads the selection directly from the focused control of the foreground window, and only when that control is a standard Windows `Edit` control: exact class `Edit`, Unicode, visible, enabled, not `ES_PASSWORD`, no password character, owned by the window's process, not a known password-manager or credential UI process, and under 65,535 UTF-16 units (for example classic Notepad or a dialog text box). Every other control, including Windows 11 Notepad, RichEdit, WinForms/WPF, browsers and Office, is denied before any text-bearing message. Capture never uses the clipboard or simulated keys.
 - The primary shortcut is a toggle: pressed while the widget is visible it hides the widget and cancels the current capture. Press it again to capture a new selection.
 - Before the widget is shown or focused, Rust captures the foreground target window and its owning process for a backend-owned capture session. Raw target handles and process identifiers are never sent to React.
-- The full selected text is kept in Rust memory for the current capture and is not stored in settings or logged. React receives the selected text in the one-shot capture event only to derive the displayed character count, then retains the opaque session token rather than the source text. The local React preview receives the replacement, summary, confidence, and edit snippets (`before`/`after`/`reason`) returned by Codex so the user can review before applying.
+- The full selected text is kept in Rust memory for the current capture and is not stored in settings or logged. React receives the selected text in the one-shot capture event only to derive the displayed character count, then retains the opaque session token rather than the source text. The local React preview receives the replacement, summary, confidence, and edit snippets (`before`/`after`/`reason`) returned by Codex so the user can review before copying.
 - Rewrite modes: `grammar`, `natural`, `concise`, `polite`, and one promptless `translate` mode.
 - Translation infers the source language and supports exact targets `ko`, `en`, `ja`, `zh-Hans`, and `zh-Hant`. There is no free-form Prompt or chat input.
 - The model is instructed to return translated text only. Rust binds the result to the exact capture session, generation, mode, and target, then locally applies either `translation_only` or `source_with_translation` using the backend-owned exact source.
@@ -178,8 +178,8 @@ The helper prints Node/npm/Codex/Rust tool versions, runs the frontend checks, a
 - The app must not be changed to launch Codex app-server with a websocket, TCP listener, or non-local network transport.
 - App Server uses a marked, empty, per-client working directory under `%TEMP%\codex-pencil-runtime-v1`. It is never the repository, Documents, Desktop, OneDrive, or a user project, and it is removed after bounded process shutdown. A separate app-owned `%LOCALAPPDATA%\com.local.codexpencil\codex-home-v1` isolates Codex Pencil authentication from the user's general Codex config, MCP servers, plugins, skills, and hooks. Codex itself owns the credential payload; Codex Pencil neither reads nor copies token values. A `config.toml` in this dedicated home is rejected fail-closed.
 - Rewrites use ephemeral Codex threads with `approvalPolicy: "never"`, the pinned stable `readOnly` sandbox policy with tool network disabled, and a strict JSON schema requiring `{ replacement, changed, summary, confidence }`. Optional `edits` remain available for the existing review UI, and `additionalProperties` is `false`. Shell, MCP, plugin, skill, browser, image, multi-agent, history, analytics, and telemetry surfaces are disabled at child startup; unexpected tool, approval, permission, or dynamic activity fails the turn.
-- Source text is rejected before client/thread acquisition above 12,000 Unicode scalars or 48 KiB UTF-8. Model replacement is rejected above 24,000 scalars or 96 KiB, and locally formatted final Apply text is rejected before clipboard/input mutation above 36,000 scalars or 144 KiB. Text is never truncated or silently coerced.
-- Applying a rewrite requires the exact current session identifier and generation. Rust validates lifecycle state, target-window validity and owning process, then copies the approved replacement to the clipboard. It sends no message and no simulated `Ctrl+V` to the captured editor: Apply on a desktop editor is Copy-only (see the Target-bound Apply Contract).
+- Source text is rejected before client/thread acquisition above 12,000 Unicode scalars or 48 KiB UTF-8. Model replacement is rejected above 24,000 scalars or 96 KiB, and locally formatted final Copy text is rejected before the clipboard write above 36,000 scalars or 144 KiB. Text is never truncated or silently coerced.
+- Copying a result requires the exact current session identifier and generation. Rust validates lifecycle state, target-window validity and owning process, then copies the approved replacement to the clipboard. It sends no message and no simulated `Ctrl+V` to the captured editor; the user pastes the result (see the Target-bound Copy Contract).
 - Settings are stored locally in the Tauri app config directory as `settings.json`; they contain preferences only, not selected text, replacements, clipboard contents, or history.
 
 ## Codex Auth Model
@@ -221,24 +221,16 @@ The fingerprint algorithm and executable resolution policy are recorded in `src-
 
 The app does not implement custom OAuth, does not store or display tokens, does not use an OpenAI API key, and does not expose a network listener.
 
-## Target-bound Apply Contract
+## Target-bound Copy Contract
 
-- Each successful capture creates one in-memory lifecycle: `Captured -> Rewriting -> Ready -> Applying -> Completed`, with explicit retry/cancellation transitions for failures.
+- Each successful capture creates one in-memory lifecycle: `Captured -> Rewriting -> Ready -> Applying -> Completed`, with explicit retry/cancellation transitions for failures. `Applying` is the backend's name for the Copy step; the IPC command keeps its earlier name `apply_replacement`.
 - A new capture or dismiss invalidates the old token. An asynchronous rewrite completion is accepted only if its session identifier and generation are still current; stale completions cannot become `Ready`.
-- Translation additionally binds `Ready` and Apply to the exact mode and target language. A target/mode change invalidates an older result without changing the clipboard or sending input. Apply-format changes remain local and do not require another model request.
-- Terminology-aware rewrites additionally bind `Ready` and Apply to the enabled flags, active profile, store revision, and deterministic matched entry IDs. A profile, dictionary, or terminology-setting change makes the older result stale before clipboard or input activity.
-- Stale or mismatched Apply requests are rejected before any clipboard write, widget action, or keyboard input.
-- A current `Ready` session first revalidates the captured window and process. Grammar then never changes text inside the captured editor: a standard Edit belongs to another application, which can change its own text between any two messages Grammar sends (`EM_SETREADONLY` only blocks user typing), and no message sequence verifies a range and replaces it atomically. An earlier locked verify-replace-reread protocol overwrote such an application edit and could replace a moved range and then restore the whole text (review findings R1/R2); it was removed. Native Apply is therefore Copy-only with reason `target_mutation_disabled`: the approved replacement is copied, Grammar sends the captured editor no text, selection or state-changing message (Windows may still notify a previous clipboard owner, such as that control, that it lost the clipboard), and the widget reports that the user must paste manually. Automatic native Apply is not implemented.
-- Every other case copies the approved replacement the same way. That includes a missing target or a changed process and any target not captured by the native reader.
-- Copy-only intentionally leaves the approved replacement on the clipboard. The stored Restore clipboard preference is kept in the settings schema but is no longer shown in the widget.
-- The earlier clipboard-and-`SendInput` paste path is not reachable in production because no production platform grants it selection authority. Its ignored interactive harness uses only synthetic text and can still be run with a separate target directory:
-
-```powershell
-$env:CARGO_TARGET_DIR = "$PWD\src-tauri\target\p0-02-verification"
-cargo test --manifest-path src-tauri/Cargo.toml p0_02_windows_live_tests::windows_live_target_bound_apply_acceptance -- --ignored --exact --nocapture
-```
-
-The harness requires an interactive Windows desktop where `SendInput` is actually delivered to the verified foreground editor. An environment that accepts the input records but does not deliver them cannot be treated as live acceptance evidence.
+- Translation additionally binds `Ready` and Copy to the exact mode and target language. A target/mode change invalidates an older result without changing the clipboard. Copy-format changes (stored as `applyFormat`) remain local and do not require another model request.
+- Terminology-aware rewrites additionally bind `Ready` and Copy to the enabled flags, active profile, store revision, and deterministic matched entry IDs. A profile, dictionary, or terminology-setting change makes the older result stale before any clipboard write.
+- Stale or mismatched Copy requests are rejected before any clipboard write.
+- A current `Ready` session first revalidates the captured window and process. Grammar then never changes text inside the captured editor: a standard Edit belongs to another application, which can change its own text between any two messages Grammar sends (`EM_SETREADONLY` only blocks user typing), and no message sequence verifies a range and replaces it atomically. An earlier locked verify-replace-reread protocol overwrote such an application edit and could replace a moved range and then restore the whole text (review findings R1/R2); it was removed, and the older clipboard-and-`SendInput` paste path was deleted with it. The desktop has one result action, Copy (the separate Apply button was merged into it): the approved replacement is copied with reason `target_mutation_disabled`, Grammar sends the captured editor no text, selection or state-changing message (Windows may still notify a previous clipboard owner, such as that control, that it lost the clipboard), and the widget shows `Copied — paste it into the field` with the draft still visible. The user pastes it. Copy stays disabled until the next capture. Automatic replacement in desktop editors is not implemented.
+- Every other case copies the approved replacement the same way. That includes a missing target or a changed process, where the widget adds a note, and any target not captured by the native reader.
+- Copy intentionally leaves the approved replacement on the clipboard. The stored Restore clipboard preference is kept so existing settings files stay valid, but nothing reads it and the widget does not show it.
 
 P1-01 ignored live checks use actual Windows global-hotkey registration, an actual Tauri tray/window runtime, and the existing target-bound editor harness with synthetic text only:
 
@@ -260,8 +252,8 @@ The personal dictionary is local product configuration, not document or rewrite 
 - Automatic matching is local, NFC-normalized, exact `whole_phrase` matching with aliases and deterministic profile/language/length/priority/time/ID precedence. It does not use fuzzy matching, embeddings, document scanning, or a database.
 - Only approved entries from `global` and the active profile that actually match the backend-owned selected text are serialized as request constraints. The subset is capped at 50 entries and 16 KiB. Notes, profile names, usage counters, timestamps, unmatched entries, suggested/disabled entries, UI search text, and the full dictionary are not sent.
 - Selected text and terminology constraints are encoded as untrusted JSON data in the existing stdio App Server request. Protected terms are preserve-exact constraints; translation and preferred entries carry only the matched source and preferred form.
-- Result validation is local. Missing protected or preferred forms, unverified usage, matcher truncation, and conflicts produce review warnings; they do not silently rewrite or auto-Apply the result.
-- `usageCount` is best-effort and increments only after the user approves an Apply or copy-only action. No sentence, result, clipboard value, Prompt, or model output is stored with it.
+- Result validation is local. Missing protected or preferred forms, unverified usage, matcher truncation, and conflicts produce review warnings; they do not silently rewrite or auto-copy the result.
+- `usageCount` is best-effort and increments only after the user copies the result. No sentence, result, clipboard value, Prompt, or model output is stored with it.
 - JSON export is the versioned profile/entry store. CSV uses fixed RFC 4180 columns and CRLF records. Import accepts at most 2 MiB, performs an expiring dry run, reports duplicates/conflicts, applies only valid non-conflicting data in one revision, and rejects a stale plan if the store changed.
 - If both main and backup are invalid, the app exposes a content-free unrecoverable state and does not overwrite either automatically. The user must explicitly reset or import a valid recovery file.
 
@@ -274,7 +266,7 @@ node scripts/test-terminology-contract.mjs
 npm run typecheck
 ```
 
-The ignored P1-02 Windows acceptance uses only owned temporary app data and bounded synthetic editor windows. It exercises persistence/recovery and terminology-bound target Apply without live model inference:
+The ignored P1-02 Windows acceptance uses only owned temporary app data and bounded synthetic editor windows. It exercises persistence/recovery and terminology-bound Copy without live model inference:
 
 ```powershell
 $env:CARGO_TARGET_DIR = Join-Path $env:TEMP "grammar-p1-02-live"
@@ -291,7 +283,7 @@ cargo test --manifest-path src-tauri/Cargo.toml p1_02_windows_live_tests::p1_02_
 - Selected text is sent to Codex only after the user presses the configured shortcut, accepts the cloud disclosure, and the app performs a rewrite.
 - The local preview UI may receive and display replacement text plus short edit metadata. Edit metadata can include snippets from the selected text.
 - Prompts and selected text should not be logged. Codex app-server stderr is drained and discarded by the app.
-- Rewrite application is always user-confirmed through the Apply button.
+- A result leaves the widget only when the user presses Copy. Grammar never changes text inside other applications.
 
 ## Second-Pass Verification Notes
 
@@ -303,10 +295,9 @@ cargo test --manifest-path src-tauri/Cargo.toml p1_02_windows_live_tests::p1_02_
 
 ## Known Limitations
 
-- Clipboard restore is text-only. Complex clipboard formats such as images, files, rich HTML/RTF, or app-private formats may not be preserved after the copy/paste workflow.
-- Clipboard sequence checks narrow ownership races but cannot atomically preserve or reconstruct unsupported rich/non-text formats. Copy-only fallback deliberately replaces the clipboard text and does not restore it.
+- Copy writes plain text and deliberately replaces what the clipboard held, including images, files, rich HTML/RTF, or app-private formats. It does not restore the earlier clipboard content.
 - Native capture denies `ES_PASSWORD` fields, fields that report a password character, and a fixed list of password-manager and credential UI processes before any text-bearing message. A secret typed into an ordinary Edit field of another app cannot be recognized. Do not use the hotkey in secret fields.
-- Only standard Edit controls are supported natively. Rich or custom editors, elevated apps (UIPI) and apps that answer slowly are denied or end in Copy-only. Use the Chromium adapter for browser text.
+- Only standard Edit controls are supported natively. Rich or custom editors, elevated apps (UIPI) and apps that answer slowly are denied. Use the Chromium adapter for browser text.
 - Codex CLI must be installed and authenticated-capable.
 - Cancel, dismiss, recapture, mode/target/profile/revision changes, and application exit issue at most one bounded `turn/interrupt` for the exact active turn. A timeout or process failure still relies on the existing stale-result backstop; the app never retries an uncertain old turn or applies its completion.
 - The pinned `codex-cli 0.144.6` `readOnly` schema exposes `networkAccess` but no stable custom readable-root list. Codex Pencil therefore combines the narrowest schema-valid sandbox with an empty isolated cwd, a dedicated config-free Codex home, disabled tool surfaces, and fail-closed event inspection. Supporting a newer CLI requires a new versioned schema authority and fresh acceptance.
@@ -334,13 +325,13 @@ cd D:\dev\repos\Grammar\src-tauri\target\release
 - Confirm the floating window appears near the cursor and does not show the full selected source text.
 - Verify each rewrite mode produces a non-empty replacement, summary, confidence, and optional local edit details.
 - In Translate mode, verify all five targets, `translation_only`, and exact local `source_with_translation` composition for single-line and CRLF multiline source.
-- Confirm Apply is disabled until a rewrite result exists and remains disabled while a rewrite is pending.
-- Click Apply and confirm the original standard Edit field is unchanged, the widget shows `Copied — paste manually`, and the replacement is on the clipboard.
-- Close the captured target before Apply and confirm no automatic paste occurs, the replacement remains on the clipboard, and the widget instructs you to paste manually.
-- Start a new capture before an older rewrite completes and confirm the older result cannot replace or Apply against the new capture.
-- Keep typing in the field while clicking Apply and confirm typing is never blocked and nothing Grammar sends changes the field (Copy-only).
+- Confirm the widget shows one result button, Copy, which is disabled until a result exists (the local Instant draft or a Deep rewrite) and remains disabled while a rewrite is pending.
+- Click Copy and confirm the original standard Edit field is unchanged, the widget shows `Copied — paste it into the field` with the draft still visible, the result is on the clipboard, and Copy stays disabled until the next capture.
+- Close the captured target before Copy and confirm nothing is pasted, the result is on the clipboard, and the widget notes that the captured window is gone.
+- Start a new capture before an older rewrite completes and confirm the older result cannot be copied for the new capture.
+- Keep typing in the field while clicking Copy and confirm typing is never blocked and nothing Grammar sends changes the field.
 - Press the hotkey with no selected text and confirm the No text selected state.
-- Copy an image or file reference to the clipboard, run a text rewrite, and confirm the documented text-only clipboard limitation is acceptable.
+- Copy an image or file reference to the clipboard, then Copy a result, and confirm the documented limitation (the earlier clipboard content is replaced) is acceptable.
 - Inspect stdout/stderr or any local diagnostic output and confirm selected text, prompts, raw model output, clipboard contents, and tokens are not logged.
 - Smoke test one installer when appropriate:
 
