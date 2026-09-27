@@ -308,7 +308,7 @@ fn production_csp_is_non_null_and_remote_navigation_is_not_enabled() {
 fn supported_capture_does_not_mutate_or_read_clipboard() {
     let source = include_str!("clipboard.rs");
     let capture = &source[..source.find("async fn wait_for_capture_modifiers_released").unwrap()];
-    assert!(capture.contains("read_supported_selection()?"));
+    assert!(capture.contains("read_supported_selection(top_level)?"));
     assert!(!capture.contains("write_clipboard_text("));
     assert!(!capture.contains("read_clipboard_text("));
     assert!(!capture.contains("send_copy_shortcut"));

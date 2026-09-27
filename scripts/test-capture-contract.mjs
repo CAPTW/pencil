@@ -81,3 +81,23 @@ assert.equal(
   contract.parseApplyOutcome({ status: "failed", reason: "unknown_reason" }),
   null,
 );
+
+for (const reason of ["target_editor_changed", "target_source_changed", "target_selection_changed"]) {
+  assert.deepEqual(contract.parseApplyOutcome({ status: "copied_fallback", reason }), {
+    status: "copied_fallback",
+    reason,
+  });
+  assert.match(contract.copiedFallbackMessage(reason), /nothing was replaced|cannot be changed safely/);
+  assert.match(contract.copiedFallbackMessage(reason), /clipboard/);
+}
+for (const reason of ["target_mutation_unverified", "editor_lock_not_released"]) {
+  assert.deepEqual(contract.parseApplyOutcome({ status: "failed", reason }), { status: "failed", reason });
+  assert.equal(contract.applyFailureEndsCapture(reason), true);
+  assert.match(contract.applyFailureMessage(reason), /nothing will be retried/);
+}
+assert.equal(contract.applyFailureEndsCapture("clipboard_write_failed"), false);
+assert.equal(
+  contract.parseApplyOutcome({ status: "copied_fallback", reason: "target_unknown_reason" }),
+  null,
+);
+console.log("capture contract: PASS");

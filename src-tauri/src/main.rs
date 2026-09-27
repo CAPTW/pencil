@@ -12,6 +12,7 @@ mod codex_home;
 mod content_limits;
 mod device_login;
 mod diagnostics;
+mod native_edit;
 mod p3_03_runtime;
 mod prerequisites;
 mod provider;
@@ -36,6 +37,9 @@ mod p0_02_contract_tests;
 
 #[cfg(all(test, windows))]
 mod p0_02_windows_live_tests;
+
+#[cfg(all(test, windows))]
+mod native_edit_live_tests;
 
 #[cfg(test)]
 mod p1_01_contract_tests;
@@ -1895,15 +1899,22 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
                 let token = {
                     let state = app.state::<AppState>();
                     let mut store = state.capture.lock().await;
-                    store
-                        .capture(
+                    match capture.native_edit.clone() {
+                        Some(binding) => store.capture_native(
+                            Uuid::new_v4().to_string(),
+                            capture.selected_text.clone(),
+                            target,
+                            binding,
+                        ),
+                        None => store.capture(
                             Uuid::new_v4().to_string(),
                             capture.selected_text.clone(),
                             target,
                             capture.previous_text,
                             capture.owned_sequence,
-                        )
-                        .map_err(|error| error.code().to_string())?
+                        ),
+                    }
+                    .map_err(|error| error.code().to_string())?
                 };
                 Ok(PreparedCapture {
                     token,
