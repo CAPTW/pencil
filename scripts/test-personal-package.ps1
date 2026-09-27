@@ -137,8 +137,8 @@ switch ($Phase) {
       registryKey = Test-Path -LiteralPath $install.nativeHost.registryKey
       appData = Test-Path -LiteralPath (Join-Path $env:APPDATA 'com.local.codexpencil')
       localAppData = Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'com.local.codexpencil')
-      # Any process still running an installed binary is residue.
-      processes = @(Get-Process -ErrorAction SilentlyContinue |
+      # Any process still running one of the installed binaries is residue.
+      processes = @(Get-Process -Name 'codex-pencil', 'grammar-chromium-host' -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -and $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) }).Count
     }
     Write-Receipt 'package-remove.json' ([ordered]@{ uninstaller = $result; independentCheck = $independent })
