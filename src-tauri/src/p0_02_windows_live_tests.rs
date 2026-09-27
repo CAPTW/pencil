@@ -257,6 +257,7 @@ impl Drop for CloudTestReceipt {
             "FAIL"
         };
         eprintln!("CLOUD_TEST_RESULT {} {status}", self.test);
+        eprintln!("CLOUD_TEST_CLEANUPS {} {:?}", self.test, self.cleanups);
         let Some(root) = std::env::var_os("GRAMMAR_EVIDENCE") else {
             return;
         };

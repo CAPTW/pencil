@@ -118,6 +118,12 @@ jobs:
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
           cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil native_edit_live_tests::cloud_owned_desktop_native_apply -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native/native-apply.log"
           exit $LASTEXITCODE
+      - name: Build release app with embedded frontend
+        if: ${{ !cancelled() }}
+        run: |
+          npx tauri build --no-bundle -- --locked 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/app-release-build.log"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          "GRAMMAR_APP_EXE=$env:GITHUB_WORKSPACE/src-tauri/target/release/codex-pencil.exe" >> $env:GITHUB_ENV
       - name: Build native host and synthetic process
         if: ${{ !cancelled() }}
         run: |
@@ -153,6 +159,13 @@ jobs:
           "GRAMMAR_PLAYWRIGHT=$pw" >> $env:GITHUB_ENV
           $browser=node -e "console.log(require(process.argv[1]).chromium.executablePath())" "$pw"
           "GRAMMAR_CHROMIUM=$browser" >> $env:GITHUB_ENV
+      - name: Built app user flow (Instant, Apply, Copy, cancel, reselect, stale)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 8
+        run: |
+          $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
+          node scripts/test-app-flow-e2e.mjs 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/app-flow.log"
+          exit $LASTEXITCODE
       - name: Chromium opt-in and synthetic Deep integration
         if: ${{ !cancelled() }}
         run: |
@@ -176,6 +189,8 @@ jobs:
             receipts_bound_to_source = (@($receipts | Where-Object { $_.source_sha -ne $env:GITHUB_SHA }).Count -eq 0)
           } | ConvertTo-Json -Depth 4 | Set-Content "$e/summary.json"
           Get-Content "$e/summary.json"
+          # Receipts are content-free; print them so the log alone is sufficient evidence.
+          Get-ChildItem "$e/native" -Filter *.json -ErrorAction SilentlyContinue | ForEach-Object { "RECEIPT $($_.Name)"; Get-Content $_.FullName -Raw }
       - name: Upload synthetic evidence (no executable release)
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -190,5 +205,6 @@ jobs:
             ${{ runner.temp }}/grammar-evidence/native/*.log
             ${{ runner.temp }}/grammar-evidence/logs/*.log
             ${{ runner.temp }}/grammar-evidence/host-deep/receipt.json
+            ${{ runner.temp }}/grammar-evidence/app-flow/result.json
             ${{ runner.temp }}/grammar-evidence/browser-*/result.json
             ${{ runner.temp }}/grammar-evidence/browser-*/failure.json
