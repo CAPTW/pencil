@@ -96,8 +96,6 @@ fn line_structure_rejection_resets_the_bound_session_for_a_safe_retry() {
             "line-structure-session".to_string(),
             "selected paragraph\r\n".to_string(),
             WindowTarget::new(101, 202),
-            None,
-            None,
         )
         .expect("synthetic capture must succeed");
     let intent = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
@@ -323,8 +321,6 @@ fn active_turn_is_bound_to_the_exact_rewriting_session_and_taken_once_on_cancel(
             "session-interrupt".to_string(),
             "synthetic-source".to_string(),
             WindowTarget::new(101, 202),
-            None,
-            None,
         )
         .expect("synthetic capture must succeed");
     let intent = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
@@ -349,8 +345,6 @@ fn recapture_takes_the_old_active_turn_and_stale_completion_cannot_become_ready(
             "session-old".to_string(),
             "synthetic-old".to_string(),
             WindowTarget::new(101, 202),
-            None,
-            None,
         )
         .expect("first capture must succeed");
     let intent = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
@@ -368,8 +362,6 @@ fn recapture_takes_the_old_active_turn_and_stale_completion_cannot_become_ready(
             "session-new".to_string(),
             "synthetic-new".to_string(),
             WindowTarget::new(303, 404),
-            None,
-            None,
         )
         .expect("new capture must succeed");
     assert_ne!(first, second);
@@ -398,8 +390,6 @@ fn mode_and_terminology_revision_changes_take_the_active_turn_once() {
             "mode-session".to_string(),
             "synthetic-source".to_string(),
             WindowTarget::new(101, 202),
-            None,
-            None,
         )
         .expect("mode fixture capture must succeed");
     let grammar = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
@@ -429,8 +419,6 @@ fn mode_and_terminology_revision_changes_take_the_active_turn_once() {
             "terminology-session".to_string(),
             "synthetic-source".to_string(),
             WindowTarget::new(303, 404),
-            None,
-            None,
         )
         .expect("terminology fixture capture must succeed");
     terminology_store

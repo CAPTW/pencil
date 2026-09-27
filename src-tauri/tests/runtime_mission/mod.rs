@@ -318,8 +318,6 @@ async fn stale_cancel_does_not_target_new_valid_capture() {
                 "current".into(),
                 "Synthetic.".into(),
                 capture_session::WindowTarget::new(1, 1),
-                None,
-                None,
             )
             .unwrap();
         capture.begin_rewrite_bound(&token, intent.clone()).unwrap();
