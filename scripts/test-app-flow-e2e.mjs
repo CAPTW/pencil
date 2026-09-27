@@ -422,6 +422,8 @@ try {
   assert.notEqual(otherToken.sessionId, staleToken.sessionId);
   pass('stale sessions were rejected without a clipboard write and the current capture was copied; neither document changed');
 
+  await closeWidget();
+
   // Steps 6-13 use Deep through the synthetic executable. The Provider choice
   // and consent are saved the way the consent dialog saves them; the widget
   // reloads to pick them up.

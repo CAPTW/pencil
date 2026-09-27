@@ -56,6 +56,7 @@ const RUNTIME_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   session_token_required: "The widget lost track of the current capture. Capture the selection again.",
   rewrite_interrupted: "The Deep request was interrupted. Run Deep again.",
   cloud_processing_disclosure_required: "Review cloud processing before using Deep.",
+  codex_unavailable: "Codex CLI was not found. Instant still works; Deep with Codex needs it, or choose another Provider in Settings.",
 };
 
 export function userFacingRuntimeErrorMessage(error: unknown): string {
