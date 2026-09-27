@@ -196,14 +196,20 @@ def base_check(task, identity):
         require(task["base_" + field] == identity[field], "current main base " + field + " mismatch")
 
 
+# Owner-authorized push/CI destinations (contract 1.2.0 and 1.3.0 amendments).
+GITHUB_VALIDATION_BRANCHES = ("codex/grammar-autonomous-r1", "claude/eloquent-faraday-hh62qc")
+
+
 def mission_check(value):
     require(value.get("mission_id") == "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1", "unknown mission")
     require(value.get("internal_continuation") is True, "explicit internal continuation required")
     require(value.get("scope_expansion") is False, "mission scope expansion prohibited")
     require(value.get("remote_publication") is False, "remote publication prohibited")
     if "github_validation" in value:
-        expected = {'repository': 'CAPTW/pencil', 'branch': 'codex/grammar-autonomous-r1', 'push': True, 'standard_windows_ci': True, 'release': False, 'live_provider': False}
-        require(json.dumps(value["github_validation"], sort_keys=True) == json.dumps(expected, sort_keys=True), "GitHub validation scope mismatch")
+        scope = value["github_validation"]
+        require(isinstance(scope, dict) and scope.get("branch") in GITHUB_VALIDATION_BRANCHES, "GitHub validation scope mismatch")
+        expected = {'repository': 'CAPTW/pencil', 'branch': scope["branch"], 'push': True, 'standard_windows_ci': True, 'release': False, 'live_provider': False}
+        require(json.dumps(scope, sort_keys=True) == json.dumps(expected, sort_keys=True), "GitHub validation scope mismatch")
 
 
 def state_check(state):
@@ -336,6 +342,14 @@ def self_test(root):
         rejects('GitHub scope ' + field, lambda invalid=invalid: mission_check(invalid))
     invalid = copy.deepcopy(cloud); invalid['github_validation']['push'] = 1
     rejects('GitHub boolean type', lambda: mission_check(invalid))
+    session = copy.deepcopy(cloud); session['github_validation']['branch'] = 'claude/eloquent-faraday-hh62qc'
+    mission_check(session)
+    for branch in ('main', 'claude/other-session', 'codex/grammar-autonomous-r1/extra'):
+        invalid = copy.deepcopy(cloud); invalid['github_validation']['branch'] = branch
+        rejects('GitHub branch ' + branch, lambda invalid=invalid: mission_check(invalid))
+    for field in ('release', 'live_provider'):
+        invalid = copy.deepcopy(session); invalid['github_validation'][field] = True
+        rejects('GitHub session ' + field, lambda invalid=invalid: mission_check(invalid))
     # Test real pin comparison with in-memory path stand-ins, without writing fixtures.
     class FakePath:
         def __init__(self, rel=""): self.rel = rel

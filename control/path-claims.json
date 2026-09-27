@@ -37,9 +37,9 @@
       "claim_type": "exclusive",
       "created_at": "2026-09-25T00:00:00Z",
       "expires_at": null,
-      "release_state": "active",
+      "release_state": "released",
       "conflicting_claim": null,
-      "owner_override": "Resumed mission: bounded phase diagnostics; shared facade dependencies transferred by integrator"
+      "owner_override": "Resumed mission: bounded phase diagnostics; shared facade dependencies transferred by integrator; released on claude/eloquent-faraday-hh62qc: Owner-approved transfer to claude-cloud (contract 1.3.0)"
     },
     {
       "task_id": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
@@ -53,9 +53,9 @@
       "claim_type": "exclusive",
       "created_at": "2026-09-25T00:00:00Z",
       "expires_at": null,
-      "release_state": "active",
+      "release_state": "released",
       "conflicting_claim": null,
-      "owner_override": "Resumed mission bounded native host actor and protocol tests"
+      "owner_override": "Resumed mission bounded native host actor and protocol tests; released on claude/eloquent-faraday-hh62qc: Owner-approved transfer to claude-cloud (contract 1.3.0)"
     },
     {
       "task_id": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
@@ -106,9 +106,9 @@
       "claim_type": "exclusive",
       "created_at": "2026-09-25T00:00:00Z",
       "expires_at": null,
-      "release_state": "active",
+      "release_state": "released",
       "conflicting_claim": null,
-      "owner_override": "Explicit mission scope; single integrator serializes shared files"
+      "owner_override": "Explicit mission scope; single integrator serializes shared files; released on claude/eloquent-faraday-hh62qc: Owner-approved transfer to claude-cloud (contract 1.3.0)"
     },
     {
       "task_id": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
@@ -125,9 +125,36 @@
       "claim_type": "exclusive",
       "created_at": "2026-09-25T00:00:00Z",
       "expires_at": null,
+      "release_state": "released",
+      "conflicting_claim": null,
+      "owner_override": "Resumed mission shared executor extraction; other prior claims released for integrator; released on claude/eloquent-faraday-hh62qc: Owner-approved transfer to claude-cloud (contract 1.3.0)"
+    },
+    {
+      "task_id": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
+      "agent_id": "claude-cloud",
+      "base_head": "4e833988ed27086dd6d4acb78d39fc3e9c98c707",
+      "claimed_paths": [
+        "src/**",
+        "src-tauri/**",
+        "adapters/**",
+        "scripts/**",
+        "docs/**",
+        "control/**",
+        ".github/**",
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".cursor/rules/grammar-project.mdc",
+        "package.json",
+        "package-lock.json",
+        "tsconfig.json",
+        "README.md"
+      ],
+      "claim_type": "exclusive",
+      "created_at": "2026-09-27T06:00:00Z",
+      "expires_at": null,
       "release_state": "active",
       "conflicting_claim": null,
-      "owner_override": "Resumed mission shared executor extraction; other prior claims released for integrator"
+      "owner_override": "Owner 2026-09-27 cloud session: sole integrator for the eight-step continuation on claude/eloquent-faraday-hh62qc; codex/grammar-autonomous-r1 claims are unaffected on that branch"
     }
   ]
 }

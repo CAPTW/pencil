@@ -1,6 +1,6 @@
 {
   "task_id": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
-  "owner_decision": "Owner mission prompt 2026-09-25, explicit local autonomous development authorization; Owner 2026-09-27 explicitly requests GitHub commit/push and cloud tests on the existing repository",
+  "owner_decision": "Owner mission prompt 2026-09-25, explicit local autonomous development authorization; Owner 2026-09-27 explicitly requests GitHub commit/push and cloud tests on the existing repository; Owner 2026-09-27 cloud session requests the eight-step continuation and explicitly authorizes session branch claude/eloquent-faraday-hh62qc for push and standard Windows CI (contract 1.3.0)",
   "objective": "P3-A safety baseline and first Chromium proactive personal-use adapter",
   "base_branch": "main",
   "base_subject": "fix: align fresh-chat expectations with uploaded source snapshot",
@@ -99,7 +99,7 @@
   "remote_publication": false,
   "github_validation": {
     "repository": "CAPTW/pencil",
-    "branch": "codex/grammar-autonomous-r1",
+    "branch": "claude/eloquent-faraday-hh62qc",
     "push": true,
     "standard_windows_ci": true,
     "release": false,

@@ -1,7 +1,7 @@
 name: Grammar candidate Windows validation
 on:
   push:
-    branches: [codex/grammar-autonomous-r1]
+    branches: [codex/grammar-autonomous-r1, claude/eloquent-faraday-hh62qc]
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   synthetic-windows:
-    if: ${{ github.repository == 'CAPTW/pencil' && github.ref == 'refs/heads/codex/grammar-autonomous-r1' }}
+    if: ${{ github.repository == 'CAPTW/pencil' && (github.ref == 'refs/heads/codex/grammar-autonomous-r1' || github.ref == 'refs/heads/claude/eloquent-faraday-hh62qc') }}
     runs-on: windows-2022
     timeout-minutes: 45
     env:

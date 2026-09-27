@@ -1,6 +1,6 @@
 # Grammar Tool-neutral Multi-Agent Development Contract
 
-Contract-Version: 1.2.0
+Contract-Version: 1.3.0
 
 ## Active mission override (Owner authorization, 2026-09-25)
 For GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1, the Owner explicitly authorizes investigation, implementation, tests, local commits, reviewed safe local main integration and continuation through P3-A stabilization and the first Chromium textarea/simple-contenteditable adapter for personal use. This section supersedes conflicting historical one-step gates below, fixed file/iteration/commit budgets, per-step new-worktree requirements and fresh Source UI upload prerequisites. Use one dedicated mission worktree; preserve historical failed candidates and unrelated work. Historical failures remain failures. Review changed main before integration; no history rewrite or forced conflict resolution.
@@ -9,6 +9,9 @@ The mission packet records `mission_id`, `internal_continuation=true`, `scope_ex
 
 ## GitHub validation amendment (Owner authorization, 2026-09-27)
 The Owner now explicitly authorizes committing and pushing the current candidate to the existing PUBLIC repository CAPTW/pencil, branch codex/grammar-autonomous-r1, and standard GitHub-hosted Windows CI tests. This overrides the earlier no-push boundary only for that destination/branch. No main integration, tag/release, deployment, repository visibility change, paid larger runner, account/credential operation or live Provider inference is authorized. Repository-local source is sent; external local evidence and VM/user files are excluded. The exact optional github_validation object is checked in task/state; remote_publication=false continues to forbid general release/deployment outside this narrow source-push exception. CI synthetic success does not qualify interactive Windows capture/clipboard/Apply. Existing safety and historical failures remain.
+
+## Cloud session branch amendment (Owner authorization, 2026-09-27)
+In a Claude Code cloud session the Owner requested sequential execution of an eight-step plan inside this same mission: (1) independent cloud native tests with preserved failure logs, (2) standard Edit selection capture qualification, (3) native Apply safety, (4) built-app user flow, (5) runtime endurance, (6) final Chromium regression, (7) synthetic Deep integration, (8) personal package and handoff. When asked how Windows CI should run for that session, the Owner explicitly chose to authorize the session branch claude/eloquent-faraday-hh62qc of CAPTW/pencil (fast-forwarded from codex/grammar-autonomous-r1 at 099baead7d32f6f984b423b26774197fd3db4164) as an additional push and standard GitHub-hosted Windows CI destination, with codex/grammar-autonomous-r1 left untouched. The github_validation object may therefore name either branch; everything else in the previous amendment is unchanged: no main integration, tag/release/deployment, visibility change, paid larger runner, account/credential operation or live Provider inference, and evidence uploads exclude packaged executables. Native capture or Apply may be activated only for the exact scope whose synthetic qualification passes on the cloud Windows desktop; everything else stays Copy-only or disabled. Path claims for that branch transfer to agent claude-cloud in control/path-claims.json.
 
 ## Historical task defaults (except active mission override)
 
