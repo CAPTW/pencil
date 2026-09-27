@@ -182,9 +182,18 @@ fn remove_owned_session_before(path: &Path, deadline: Instant) -> Result<(), Str
         return Err("runtime_session_not_owned".to_string());
     };
 
+    // A partial remove_dir_all can delete the marker first. A folder left
+    // without it would never be recognised as ours again, so every path that
+    // gives up puts the marker back for a later stale-session cleanup.
+    let keep_ownership = || {
+        if path.exists() && !marker.exists() {
+            let _ = write_session_marker(&marker, pid, created);
+        }
+    };
     let mut last_os_error = 0;
     for attempt in 0..REMOVE_RETRIES {
         if Instant::now() >= deadline {
+            keep_ownership();
             return Err("runtime_cleanup_deadline".into());
         }
         match fs::remove_dir_all(path) {
@@ -206,15 +215,14 @@ fn remove_owned_session_before(path: &Path, deadline: Instant) -> Result<(), Str
             }
             Err(error) => {
                 last_os_error = error.raw_os_error().unwrap_or(last_os_error);
-                if path.exists() && !marker.exists() {
-                    let _ = write_session_marker(&marker, pid, created);
-                }
+                keep_ownership();
                 return Err(format!(
                     "runtime_session_cleanup_failed:os_error={last_os_error}"
                 ));
             }
         }
     }
+    keep_ownership();
     Err(format!(
         "runtime_session_cleanup_failed:os_error={last_os_error}"
     ))

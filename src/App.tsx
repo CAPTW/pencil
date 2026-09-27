@@ -572,8 +572,9 @@ export default function App() {
         setPrerequisites(report);
         const codex = report.commands.find((command) => command.name === "codex");
         if (codex && !codex.available) {
-          setError(codex.error ?? "Codex CLI must be installed and available on PATH.");
-          setStatus("Codex missing");
+          // Only Deep with Codex needs the CLI: Instant and the other Providers work.
+          setError("Codex CLI was not found. Instant still works; Deep with Codex needs it, or choose another Provider in Settings.");
+          setStatus("Codex CLI not found");
         }
       })
       .catch((nextError) => setError(toErrorMessage(nextError)));
