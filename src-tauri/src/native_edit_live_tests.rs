@@ -35,6 +35,8 @@ const WM_GETTEXT: u32 = 0x000D;
 const WM_GETTEXTLENGTH: u32 = 0x000E;
 const WM_CHAR: u32 = 0x0102;
 const EM_SETSEL: u32 = 0x00B1;
+const EM_GETMODIFY: u32 = 0x00B8;
+const EM_SETMODIFY: u32 = 0x00B9;
 const EM_CANUNDO: u32 = 0x00C6;
 const EM_UNDO: u32 = 0x00C7;
 const ES_READONLY: u32 = 0x0800;
@@ -50,6 +52,7 @@ const KIND_GETSEL: usize = 2;
 const KIND_REPLACESEL: usize = 3;
 const KIND_LOCK: usize = 4;
 const KIND_UNLOCK: usize = 5;
+const KIND_SETTEXT: usize = 6;
 const KIND_UNDO: usize = 7;
 
 // Editor indexes in the harness.
@@ -166,6 +169,12 @@ impl NativeEditHarness {
 
     fn style(&self, index: usize) -> u32 {
         unsafe { GetWindowLongW(self.edit(index) as HWND, GWL_STYLE) as u32 }
+    }
+
+    fn selection(&self, index: usize) -> (usize, usize) {
+        const EM_GETSEL: u32 = 0x00B0;
+        let packed = unsafe { SendMessageW(self.edit(index) as HWND, EM_GETSEL, 0, 0) } as usize;
+        (packed & 0xFFFF, (packed >> 16) & 0xFFFF)
     }
 
     /// Makes `index` the focused control of its foreground top-level window.
@@ -612,8 +621,9 @@ fn cloud_owned_desktop_native_apply() {
     }
     receipt.check(format!("typing_race_{RACE_ITERATIONS}_iterations_applied{applied}_refused{refused}_no_misplacement"));
 
-    // Selection races: the replacement lands only on the verified range or is undone.
-    let (mut applied, mut refused, mut undone) = (0, 0, 0);
+    // Selection races: the replacement lands only on the verified range or the
+    // verified original is restored under the lock.
+    let (mut applied, mut refused, mut restored) = (0, 0, 0);
     for iteration in 0..RACE_ITERATIONS {
         prepare(&harness, PLAIN, SAMPLE, "third");
         let (mut store, token, _) = ready_native_session();
@@ -650,7 +660,7 @@ fn cloud_owned_desktop_native_apply() {
                     == Some(&NativeApplyResult::Refused(crate::native_edit::NativeApplyRefusal::SelectionChanged))
                     && reason == ApplyFallbackReason::TargetSelectionChanged
                 {
-                    undone += usize::from(harness.counter(PLAIN, KIND_REPLACESEL) > 0);
+                    restored += usize::from(harness.counter(PLAIN, KIND_REPLACESEL) > 0);
                 }
                 assert_eq!(text, SAMPLE, "{iteration}: fallback left a mutation");
             }
@@ -659,26 +669,38 @@ fn cloud_owned_desktop_native_apply() {
         assert_eq!(harness.style(PLAIN) & ES_READONLY, 0);
     }
     receipt.check(format!(
-        "selection_race_{RACE_ITERATIONS}_iterations_applied{applied}_refused{refused}_undone{undone}_no_misplacement"
+        "selection_race_{RACE_ITERATIONS}_iterations_applied{applied}_refused{refused}_restored{restored}_no_misplacement"
     ));
 
     // Deterministic selection race between the locked EM_SETSEL and EM_REPLACESEL:
-    // the displaced replacement must be undone under the lock and reported.
-    prepare(&harness, PLAIN, SAMPLE, "third");
-    let (mut store, token, _) = ready_native_session();
-    harness.arm_selection_race(PLAIN);
-    harness.reset_counters();
-    let mut platform = NativeLivePlatform::default();
-    assert_eq!(
-        apply_current_session(&mut store, &token, marker, false, &mut platform),
-        ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetSelectionChanged }
-    );
-    assert_eq!(harness.counter(PLAIN, KIND_REPLACESEL), 1);
-    assert!(harness.counter(PLAIN, KIND_UNDO) >= 1);
-    assert_eq!(harness.style(PLAIN) & ES_READONLY, 0);
-    assert_eq!(harness.text(PLAIN), SAMPLE);
-    assert_eq!(clipboard::read_clipboard_text().ok().as_deref(), Some(marker));
-    receipt.check("injected_selection_race_undone_under_lock_and_copy_only");
+    // the displaced replacement must be replaced by the verified original under
+    // the lock (a real Edit control refuses EM_UNDO while read-only), with the
+    // modification flag and the user's moved selection restored, and reported.
+    for modified in [0usize, 1] {
+        prepare(&harness, PLAIN, SAMPLE, "third");
+        let (mut store, token, _) = ready_native_session();
+        let edit = harness.edit(PLAIN) as HWND;
+        unsafe {
+            SendMessageW(edit, EM_SETMODIFY, modified, 0);
+        }
+        harness.arm_selection_race(PLAIN);
+        harness.reset_counters();
+        let mut platform = NativeLivePlatform::default();
+        assert_eq!(
+            apply_current_session(&mut store, &token, marker, false, &mut platform),
+            ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetSelectionChanged },
+            "modified={modified}"
+        );
+        assert_eq!(harness.counter(PLAIN, KIND_REPLACESEL), 1);
+        assert_eq!(harness.counter(PLAIN, KIND_SETTEXT), 1);
+        assert_eq!(harness.counter(PLAIN, KIND_UNDO), 0);
+        assert_eq!(harness.style(PLAIN) & ES_READONLY, 0);
+        assert_eq!(harness.text(PLAIN), SAMPLE);
+        assert_eq!(usize::from(unsafe { SendMessageW(edit, EM_GETMODIFY, 0, 0) } != 0), modified);
+        assert_eq!(harness.selection(PLAIN), (0, 1), "the moved selection is kept");
+        assert_eq!(clipboard::read_clipboard_text().ok().as_deref(), Some(marker));
+    }
+    receipt.check("injected_selection_race_restored_under_lock_modify_flag_and_selection_kept_copy_only");
 
     // Target closed after capture: Copy-only without mutation.
     prepare(&harness, OTHER, "synthetic other editor third", "third");

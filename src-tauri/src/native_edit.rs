@@ -10,8 +10,14 @@
 //! Apply mutates only an editor captured by this reader. It locks the control
 //! read-only against user text input, verifies the full-text hash and the exact
 //! selection under the lock, replaces the verified range with one undoable
-//! `EM_REPLACESEL`, verifies the exact resulting text before unlocking, and
-//! undoes its own replacement if a concurrent selection change moved it.
+//! `EM_REPLACESEL`, and verifies the exact resulting text before unlocking.
+//! A selection change can still slip in between `EM_SETSEL` and
+//! `EM_REPLACESEL` (for example a mouse click). If the read-back proves that
+//! only our replacement landed elsewhere, the verified original text is
+//! restored under the same lock with one atomic `WM_SETTEXT` (a standard Edit
+//! control refuses `EM_UNDO` while read-only), the modification flag and the
+//! moved selection are put back, and Apply is reported as not applied. That
+//! rare recovery clears the control's single-level undo buffer.
 
 use crate::capture_session::NativeEditBinding;
 use crate::instant_selection::sha256_hex;
@@ -22,13 +28,14 @@ const WM_GETTEXTLENGTH: u32 = 0x000E;
 const EM_GETSEL: u32 = 0x00B0;
 const EM_SETSEL: u32 = 0x00B1;
 const EM_SCROLLCARET: u32 = 0x00B7;
-const EM_UNDO: u32 = 0x00C7;
+const EM_GETMODIFY: u32 = 0x00B8;
+const EM_SETMODIFY: u32 = 0x00B9;
 const EM_SETREADONLY: u32 = 0x00CF;
 const EM_GETPASSWORDCHAR: u32 = 0x00D2;
 const EM_GETLIMITTEXT: u32 = 0x00D5;
 /// `EM_GETSEL` reports 16-bit offsets, so larger fields are never admitted.
 pub(crate) const MAX_EDIT_UNITS: usize = 0xFFFE;
-/// Bound on the search that proves a moved replacement is ours before undoing it.
+/// Bound on the search that proves a moved replacement is ours before restoring.
 const MAX_RELOCATION_CANDIDATES: usize = 4096;
 const LOCK_RELEASE_ATTEMPTS: usize = 3;
 
@@ -71,6 +78,8 @@ pub(crate) trait EditPort {
     fn read_text(&mut self, hwnd: isize, units: usize) -> Option<Vec<u16>>;
     /// One undoable `EM_REPLACESEL`.
     fn replace_selection(&mut self, hwnd: isize, text: &[u16]) -> Option<()>;
+    /// One atomic `WM_SETTEXT`, used only to restore verified original text.
+    fn restore_text(&mut self, hwnd: isize, text: &[u16]) -> Option<()>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -125,7 +134,7 @@ pub(crate) enum NativeApplyRefusal {
     EditorChanged,
     SourceChanged,
     /// The selection moved before Apply, or moved concurrently and the
-    /// misplaced replacement was undone.
+    /// original text was restored under the lock.
     SelectionChanged,
 }
 
@@ -267,14 +276,17 @@ pub(crate) fn read_focused_selection<P: EditPort>(
     })
 }
 
-/// True when `after` equals `original` with exactly one range replaced by
-/// `replacement` somewhere, i.e. the only change is a relocated replacement.
-fn is_relocated_replacement(original: &[u16], after: &[u16], replacement: &[u16]) -> bool {
-    let Some(removed) = (original.len() + replacement.len()).checked_sub(after.len()) else {
-        return false;
-    };
+/// When `after` equals `original` with exactly one range replaced by
+/// `replacement` somewhere (the only change is a relocated replacement),
+/// returns that original range. Every candidate restores the same original.
+fn relocated_replacement(
+    original: &[u16],
+    after: &[u16],
+    replacement: &[u16],
+) -> Option<(usize, usize)> {
+    let removed = (original.len() + replacement.len()).checked_sub(after.len())?;
     if removed > original.len() {
-        return false;
+        return None;
     }
     let prefix = original
         .iter()
@@ -290,12 +302,14 @@ fn is_relocated_replacement(original: &[u16], after: &[u16], replacement: &[u16]
     let lowest = after.len().saturating_sub(replacement.len() + suffix);
     let highest = prefix.min(original.len() - removed);
     if lowest > highest || highest - lowest >= MAX_RELOCATION_CANDIDATES {
-        return false;
+        return None;
     }
-    (lowest..=highest).any(|start| {
-        after[start..start + replacement.len()] == *replacement
-            && after[start + replacement.len()..] == original[start + removed..]
-    })
+    (lowest..=highest)
+        .find(|&start| {
+            after[start..start + replacement.len()] == *replacement
+                && after[start + replacement.len()..] == original[start + removed..]
+        })
+        .map(|start| (start, start + removed))
 }
 
 fn release_lock<P: EditPort>(port: &mut P, edit: isize) -> bool {
@@ -386,6 +400,9 @@ fn locked_replace<P: EditPort>(
         Ok(_) => return NativeApplyResult::Refused(SelectionChanged),
         Err(_) => return NativeApplyResult::Refused(EditorChanged),
     }
+    let Some(modified) = port.send(edit, EM_GETMODIFY, 0, 0) else {
+        return NativeApplyResult::Refused(EditorChanged);
+    };
     let mut expected = Vec::with_capacity(units - (binding.end - binding.start) + replacement.len());
     expected.extend_from_slice(&original[..binding.start]);
     expected.extend_from_slice(replacement);
@@ -412,18 +429,27 @@ fn locked_replace<P: EditPort>(
         Some(after) if after == original && delivered => {
             NativeApplyResult::Refused(EditorChanged)
         }
-        Some(after) if delivered && is_relocated_replacement(&original, &after, replacement) => {
-            // User text input is locked out, so the last edit is our replacement.
-            let _ = port.send(edit, EM_UNDO, 0, 0);
-            let restored = text_length(port, edit)
-                .ok()
-                .and_then(|units| read_exact(port, edit, units));
-            if restored.as_deref() == Some(original.as_slice()) {
+        Some(after) if delivered => match relocated_replacement(&original, &after, replacement) {
+            // User text input is locked out and the read-back proves the only
+            // change is our replacement at the moved selection: put back the
+            // verified original atomically, then the flag and the user's range.
+            Some((start, end)) => {
+                if port.restore_text(edit, &original).is_none() {
+                    return NativeApplyResult::Unverified;
+                }
+                let restored = text_length(port, edit)
+                    .ok()
+                    .and_then(|units| read_exact(port, edit, units));
+                if restored.as_deref() != Some(original.as_slice()) {
+                    return NativeApplyResult::Unverified;
+                }
+                let _ = port.send(edit, EM_SETMODIFY, usize::from(modified != 0), 0);
+                let _ = port.send(edit, EM_SETSEL, start, end as isize);
+                let _ = port.send(edit, EM_SCROLLCARET, 0, 0);
                 NativeApplyResult::Refused(SelectionChanged)
-            } else {
-                NativeApplyResult::Unverified
             }
-        }
+            None => NativeApplyResult::Unverified,
+        },
         _ => NativeApplyResult::Unverified,
     }
 }
@@ -578,7 +604,7 @@ impl EditPort for Win32EditPort {
     }
 
     fn send(&mut self, hwnd: isize, message: u32, wparam: usize, lparam: isize) -> Option<isize> {
-        let timeout = if message == EM_SETREADONLY || message == EM_UNDO || message == EM_SETSEL {
+        let timeout = if message == EM_SETREADONLY || message == EM_SETMODIFY || message == EM_SETSEL {
             self.mutation_timeout_ms
         } else {
             self.read_timeout_ms
@@ -616,12 +642,30 @@ impl EditPort for Win32EditPort {
         )
         .map(|_| ())
     }
+
+    fn restore_text(&mut self, hwnd: isize, text: &[u16]) -> Option<()> {
+        use windows_sys::Win32::UI::WindowsAndMessaging::WM_SETTEXT;
+        let mut buffer = Vec::with_capacity(text.len() + 1);
+        buffer.extend_from_slice(text);
+        buffer.push(0);
+        self.send_timeout(
+            hwnd,
+            WM_SETTEXT,
+            0,
+            buffer.as_ptr() as isize,
+            self.mutation_timeout_ms,
+        )
+        .filter(|&result| result != 0)
+        .map(|_| ())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const EM_UNDO: u32 = 0x00C7;
+    const WM_SETTEXT: u32 = 0x000C;
     const TOP: isize = 0x100;
     const EDIT: isize = 0x200;
     const PID: u32 = 42;
@@ -635,6 +679,9 @@ mod tests {
         DropReplace,
         /// `EM_REPLACESEL` times out but is processed.
         SlowReplace,
+        /// The selection moves as in `MoveSelection` and the restoring
+        /// `WM_SETTEXT` times out without being processed.
+        MoveSelectionDropRestore(usize, usize),
     }
 
     /// In-memory model of one standard Edit control and its top-level window.
@@ -651,6 +698,7 @@ mod tests {
         image: String,
         password_char: isize,
         limit: isize,
+        modified: bool,
         undo: Option<(Vec<u16>, (usize, usize))>,
         race: Race,
         refuse_unlock: bool,
@@ -675,6 +723,7 @@ mod tests {
                 image: "notepad.exe".into(),
                 password_char: 0,
                 limit: 30_000,
+                modified: false,
                 undo: None,
                 race: Race::None,
                 refuse_unlock: false,
@@ -750,9 +799,14 @@ mod tests {
                 EM_GETSEL => Some((self.selection.0 | (self.selection.1 << 16)) as isize),
                 WM_GETTEXTLENGTH => Some(self.text.len() as isize),
                 EM_GETLIMITTEXT => Some(self.limit),
+                EM_GETMODIFY => Some(isize::from(self.modified)),
+                EM_SETMODIFY => {
+                    self.modified = wparam != 0;
+                    Some(1)
+                }
                 EM_SETSEL => {
                     self.selection = (wparam, lparam as usize);
-                    if let Race::MoveSelection(start, end) = self.race {
+                    if let Race::MoveSelection(start, end) | Race::MoveSelectionDropRestore(start, end) = self.race {
                         self.selection = (start, end);
                     }
                     Some(1)
@@ -766,6 +820,8 @@ mod tests {
                     }
                     Some(1)
                 }
+                // Like a multiline Edit control: no undo while read-only.
+                EM_UNDO if self.locked() => Some(0),
                 EM_UNDO => {
                     if let Some((text, selection)) = self.undo.take() {
                         self.text = text;
@@ -800,7 +856,22 @@ mod tests {
             next.extend_from_slice(&self.text[end..]);
             self.text = next;
             self.selection = (start + text.len(), start + text.len());
+            self.modified = true;
             (self.race != Race::SlowReplace).then_some(())
+        }
+        fn restore_text(&mut self, hwnd: isize, text: &[u16]) -> Option<()> {
+            assert_eq!(hwnd, EDIT);
+            assert!(self.locked(), "restoration happens only under the lock");
+            self.messages.push((WM_SETTEXT, 0));
+            if matches!(self.race, Race::MoveSelectionDropRestore(..)) {
+                return None;
+            }
+            // WM_SETTEXT clears the undo buffer and the modification flag.
+            self.text = text.to_vec();
+            self.selection = (0, 0);
+            self.modified = false;
+            self.undo = None;
+            Some(())
         }
     }
 
@@ -984,13 +1055,41 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_selection_move_is_undone_and_reported() {
+    fn concurrent_selection_move_is_restored_under_lock_and_reported() {
+        for modified in [false, true] {
+            let mut edit = FakeEdit::new(SAMPLE, range_of(SAMPLE, "third"));
+            edit.modified = modified;
+            let binding = captured(&mut edit).binding;
+            edit.race = Race::MoveSelection(0, 1);
+            assert_eq!(apply(&mut edit, &binding, "REPLACED"), NativeApplyResult::Refused(NativeApplyRefusal::SelectionChanged));
+            assert_eq!(edit.text(), SAMPLE, "misplaced replacement was replaced by the verified original");
+            assert!(!edit.locked());
+            assert_eq!(edit.modified, modified, "modification flag restored");
+            assert_eq!(edit.selection, (0, 1), "the user's moved selection is kept");
+            let order = edit.messages.iter().map(|(message, wparam)| (*message, *wparam)).collect::<Vec<_>>();
+            let restore = order.iter().position(|m| m.0 == WM_SETTEXT).unwrap();
+            let unlock = order.iter().rposition(|m| *m == (EM_SETREADONLY, 0)).unwrap();
+            assert!(restore < unlock, "restored before the lock is released");
+            assert!(!order.iter().any(|m| m.0 == EM_UNDO), "no undo is attempted under the lock");
+        }
+    }
+
+    #[test]
+    fn failed_restoration_is_reported_unverified() {
         let mut edit = FakeEdit::new(SAMPLE, range_of(SAMPLE, "third"));
         let binding = captured(&mut edit).binding;
-        edit.race = Race::MoveSelection(0, 1);
-        assert_eq!(apply(&mut edit, &binding, "REPLACED"), NativeApplyResult::Refused(NativeApplyRefusal::SelectionChanged));
-        assert_eq!(edit.text(), SAMPLE, "misplaced replacement was undone");
+        edit.race = Race::MoveSelectionDropRestore(0, 1);
+        assert_eq!(apply(&mut edit, &binding, "REPLACED"), NativeApplyResult::Unverified);
         assert!(!edit.locked());
+    }
+
+    #[test]
+    fn undo_under_the_lock_is_refused_like_a_real_edit_control() {
+        let mut edit = FakeEdit::new(SAMPLE, (0, 3));
+        edit.undo = Some(("x".encode_utf16().collect(), (0, 0)));
+        edit.style |= ES_READONLY;
+        assert_eq!(edit.send(EDIT, EM_UNDO, 0, 0), Some(0));
+        assert_eq!(edit.text(), SAMPLE);
     }
 
     #[test]
@@ -1025,10 +1124,12 @@ mod tests {
         let original = "abc def ghi".encode_utf16().collect::<Vec<_>>();
         let replacement = "XY".encode_utf16().collect::<Vec<_>>();
         let moved = "XYc def ghi".encode_utf16().collect::<Vec<_>>();
-        assert!(is_relocated_replacement(&original, &moved, &replacement));
+        assert_eq!(relocated_replacement(&original, &moved, &replacement), Some((0, 2)));
+        let inserted = "abc XYdef ghi".encode_utf16().collect::<Vec<_>>();
+        assert_eq!(relocated_replacement(&original, &inserted, &replacement), Some((4, 4)));
         let other = "abc Zef ghi".encode_utf16().collect::<Vec<_>>();
-        assert!(!is_relocated_replacement(&original, &other, &replacement));
+        assert_eq!(relocated_replacement(&original, &other, &replacement), None);
         let two = "XYc def XYi".encode_utf16().collect::<Vec<_>>();
-        assert!(!is_relocated_replacement(&original, &two, &replacement));
+        assert_eq!(relocated_replacement(&original, &two, &replacement), None);
     }
 }
