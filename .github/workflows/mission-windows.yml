@@ -40,7 +40,7 @@ jobs:
           "GRAMMAR_EVIDENCE=$e" >> $env:GITHUB_ENV
           @{
             source=$env:GITHUB_SHA; classification='SYNTHETIC_WINDOWS_CI'
-            providerLive='NOT_RUN'; interactiveCapture='NOT_RUN'; clipboardApply='NOT_RUN'
+            providerLive='NOT_RUN'; interactiveCapture='NOT_RUN'; clipboardApply='SEE_NATIVE_DESKTOP_LOG'
             productionToolbar='NOT_RUN'; release='NOT_AUTHORIZED'
           } | ConvertTo-Json > "$e/scope.json"
       - name: Frontend and production JS contracts
@@ -60,6 +60,13 @@ jobs:
       - name: Rust regression tests (no ignored live tests)
         run: |
           cargo test --manifest-path src-tauri/Cargo.toml --locked -- --test-threads=1
+          exit $LASTEXITCODE
+      - name: Qualify owned Windows input desktop and native Apply
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: |
+          $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil cloud_owned_desktop_qualification -- --ignored --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native-desktop.log"
           exit $LASTEXITCODE
       - name: Build native host and synthetic process
         if: ${{ !cancelled() }}
@@ -114,6 +121,7 @@ jobs:
           if-no-files-found: warn
           path: |
             ${{ runner.temp }}/grammar-evidence/scope.json
+            ${{ runner.temp }}/grammar-evidence/native-desktop.log
             ${{ runner.temp }}/grammar-evidence/host-deep/receipt.json
             ${{ runner.temp }}/grammar-evidence/browser-*/result.json
             ${{ runner.temp }}/grammar-evidence/browser-*/failure.json

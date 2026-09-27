@@ -1228,6 +1228,46 @@ fn assert_send_input_delivery(evidence: &ProbeEvidence) {
 }
 
 #[test]
+#[ignore = "mutates only an explicitly opted-in GitHub-hosted synthetic desktop"]
+fn cloud_owned_desktop_qualification() {
+    // Check the dedicated CI opt-in before touching any desktop or clipboard.
+    for (key, expected) in [
+        ("GITHUB_ACTIONS", "true"),
+        ("GITHUB_REPOSITORY", "CAPTW/pencil"),
+        ("GITHUB_REF", "refs/heads/codex/grammar-autonomous-r1"),
+        ("RUNNER_ENVIRONMENT", "github-hosted"),
+        ("GRAMMAR_OWNED_DESKTOP_TEST", "1"),
+    ] {
+        assert_eq!(std::env::var(key).as_deref(), Ok(expected), "{key}");
+    }
+    assert!(clipboard::write_clipboard_text("synthetic-cloud-prior").is_ok());
+    let _clipboard_guard = ClipboardTextGuard::capture().expect("synthetic clipboard roundtrip");
+    for run in 1..=PROBE_REPETITIONS {
+        let evidence = run_isolated_send_input_probe(run);
+        eprintln!("CLOUD_OWNED_INPUT_EVIDENCE {evidence:?}");
+        assert_common_probe_preconditions(&evidence);
+        assert_send_input_delivery(&evidence);
+    }
+    eprintln!("CLOUD_OWNED_INPUT_READBACK_PASS; current Copy-only safety follows");
+    // The legacy Apply acceptance expects mutation and predates the fail-closed
+    // selection gate. Verify today's production boundary without bypassing it.
+    let (harness, target) = prepare_translation_harness(EXPECTED_SOURCE, EXPECTED_SOURCE);
+    let (mut store, token) = ready_store(target, 1);
+    let mut platform = LiveApplyPlatform::new(
+        harness.widget_window, harness.target_window, harness.target_textbox,
+    );
+    assert_eq!(
+        apply_current_session(&mut store, &token, EXPECTED_REPLACEMENT, false, &mut platform),
+        ApplyOutcome::CopiedFallback { reason: ApplyFallbackReason::TargetSelectionUnverified },
+    );
+    assert_eq!(platform.paste_calls, 0);
+    assert_eq!(clipboard::read_clipboard_text().ok().as_deref(), Some(EXPECTED_REPLACEMENT));
+    assert!(content_equals_expected(harness.target_window));
+    assert!(content_equals_expected(harness.widget_window));
+    eprintln!("CLOUD_COPY_ONLY_READBACK_PASS; production toolbar and capture remain separately unqualified");
+}
+
+#[test]
 #[ignore = "requires an interactive Windows desktop"]
 fn windows_live_sendinput_root_cause_probes() {
     let clipboard_guard = ClipboardTextGuard::capture();
