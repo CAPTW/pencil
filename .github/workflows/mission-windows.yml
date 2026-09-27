@@ -218,9 +218,9 @@ jobs:
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
           node adapters/chromium/tests/installed-package.test.mjs 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/chromium-installed.log"
           exit $LASTEXITCODE
-      - name: Built app user flow (Instant, edit, Copy, Dismiss, cancel, reselect, stale)
+      - name: Built app user flow (Instant, Copy, synthetic Deep, cancel, clipboard held, restart)
         if: ${{ !cancelled() }}
-        timeout-minutes: 8
+        timeout-minutes: 12
         run: |
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
           if (-not $env:GRAMMAR_APP_EXE) {
