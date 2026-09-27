@@ -125,7 +125,8 @@
     "Review R1/R2 reproduced as failing production-path tests; native editor mutation removed (Copy-only, zero editor messages)",
     "Installed-package Chromium smoke test: unmodified installed extension and installer host registration, fresh sandboxed profile, real keyboard toolbar gesture: PASS (run 36331068541); the 39-check test is reclassified as a modified isolated extension fixture",
     "Separate fresh-context review pass (same model family, read-only); blocking and should-fix findings addressed",
-    "Owner decisions r4: native Copy-only kept; desktop Apply merged into one session-bound Copy button; unreachable legacy paste path deleted with the R1/R2 regression tests kept; R3 accepted for the keyboard toolbar path only (mouse menu path, normal profile and Edge not verified); main merge, personal install and release remain separate"
+    "Owner decisions r4: native Copy-only kept; desktop Apply merged into one session-bound Copy button; unreachable legacy paste path deleted with the R1/R2 regression tests kept; R3 accepted for the keyboard toolbar path only (mouse menu path, normal profile and Edge not verified); main merge, personal install and release remain separate",
+    "Round r4 verification: CI 36337934296 on 8e81fc8, all 34 steps PASS (single Copy button built-app flow with 0 editor reads and 0 state-changing messages, native Copy-only receipts, unmodified installed-package browser by keyboard); a fresh-context review found no blocking issue and its findings were fixed in e7b573f"
   ],
   "native_capture_activation": "ACTIVE_STANDARD_EDIT_ONLY_OWNED_DESKTOP_QUALIFIED_OTHERS_DENIED",
   "chromium_deep_activation": "SOURCE_UNCONFIGURED_PERSONAL_INSTALLER_CONFIGURES_HOST_CONSENT_BOUND_SYNTHETIC_ONLY",
