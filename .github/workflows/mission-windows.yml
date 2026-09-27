@@ -3,6 +3,12 @@ on:
   push:
     branches: [codex/grammar-autonomous-r1, claude/eloquent-faraday-hh62qc]
   workflow_dispatch:
+    inputs:
+      fault_injection:
+        description: Deliberately fail one owned-desktop check to verify step isolation and failure evidence
+        type: choice
+        options: [none, input_environment]
+        default: none
 permissions:
   contents: read
 concurrency:
@@ -80,6 +86,8 @@ jobs:
       - name: Owned Windows desktop - input environment
         if: ${{ !cancelled() }}
         timeout-minutes: 5
+        env:
+          GRAMMAR_OWNED_DESKTOP_FAULT: ${{ inputs.fault_injection || 'none' }}
         run: |
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
           cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil p0_02_windows_live_tests::cloud_owned_desktop_input_environment -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native/input-environment.log"

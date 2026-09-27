@@ -1360,6 +1360,11 @@ fn run_direct_window_paste_probe(run: usize) -> ProbeEvidence {
 
 fn run_isolated_send_input_probe(run: usize) -> ProbeEvidence {
     let (harness, _target, control) = prepare_probe_harness();
+    // CI-only fault injection proves a failure with a live owned editor still
+    // tears it down, records FAIL and leaves the independent checks running.
+    if run == 2 && std::env::var("GRAMMAR_OWNED_DESKTOP_FAULT").as_deref() == Ok("input_environment") {
+        panic!("GRAMMAR_OWNED_DESKTOP_FAULT: deliberate input_environment failure with a live owned editor");
+    }
     assert!(hide_widget_and_activate_target(&harness));
     assert!(clipboard::write_clipboard_text(EXPECTED_REPLACEMENT).is_ok());
     let pre = current_injection_observation(&harness, 4, 0, 0);
