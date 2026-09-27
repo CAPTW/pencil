@@ -211,12 +211,20 @@ try {
   pass('installed extension files, package key/ID, installed permissions, installer host-config and registration verified unmodified');
 
   // 2. Fresh task-owned profile; the installed directory is loaded in place.
+  //    The profile pins the extension's action to the toolbar, a user UI
+  //    preference (the extension is unchanged), so the toolbar button itself
+  //    can be clicked; the Extensions menu remains the path when it is not shown.
   profile = await mkdtemp(join(evidence, 'installed-profile-'));
+  await mkdir(join(profile, 'Default'));
+  await writeFile(join(profile, 'Default', 'Preferences'),
+    JSON.stringify({extensions: {pinned_extensions: [packageManifest.extensionId]}}));
   context = await chromium.launchPersistentContext(profile, {
     headless: false,
     executablePath: process.env.GRAMMAR_CHROMIUM,
-    // Keep the browser sandbox that Playwright disables by default.
+    // Keep the browser sandbox that Playwright disables by default, and drop
+    // its default --disable-extensions: only the installed extension is loaded.
     chromiumSandbox: true,
+    ignoreDefaultArgs: ['--disable-extensions'],
     viewport: null,
     args: [
       `--disable-extensions-except=${extensionDir}`,
@@ -394,6 +402,8 @@ try {
     page_access_after_same_origin_reload: observations.pageAccessAfterSameOriginReload ?? null,
     browser: observations.browser ?? null,
     browser_sandbox: true,
+    browser_default_args_removed: ['--disable-extensions'],
+    profile_setup: 'fresh profile; extension action pinned to the toolbar (user UI preference); extension files unchanged',
     checks,
     not_run_cause: notRunCause,
     failure,

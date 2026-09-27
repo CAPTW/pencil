@@ -239,14 +239,19 @@ function Invoke-Target([string]$target, [string]$match, [string]$command, [int]$
         if ($Method -eq 'Invoke') {
           # Menu buttons expose ExpandCollapse (or Toggle) instead of Invoke.
           $pattern = $null
-          if ($element.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
-            $pattern.Invoke(); $result.pattern = 'Invoke'
-          } elseif ($element.TryGetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$pattern)) {
-            $pattern.Expand(); $result.pattern = 'ExpandCollapse'
-          } elseif ($element.TryGetCurrentPattern([Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) {
-            $pattern.Toggle(); $result.pattern = 'Toggle'
-          } else {
-            $result.status = 'no_invoke_pattern'; $result.events = @($events); return $result
+          try {
+            if ($element.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+              $pattern.Invoke(); $result.pattern = 'Invoke'
+            } elseif ($element.TryGetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$pattern)) {
+              $pattern.Expand(); $result.pattern = 'ExpandCollapse'
+            } elseif ($element.TryGetCurrentPattern([Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) {
+              $pattern.Toggle(); $result.pattern = 'Toggle'
+            } else {
+              $result.status = 'no_invoke_pattern'; $result.events = @($events); return $result
+            }
+          } catch [System.Runtime.InteropServices.COMException], [System.InvalidOperationException] {
+            # The browser refused the accessibility action.
+            $result.status = 'invoke_failed'; $result.error = $_.Exception.GetType().Name; $result.events = @($events); return $result
           }
           $result.status = 'clicked'; $result.events = @($events); return $result
         }
@@ -312,7 +317,7 @@ function Move-FocusTo([string]$spec, [byte[]]$keys, [int]$presses) {
   return (Test-FocusedName $spec)
 }
 
-$codes = @{ found = 0; clicked = 0; not_found = 2; window_not_found = 2; no_invoke_pattern = 3; occluded = 4; stale = 5; no_rect = 6; focus_not_reached = 7 }
+$codes = @{ found = 0; clicked = 0; not_found = 2; window_not_found = 2; no_invoke_pattern = 3; invoke_failed = 3; occluded = 4; stale = 5; no_rect = 6; focus_not_reached = 7 }
 if ($Command -eq 'Keyboard') {
   $browser = Get-BrowserWindows
   if (-not $browser) { [ordered]@{ status = 'window_not_found'; steps = @() } | ConvertTo-Json -Compress -Depth 5; exit 2 }
@@ -327,9 +332,14 @@ if ($Command -eq 'Keyboard') {
   Start-Sleep -Milliseconds 400
   for ($index = 0; $index -lt $specs.Count; $index++) {
     $target, $match = Split-Target $specs[$index]
-    $keys = if ($index -eq 0) { [byte[]]@(0x27) } else { [byte[]]@(0x09) }
+    # A toolbar button already showing the next target (a pinned action) needs no menu.
+    if ($index -eq 0 -and $specs.Count -gt 1 -and (Test-Shown $specs[1])) {
+      $steps += [ordered]@{ status = 'skipped_next_shown'; name = $target; method = 'Keyboard' }
+      continue
+    }
+    $keys = if ($index -le 1 -and $steps.Count -gt 0 -and $steps[0].status -eq 'skipped_next_shown') { [byte[]]@(0x27) } elseif ($index -eq 0) { [byte[]]@(0x27) } else { [byte[]]@(0x09) }
     $reached = Move-FocusTo $specs[$index] $keys 30
-    if (-not $reached -and $index -eq 0) { $reached = Move-FocusTo $specs[$index] ([byte[]]@(0x09)) 30 }
+    if (-not $reached -and $keys[0] -eq 0x27) { $reached = Move-FocusTo $specs[$index] ([byte[]]@(0x09)) 30 }
     if (-not $reached) {
       $steps += [ordered]@{ status = 'focus_not_reached'; name = $target; method = 'Keyboard'; foreground = $focused }
       $status = 'focus_not_reached'
