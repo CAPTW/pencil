@@ -165,7 +165,10 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  await page.getByRole('textbox',{name:'Edit replacement',exact:true}).fill('distinct');await page.getByRole('button',{name:'Apply edit',exact:true}).click();
  assert.equal(await page.locator('#writing').inputValue(),'distinct');pass('edited replacement reread');
  await page.locator('#writing').fill('seperate');await suggestion.waitFor();await suggestion.click();
- await page.evaluate(()=>{document.querySelector('#writing').value='user changed';});
+ // The page changes the value programmatically (no input event) as Accept is pressed. Set at
+ // mousedown, so the content script's 1 s reconciliation cannot remove the card first and the
+ // Accept re-check itself must reject the stale source.
+ await page.evaluate(()=>document.addEventListener('mousedown',()=>{document.querySelector('#writing').value='user changed';},{capture:true,once:true}));
  await page.getByRole('button',{name:'Accept',exact:true}).click();assert.equal(await page.locator('#writing').inputValue(),'user changed');pass('programmatic stale source rejects mutation');
  await page.locator('#writing').fill('seperate');await suggestion.waitFor();await suggestion.click();
  await page.locator('#writing').evaluate(el=>el.addEventListener('beforeinput',()=>{el.value='handler changed';},{once:true}));

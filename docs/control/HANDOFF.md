@@ -4,11 +4,92 @@ Mission: GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1. T
 
 ## Review round r3 (2026-09-27): R1/R2/R3 corrections
 
-This section supersedes the Step 3 and Step 4 Apply results and the Step 6 "installed host and extension" classification in the continuation below.
+This section supersedes the Step 3 and Step 4 Apply results and the Step 6 "installed host and extension" classification in the continuation below. `mission_completion` stays INCOMPLETE.
 
-- R1/R2: the locked verify-replace-reread native Apply was not safe. An application edit made after the verification read was overwritten and reported Applied (R1), and a moved selection led to a replacement followed by a `WM_SETTEXT` restore that was reported as Copy-only (R2). Both were reproduced first as failing production-path regression tests (commit 4400974). Grammar now never mutates a captured native editor: Apply is Copy-only (`target_mutation_disabled`) and Grammar sends the editor no text, selection or state-changing message. Status: risky path blocked; native Apply feature not implemented.
-- R3: the 39-check browser test runs with the installed host and a modified isolated extension fixture. The copy has a changed key/ID, localhost `host_permissions`, its own `host-config.js` and its own host registration. It is not an unmodified installed-package verification.
-- The final evidence table for this round is recorded below when the round completes.
+Verdicts:
+- R1 fixed by removal: the locked verify-replace-reread Apply overwrote an application edit made after its verification read and reported Applied.
+- R2 fixed by removal: a moved selection led to a wrong-range replacement plus a `WM_SETTEXT` restore that was reported as Copy-only.
+- Grammar now never mutates a captured native editor. Apply returns Copy-only (`target_mutation_disabled`), puts the result on the clipboard and sends the editor no text, selection or state-changing message.
+- Status: risky path blocked; the native Apply feature is not implemented.
+- R3: the 39-check browser test is a modified isolated extension fixture. A new installed-package smoke test verifies the unmodified installed package through a real toolbar gesture.
+
+### Counterexamples: failing first, then fixed
+
+Commit 4400974 added the regressions without changing production code. Run 36322314553 (4400974) failed as intended:
+- Rust regression step: 4 new production-path unit tests failed. Local Wine at the same commit gave:
+  - R1: Applied with "hello fixed";
+  - R2 and restore: 7 editor state changes including `WM_SETTEXT` and `EM_SETMODIFY`;
+  - plain Apply: Applied.
+- Real synthetic editor, application edits (receipt `cloud_owned_desktop_native_apply_against_application_edits`: FAIL):
+  - R1: `outcome=Applied state_changes=4 foreign_change_notices=2 app_edits=1 final_is_application_text=false clipboard_has_result=false`.
+  - R2: `outcome=CopiedFallback { reason: TargetSelectionChanged } state_changes=7 foreign_change_notices=2 app_edits=0`. The final text matched only because of the whole-text restore.
+  - Edit right before the restore: Copy-only reported after the restore. The receipt truncated this line; later receipts drop quoted values instead of truncating.
+
+Fix dc05cb5 (run 36323285356):
+- The Rust regression step passed.
+- The same live scenarios passed with 0 state changes, the application's own text kept and the result on the clipboard. They are R1, R2, the edit before a restore and 12 application-timer iterations.
+- The Copy-only live matrix passed: clean capture, cursor move, text change, read-only, another foreground window, user typing during Apply, closed target.
+
+### Evidence by category (final verification run: see the Owner report for the run on the final commit)
+
+| Category | Evidence | Result |
+|---|---|---|
+| Deterministic production-core tests | `native_edit` tests through `apply_current_session`: R1, R2, restore, Copy-only, selection authority, read-only Win32 port; Wine 218 passed | red 4400974, PASS from dc05cb5 |
+| Real Windows synthetic editor | application edits (R1/R2/restore/timer), Copy-only matrix, capture | FAIL 4400974, PASS from dc05cb5 (36323285356 onward) |
+| Installed app flow | built app from the installed package: shortcut, Instant, edit, Copy-only Apply, Copy, cancel, reselect, stale | PASS from 64e0301 (36324511882). Every step rereads both editors' text and selection; 0 reads and 0 state-changing messages during Apply, Copy and stale Apply |
+| Modified Chromium fixture | 39 checks, `MODIFIED_ISOLATED_EXTENSION_FIXTURE` (copied extension: new key/ID, fixture host permission, own host-config and registration) | PASS (36324511882 onward). In 36331068541 its stale-source check raced the 1 s reconciliation that also prevents mutation; it now changes the value at Accept mousedown |
+| Unmodified installed-package browser | `installed-package.test.mjs`, 11 checks | PASS in 36331068541 (ce89642); earlier runs FAIL while the gesture helper was fixed |
+| Synthetic Provider | host Deep lifecycle, Deep boundary | PASS in every run |
+| Live Provider | none | NOT_RUN (not authorized) |
+
+Installed-package smoke test in 36331068541, all unmodified:
+- the installed extension directory with the package key/ID `kibjpddbcgbdfflnnhcmpnnhlalaklld` (that package);
+- the installed permissions (activeTab, no host permission);
+- the installer-written `host-config.js`;
+- the installer's HKCU registration and host binary.
+
+Browser setup: a fresh task-owned profile, the browser sandbox on and Playwright's `--disable-extensions` removed. The profile pins the action to the toolbar, which is a user UI preference.
+
+Results:
+- Before the gesture: no page access and no UI.
+- The action was invoked through the real toolbar. The OS mouse click on the pinned action opened the popup, but UI Automation could not locate the popup's button by name. UI Automation Invoke on the action was refused. Real keyboard input then worked: Alt+Shift+T, arrow keys, and Space on the focused action and on the focused "Enable this document". It granted page access both times. All fallbacks are recorded in the receipt.
+- Textarea and simple contenteditable: analysis ran in the installer-registered host process; Accept and Apply edit were each reread.
+- Disable removed the UI and analysis; storage held no text. A cross-origin navigation revoked access. The second gesture re-enabled the document and required a fresh field opt-in. A reload removed the opt-in.
+- Cleanup: browser closed, installed host exited, profile removed, installed files unchanged. Removal then left no registration, files, app data or processes.
+- Observation: Chromium keeps activeTab after a same-origin reload. The Grammar UI still needs a new popup Enable, which needs a toolbar gesture.
+
+When the Extensions menu itself was used, with Playwright's `--disable-extensions` present, neither an OS mouse click nor UI Automation Expand opened it. This is recorded, not qualified.
+
+### Separate review pass
+
+A fresh-context review agent (same model family, read-only, no shared conversation; not an independent human review) reviewed 91c18c0..64e0301. It found no reachable production path that mutates a native editor.
+
+Fixed:
+- 1 blocking finding in the gesture helper.
+- Should-fix findings:
+  - narrow NOT_RUN;
+  - a meaningful second activation;
+  - Copy-only statements scoped to native editors;
+  - a unit test that selection authority cannot re-open paste for native captures, and comment fixes;
+  - a step timeout.
+- Minor findings:
+  - counters for every change notification and text/selection rereads in the built-app flow;
+  - quoted values removed from receipts;
+  - `Win32EditPort::send` limited to the capture's read messages;
+  - stale comments;
+  - receipt source binding;
+  - hit test limited to the target or its container.
+
+Kept, as Owner decisions:
+- the compiled but unreachable paste path (gated and tested);
+- the in-memory capture binding fields;
+- the desktop "Apply" label, which now copies.
+
+### Package and reproducibility
+
+The package is rebuilt by every CI run from that run's commit. The package-build, install and remove receipts in that run's log link source commit, tree and tracked-bytes digest to the app, host and ZIP SHA-256 and to the install/remove results. A document inside the package cannot contain its own package's hash. The final package hashes are therefore reported for the final commit's run.
+
+The extension key, and so the extension ID and ZIP hash, is random per package by design. Bit-for-bit reproducibility of the app and host binaries is unverified: the same commit was not rebuilt in the same environment. Different hashes across commits say nothing about it.
 
 ## Cloud session continuation (2026-09-27, branch claude/eloquent-faraday-hh62qc)
 
@@ -99,7 +180,8 @@ Run 36306114335 on dbc4fca repeated every row below with the same result. The ea
 | 6 | Chromium Copy, keyboard-only actions, Ignore, contenteditable, composition, Deep (39 checks, installed host + modified isolated extension fixture) | PASS | 36303467689 (013ca67), 36306114335 (dbc4fca) |
 | 7 | Deep boundary: selected Provider only, matched terms only, no fallback or replay | PASS | 36302014460 (4d493ba) |
 | 8 | Receipt-bound build, package, fresh-root install, registered host, removal without residue | PASS | 36306114335 (dbc4fca) |
-| - | Live/paid Provider, accounts, physical keyboard/IME/zoom, toolbar activeTab, normal-profile install, Edge | NOT_RUN | outside the authorized scope |
+| - | Live/paid Provider, accounts, physical keyboard/IME/zoom, normal-profile install, Edge | NOT_RUN | outside the authorized scope |
+| - | Toolbar activeTab on the unmodified installed package (round r3: real keyboard input on the pinned action in a fresh profile) | PASS | 36331068541 (ce89642) |
 
 ### Personal use: scope, how to run, residual limits
 
@@ -113,7 +195,7 @@ Enabled scope (synthetic qualification only):
 - Deep only for the selected Provider after explicit consent.
 
 Residual limits:
-- NOT_RUN: live/paid Provider inference and accounts; physical keyboard, IME, zoom, multiple monitors and long human sessions; production toolbar `activeTab` gesture; normal-profile or Web Store installation; Edge.
+- NOT_RUN: live/paid Provider inference and accounts; physical keyboard, IME, zoom, multiple monitors and long human sessions; normal-profile or Web Store installation; Edge. The toolbar `activeTab` gesture passed in round r3 through real keyboard input on a pinned action in a fresh profile; the mouse path through the Extensions menu is not qualified.
 - Antigravity Deep stays `provider_privacy_unqualified`. Claude bare mode cannot use OAuth sign-in.
 - Chromium DOM replacement has no guaranteed browser undo.
 - Desktop Apply never inserts the result; the user pastes it from the clipboard.
