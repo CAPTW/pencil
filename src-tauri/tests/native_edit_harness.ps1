@@ -383,6 +383,10 @@ public static class NativeEditHarness
     private static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")]
     private static extern uint SendInput(uint count, INPUT[] inputs, int size);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool OpenClipboard(IntPtr owner);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool CloseClipboard();
 
     [StructLayout(LayoutKind.Sequential)]
     private struct KEYBDINPUT
@@ -471,6 +475,13 @@ public static class NativeEditHarness
                 return "SENT " + SendInput((uint)keys.Length, keys, Marshal.SizeOf(typeof(INPUT)));
             case "CLIPBOARD":
                 return "CLIP " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(Clipboard.ContainsText() ? Clipboard.GetText() : ""));
+            case "CLIPLOCK":
+                // Keeps the clipboard open on this (the harness UI) thread until
+                // CLIPUNLOCK, so no other process can write it: a task-owned
+                // stand-in for a clipboard manager or remote-desktop sync.
+                return OpenClipboard(main.Handle) ? "OK" : "ERR clipboard_open_failed";
+            case "CLIPUNLOCK":
+                return CloseClipboard() ? "OK" : "ERR clipboard_close_failed";
             case "COUNTS":
                 int counted = int.Parse(part[1]);
                 var values = new List<string>();
