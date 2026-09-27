@@ -2,7 +2,9 @@
 # steps: build (receipt-bound release build + package), install (fresh root,
 # registration wiring and registered-host protocol check), remove (uninstall
 # and independent residue check). The built-app and browser tests run between
-# install and remove against the installed files. Receipts are content-free.
+# install and remove against the installed files (the installed-package
+# browser smoke test loads the installed extension unmodified). Receipts are
+# content-free.
 [CmdletBinding()]
 param([Parameter(Mandatory)][ValidateSet('build', 'install', 'remove')][string]$Phase)
 $ErrorActionPreference = 'Stop'
@@ -116,6 +118,7 @@ switch ($Phase) {
     Add-Env 'GRAMMAR_APP_KIND' 'installed-personal-package'
     Add-Env 'GRAMMAR_INSTALLED_HOST' $hostManifest.path
     Add-Env 'GRAMMAR_INSTALLED_EXTENSION' $install.extensionDirectory
+    Add-Env 'GRAMMAR_INSTALL_ROOT' $installRoot
     Write-Receipt 'package-install.json' ([ordered]@{
         sourceCommit = $install.sourceCommit
         extensionId = $manifest.extensionId

@@ -13,6 +13,12 @@ const hostExecutable=resolve(process.env.GRAMMAR_HOST_EXE || 'src-tauri/target/d
 const extensionSource=resolve(process.env.GRAMMAR_EXTENSION_DIR || 'adapters/chromium/extension');
 const syntheticDeep=process.env.GRAMMAR_SYNTHETIC_DEEP==='1';
 const activeTabFixture=process.env.GRAMMAR_ACTIVE_TAB==='1';
+// This harness never runs the installed package unmodified: it copies the
+// extension, replaces its key/ID, adds the fixture origin permission unless
+// GRAMMAR_ACTIVE_TAB=1, rewrites host-config.js and registers its own copy of
+// the host. installed-package.test.mjs covers the unmodified installed package.
+const fixtureBase=process.env.GRAMMAR_INSTALLED_EXTENSION && resolve(process.env.GRAMMAR_INSTALLED_EXTENSION)===extensionSource ? 'installed host binary (copied) + installed extension (copied and modified)' : 'source host build + source extension (copied and modified)';
+const extensionModifications=['per-run key and extension ID',...(activeTabFixture?[]:['fixture origin host_permissions']),'host-config.js names its own registration','own native host registration of a copied host binary'];
 if(syntheticDeep) {
  assert.equal(resolve(process.env.CODEX_PENCIL_CLAUDE_BIN || ''),resolve(evidence,'runtime/child.exe'),'Deep test requires the owned synthetic executable');
  assert.equal(process.env.P01_FIXTURE_MODE,'success');
@@ -329,7 +335,7 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  pass('four re-enable cycles reject stale disable, require fresh field opt-in and reread explicit Apply');
  await page.reload();assert.equal(await page.locator('#grammar-local-assist').count(),0);pass('navigation revokes opt-in');
  assert.deepEqual(errors,[]);
- await writeFile(join(run,'result.json'),JSON.stringify({status:'PASS',classification:'SYNTHETIC_CHROMIUM_NATIVE_HOST',checks,browser:context.browser().version(),metrics:await worker.evaluate(()=>fixtureMetrics),productionActiveTabGesture:activeTabFixture?'SYNTHETIC_PROTOCOL_ACTION':'NOT_RUN',providerLive:'NOT_RUN',syntheticDeep,hostBinarySha256:createHash('sha256').update(await readFile(hostExecutable)).digest('hex'),sourceDirty:execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim().length>0,sourceHead:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),sourceFiles:Object.fromEntries(await Promise.all(['core.js','content.js','worker.js','popup.js','manifest.json','host-config.js'].map(async f=>[f,createHash('sha256').update(await readFile(join(extensionSource,f))).digest('hex')]))),extensionManifestSha256:createHash('sha256').update(await readFile(join(extension,'manifest.json'))).digest('hex')},null,2));
+ await writeFile(join(run,'result.json'),JSON.stringify({status:'PASS',classification:'MODIFIED_ISOLATED_EXTENSION_FIXTURE',fixtureBase,extensionModifications,checks,browser:context.browser().version(),metrics:await worker.evaluate(()=>fixtureMetrics),productionActiveTabGesture:activeTabFixture?'SYNTHETIC_PROTOCOL_ACTION':'NOT_RUN',providerLive:'NOT_RUN',syntheticDeep,hostBinarySha256:createHash('sha256').update(await readFile(hostExecutable)).digest('hex'),sourceDirty:execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim().length>0,sourceHead:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),sourceFiles:Object.fromEntries(await Promise.all(['core.js','content.js','worker.js','popup.js','manifest.json','host-config.js'].map(async f=>[f,createHash('sha256').update(await readFile(join(extensionSource,f))).digest('hex')]))),extensionManifestSha256:createHash('sha256').update(await readFile(join(extension,'manifest.json'))).digest('hex')},null,2));
  console.log(JSON.stringify({status:'PASS',checks,evidence:run}));
 } catch(error) {await writeFile(join(run,'failure.json'),JSON.stringify({checks,error:String(error),errors},null,2));console.error({evidence:run,checks,error});process.exitCode=1;}
 finally {await context?.close();await new Promise(r=>server.close(r));if(existsSync(join(hostDir,'registration.json')))execFileSync('pwsh.exe',['-NoProfile','-File',resolve('adapters/chromium/host/Remove-Registration.ps1'),'-PackageDirectory',hostDir]);}
