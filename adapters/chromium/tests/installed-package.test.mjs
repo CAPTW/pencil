@@ -108,13 +108,14 @@ async function helper(command, name, {method = 'Mouse', match = 'Exact', timeout
 }
 const exists = async (name, options) => (await helper('Exists', name, options)).status === 'found';
 
-// Clicks `name` and waits for `effect()`. When an OS mouse click has no visible
-// effect, the rest of the run uses UI Automation Invoke and this click is retried.
+// Clicks `name` and waits for `effect()`. When an OS mouse click is covered by
+// another window or has no visible effect, the rest of the run uses UI
+// Automation Invoke and this click is retried.
 let inputMethod = 'Mouse';
 async function click(name, effect, {match = 'Exact', timeoutMs = 10000} = {}) {
   let result = await helper('Click', name, {method: inputMethod, match, timeoutMs});
-  if (result.status !== 'clicked') return result;
-  if (await effect()) return result;
+  if (result.status === 'clicked' && (await effect())) return result;
+  if (!['clicked', 'occluded'].includes(result.status)) return result;
   if (inputMethod !== 'Mouse') return {...result, status: 'no_effect'};
   inputMethod = 'Invoke';
   result = await helper('Click', name, {method: inputMethod, match, timeoutMs: 3000});
@@ -222,6 +223,8 @@ try {
   context = await chromium.launchPersistentContext(profile, {
     headless: false,
     executablePath: process.env.GRAMMAR_CHROMIUM,
+    // Keep the browser sandbox that Playwright disables by default.
+    chromiumSandbox: true,
     viewport: null,
     args: [
       `--disable-extensions-except=${extensionDir}`,
@@ -389,6 +392,7 @@ try {
     },
     page_access_after_same_origin_reload: observations.pageAccessAfterSameOriginReload ?? null,
     browser: observations.browser ?? null,
+    browser_sandbox: true,
     checks,
     not_run_cause: notRunCause,
     failure,
