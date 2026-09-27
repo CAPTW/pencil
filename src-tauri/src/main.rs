@@ -185,6 +185,21 @@ struct CaptureErrorEvent {
     message: String,
 }
 
+/// Sent when the backend ended the capture without the widget asking (the
+/// shortcut toggle, tray Hide, or closing the window), so the widget clears
+/// the capture instead of offering Copy for it.
+#[derive(Clone, Debug, Serialize)]
+struct CaptureEndedEvent {
+    reason: &'static str,
+}
+
+async fn end_capture_and_notify(app: &AppHandle, reason: &'static str) {
+    let state = app.state::<AppState>();
+    let active_turn = state.capture.lock().await.cancel_active_with_turn();
+    interrupt_active_turn(state.inner(), active_turn).await;
+    let _ = app.emit("capture-ended", CaptureEndedEvent { reason });
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoginCompletedEvent {
@@ -404,7 +419,7 @@ async fn rewrite_selected_text(
     if disclosure_version < settings::CLOUD_PROCESSING_DISCLOSURE_VERSION {
         return Err("cloud_processing_disclosure_required".to_string());
     }
-    let (selected_text, bound_intent, match_result, request_constraints) = {
+    let (selected_text, bound_intent, match_result, request_constraints, attempt) = {
         let mut capture = state.capture.lock().await;
         let selected_text = capture
             .captured_source(&token)
@@ -469,6 +484,9 @@ async fn rewrite_selected_text(
         capture
             .begin_rewrite_bound(&token, bound_intent.clone())
             .map_err(|error| error.code().to_string())?;
+        let attempt = capture
+            .rewrite_attempt(&token)
+            .map_err(|error| error.code().to_string())?;
         if let Ok(instant) = state.instant.lock() {
             instant.note_deep_request();
         }
@@ -477,6 +495,7 @@ async fn rewrite_selected_text(
             bound_intent,
             match_result,
             request_constraints,
+            attempt,
         )
     };
 
@@ -484,20 +503,34 @@ async fn rewrite_selected_text(
     // A cancelled capture cannot dispatch a child, and late cancellation cannot
     // select a newer valid capture's operation.
     let operation = {
-        let capture = state.capture.lock().await;
-        capture.validate_rewriting_bound_intent(&token, &bound_intent)
-            .map_err(|error| error.code().to_string())?;
+        let mut capture = state.capture.lock().await;
         let mut providers = state.providers.lock().await;
-        providers.set_active(settings_snapshot.active_provider).map_err(|e| e.to_string())?;
-        providers.reserve_capture(settings_snapshot.active_provider, token.clone(), bound_intent.clone())
-            .map_err(|e| e.to_string())?
+        reserve_rewrite(
+            &mut capture,
+            &mut providers,
+            settings_snapshot.active_provider,
+            &token,
+            &bound_intent,
+        )?
     };
     let rewrite = ProviderManager::execute(&operation, &selected_text, intent, &request_constraints, &state.codex)
         .await.map_err(|error| error.to_string());
+    // Capture before provider state, as in reservation and cancellation: a
+    // newer Deep request of this capture cannot start until this one has
+    // settled the capture.
+    let mut capture = state.capture.lock().await;
     let current = state.providers.lock().await.finish(&operation);
     let rewrite = if current { rewrite } else { Err("rewrite_interrupted".into()) };
-
-    let mut capture = state.capture.lock().await;
+    if !capture.owns_rewrite(&token, attempt) {
+        // Cancelled by the user (the capture stays usable), or replaced,
+        // invalidated or ended: this request must not change the capture.
+        return Err(if capture.is_captured(&token) {
+            "rewrite_cancelled"
+        } else {
+            "rewrite_superseded"
+        }
+        .to_string());
+    }
     match rewrite {
         Ok(mut result) => {
             if !terminology_environment_matches(&state, &bound_intent)? {
@@ -564,6 +597,29 @@ async fn rewrite_selected_text(
             Err(session_error) => Err(session_error.code().to_string()),
         },
     }
+}
+
+/// Reserves the selected Provider for the Deep request that begin_rewrite_bound
+/// started. If nothing can start (for example an earlier request is still
+/// finishing), the capture returns to Captured, so its Instant draft can still
+/// be copied and Deep can run again.
+pub(crate) fn reserve_rewrite(
+    capture: &mut CaptureSessionStore,
+    providers: &mut ProviderManager,
+    kind: ProviderKind,
+    token: &SessionToken,
+    bound_intent: &BoundRewriteIntent,
+) -> Result<Arc<provider::manager::ProviderOperation>, String> {
+    capture
+        .validate_rewriting_bound_intent(token, bound_intent)
+        .map_err(|error| error.code().to_string())?;
+    let reserved = providers
+        .set_active(kind)
+        .and_then(|()| providers.reserve_capture(kind, token.clone(), bound_intent.clone()));
+    reserved.map_err(|error| {
+        let _ = capture.finish_rewrite_failure_bound(token, bound_intent);
+        error.to_string()
+    })
 }
 
 pub(crate) fn rewrite_preserves_line_structure(source: &str, replacement: &str) -> bool {
@@ -685,6 +741,13 @@ async fn apply_replacement(
                 return Ok(match error {
                     SessionError::StaleSession | SessionError::StaleIntent => {
                         ApplyOutcome::RejectedStale
+                    }
+                    // The capture is still waiting for a result: only its
+                    // Instant draft is outdated, not the capture.
+                    SessionError::InvalidState if capture.is_captured(&token) => {
+                        ApplyOutcome::Failed {
+                            reason: ApplyFailureReason::DraftOutdated,
+                        }
                     }
                     SessionError::InvalidState | SessionError::GenerationExhausted => {
                         ApplyOutcome::Failed {
@@ -1168,12 +1231,18 @@ async fn dismiss_window(
     let active_turn = {
         let mut capture = state.capture.lock().await;
         match (session_id, generation) {
-            (Some(session_id), Some(generation)) => capture
-                .cancel_with_active_turn(&SessionToken {
+            (Some(session_id), Some(generation)) => match capture.cancel_with_active_turn(
+                &SessionToken {
                     session_id,
                     generation,
-                })
-                .map_err(|error| error.code().to_string())?,
+                },
+            ) {
+                Ok(active_turn) => active_turn,
+                // Already ended (copied, or ended by the backend): nothing to
+                // cancel, and the window still closes on the first click.
+                Err(SessionError::InvalidState) => None,
+                Err(error) => return Err(error.code().to_string()),
+            },
             (None, None) if !capture.has_active() => None,
             _ => return Err("session_token_required".to_string()),
         }
@@ -1188,9 +1257,11 @@ async fn dismiss_window(
     hide_main_window(&app)
 }
 
+/// The widget's Cancel: stops only the running Deep request. The capture and
+/// its Instant draft stay usable; closing the widget is what ends a capture.
 #[tauri::command]
 async fn cancel_rewrite(state: State<'_, AppState>) -> Result<(), String> {
-    let active_turn = state.capture.lock().await.cancel_active_with_turn();
+    let active_turn = state.capture.lock().await.cancel_rewrite_keep_capture();
     interrupt_active_turn(&state, active_turn).await;
     Ok(())
 }
@@ -1502,9 +1573,7 @@ fn main() {
                 let app = window.app_handle().clone();
                 let _ = window.hide();
                 tauri::async_runtime::spawn(async move {
-                    let state = app.state::<AppState>();
-                    let active_turn = state.capture.lock().await.cancel_active_with_turn();
-                    interrupt_active_turn(state.inner(), active_turn).await;
+                    end_capture_and_notify(&app, "window_closed").await;
                 });
             }
         })
@@ -1576,9 +1645,7 @@ fn handle_tray_menu_action(app: &AppHandle, action: &str) {
             let _ = hide_main_window(app);
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
-                let state = app.state::<AppState>();
-                let active_turn = state.capture.lock().await.cancel_active_with_turn();
-                interrupt_active_turn(state.inner(), active_turn).await;
+                end_capture_and_notify(&app, "tray_hide").await;
             });
         }
         "settings" => {
@@ -1649,9 +1716,7 @@ fn global_shortcut_plugin() -> TauriPlugin<tauri::Wry> {
                 Some(ShortcutActivation::HideWidget) => {
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        let state = app.state::<AppState>();
-                        let active_turn = state.capture.lock().await.cancel_active_with_turn();
-                        interrupt_active_turn(state.inner(), active_turn).await;
+                        end_capture_and_notify(&app, "shortcut_hide").await;
                         let _ = hide_main_window(&app);
                     });
                 }

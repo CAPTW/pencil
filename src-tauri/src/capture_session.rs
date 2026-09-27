@@ -143,6 +143,11 @@ struct CaptureSession {
     native_edit: Option<NativeEditBinding>,
     rewrite_intent: Option<BoundRewriteIntent>,
     active_turn: Option<ActiveTurn>,
+    /// Counts Deep requests of this capture. A request may change the capture
+    /// only while it is still the one in progress: after Cancel the user can
+    /// run Deep again, and a late end of the cancelled request must not end
+    /// the new one.
+    rewrite_attempts: u64,
     _created_at: Instant,
 }
 
@@ -206,6 +211,7 @@ impl CaptureSessionStore {
             native_edit,
             rewrite_intent: None,
             active_turn: None,
+            rewrite_attempts: 0,
             _created_at: Instant::now(),
         });
         Ok(token)
@@ -257,7 +263,30 @@ impl CaptureSessionStore {
         current.rewrite_intent = Some(intent);
         current.active_turn = None;
         current.lifecycle = CaptureLifecycle::Rewriting;
+        current.rewrite_attempts += 1;
         Ok(current.selected_text.clone())
+    }
+
+    /// The Deep request in progress for this capture, if any.
+    pub(crate) fn rewrite_attempt(&self, token: &SessionToken) -> Result<u64, SessionError> {
+        let current = self.current(token)?;
+        Self::require_state(current, CaptureLifecycle::Rewriting)?;
+        Ok(current.rewrite_attempts)
+    }
+
+    /// True while `attempt` is still the Deep request in progress for this
+    /// capture (not cancelled, failed, invalidated or replaced by a newer one).
+    pub(crate) fn owns_rewrite(&self, token: &SessionToken, attempt: u64) -> bool {
+        self.current(token).is_ok_and(|current| {
+            current.lifecycle == CaptureLifecycle::Rewriting && current.rewrite_attempts == attempt
+        })
+    }
+
+    /// True when the capture is current and waiting in Captured, for example
+    /// after the user cancelled its Deep request.
+    pub(crate) fn is_captured(&self, token: &SessionToken) -> bool {
+        self.current(token)
+            .is_ok_and(|current| current.lifecycle == CaptureLifecycle::Captured)
     }
 
     #[cfg(test)]
@@ -514,6 +543,18 @@ impl CaptureSessionStore {
                 Ok(current.active_turn.take())
             }
         }
+    }
+
+    /// Stops only the Deep request in progress. The capture returns to
+    /// Captured, so its Instant draft can still be copied and Deep can run
+    /// again. Closing the widget (cancel_active_with_turn) ends the capture.
+    pub(crate) fn cancel_rewrite_keep_capture(&mut self) -> Option<ActiveTurn> {
+        let current = self.current.as_mut()?;
+        if current.lifecycle != CaptureLifecycle::Rewriting {
+            return None;
+        }
+        current.lifecycle = CaptureLifecycle::Captured;
+        current.active_turn.take()
     }
 
     pub(crate) fn cancel_active_with_turn(&mut self) -> Option<ActiveTurn> {
