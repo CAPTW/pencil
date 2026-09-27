@@ -2,6 +2,14 @@
 
 Mission: GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1. This is an incomplete mission checkpoint, not P3-A/P3-B or personal-use acceptance. Read AGENTS.md, the v1.1 contract override, control/mission.json and control/state.json. The Owner has already authorized internal continuation; no fresh per-step approval is needed.
 
+## Review round r3 (2026-09-27): R1/R2/R3 corrections
+
+This section supersedes the Step 3 and Step 4 Apply results and the Step 6 "installed host and extension" classification in the continuation below.
+
+- R1/R2: the locked verify-replace-reread native Apply was not safe. An application edit made after the verification read was overwritten and reported Applied (R1), and a moved selection led to a replacement followed by a `WM_SETTEXT` restore that was reported as Copy-only (R2). Both were reproduced first as failing production-path regression tests (commit 4400974). Grammar now never mutates a captured native editor: Apply is Copy-only (`target_mutation_disabled`) and the editor receives no message. Status: risky path blocked; native Apply feature not implemented.
+- R3: the 39-check browser test runs with the installed host and a modified isolated extension fixture. The copy has a changed key/ID, localhost `host_permissions`, its own `host-config.js` and its own host registration. It is not an unmodified installed-package verification.
+- The final evidence table for this round is recorded below when the round completes.
+
 ## Cloud session continuation (2026-09-27, branch claude/eloquent-faraday-hh62qc)
 
 Entry 099baea by fast-forward (no rewrite). The Owner approved Windows CI for this session branch (contract 1.3.0); codex/grammar-autonomous-r1 is untouched and path claims moved to claude-cloud on this branch only. CI evidence lives in the workflow run named below (artifact `grammar-synthetic-evidence-<sha>-<attempt>`, 7-day retention); no local D:/ evidence exists for this session.
@@ -82,13 +90,13 @@ Run 36306114335 on dbc4fca repeated every row below with the same result. The ea
 |---|---|---|---|
 | 1 | Independent owned-desktop steps, FAIL receipt and unwind cleanup under injected fault | PASS | 36299835063 (4bd9a73), 36301495139 (4b6705a) |
 | 2 | Standard Edit capture: exact text, denials without text messages, clipboard untouched | PASS | 36301083212 (0fdd2f6), 36302014460 (4d493ba) |
-| 3 | Locked verified Apply, undo by user, cursor/source/editor/read-only/closed-target Copy-only, typing and selection races | PASS | 36302014460 (4d493ba) |
-| 3 | Injected selection race restored under the lock (WM_SETTEXT), flag and selection kept | PASS | 36303467689 (013ca67), 36306114335 (dbc4fca) |
-| 4 | Built app from the installed package: shortcut, Instant, edit, Apply, Copy, cancel, reselect, stale | PASS (10/10) | 36306114335 (dbc4fca) |
+| 3 | Locked verified Apply, undo by user, cursor/source/editor/read-only/closed-target Copy-only, typing and selection races | WITHDRAWN (review R1: application edits were overwritten) | 36302014460 (4d493ba) |
+| 3 | Injected selection race restored under the lock (WM_SETTEXT), flag and selection kept | WITHDRAWN (review R2: mutate-then-restore is not safe) | 36303467689 (013ca67), 36306114335 (dbc4fca) |
+| 4 | Built app from the installed package: shortcut, Instant, edit, Apply, Copy, cancel, reselect, stale | PASS (10/10) with the withdrawn mutating Apply; superseded by the Copy-only flow | 36306114335 (dbc4fca) |
 | 5 | Endurance 72 runs, contention, resources flat | PASS | 36302014460 (4d493ba) |
 | 5 | Loaded 750ms timeout reproduction with bounded complete cleanup | REPRODUCED 6/6 (recorded, not a pass) | 36302014460 (4d493ba) |
 | 6 | Chromium opt-in, analysis, cache without inference/network, Accept/Edit/Dismiss, stale/user-edit/sensitive/navigation | PASS | 36302014460 (4d493ba), 36306114335 (dbc4fca) |
-| 6 | Chromium Copy, keyboard-only actions, Ignore, contenteditable, composition, Deep (39 checks, installed host and extension) | PASS | 36303467689 (013ca67), 36306114335 (dbc4fca) |
+| 6 | Chromium Copy, keyboard-only actions, Ignore, contenteditable, composition, Deep (39 checks, installed host + modified isolated extension fixture) | PASS | 36303467689 (013ca67), 36306114335 (dbc4fca) |
 | 7 | Deep boundary: selected Provider only, matched terms only, no fallback or replay | PASS | 36302014460 (4d493ba) |
 | 8 | Receipt-bound build, package, fresh-root install, registered host, removal without residue | PASS | 36306114335 (dbc4fca) |
 | - | Live/paid Provider, accounts, physical keyboard/IME/zoom, toolbar activeTab, normal-profile install, Edge | NOT_RUN | outside the authorized scope |
@@ -99,7 +107,7 @@ Build locally on Windows from a clean checkout of the evidence commit. A clone m
 
 Enabled scope (synthetic qualification only):
 - Standard Windows Edit capture.
-- Locked verified Apply on those controls; Copy-only everywhere else.
+- Apply is Copy-only everywhere; Grammar never changes text inside another application's editor (native Apply not implemented).
 - Local Instant in the desktop widget.
 - Chromium local Instant on explicitly enabled textarea and simple contenteditable fields.
 - Deep only for the selected Provider after explicit consent.
@@ -108,8 +116,7 @@ Residual limits:
 - NOT_RUN: live/paid Provider inference and accounts; physical keyboard, IME, zoom, multiple monitors and long human sessions; production toolbar `activeTab` gesture; normal-profile or Web Store installation; Edge.
 - Antigravity Deep stays `provider_privacy_unqualified`. Claude bare mode cannot use OAuth sign-in.
 - Chromium DOM replacement has no guaranteed browser undo.
-- A native Apply briefly makes the field read-only, so keys typed in that instant are dropped. If the app is killed at that moment, the field can stay read-only until the target app is reopened.
-- The selection-race recovery clears that field's undo buffer.
+- Desktop Apply never inserts the result; the user pastes it from the clipboard.
 - Main integration, release, signing and acceptance of the whole product are not claimed.
 
 ## GitHub cloud validation request (2026-09-27)

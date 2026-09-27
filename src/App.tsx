@@ -36,6 +36,7 @@ import {
 import {
   applyFailureEndsCapture,
   applyFailureMessage,
+  applyFailureStatus,
   copiedFallbackMessage,
   parseApplyOutcome,
   parseSelectionCaptured,
@@ -1365,7 +1366,7 @@ export default function App() {
         return;
       }
 
-      setStatus("Apply failed safely");
+      setStatus(applyFailureStatus(outcome.reason));
       if (applyFailureEndsCapture(outcome.reason)) {
         currentTokenRef.current = null;
         setSelection(null);
