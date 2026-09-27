@@ -8,6 +8,7 @@
   let timer = null, heartbeat = null, expiry = null, observer = null, inflight = false, pending = null, deferredInstant = null;
   let selectedIndex = null, editBox = null, sequence = 0;
   let deepProvider = null, deepRequest = null, deepButton = null, draftVersion = 0;
+  let enableTarget = null, reanalyzeAll = false;
   const sensitive = /password|passwd|secret|token|credit|card.?number|ssn|social.?security|medical|health|otp|one.?time|verification|auth|private|sensitive/i;
   function labelText(label) {
     if (!label) return '';
@@ -80,18 +81,36 @@
     document.removeEventListener('keydown', keyboard, true);
     document.removeEventListener('visibilitychange', visibility);
     window.removeEventListener('pagehide', pagehide);
-    root?.remove(); root = shadow = status = list = card = panel = panelToggle = null;
+    root?.remove(); root = shadow = status = list = card = panel = panelToggle = enableTarget = null; reanalyzeAll = false;
     if (notify && oldEpoch) chrome.runtime.sendMessage({op:'disable',epoch:oldEpoch}).catch(() => {});
+  }
+  // The field "Enable this field" would enable. Links and buttons passed on
+  // the way to the panel do not change it; the panel names the field.
+  function describeField(el) {
+    const label = [...(el.labels || [])].map(labelText).join(' ') || el.getAttribute('aria-label') ||
+      el.getAttribute('placeholder') || el.getAttribute('name') || el.id || (el.tagName === 'TEXTAREA' ? 'text area' : 'editable text');
+    return label.replace(/\s+/g, ' ').trim().slice(0, 40);
+  }
+  function choose(el) {
+    chosen = el;
+    if (enableTarget) enableTarget.textContent = chosen ? 'Field to enable: ' + describeField(chosen) : 'Select a text field in the page first.';
   }
   function focus(event) {
     if (root?.contains(event.target)) return;
-    chosen = supported(event.target) ? event.target : null;
+    if (supported(event.target)) choose(event.target);
   }
   function invalidate(clear = true) {
     if (!session) return;
     if(clear) session.cache = []; list.replaceChildren(); card.replaceChildren(); selectedIndex = null;
   }
   function input(event) { if (event.target === editor) { cancelDeepUI(); invalidate(false); schedule(); } }
+  // Keeps the suggestions still valid for `text` and re-checks what changed.
+  function resync(text) {
+    const request = text !== null && session ? session.update(text) : null;
+    invalidate(false);
+    if (request) pending = request;
+    render(); schedule();
+  }
   function compositionStart(event) { if (event.target === editor) { composing = true; cancelDeepUI(); invalidate(false); clearTimeout(timer); } }
   function compositionEnd(event) { if (event.target === editor) { composing = false; schedule(); } }
   function scheduleLayout() {
@@ -125,6 +144,10 @@
   function keyboard(event) {
     if (!event.isTrusted) return;
     if (event.altKey && event.shiftKey && event.code === 'KeyG') { event.preventDefault(); disable(true); }
+    // Keyboard users enable exactly the field they are in.
+    else if (event.altKey && event.shiftKey && event.code === 'KeyE' && !event.composedPath().includes(root) && supported(event.target)) {
+      event.preventDefault(); enableField(event.target);
+    }
     else if (!event.isComposing && event.key === 'Escape' && event.composedPath().includes(root) && !panel.hidden) {
       event.preventDefault(); event.stopPropagation(); setPanelVisible(false);
     }
@@ -141,7 +164,10 @@
     const deferred = deferredInstant; deferredInstant = null;
     if (deferred && deferred.owner === session && text === session.text)
       session.publish(deferred.request, deferred.suggestions);
-    const request = session.update(text);
+    let request = session.update(text);
+    // After a discarded or failed reply, or expiry, check every line again,
+    // not only the last change.
+    if (reanalyzeAll) { reanalyzeAll = false; request = session.full() || request; }
     if (!request) { render(); pump(); return; }
     pending = request; pump();
   }
@@ -152,53 +178,88 @@
       const response = await chrome.runtime.sendMessage({version:1,op:'analyze',id:String(++sequence),epoch,
         revision:request.revision,text:request.text});
       if (session !== owner || !epoch) return;
+      if (response?.error === 'busy') {
+        // A Deep request (or its cleanup) is still using the host: wait, then re-check.
+        status.textContent = 'Waiting for the Deep request to finish…';
+        reanalyzeAll = true; clearTimeout(timer); timer = setTimeout(analyzeChanged, 1000); return;
+      }
       if (!response || response.error) { status.textContent = 'Local engine unavailable. Disable, check host, then enable again.'; invalidate(); return; }
       if (composing && response.epoch === epoch && response.revision === request.revision) {
         deferredInstant = {owner,request,suggestions:response.suggestions};return;
       }
-      if (response.epoch !== epoch || response.revision !== request.revision || read() !== owner.text) { invalidate(); schedule(); return; }
+      if (response.epoch !== epoch || response.revision !== request.revision || read() !== owner.text) {
+        // The text moved on while this reply was in flight: keep what is still
+        // valid and check the whole field again.
+        reanalyzeAll = true; invalidate(false); schedule(); return;
+      }
       if (owner.publish(request,response.suggestions)) render();
     } catch { if (session === owner && status) status.textContent = 'Connection lost. Enable this document again.'; }
     finally { inflight = false; if (pending) pump(); }
   }
   function render() {
     list.replaceChildren(); card.replaceChildren(); selectedIndex = null;
+    const now = Date.now();
+    session.cache = session.cache.filter(s => now < s.expires);
     status.textContent = session.cache.some(s=>s.rule.startsWith('deep:')) ? 'Deep result cached for review. Apply is explicit.' : 'Local Instant active · ' + session.cache.length + ' suggestions · no cloud';
+    // A suggestion opens only when it is chosen (click, Enter or Space).
+    // Moving through the list, by keyboard or pointer, never changes the card.
     session.cache.forEach((s,index) => {
-      const b = button((s.source || 'Insert') + ' → ' + s.replacement, () => show(index));
+      const b = button((s.source || 'Insert') + ' → ' + s.replacement, () => show(index, true));
       b.setAttribute('aria-label', 'Suggestion ' + (index+1) + ': ' + s.message);
-      b.addEventListener('mouseenter', () => { if(!dirtyDraft()) show(index); });
-      b.addEventListener('focus', () => { if(!dirtyDraft()) show(index); });
       list.append(b);
     });
     // Equivalent annotation beside the field. It never wraps or mutates editor DOM.
     scheduleLayout();
-    clearTimeout(expiry); expiry = setTimeout(() => {
-      if(!dirtyDraft()) {invalidate();return;}
-      session.cache=[];list.replaceChildren();
-      for(const action of card.querySelectorAll('button')) {
-        if(['Accept','Apply edit','Ignore'].includes(action.textContent))action.disabled=true;
-      }
-      status.textContent='Suggestion expired. Edited draft kept for Copy or Dismiss; Apply is disabled.';
-    }, 60000);
+    scheduleExpiry();
+  }
+  // Each suggestion has its own lifetime; the timer follows the earliest one.
+  function scheduleExpiry(live = session?.cache ?? []) {
+    clearTimeout(expiry);
+    if (!live.length) return;
+    expiry = setTimeout(expire, Math.max(0, Math.min(...live.map(s => s.expires)) - Date.now()));
+  }
+  function expire() {
+    if (!session) return;
+    const at = Date.now(), live = session.cache.filter(s => at < s.expires);
+    const open = selectedIndex === null ? null : session.cache[selectedIndex];
+    if (live.length) {
+      // Only some expired: drop them. A card being edited keeps its list
+      // positions until its own suggestion expires.
+      if (!dirtyDraft()) { render(); return; }
+      if (open && at < open.expires) { scheduleExpiry(live); return; }
+    }
+    reanalyzeAll = true;
+    if(!dirtyDraft()) {invalidate();status.textContent='Suggestions expired. Edit the field to check it again.';return;}
+    session.cache=[];list.replaceChildren();
+    for(const action of card.querySelectorAll('button')) {
+      if(['Accept','Apply edit','Ignore'].includes(action.textContent))action.disabled=true;
+    }
+    status.textContent='Suggestion expired. Edited draft kept for Copy or Dismiss; Apply is disabled.';
   }
   function dirtyDraft() {
     return editBox?.isConnected && selectedIndex!==null &&
       editBox.value!==session?.suggestion(selectedIndex)?.replacement;
   }
-  function show(index) {
+  function show(index, chosenByUser = false) {
     const s = session?.suggestion(index);
     if (!s) return;
     if (selectedIndex === index && editBox) return;
+    if (dirtyDraft() && !chosenByUser) return;
     selectedIndex = index; card.replaceChildren();
     const label = document.createElement('label'); label.textContent = s.message + ' · Edit replacement';
     editBox = document.createElement('textarea'); editBox.value = s.replacement; editBox.maxLength = MAX_TEXT;
     editBox.setAttribute('aria-label','Edit replacement'); label.append(editBox); card.append(label);
-    card.append(button('Accept', () => apply(index, s.replacement)),button('Apply edit', () => apply(index,editBox.value)),
-      button('Dismiss', () => {session.dismiss(index);render();}),button('Ignore', () => {session.dismiss(index,true);render();}),
+    // Every action is bound to this exact suggestion, not to its list position.
+    const same = () => session?.cache[index] === s;
+    const stale = () => { status.textContent = 'The suggestion list changed. Choose the suggestion again.'; render(); };
+    card.append(button('Accept', () => apply(index, s, s.replacement)),button('Apply edit', () => apply(index, s, editBox.value)),
+      button('Dismiss', () => { if (!same()) return stale(); session.dismiss(index);render();focusEditor(); }),
+      button('Ignore', () => { if (!same()) return stale(); session.dismiss(index,true);render();focusEditor(); }),
       button('Copy', async () => { try { await navigator.clipboard.writeText(editBox.value); status.textContent='Copied'; } catch { editBox.focus(); editBox.select(); status.textContent='Press Ctrl+C to copy selected replacement'; } }));
     editBox.addEventListener('input',()=>draftVersion++);
+    if (chosenByUser) editBox.focus({preventScroll:true});
   }
+  function focusEditor() { if (supported(editor)) editor.focus({preventScroll:true}); }
   function updateDeepPolicy(provider) {
     if(provider!==deepProvider) {cancelDeepUI();if(session?.cache.some(s=>s.rule.startsWith('deep:'))){session.cache=[];invalidate();}}
     deepProvider=['codex','antigravity','claude'].includes(provider) ? provider : null;
@@ -208,7 +269,10 @@
     if(dirtyDraft()) {status.textContent='Apply, copy, or dismiss your edited draft before requesting Deep.';return;}
     if(!deepProvider || !session || deepRequest || inflight) {status.textContent='Deep unavailable or local request still running. Try explicitly when ready.';return;}
     const text=read();if(text===null || !text.trim())return;
-    clearTimeout(timer);pending=null;session.update(text);
+    clearTimeout(timer);pending=null;
+    // A change the page made without an input event: close any card opened for
+    // the old text before sending.
+    if(session.update(text))render();
     const owner=session, target=editor, provider=deepProvider, draft=draftVersion;
     const request={version:1,op:'deep',id:String(++sequence),epoch,revision:owner.revision,text,provider};
     deepRequest=request;status.textContent='Sending current enabled field to '+provider+'. Cancel or pause to stop.';
@@ -228,15 +292,22 @@
     } catch {if(deepRequest===request && status)status.textContent='Deep connection unavailable. No retry.';}
     finally {if(deepRequest===request)deepRequest=null;}
   }
-  function apply(index, replacement) {
+  function apply(index, expected, replacement) {
+    // The card's own suggestion, still in the same place: never a neighbour
+    // that moved into its list position.
+    if (!session || session.cache[index] !== expected) {
+      if (session) render();
+      if (status) status.textContent = 'The suggestion list changed. Choose the suggestion again.';
+      return;
+    }
     const current = read(), mutation = current !== null ? session.replacement(index,current,replacement) : null;
-    if (!mutation || composing) { if(current!==null) session?.update(current); invalidate(); status.textContent='Changed or unsupported field. Apply rejected.'; return; }
+    if (!mutation || composing) { resync(current); status.textContent='Changed or unsupported field. Apply rejected.'; return; }
     const target = editor, owner = session;
     // beforeinput handlers may modify the page. Revalidate AFTER synchronous page callbacks.
     const before = new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertReplacementText',data:replacement});
     if (!target.dispatchEvent(before) || session !== owner || editor !== target || read() !== current) {
-      const actual=read();if(session===owner && editor===target && actual!==null)owner.update(actual);
-      invalidate(); status.textContent='Editor rejected replacement or changed. Copy only.'; return;
+      if (session===owner && editor===target) resync(read()); else invalidate();
+      status.textContent='Editor rejected replacement or changed. Copy only.'; return;
     }
     if (target.tagName === 'TEXTAREA') {
       const start=target.selectionStart,end=target.selectionEnd,direction=target.selectionDirection;
@@ -252,13 +323,26 @@
         offset+=node.length;
       }
       if (!startNode || !endNode) { invalidate(); status.textContent='Range unavailable. Copy only.'; return; }
-      const range=document.createRange();range.setStart(startNode,startOffset);range.setEnd(endNode,endOffset);
-      range.deleteContents();range.insertNode(document.createTextNode(replacement));
+      // Edit the existing text nodes in place: new nodes would push a simple
+      // field past the supported node count after a few Accepts.
+      if (startNode === endNode) startNode.replaceData(startOffset, endOffset - startOffset, replacement);
+      else {
+        startNode.replaceData(startOffset, startNode.length - startOffset, replacement);
+        endNode.deleteData(0, endOffset);
+        for (let node = startNode.nextSibling; node && node !== endNode;) { const next = node.nextSibling; node.remove(); node = next; }
+      }
     }
     target.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertReplacementText',data:replacement}));
-    const actual=read(); if(actual!==null && session===owner) owner.update(actual); invalidate();
+    const actual=read();
+    if (session===owner) resync(actual); else invalidate();
     status.textContent=actual===mutation.next ? 'Applied; content verified. Native undo is not guaranteed.' : 'Editor changed during Apply. No retry; inspect the field.';
-    schedule();
+    focusEditor();
+  }
+  function enableField(target) {
+    wipeField();
+    if (!supported(target)) {status.textContent='Unsupported or sensitive field. No text read.';return;}
+    choose(target);
+    editor=target;session=new DocumentSession(epoch);status.textContent='Local Instant active';schedule();
   }
   function enable(newEpoch) {
     disable(); epoch=newEpoch; chosen=supported(document.activeElement) ? document.activeElement : null;
@@ -272,12 +356,9 @@
     status=document.createElement('p');status.setAttribute('role','status');status.textContent='Document enabled. Select a non-sensitive field, then enable it.';
     list=document.createElement('div');list.setAttribute('aria-label','Cached suggestions');card=document.createElement('div');
     deepButton=button('Deep requires document permission in the popup',requestDeep);deepButton.disabled=true;
-    panel.append(status,deepButton,button('Cancel Deep',()=>{cancelDeepUI();status.textContent='Deep cancelled; cleanup receipt pending in host.';}),button('Enable this field',()=>{
-      const target=chosen;
-      wipeField();
-      if (!supported(target)) {status.textContent='Unsupported or sensitive field. No text read.';return;}
-      editor=target;session=new DocumentSession(epoch);status.textContent='Local Instant active';schedule();
-    }),button('Pause field',()=>{wipeField();status.textContent='Paused; cache cleared';}),button('Disable document',()=>disable(true)),list,card);
+    enableTarget=document.createElement('p');choose(chosen);
+    panel.append(status,deepButton,button('Cancel Deep',()=>{cancelDeepUI();status.textContent='Deep cancelled; cleanup receipt pending in host.';}),enableTarget,button('Enable this field',()=>enableField(chosen)),
+      button('Pause field',()=>{wipeField();status.textContent='Paused; cache cleared';}),button('Disable document',()=>disable(true)),list,card);
     shadow.append(style,panelToggle,panel);document.documentElement.append(root);
     layoutObserver=new ResizeObserver(scheduleLayout);layoutObserver.observe(root);
     window.addEventListener('resize',scheduleLayout,{passive:true});

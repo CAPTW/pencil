@@ -28,6 +28,9 @@
       this.text = text; this.revision++; this.cache = retained;
       return { epoch: this.epoch, revision: this.revision, ...window };
     }
+    // The whole field at the current revision: re-analysis after a discarded or
+    // failed reply, or after the suggestions expired.
+    full() { return this.active && this.revision ? { epoch: this.epoch, revision: this.revision, start: 0, end: this.text.length, text: this.text } : null; }
     publish(request, suggestions, now = Date.now()) {
       if (!this.active || request.epoch !== this.epoch || request.revision !== this.revision ||
           request.text !== this.text.slice(request.start, request.end) || !Array.isArray(suggestions)) return false;
@@ -43,7 +46,8 @@
           message: typeof s.message === 'string' ? s.message.slice(0, 256) : s.rule,
           epoch: this.epoch, revision: this.revision, expires: now + TTL });
       }
-      this.cache = [...this.cache.filter(s => now < s.expires), ...accepted]
+      // The reply is authoritative for the analyzed window: it replaces what was there.
+      this.cache = [...this.cache.filter(s => now < s.expires && (s.end <= request.start || s.start >= request.end)), ...accepted]
         .sort((a,b)=>a.start-b.start).slice(0,MAX_SUGGESTIONS); return true;
     }
     suggestion(index, now = Date.now()) {

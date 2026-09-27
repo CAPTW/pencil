@@ -100,7 +100,16 @@ async function recoverCleanup() {
         const port=s.port;s.port=null;port?.disconnect();retiring.delete(s);
       }
     }
-    if(!deepMarkers.size && !markerStorageInvalid)nativeUnsafe=false;
+    if(!deepMarkers.size && !markerStorageInvalid) {
+      nativeUnsafe=false;
+      // As the status says: every Deep grant from before the failure is gone,
+      // so sending again needs a fresh, explicit grant.
+      for(const [tabId,s] of sessions) {
+        if(!s.deepProvider)continue;
+        s.grantGeneration++;s.deepProvider=null;
+        chrome.tabs.sendMessage(tabId,{op:'deep-policy',epoch:s.epoch,provider:null},{documentId:s.documentId}).catch(()=>{});
+      }
+    }
     return {status:deepMarkers.size ? 'Cleanup unconfirmed; Deep remains blocked. Local Instant is available.' : 'Cleanup confirmed. Grant Deep permission again to send.'};
   }catch {nativeUnsafe=true;return {status:'Cleanup check failed; Deep remains blocked'};}
   finally {recovering=false;}
@@ -270,10 +279,16 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
             await markDeep(marker,null);return null;
           }
           const reserved=await cleanupControl('cleanup-reserve',{cleanup_token:marker});
+          if(reserved.error==='cleanup_busy') {
+            // The host refused before recording anything: drop the intent and
+            // let the user send again, instead of blocking Deep until recovery.
+            await markDeep(marker,null);return 'busy';
+          }
           if(reserved.error || !validTicket(reserved.cleanup_ticket) || reserved.cleanup_ticket.token!==marker)throw Error('cleanup_reservation_unavailable');
           const ticket=reserved.cleanup_ticket;
           await markDeep(marker,{ticket,phase:'pending'});return ticket;
         });
+        if(ticket==='busy')return {error:'busy'};
         if(!ticket) {retiring.delete(s);return {error:'permission_revoked'};}
 
         if(s.closed || admission.cancelled || admission.generation!==s.grantGeneration || s.deepProvider!==provider || nativeUnsafe || recovering) {

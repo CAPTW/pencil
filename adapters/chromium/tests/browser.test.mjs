@@ -201,10 +201,44 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  await tabTo(page.getByRole('button',{name:'Dismiss',exact:true}),'Shift+Tab');await page.keyboard.press('Enter');
  assert.equal(await page.locator('#writing').inputValue(),'seperate');
  pass('keyboard only reaches and activates Accept, Apply edit, Copy and Dismiss with rereads');
+ // Pre-use review: the card belongs to the suggestion that was chosen. Moving
+ // through the list by keyboard or pointer never changes it, and Accept keeps
+ // the other suggestions.
+ const secondSuggestion=page.getByRole('button',{name:/Suggestion 2:/});
+ await page.locator('#writing').fill('seperate\nsucessful');await secondSuggestion.waitFor();
+ await suggestion.focus();await page.keyboard.press('Enter');
+ await tabTo(page.getByRole('button',{name:'Accept',exact:true}));await page.keyboard.press('Space');
+ assert.equal(await page.locator('#writing').inputValue(),'separate\nsucessful','keyboard Accept applied the chosen suggestion');
+ await page.getByRole('button',{name:/Suggestion 1:/}).filter({hasText:'sucessful'}).waitFor();
+ assert.equal(await page.getByRole('button',{name:/Suggestion \d+:/}).count(),1,'the other suggestion stays after Accept');
+ pass('keyboard Accept applies the chosen suggestion and keeps the others');
+ await page.locator('#writing').fill('seperate\nsucessful');await secondSuggestion.waitFor();
+ await suggestion.click();await secondSuggestion.hover();await page.getByRole('button',{name:'Accept',exact:true}).click();
+ assert.equal(await page.locator('#writing').inputValue(),'separate\nsucessful','hover never changes the open card');
+ pass('pointer hover never changes the open card');
+ await page.locator('#writing').fill('seperate');await suggestion.waitFor();
  await page.locator('#writing').fill('seperate!');await suggestion.waitFor();await suggestion.click();await page.getByRole('button',{name:'Ignore',exact:true}).click();
  await page.locator('#writing').fill('seperate!!');await page.waitForTimeout(700);assert.equal(await suggestion.count(),0);pass('Ignore suppresses recurring rule in session');
  await page.locator('#editable').click();await page.getByRole('button',{name:'Enable this field',exact:true}).click();await suggestion.waitFor();await suggestion.click();await page.getByRole('button',{name:'Accept',exact:true}).click();
  assert.equal(await page.locator('#editable').textContent(),'separate');pass('simple contenteditable explicit Accept reread');
+ // Accept edits the existing text nodes: a simple field stays supported
+ // however often it is used (it used to gain two nodes per Accept).
+ for(let round=0;round<9;round++){
+   await page.locator('#editable').press('End');await page.keyboard.type(' seperate');
+   await suggestion.waitFor();await suggestion.click();await page.getByRole('button',{name:'Accept',exact:true}).click();
+   await page.waitForFunction(()=>!document.getElementById('editable').textContent.includes('seperate'));
+ }
+ assert.ok(await page.locator('#editable').evaluate(el=>el.childNodes.length)<=2,'no text node growth');
+ assert.match(await page.getByRole('status').first().textContent(),/Applied; content verified|Local Instant active/,'field still enabled after repeated Accepts');
+ pass('repeated contenteditable Accepts keep the field supported');
+ // Keyboard users enable exactly the field they are in; the panel names it.
+ await page.locator('#writing').fill('seperate');await page.locator('#writing').focus();
+ await page.getByText('Field to enable: Writing sample').waitFor();
+ await page.keyboard.press('Alt+Shift+E');await suggestion.waitFor();
+ assert.equal(await page.getByRole('button',{name:/Suggestion \d+:/}).count(),1);
+ await suggestion.click();await page.getByRole('button',{name:'Accept',exact:true}).click();
+ assert.equal(await page.locator('#writing').inputValue(),'separate');
+ pass('Alt+Shift+E enables the focused field and the panel names the field to enable');
  // Buffer one actual native Instant response in the isolated content world to
  // deterministically exercise a late reply during Chromium composition.
  const gateInstant=hold=>worker.evaluate(async hold=>{
