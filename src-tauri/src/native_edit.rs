@@ -704,8 +704,16 @@ mod tests {
         refuse_unlock: bool,
         text_reads: usize,
         messages: Vec<(u32, usize)>,
-        /// Text change injected after the first capture read.
+        /// The application's own edit, made right after the next text read.
         change_after_first_read: Option<Vec<u16>>,
+        /// The application's own edit, made right before a `WM_SETTEXT` from
+        /// another process is processed.
+        change_before_restore: Option<Vec<u16>>,
+        /// The latest text produced by the application itself.
+        app_text: Vec<u16>,
+        /// Change notifications (`true` when caused by Grammar) with the text
+        /// the application observed at that moment.
+        notifications: Vec<(bool, String)>,
     }
 
     impl FakeEdit {
@@ -730,7 +738,51 @@ mod tests {
                 text_reads: 0,
                 messages: Vec::new(),
                 change_after_first_read: None,
+                change_before_restore: None,
+                app_text: text.encode_utf16().collect(),
+                notifications: Vec::new(),
             }
+        }
+
+        /// An edit made by the application itself.
+        fn app_edit(&mut self, text: Vec<u16>) {
+            self.text = text.clone();
+            self.app_text = text;
+            self.notifications.push((false, self.text()));
+        }
+
+        fn grammar_edit(&mut self) {
+            self.notifications.push((true, self.text()));
+        }
+
+        /// Makes any application edit still pending, as its own timer would
+        /// if Grammar never sent the message that triggers it.
+        fn settle(&mut self) {
+            for change in [self.change_after_first_read.take(), self.change_before_restore.take()]
+                .into_iter()
+                .flatten()
+            {
+                self.app_edit(change);
+            }
+        }
+
+        /// Messages that change the editor's text, selection, lock or flags.
+        fn state_changes(&self) -> Vec<(u32, usize)> {
+            self.messages
+                .iter()
+                .copied()
+                .filter(|(message, _)| {
+                    matches!(*message, EM_SETREADONLY | EM_SETSEL | EM_SETMODIFY | EM_UNDO | 0x00C2 | WM_SETTEXT)
+                })
+                .collect()
+        }
+
+        fn grammar_notifications(&self) -> Vec<String> {
+            self.notifications
+                .iter()
+                .filter(|(grammar, _)| *grammar)
+                .map(|(_, text)| text.clone())
+                .collect()
         }
 
         fn text(&self) -> String {
@@ -826,6 +878,7 @@ mod tests {
                     if let Some((text, selection)) = self.undo.take() {
                         self.text = text;
                         self.selection = selection;
+                        self.grammar_edit();
                     }
                     Some(1)
                 }
@@ -838,7 +891,7 @@ mod tests {
             self.text_reads += 1;
             let text = self.text[..units.min(self.text.len())].to_vec();
             if let Some(changed) = self.change_after_first_read.take() {
-                self.text = changed;
+                self.app_edit(changed);
             }
             Some(text)
         }
@@ -857,12 +910,16 @@ mod tests {
             self.text = next;
             self.selection = (start + text.len(), start + text.len());
             self.modified = true;
+            self.grammar_edit();
             (self.race != Race::SlowReplace).then_some(())
         }
         fn restore_text(&mut self, hwnd: isize, text: &[u16]) -> Option<()> {
             assert_eq!(hwnd, EDIT);
             assert!(self.locked(), "restoration happens only under the lock");
             self.messages.push((WM_SETTEXT, 0));
+            if let Some(changed) = self.change_before_restore.take() {
+                self.app_edit(changed);
+            }
             if matches!(self.race, Race::MoveSelectionDropRestore(..)) {
                 return None;
             }
@@ -871,6 +928,7 @@ mod tests {
             self.selection = (0, 0);
             self.modified = false;
             self.undo = None;
+            self.grammar_edit();
             Some(())
         }
     }
@@ -1117,6 +1175,147 @@ mod tests {
             apply(&mut edit, &binding, "REPLACED"),
             NativeApplyResult::LockNotReleased { applied: true }
         );
+    }
+
+    // ---- Review findings R1/R2 through the production Apply entry ----
+    // `EM_SETREADONLY` only blocks user typing; the application itself can
+    // still change its text between any two messages another process sends.
+    // These tests drive `apply_current_session` (the production Apply entry)
+    // with a platform whose native mutation hook routes to the same function
+    // as `WindowsApplyPlatform`, on the fake editor instead of Win32.
+
+    use crate::apply_safety::{apply_current_session, ApplyOutcome, ApplyPlatform, WaitStage};
+    use crate::capture_session::{CaptureSessionStore, SessionToken, WindowTarget};
+
+    struct EditorPlatform {
+        edit: FakeEdit,
+        clipboard: Option<String>,
+        pastes: usize,
+    }
+
+    impl EditorPlatform {
+        fn new(edit: FakeEdit) -> Self {
+            Self { edit, clipboard: None, pastes: 0 }
+        }
+    }
+
+    impl ApplyPlatform for EditorPlatform {
+        fn apply_native_edit(
+            &mut self,
+            top_level: isize,
+            pid: u32,
+            binding: &NativeEditBinding,
+            replacement: &str,
+        ) -> NativeApplyResult {
+            apply_to_captured_edit(&mut self.edit, top_level, pid, binding, replacement)
+        }
+        fn is_window(&mut self, hwnd: isize) -> bool {
+            hwnd == TOP
+        }
+        fn window_pid(&mut self, hwnd: isize) -> Option<u32> {
+            (hwnd == TOP).then_some(PID)
+        }
+        fn hide_widget(&mut self) -> Result<(), ()> {
+            Ok(())
+        }
+        fn show_widget(&mut self) {}
+        fn request_foreground(&mut self, _hwnd: isize) {}
+        fn foreground_window(&mut self) -> isize {
+            TOP
+        }
+        fn clipboard_sequence(&mut self) -> u32 {
+            0
+        }
+        fn read_clipboard_text(&mut self) -> Option<String> {
+            self.clipboard.clone()
+        }
+        fn write_clipboard_text(&mut self, text: &str) -> Result<(), ()> {
+            self.clipboard = Some(text.to_string());
+            Ok(())
+        }
+        fn send_paste(&mut self) -> u32 {
+            self.pastes += 1;
+            0
+        }
+        fn wait(&mut self, _stage: WaitStage) {}
+    }
+
+    /// Captures with the production reader and drives the session to Ready.
+    fn ready_session(edit: &mut FakeEdit) -> (CaptureSessionStore, SessionToken) {
+        let selection = read_focused_selection(edit, TOP).expect("supported synthetic edit");
+        let mut store = CaptureSessionStore::default();
+        let token = store
+            .capture_native("review".into(), selection.text, WindowTarget::new(TOP, PID), selection.binding)
+            .expect("native session");
+        assert!(store.begin_rewrite(&token).is_ok());
+        assert!(store.finish_rewrite_success(&token).is_ok());
+        edit.messages.clear();
+        edit.notifications.clear();
+        (store, token)
+    }
+
+    fn apply_through_production(edit: FakeEdit, store: &mut CaptureSessionStore, token: &SessionToken) -> (ApplyOutcome, EditorPlatform) {
+        let mut platform = EditorPlatform::new(edit);
+        let outcome = apply_current_session(store, token, "fixed", false, &mut platform);
+        platform.edit.settle();
+        (outcome, platform)
+    }
+
+    fn assert_editor_untouched(outcome: &ApplyOutcome, platform: &EditorPlatform, expected_text: &str) {
+        let edit = &platform.edit;
+        assert!(
+            matches!(outcome, ApplyOutcome::CopiedFallback { .. }),
+            "{outcome:?}: Apply must end in Copy-only; state changes {:?}, final text {:?}",
+            edit.state_changes(),
+            edit.text()
+        );
+        assert_eq!(edit.state_changes(), vec![], "Grammar changed the editor");
+        assert_eq!(edit.grammar_notifications(), Vec::<String>::new(), "the application saw Grammar's intermediate text");
+        assert_eq!(edit.text(), expected_text, "the application's own text must survive");
+        assert_eq!(edit.text, edit.app_text);
+        assert_eq!(platform.clipboard.as_deref(), Some("fixed"), "Copy-only puts the result on the clipboard");
+        assert_eq!(platform.pastes, 0);
+    }
+
+    #[test]
+    fn native_apply_is_copy_only_and_changes_no_editor_state() {
+        let mut edit = FakeEdit::new(SAMPLE, range_of(SAMPLE, "third"));
+        let (mut store, token) = ready_session(&mut edit);
+        let (outcome, platform) = apply_through_production(edit, &mut store, &token);
+        assert_editor_untouched(&outcome, &platform, SAMPLE);
+    }
+
+    #[test]
+    fn r1_application_edit_after_verification_is_never_overwritten() {
+        // "hello world", selection "world"; the application rewrites the text
+        // to "hello newer" right after Apply's verification read.
+        let mut edit = FakeEdit::new("hello world", (6, 11));
+        let (mut store, token) = ready_session(&mut edit);
+        edit.change_after_first_read = Some("hello newer".encode_utf16().collect());
+        let (outcome, platform) = apply_through_production(edit, &mut store, &token);
+        assert_editor_untouched(&outcome, &platform, "hello newer");
+    }
+
+    #[test]
+    fn r2_selection_moved_before_replace_causes_no_mutation_or_restore() {
+        // The selection moves to "hello" between Apply's EM_SETSEL and
+        // EM_REPLACESEL. Replacing the wrong range and restoring the whole
+        // text afterwards is two mutations, not Copy-only.
+        let mut edit = FakeEdit::new("hello world", (6, 11));
+        let (mut store, token) = ready_session(&mut edit);
+        edit.race = Race::MoveSelection(0, 5);
+        let (outcome, platform) = apply_through_production(edit, &mut store, &token);
+        assert_editor_untouched(&outcome, &platform, "hello world");
+    }
+
+    #[test]
+    fn application_edit_right_before_a_restore_is_never_overwritten() {
+        let mut edit = FakeEdit::new("hello world", (6, 11));
+        let (mut store, token) = ready_session(&mut edit);
+        edit.race = Race::MoveSelection(0, 5);
+        edit.change_before_restore = Some("hello brave world".encode_utf16().collect());
+        let (outcome, platform) = apply_through_production(edit, &mut store, &token);
+        assert_editor_untouched(&outcome, &platform, "hello brave world");
     }
 
     #[test]
