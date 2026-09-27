@@ -84,7 +84,7 @@ struct HelperReady {
 
 /// Content-free result of tearing down one task-owned synthetic editor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct EditorCleanup {
+pub(crate) struct EditorCleanup {
     editor_pid: u32,
     process_exited: bool,
     job_processes_remaining: Option<u32>,
@@ -99,14 +99,14 @@ impl EditorCleanup {
 
 thread_local! {
     // Filled by harness teardown, including teardown during a failing test's unwind.
-    static EDITOR_CLEANUPS: RefCell<Vec<EditorCleanup>> = const { RefCell::new(Vec::new()) };
+    pub(crate) static EDITOR_CLEANUPS: RefCell<Vec<EditorCleanup>> = const { RefCell::new(Vec::new()) };
 }
 
-fn take_editor_cleanups() -> Vec<EditorCleanup> {
+pub(crate) fn take_editor_cleanups() -> Vec<EditorCleanup> {
     EDITOR_CLEANUPS.with(|log| std::mem::take(&mut *log.borrow_mut()))
 }
 
-fn assert_editor_cleanups_complete(expected: usize) -> Vec<EditorCleanup> {
+pub(crate) fn assert_editor_cleanups_complete(expected: usize) -> Vec<EditorCleanup> {
     let cleanups = take_editor_cleanups();
     eprintln!("OWNED_EDITOR_CLEANUP {cleanups:?}");
     assert_eq!(cleanups.len(), expected, "every owned editor must report teardown");
@@ -117,14 +117,14 @@ fn assert_editor_cleanups_complete(expected: usize) -> Vec<EditorCleanup> {
 /// The synthetic editor and every descendant (for example the C# compiler that
 /// Add-Type starts) run inside a kill-on-close Job. The process is created
 /// suspended so nothing can run before it is owned.
-struct OwnedEditorProcess {
-    child: Child,
+pub(crate) struct OwnedEditorProcess {
+    pub(crate) child: Child,
     job: Option<ProcessJob>,
     cleanup: Option<EditorCleanup>,
 }
 
 impl OwnedEditorProcess {
-    fn spawn(command: &mut Command) -> Result<Self, &'static str> {
+    pub(crate) fn spawn(command: &mut Command) -> Result<Self, &'static str> {
         command.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
         let mut child = command.spawn().map_err(|_| "window_harness_spawn_failed")?;
         let job = match ProcessJob::assign_process_handle(child.as_raw_handle().cast()) {
@@ -156,7 +156,7 @@ impl OwnedEditorProcess {
         Ok(owned)
     }
 
-    fn shutdown(&mut self, windows: &[isize]) -> EditorCleanup {
+    pub(crate) fn shutdown(&mut self, windows: &[isize]) -> EditorCleanup {
         if let Some(cleanup) = self.cleanup {
             return cleanup;
         }
@@ -212,7 +212,7 @@ impl Drop for OwnedEditorProcess {
 /// Content-free CI receipt for one owned-desktop test. It is written only into
 /// the task-owned evidence directory and binds the outcome to the exact source
 /// commit and workflow run. FAIL is recorded unless the test reaches `pass`.
-struct CloudTestReceipt {
+pub(crate) struct CloudTestReceipt {
     test: &'static str,
     completed_checks: Vec<String>,
     cleanups: Vec<EditorCleanup>,
@@ -220,7 +220,7 @@ struct CloudTestReceipt {
 }
 
 impl CloudTestReceipt {
-    fn new(test: &'static str) -> Self {
+    pub(crate) fn new(test: &'static str) -> Self {
         take_editor_cleanups();
         Self {
             test,
@@ -230,17 +230,17 @@ impl CloudTestReceipt {
         }
     }
 
-    fn check(&mut self, name: impl Into<String>) {
+    pub(crate) fn check(&mut self, name: impl Into<String>) {
         let name = name.into();
         eprintln!("CLOUD_CHECK_PASS {} {name}", self.test);
         self.completed_checks.push(name);
     }
 
-    fn record_cleanups(&mut self, cleanups: Vec<EditorCleanup>) {
+    pub(crate) fn record_cleanups(&mut self, cleanups: Vec<EditorCleanup>) {
         self.cleanups.extend(cleanups);
     }
 
-    fn pass(&mut self) {
+    pub(crate) fn pass(&mut self) {
         self.passed = true;
     }
 }
@@ -705,7 +705,7 @@ impl Drop for WindowHarness {
     }
 }
 
-fn current_input_desktop_name() -> Option<String> {
+pub(crate) fn current_input_desktop_name() -> Option<String> {
     const UOI_NAME: i32 = 2;
     let thread_id = unsafe { GetCurrentThreadId() };
     let desktop = unsafe { GetThreadDesktop(thread_id) };
@@ -779,12 +779,12 @@ fn parse_optional_bool(value: &str) -> Option<Option<bool>> {
     }
 }
 
-struct ClipboardTextGuard {
+pub(crate) struct ClipboardTextGuard {
     original: String,
 }
 
 impl ClipboardTextGuard {
-    fn capture() -> Result<Self, &'static str> {
+    pub(crate) fn capture() -> Result<Self, &'static str> {
         clipboard::read_clipboard_text()
             .map(|original| Self { original })
             .map_err(|_| "live_test_requires_supported_text_clipboard")
@@ -1062,7 +1062,7 @@ fn content_equals_expected(window: isize) -> bool {
     unsafe { SendMessageW(window as HWND, WM_PROBE_FINAL_EQUAL, 0, 0) == 1 }
 }
 
-fn wait_until(timeout: Duration, mut condition: impl FnMut() -> bool) -> bool {
+pub(crate) fn wait_until(timeout: Duration, mut condition: impl FnMut() -> bool) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
         if condition() {
@@ -1073,7 +1073,7 @@ fn wait_until(timeout: Duration, mut condition: impl FnMut() -> bool) -> bool {
     condition()
 }
 
-fn focused_window(hwnd: isize) -> Option<isize> {
+pub(crate) fn focused_window(hwnd: isize) -> Option<isize> {
     let thread_id = unsafe { GetWindowThreadProcessId(hwnd as HWND, std::ptr::null_mut()) };
     if thread_id == 0 {
         return None;
@@ -1161,6 +1161,21 @@ fn outcome_code(outcome: &ApplyOutcome) -> &'static str {
         ApplyOutcome::Failed {
             reason: ApplyFailureReason::InputInjectionFailed,
         } => "failed_input_injection",
+        ApplyOutcome::CopiedFallback {
+            reason: ApplyFallbackReason::TargetEditorChanged,
+        } => "copied_fallback_target_editor_changed",
+        ApplyOutcome::CopiedFallback {
+            reason: ApplyFallbackReason::TargetSourceChanged,
+        } => "copied_fallback_target_source_changed",
+        ApplyOutcome::CopiedFallback {
+            reason: ApplyFallbackReason::TargetSelectionChanged,
+        } => "copied_fallback_target_selection_changed",
+        ApplyOutcome::Failed {
+            reason: ApplyFailureReason::TargetMutationUnverified,
+        } => "failed_target_mutation_unverified",
+        ApplyOutcome::Failed {
+            reason: ApplyFailureReason::EditorLockNotReleased,
+        } => "failed_editor_lock_not_released",
     }
 }
 
@@ -1462,7 +1477,7 @@ const CLOUD_OWNED_DESKTOP_REFS: [&str; 2] = [
 ];
 
 /// Checks the dedicated CI opt-in before any desktop, clipboard or process use.
-fn require_cloud_owned_desktop() {
+pub(crate) fn require_cloud_owned_desktop() {
     for (key, expected) in [
         ("GITHUB_ACTIONS", "true"),
         ("GITHUB_REPOSITORY", "CAPTW/pencil"),

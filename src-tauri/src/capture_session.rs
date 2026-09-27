@@ -71,6 +71,21 @@ impl WindowTarget {
     }
 }
 
+/// Exact state of a standard Edit control observed by the qualified native
+/// reader. Only a hash of the full field text is retained, never the text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct NativeEditBinding {
+    pub(crate) edit: isize,
+    pub(crate) pid: u32,
+    /// UTF-16 offsets of the captured selection.
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) text_units: usize,
+    /// SHA-256 of the full field text as UTF-16LE.
+    pub(crate) text_sha256: String,
+    pub(crate) read_only: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CaptureLifecycle {
     Captured,
@@ -117,6 +132,7 @@ pub(crate) struct ApplyContext {
     pub(crate) target: WindowTarget,
     pub(crate) previous_clipboard_text: Option<String>,
     pub(crate) capture_clipboard_sequence: Option<u32>,
+    pub(crate) native_edit: Option<NativeEditBinding>,
 }
 
 #[derive(Clone, Debug)]
@@ -127,6 +143,7 @@ struct CaptureSession {
     lifecycle: CaptureLifecycle,
     previous_clipboard_text: Option<String>,
     capture_clipboard_sequence: Option<u32>,
+    native_edit: Option<NativeEditBinding>,
     rewrite_intent: Option<BoundRewriteIntent>,
     active_turn: Option<ActiveTurn>,
     _created_at: Instant,
@@ -146,6 +163,40 @@ impl CaptureSessionStore {
         target: WindowTarget,
         previous_clipboard_text: Option<String>,
         capture_clipboard_sequence: Option<u32>,
+    ) -> Result<SessionToken, SessionError> {
+        self.capture_bound(
+            session_id,
+            selected_text,
+            target,
+            previous_clipboard_text,
+            capture_clipboard_sequence,
+            None,
+        )
+    }
+
+    /// Captures a selection read by the qualified native Edit reader. Only such
+    /// sessions carry the editor binding that native Apply revalidates.
+    pub(crate) fn capture_native(
+        &mut self,
+        session_id: String,
+        selected_text: String,
+        target: WindowTarget,
+        binding: NativeEditBinding,
+    ) -> Result<SessionToken, SessionError> {
+        if binding.pid != target.pid {
+            return Err(SessionError::InvalidState);
+        }
+        self.capture_bound(session_id, selected_text, target, None, None, Some(binding))
+    }
+
+    fn capture_bound(
+        &mut self,
+        session_id: String,
+        selected_text: String,
+        target: WindowTarget,
+        previous_clipboard_text: Option<String>,
+        capture_clipboard_sequence: Option<u32>,
+        native_edit: Option<NativeEditBinding>,
     ) -> Result<SessionToken, SessionError> {
         let generation = self
             .generation
@@ -168,6 +219,7 @@ impl CaptureSessionStore {
             lifecycle: CaptureLifecycle::Captured,
             previous_clipboard_text,
             capture_clipboard_sequence,
+            native_edit,
             rewrite_intent: None,
             active_turn: None,
             _created_at: Instant::now(),
@@ -438,6 +490,7 @@ impl CaptureSessionStore {
             target: current.target,
             previous_clipboard_text: current.previous_clipboard_text.clone(),
             capture_clipboard_sequence: current.capture_clipboard_sequence,
+            native_edit: current.native_edit.clone(),
         })
     }
 

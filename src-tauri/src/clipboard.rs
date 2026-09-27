@@ -18,37 +18,44 @@ pub struct ClipboardCapture {
     pub previous_text: Option<String>,
     pub owned_sequence: Option<u32>,
     pub cursor: CursorPoint,
+    /// Exact editor state that native Apply revalidates before any mutation.
+    pub(crate) native_edit: Option<crate::capture_session::NativeEditBinding>,
 }
+
+const CAPTURE_TARGET_CHANGED: &str =
+    "capture_target_changed: The foreground window changed before the selection was read. Try again.";
 
 pub(crate) async fn capture_selected_text_for(target: crate::capture_session::WindowTarget) -> Result<ClipboardCapture, String> {
     wait_for_capture_modifiers_released().await?;
     if crate::windows_apply::foreground_window_handle() != target.hwnd ||
         crate::windows_apply::window_process_id(target.hwnd) != Some(target.pid) {
-        return Err("capture_target_changed".to_string());
+        return Err(CAPTURE_TARGET_CHANGED.to_string());
     }
-    let capture = capture_supported_selection()?;
+    let capture = capture_supported_selection(target.hwnd)?;
     if crate::windows_apply::foreground_window_handle() != target.hwnd ||
-        crate::windows_apply::window_process_id(target.hwnd) != Some(target.pid) {
-        return Err("capture_target_changed".to_string());
+        crate::windows_apply::window_process_id(target.hwnd) != Some(target.pid) ||
+        capture.native_edit.as_ref().is_some_and(|binding| binding.pid != target.pid) {
+        return Err(CAPTURE_TARGET_CHANGED.to_string());
     }
     Ok(capture)
 }
 
 pub async fn capture_selected_text() -> Result<ClipboardCapture, String> {
     wait_for_capture_modifiers_released().await?;
-    capture_supported_selection()
+    capture_supported_selection(crate::windows_apply::foreground_window_handle())
 }
 
-fn capture_supported_selection() -> Result<ClipboardCapture, String> {
+fn capture_supported_selection(top_level: isize) -> Result<ClipboardCapture, String> {
     // Generic Ctrl+C cannot identify password fields or bind the copied text to
     // a focused editor. Only the bounded standard Edit reader is admitted.
-    let selected_text = crate::windows_target::read_supported_selection()?;
+    let selection = crate::windows_target::read_supported_selection(top_level)?;
     let cursor = current_cursor_position()?;
     Ok(ClipboardCapture {
-        selected_text,
+        selected_text: selection.text,
         previous_text: None,
         owned_sequence: None,
         cursor,
+        native_edit: Some(selection.binding),
     })
 }
 

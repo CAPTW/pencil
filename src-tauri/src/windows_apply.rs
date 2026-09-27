@@ -121,8 +121,35 @@ impl WindowsApplyPlatform {
     }
 }
 
+/// Production native Apply: the verified standard Edit protocol in `native_edit`.
+#[cfg(windows)]
+pub(crate) fn apply_native_edit_win32(
+    top_level: isize,
+    pid: u32,
+    binding: &crate::capture_session::NativeEditBinding,
+    replacement: &str,
+) -> crate::native_edit::NativeApplyResult {
+    crate::native_edit::apply_to_captured_edit(
+        &mut crate::native_edit::Win32EditPort::default(),
+        top_level,
+        pid,
+        binding,
+        replacement,
+    )
+}
+
 #[cfg(windows)]
 impl ApplyPlatform for WindowsApplyPlatform {
+    fn apply_native_edit(
+        &mut self,
+        top_level: isize,
+        pid: u32,
+        binding: &crate::capture_session::NativeEditBinding,
+        replacement: &str,
+    ) -> crate::native_edit::NativeApplyResult {
+        apply_native_edit_win32(top_level, pid, binding, replacement)
+    }
+
     fn is_window(&mut self, hwnd: isize) -> bool {
         window_is_valid(hwnd)
     }

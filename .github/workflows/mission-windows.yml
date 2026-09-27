@@ -63,6 +63,11 @@ jobs:
         run: |
           npm run test:provider 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/provider-contracts.log"
           exit $LASTEXITCODE
+      - name: Capture and Apply UI contract
+        if: ${{ !cancelled() }}
+        run: |
+          node scripts/test-capture-contract.mjs 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/capture-contract.log"
+          exit $LASTEXITCODE
       - name: Chromium core contract
         if: ${{ !cancelled() }}
         run: |
@@ -98,6 +103,20 @@ jobs:
         run: |
           $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
           cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil p0_02_windows_live_tests::cloud_owned_desktop_copy_only_boundary -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native/copy-only-boundary.log"
+          exit $LASTEXITCODE
+      - name: Owned Windows desktop - native Edit capture
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: |
+          $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil native_edit_live_tests::cloud_owned_desktop_native_capture -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native/native-capture.log"
+          exit $LASTEXITCODE
+      - name: Owned Windows desktop - native Edit Apply
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: |
+          $env:GRAMMAR_OWNED_DESKTOP_TEST='1'
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --bin codex-pencil native_edit_live_tests::cloud_owned_desktop_native_apply -- --ignored --exact --test-threads=1 --nocapture 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/native/native-apply.log"
           exit $LASTEXITCODE
       - name: Build native host and synthetic process
         if: ${{ !cancelled() }}

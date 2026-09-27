@@ -34,6 +34,9 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
+  applyFailureEndsCapture,
+  applyFailureMessage,
+  copiedFallbackMessage,
   parseApplyOutcome,
   parseSelectionCaptured,
   sameCaptureToken,
@@ -1344,9 +1347,7 @@ export default function App() {
         setSelection(null);
         setStatus("Copied — paste manually");
         void refreshTerminology();
-        setError(
-          "The captured target could not be proven safe. The approved replacement is on the clipboard; paste it manually.",
-        );
+        setError(copiedFallbackMessage(outcome.reason));
         return;
       }
       if (outcome.status === "rejected_stale") {
@@ -1362,20 +1363,11 @@ export default function App() {
       }
 
       setStatus("Apply failed safely");
-      if (
-        outcome.reason === "input_injection_failed" ||
-        outcome.reason === "invalid_session_state"
-      ) {
+      if (applyFailureEndsCapture(outcome.reason)) {
         currentTokenRef.current = null;
         setSelection(null);
       }
-      setError(
-        outcome.reason === "clipboard_ownership_lost"
-          ? "The clipboard changed before paste. Nothing was pasted; review and try again."
-          : outcome.reason === "input_injection_failed"
-            ? "Windows did not confirm the complete paste input. Automatic retry is disabled; capture again."
-            : "Nothing was pasted. Review the target and try again.",
-      );
+      setError(applyFailureMessage(outcome.reason));
     } catch (nextError) {
       if (!sameCaptureToken(currentTokenRef.current, token)) {
         return;
