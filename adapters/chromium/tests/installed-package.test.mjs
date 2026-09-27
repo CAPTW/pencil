@@ -108,14 +108,14 @@ async function helper(command, name, {method = 'Mouse', match = 'Exact', timeout
 }
 const exists = async (name, options) => (await helper('Exists', name, options)).status === 'found';
 
-// Clicks `name` and waits for `effect()`. When an OS mouse click is covered by
-// another window or has no visible effect, the rest of the run uses UI
-// Automation Invoke and this click is retried.
+// Clicks `name` and waits for `effect()`. When an OS mouse click stays covered
+// by another window, finds no stable on-screen rectangle or has no visible
+// effect, the rest of the run uses UI Automation Invoke and this click is retried.
 let inputMethod = 'Mouse';
 async function click(name, effect, {match = 'Exact', timeoutMs = 10000} = {}) {
   let result = await helper('Click', name, {method: inputMethod, match, timeoutMs});
   if (result.status === 'clicked' && (await effect())) return result;
-  if (!['clicked', 'occluded'].includes(result.status)) return result;
+  if (!['clicked', 'occluded', 'no_rect', 'stale'].includes(result.status)) return result;
   if (inputMethod !== 'Mouse') return {...result, status: 'no_effect'};
   inputMethod = 'Invoke';
   result = await helper('Click', name, {method: inputMethod, match, timeoutMs: 3000});
