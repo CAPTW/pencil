@@ -11,8 +11,12 @@
 #   popup opened by one click is still open for the next. A step is skipped
 #   when the next target is already shown (its menu is open). A failed step
 #   adds a content-free timeline (foreground window class, browser window count).
+#   Keyboard: the same targets through real keyboard input. Alt+Shift+T focuses
+#   the toolbar; arrow or Tab keys move focus until UI Automation reports the
+#   target focused, and only then Space activates it. Focus names are never
+#   recorded (they can be page text); only whether each target was reached.
 param(
-  [Parameter(Mandatory)][ValidateSet('Click', 'Exists', 'Sequence')][string]$Command,
+  [Parameter(Mandatory)][ValidateSet('Click', 'Exists', 'Sequence', 'Keyboard')][string]$Command,
   [Parameter(Mandatory)][string]$WindowTitle,
   [Parameter(Mandatory)][string]$Name,
   [ValidateSet('Mouse', 'Invoke')][string]$Method = 'Mouse',
@@ -77,6 +81,22 @@ public static class GestureInput
         return (pid == owner ? "browser:" : "other:") + name.ToString();
     }
 
+    [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+
+    public static void Key(byte vk)
+    {
+        keybd_event(vk, 0, 0, UIntPtr.Zero);
+        System.Threading.Thread.Sleep(30);
+        keybd_event(vk, 0, 2, UIntPtr.Zero);
+    }
+
+    public static void Chord(byte[] keys)
+    {
+        foreach (byte key in keys) keybd_event(key, 0, 0, UIntPtr.Zero);
+        System.Threading.Thread.Sleep(40);
+        for (int index = keys.Length - 1; index >= 0; index--) keybd_event(keys[index], 0, 2, UIntPtr.Zero);
+    }
+
     public static void LeftClick(int x, int y)
     {
         SetCursorPos(x, y);
@@ -108,9 +128,18 @@ function Test-Rect($rect) {
     -not [double]::IsNaN($rect.Y) -and -not [double]::IsInfinity($rect.Y)
 }
 
+$buttonLike = [Windows.Automation.OrCondition]::new([Windows.Automation.Condition[]]@(
+  [Windows.Automation.PropertyCondition]::new($ae::ControlTypeProperty, [Windows.Automation.ControlType]::Button),
+  [Windows.Automation.PropertyCondition]::new($ae::ControlTypeProperty, [Windows.Automation.ControlType]::MenuItem),
+  [Windows.Automation.PropertyCondition]::new($ae::ControlTypeProperty, [Windows.Automation.ControlType]::SplitButton),
+  [Windows.Automation.PropertyCondition]::new($ae::ControlTypeProperty, [Windows.Automation.ControlType]::ListItem)))
+
+# Menus and popups (the browser's other top-level windows) are searched before
+# the main window; a prefix search looks at button-like controls only.
 function Find-Named($browser, [string]$target, [string]$match) {
-  $condition = if ($match -eq 'Exact') { [Windows.Automation.PropertyCondition]::new($ae::NameProperty, $target) } else { [Windows.Automation.Condition]::TrueCondition }
-  foreach ($window in $browser.Windows) {
+  $condition = if ($match -eq 'Exact') { [Windows.Automation.PropertyCondition]::new($ae::NameProperty, $target) } else { $buttonLike }
+  $ordered = @($browser.Windows | Select-Object -Skip 1) + @($browser.Main)
+  foreach ($window in $ordered) {
     foreach ($candidate in $window.FindAll($scope::Descendants, $condition)) {
       if ($match -eq 'Prefix' -and -not ([string]$candidate.Current.Name).StartsWith($target, [StringComparison]::Ordinal)) { continue }
       if (-not $candidate.Current.IsOffscreen -and (Test-Rect $candidate.Current.BoundingRectangle)) {
@@ -181,27 +210,45 @@ function Get-Timeline($owner) {
 # while they open, so a vanished element, an empty rectangle or a covered point
 # is looked up again rather than clicked. Returns a result; never exits.
 function Invoke-Target([string]$target, [string]$match, [string]$command, [int]$timeoutMs) {
-  $deadline = [DateTime]::UtcNow.AddMilliseconds($timeoutMs)
+  $started = [DateTime]::UtcNow
+  $deadline = $started.AddMilliseconds($timeoutMs)
   $browser = $null
   $last = [ordered]@{ status = 'window_not_found'; name = $target; method = $Method }
   $settled = $false
+  # Content-free state changes while this step polls: elapsed ms, foreground
+  # window class (browser or other) and the browser's top-level window count.
+  $events = New-Object System.Collections.ArrayList
+  $lastState = ''
   do {
     try {
       $browser = Get-BrowserWindows
+      if ($browser -and $events.Count -lt 40) {
+        $state = '{0} windows={1}' -f [GestureInput]::ForegroundClass([uint32]$browser.ProcessId), @($browser.Windows).Count
+        if ($state -ne $lastState) {
+          [void]$events.Add(('{0}ms {1}' -f [int]([DateTime]::UtcNow - $started).TotalMilliseconds, $state))
+          $lastState = $state
+        }
+      }
       $found = if ($browser) { Find-Named $browser $target $match } else { $null }
       if (-not $found) {
         $last = [ordered]@{ status = if ($browser) { 'not_found' } else { 'window_not_found' }; name = $target; method = $Method }
       } else {
         $element = $found.Element
         $result = [ordered]@{ status = 'found'; name = $target; controlType = $element.Current.ControlType.ProgrammaticName; method = $Method }
-        if ($command -eq 'Exists') { return $result }
+        if ($command -eq 'Exists') { $result.events = @($events); return $result }
         if ($Method -eq 'Invoke') {
+          # Menu buttons expose ExpandCollapse (or Toggle) instead of Invoke.
           $pattern = $null
-          if (-not $element.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
-            $result.status = 'no_invoke_pattern'; return $result
+          if ($element.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+            $pattern.Invoke(); $result.pattern = 'Invoke'
+          } elseif ($element.TryGetCurrentPattern([Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$pattern)) {
+            $pattern.Expand(); $result.pattern = 'ExpandCollapse'
+          } elseif ($element.TryGetCurrentPattern([Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) {
+            $pattern.Toggle(); $result.pattern = 'Toggle'
+          } else {
+            $result.status = 'no_invoke_pattern'; $result.events = @($events); return $result
           }
-          $pattern.Invoke()
-          $result.status = 'clicked'; return $result
+          $result.status = 'clicked'; $result.events = @($events); return $result
         }
         # Mouse: bring the main window forward (menus and popups are already
         # above it) and let an opening animation settle once.
@@ -218,7 +265,7 @@ function Invoke-Target([string]$target, [string]$match, [string]$command, [int]$
           $result.hit = Test-Hit $element $found.Window $x $y
           if ($result.hit) {
             [GestureInput]::LeftClick($x, $y)
-            $result.status = 'clicked'; return $result
+            $result.status = 'clicked'; $result.events = @($events); return $result
           }
           $result.status = 'occluded'; $last = $result
         }
@@ -229,6 +276,7 @@ function Invoke-Target([string]$target, [string]$match, [string]$command, [int]$
     Start-Sleep -Milliseconds 250
   } while ([DateTime]::UtcNow -lt $deadline)
   if ($last.status -in @('not_found', 'window_not_found')) { $last.labels = Get-Diagnostics $browser }
+  $last.events = @($events)
   return $last
 }
 
@@ -247,7 +295,53 @@ function Test-Shown([string]$spec) {
   }
 }
 
-$codes = @{ found = 0; clicked = 0; not_found = 2; window_not_found = 2; no_invoke_pattern = 3; occluded = 4; stale = 5; no_rect = 6 }
+function Test-FocusedName([string]$spec) {
+  $target, $match = Split-Target $spec
+  try { $name = [string]$ae::FocusedElement.Current.Name } catch { return $false }
+  if ($match -eq 'Prefix') { return $name.StartsWith($target, [StringComparison]::Ordinal) }
+  return $name -ceq $target
+}
+
+# Presses the navigation keys in turn until the target has keyboard focus.
+function Move-FocusTo([string]$spec, [byte[]]$keys, [int]$presses) {
+  for ($press = 0; $press -le $presses; $press++) {
+    if (Test-FocusedName $spec) { return $true }
+    [GestureInput]::Key($keys[$press % $keys.Length])
+    Start-Sleep -Milliseconds 150
+  }
+  return (Test-FocusedName $spec)
+}
+
+$codes = @{ found = 0; clicked = 0; not_found = 2; window_not_found = 2; no_invoke_pattern = 3; occluded = 4; stale = 5; no_rect = 6; focus_not_reached = 7 }
+if ($Command -eq 'Keyboard') {
+  $browser = Get-BrowserWindows
+  if (-not $browser) { [ordered]@{ status = 'window_not_found'; steps = @() } | ConvertTo-Json -Compress -Depth 5; exit 2 }
+  $focused = [GestureInput]::Foreground([IntPtr]$browser.Main.Current.NativeWindowHandle)
+  Start-Sleep -Milliseconds 300
+  $specs = @($Name.Split('|'))
+  $steps = @()
+  $status = 'clicked'
+  # Alt+Shift+T focuses the first toolbar item; Right (then Tab) walks the
+  # toolbar, Tab walks menus and popups.
+  [GestureInput]::Chord([byte[]]@(0x12, 0x10, 0x54))
+  Start-Sleep -Milliseconds 400
+  for ($index = 0; $index -lt $specs.Count; $index++) {
+    $target, $match = Split-Target $specs[$index]
+    $keys = if ($index -eq 0) { [byte[]]@(0x27) } else { [byte[]]@(0x09) }
+    $reached = Move-FocusTo $specs[$index] $keys 30
+    if (-not $reached -and $index -eq 0) { $reached = Move-FocusTo $specs[$index] ([byte[]]@(0x09)) 30 }
+    if (-not $reached) {
+      $steps += [ordered]@{ status = 'focus_not_reached'; name = $target; method = 'Keyboard'; foreground = $focused }
+      $status = 'focus_not_reached'
+      break
+    }
+    [GestureInput]::Key(0x20)
+    $steps += [ordered]@{ status = 'clicked'; name = $target; method = 'Keyboard'; foreground = $focused }
+    Start-Sleep -Milliseconds 1000
+  }
+  [ordered]@{ status = $status; steps = $steps } | ConvertTo-Json -Compress -Depth 5
+  exit $codes[$status]
+}
 if ($Command -ne 'Sequence') {
   $result = Invoke-Target $Name $Match $Command $TimeoutMs
   $result | ConvertTo-Json -Compress -Depth 4

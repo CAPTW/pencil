@@ -102,9 +102,11 @@ async function helper(command, name, {method = 'Mouse', match = 'Exact', timeout
   const result = JSON.parse(text.trim().split(/\r?\n/).at(-1));
   // Browser UI labels only; never page text.
   for (const step of result.steps ?? (command === 'Click' ? [result] : [])) {
-    gestures.push({name: step.name, method: step.method, status: step.status, hit: step.hit ?? null, foreground: step.foreground ?? null});
+    gestures.push({name: step.name, method: step.method, status: step.status, hit: step.hit ?? null,
+      foreground: step.foreground ?? null, pattern: step.pattern ?? null});
   }
-  if (!['clicked', 'found'].includes(result.status)) console.log('GESTURE', command, JSON.stringify(result));
+  // Sequences are always logged: their state timelines are content-free diagnostics.
+  if (command === 'Sequence' || !['clicked', 'found'].includes(result.status)) console.log('GESTURE', command, JSON.stringify(result));
   // A broken helper is a test failure, never a reason for NOT_RUN.
   if (result.status === 'helper_failed') throw new Error(`gesture helper failed: ${result.detail}`);
   return result;
@@ -113,10 +115,14 @@ async function helper(command, name, {method = 'Mouse', match = 'Exact', timeout
 // The real toolbar path, run as one helper sequence so a menu or popup opened
 // by one click is still open for the next: the Extensions menu button, this
 // extension's item (or its toolbar button, when shown, which skips the menu)
-// and the popup's own Enable button. OS mouse clicks first; UI Automation
-// Invoke only if a mouse sequence is covered or has no effect; Playwright's
-// trusted input on the popup only if UI Automation cannot reach its content.
-// Every fallback is recorded. The action must leave page access (activeTab).
+// and the popup's own Enable button. Input methods, in order, each used only
+// when the previous one had no effect: OS mouse clicks, UI Automation
+// Invoke/Expand, then real keyboard input (Alt+Shift+T, focus moves, Space on
+// the focused target). Playwright's trusted input on the popup is used only if
+// UI Automation cannot reach its content. Every fallback is recorded, and the
+// method that worked is reused for the next activation. The action must leave
+// page access (activeTab).
+const METHODS = ['Mouse', 'Invoke', 'Keyboard'];
 let inputMethod = 'Mouse';
 async function toolbarEnable({extensionName, extensionId, page, probe}) {
   await page.bringToFront();
@@ -124,14 +130,20 @@ async function toolbarEnable({extensionName, extensionId, page, probe}) {
   const popupPage = () => page.context().pages().find((candidate) => candidate.url() === popupUrl);
   const enabled = () => page.locator('#grammar-local-assist').waitFor({timeout: 10000}).then(() => true, () => false);
   const sequence = ['Extensions', `prefix:${extensionName}`, 'Enable this document'].join('|');
-  let run = await helper('Sequence', sequence, {method: inputMethod});
-  // The only NOT_RUN: UI Automation cannot see the browser window at all.
-  if (run.steps[0]?.status === 'window_not_found') throw new NotRun('browser window not exposed to UI Automation on this desktop');
-  let done = run.status === 'clicked' && (await enabled());
-  if (!done && inputMethod === 'Mouse') {
-    inputMethod = 'Invoke';
-    run = await helper('Sequence', sequence, {method: inputMethod});
+  const attempt = (method) => method === 'Keyboard'
+    ? helper('Keyboard', sequence)
+    : helper('Sequence', sequence, {method});
+  let run;
+  let done = false;
+  for (const method of METHODS.slice(METHODS.indexOf(inputMethod))) {
+    inputMethod = method;
+    run = await attempt(method);
+    // The only NOT_RUN: UI Automation cannot see the browser window at all.
+    if (run.status === 'window_not_found' && !run.steps.some((step) => step.status === 'clicked')) {
+      throw new NotRun('browser window not exposed to UI Automation on this desktop');
+    }
     done = run.status === 'clicked' && (await enabled());
+    if (done) break;
   }
   let popupInput = inputMethod;
   const last = run.steps.at(-1);
@@ -374,7 +386,7 @@ try {
     activation: {
       first: observations.activation ?? null,
       second: observations.secondActivation ?? null,
-      input_note: 'Mouse = OS mouse click at the element located by UI Automation; Invoke = UI Automation Invoke',
+      input_note: 'Mouse = OS mouse click at the element located by UI Automation; Invoke = UI Automation Invoke/Expand; Keyboard = OS key presses on the focused target',
       gestures,
       permission_injection: false,
       worker_used_for: 'page-access probes (observation only) and a storage read; never to enable',
