@@ -68,6 +68,26 @@ jobs:
         run: |
           node scripts/test-capture-contract.mjs 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/capture-contract.log"
           exit $LASTEXITCODE
+      - name: Instant engine and benchmark contracts (Windows PowerShell 5.1 self-tests)
+        if: ${{ !cancelled() }}
+        run: |
+          # Both contracts check committed bytes (LF-only files, corpus hashes), and
+          # the runner's checkout may convert text to CRLF, so they run from an LF
+          # worktree of the same commit. The engine contract's native-process and
+          # UTF-8 JSON self-tests need Windows PowerShell 5.1 and task-owned roots;
+          # without them those checks are NOT_RUN (exit 2), never PASS.
+          $tree = Join-Path $env:RUNNER_TEMP 'instant-lf-tree'
+          git -c core.autocrlf=false worktree add --detach $tree HEAD
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $env:P3_02_NATIVE_SELF_TEST_ROOT = Join-Path $env:RUNNER_TEMP 'p3-02-native-self-test'
+          $env:P3_02_UTF8_JSON_SELF_TEST_ROOT = Join-Path $env:RUNNER_TEMP 'p3-02-utf8-json-self-test'
+          node "$tree/scripts/test-instant-selection-engine-contract.mjs" 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/instant-engine-contract.log"
+          $engine = $LASTEXITCODE
+          node "$tree/scripts/test-instant-selection-benchmark-contract.mjs" 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/instant-benchmark-contract.log"
+          $benchmark = $LASTEXITCODE
+          git worktree remove --force $tree
+          "engine_exit=$engine benchmark_exit=$benchmark"
+          if ($engine -ne 0 -or $benchmark -ne 0) { exit 1 }
       - name: Chromium core contract
         if: ${{ !cancelled() }}
         run: |

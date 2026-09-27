@@ -1,15 +1,29 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const failures = [];
+const notRun = [];
 let assertions = 0;
 
 function check(condition, id) {
   assertions += 1;
   if (!condition) failures.push(id);
+}
+
+// The native-process and UTF-8 JSON self-tests need Windows PowerShell 5.1 and
+// an explicit task-owned root (P3_02_NATIVE_SELF_TEST_ROOT,
+// P3_02_UTF8_JSON_SELF_TEST_ROOT). Without them these checks did not run: they
+// are NOT_RUN, never PASS, and the contract does not report GREEN. Windows CI
+// sets both roots.
+function selfTestCheck(ran, condition, id) {
+  if (!ran) {
+    notRun.push(id);
+    return;
+  }
+  check(condition, id);
 }
 
 function read(relativePath) {
@@ -116,14 +130,15 @@ if (utf8JsonSelfTestBase) {
   }
 }
 
-check(nativeSelfTestRun?.status === 0 && nativeSelfTestResult?.cases?.stderrWithZeroExit === true, "native-process.stderr-with-zero-exit-is-not-failure");
-check(nativeSelfTestResult?.cases?.nonzeroExitClassifiedAsFailure === true, "native-process.nonzero-exit-is-failure");
-check(nativeSelfTestResult?.cases?.stdoutStderrSeparated === true, "native-process.stdout-stderr-remain-separated");
-check(nativeSelfTestResult?.cases?.largeDualStreamCompleted === true, "native-process.concurrent-dual-stream-drain-does-not-deadlock");
-check(nativeSelfTestLineCount === 1 && nativeSelfTestResult?.resultObjectCountExactlyOne === true, "native-process.result-object-count-is-exactly-one");
-check(nativeSelfTestResult?.exitCodeRuntimeType === "System.Int32" && nativeSelfTestResult?.exitCodeIsSignedInteger === true, "native-process.exit-code-is-a-signed-integer");
-check(nativeSelfTestResult?.cases?.createNewAndReuseRejected === true, "native-process.output-files-are-create-new-and-not-reused");
-check(nativeSelfTestResult?.cases?.argumentWithSpacesRoundtrip === true, "native-process.argument-roundtrip-supports-spaces");
+const nativeRan = nativeSelfTestRun !== null;
+selfTestCheck(nativeRan, nativeSelfTestRun?.status === 0 && nativeSelfTestResult?.cases?.stderrWithZeroExit === true, "native-process.stderr-with-zero-exit-is-not-failure");
+selfTestCheck(nativeRan, nativeSelfTestResult?.cases?.nonzeroExitClassifiedAsFailure === true, "native-process.nonzero-exit-is-failure");
+selfTestCheck(nativeRan, nativeSelfTestResult?.cases?.stdoutStderrSeparated === true, "native-process.stdout-stderr-remain-separated");
+selfTestCheck(nativeRan, nativeSelfTestResult?.cases?.largeDualStreamCompleted === true, "native-process.concurrent-dual-stream-drain-does-not-deadlock");
+selfTestCheck(nativeRan, nativeSelfTestLineCount === 1 && nativeSelfTestResult?.resultObjectCountExactlyOne === true, "native-process.result-object-count-is-exactly-one");
+selfTestCheck(nativeRan, nativeSelfTestResult?.exitCodeRuntimeType === "System.Int32" && nativeSelfTestResult?.exitCodeIsSignedInteger === true, "native-process.exit-code-is-a-signed-integer");
+selfTestCheck(nativeRan, nativeSelfTestResult?.cases?.createNewAndReuseRejected === true, "native-process.output-files-are-create-new-and-not-reused");
+selfTestCheck(nativeRan, nativeSelfTestResult?.cases?.argumentWithSpacesRoundtrip === true, "native-process.argument-roundtrip-supports-spaces");
 check(/\$BuildResult\s*=\s*Invoke-NativeProcess/u.test(runner), "benchmark-runner.cargo-invocation-uses-the-native-process-helper");
 check(/\$WriterResult\s*=\s*Invoke-NativeProcess/u.test(runner) && /\$EvaluatorResult\s*=\s*Invoke-NativeProcess/u.test(runner) && /Assert-NativeProcessSucceeded/u.test(runner), "benchmark-runner.writer-and-evaluator-use-the-same-exit-authority");
 
@@ -138,16 +153,21 @@ const generatedJsonBoundariesUseStrictReader = predictionsUsesStrictReader
   && /\$Report\s*=\s*Read-StrictUtf8Json\s+-Path\s+\$EvaluatorReportPath/u.test(runner)
   && /Read-StrictUtf8JsonLines\s+-Path\s+\$BuildStdout/u.test(runner)
   && defaultEncodingReadForbidden;
-check(utf8JsonSelfTestResult?.strictByteReaderRequired === true, "utf8-json.strict-byte-reader-required");
+const utf8Ran = utf8JsonSelfTestRun !== null;
+selfTestCheck(utf8Ran, utf8JsonSelfTestResult?.strictByteReaderRequired === true, "utf8-json.strict-byte-reader-required");
 check(defaultEncodingReadForbidden, "utf8-json.default-encoding-read-forbidden");
-check(utf8JsonSelfTestResult?.cases?.noBomMixedLanguageParses === true, "utf8-json.no-bom-mixed-language-parses");
-check(utf8JsonSelfTestResult?.cases?.bomMixedLanguageParses === true, "utf8-json.bom-mixed-language-parses");
-check(utf8JsonSelfTestResult?.cases?.bomNoBomSemanticEquality === true, "utf8-json.bom-no-bom-semantic-equality");
-check(utf8JsonSelfTestResult?.cases?.malformedSequenceFailsClosed === true, "utf8-json.malformed-sequence-fails-closed");
-check(predictionsUsesStrictReader && utf8JsonSelfTestResult?.boundaries?.predictionsUsesStrictReader === true, "utf8-json.predictions-boundary-uses-strict-reader");
-check(generatedJsonBoundariesUseStrictReader && utf8JsonSelfTestResult?.boundaries?.allGeneratedJsonUseStrictReader === true, "utf8-json.all-generated-json-boundaries-use-strict-reader");
-check(utf8JsonSelfTestRun?.status === 0 && utf8JsonSelfTestLineCount === 1 && utf8JsonSelfTestResult?.contentFreeResult === true && utf8JsonSelfTestResult?.cleanupSuccessful === true, "utf8-json.self-test-emits-one-content-free-result");
-check(utf8JsonSelfTestResult?.ps51ParserGatePassed === true && utf8JsonSelfTestResult?.parserErrorCount === 0 && Number.isInteger(utf8JsonSelfTestResult?.parserTokenCount) && utf8JsonSelfTestResult.parserTokenCount > 0, "utf8-json.ps51-parser-gate-is-required");
+selfTestCheck(utf8Ran, utf8JsonSelfTestResult?.cases?.noBomMixedLanguageParses === true, "utf8-json.no-bom-mixed-language-parses");
+selfTestCheck(utf8Ran, utf8JsonSelfTestResult?.cases?.bomMixedLanguageParses === true, "utf8-json.bom-mixed-language-parses");
+selfTestCheck(utf8Ran, utf8JsonSelfTestResult?.cases?.bomNoBomSemanticEquality === true, "utf8-json.bom-no-bom-semantic-equality");
+selfTestCheck(utf8Ran, utf8JsonSelfTestResult?.cases?.malformedSequenceFailsClosed === true, "utf8-json.malformed-sequence-fails-closed");
+// The runner-source half of these two checks is static and always runs; the
+// self-test half needs Windows PowerShell 5.1.
+check(predictionsUsesStrictReader, "utf8-json.predictions-boundary-uses-strict-reader.source");
+selfTestCheck(utf8Ran, utf8JsonSelfTestResult?.boundaries?.predictionsUsesStrictReader === true, "utf8-json.predictions-boundary-uses-strict-reader");
+check(generatedJsonBoundariesUseStrictReader, "utf8-json.all-generated-json-boundaries-use-strict-reader.source");
+selfTestCheck(utf8Ran, utf8JsonSelfTestResult?.boundaries?.allGeneratedJsonUseStrictReader === true, "utf8-json.all-generated-json-boundaries-use-strict-reader");
+selfTestCheck(utf8Ran, utf8JsonSelfTestRun?.status === 0 && utf8JsonSelfTestLineCount === 1 && utf8JsonSelfTestResult?.contentFreeResult === true && utf8JsonSelfTestResult?.cleanupSuccessful === true, "utf8-json.self-test-emits-one-content-free-result");
+selfTestCheck(utf8Ran, utf8JsonSelfTestResult?.ps51ParserGatePassed === true && utf8JsonSelfTestResult?.parserErrorCount === 0 && Number.isInteger(utf8JsonSelfTestResult?.parserTokenCount) && utf8JsonSelfTestResult.parserTokenCount > 0, "utf8-json.ps51-parser-gate-is-required");
 
 if (nativeSelfTestWorkRoot) rmSync(nativeSelfTestWorkRoot, { recursive: true, force: true });
 if (utf8JsonSelfTestWorkRoot) rmSync(utf8JsonSelfTestWorkRoot, { recursive: true, force: true });
@@ -228,17 +248,22 @@ for (const token of [
   check(documentation.includes(token), `DOCUMENTATION_TOKEN_MISSING:${token}`);
 }
 
-let gitMainMentions = "";
-try {
-  gitMainMentions = execFileSync("git", ["diff", "--", "src-tauri/src/main.rs"], { cwd: root, encoding: "utf8" });
-} catch {
-  failures.push("MAIN_DIFF_CHECK_FAILED");
-}
-check(gitMainMentions.length === 0, "MAIN_RUNTIME_SOURCE_CHANGED");
+// The P3-02 task was not allowed to touch src-tauri/src/main.rs, so this
+// contract once failed on any uncommitted main.rs edit (MAIN_RUNTIME_SOURCE_CHANGED).
+// Later authorized tasks wired the engine into the app through p3_03_runtime,
+// and a working-tree diff never protected committed code, so that task-scope
+// rule was retired. The engine's own boundary is still checked above: no
+// direct engine calls in main.rs, no network, no persistence, deterministic
+// rules and no benchmark coupling.
 
-if (failures.length > 0) {
-  process.stdout.write(`${JSON.stringify({ result: "RED", assertions, failureCount: failures.length, failureIds: failures })}\n`);
-  process.exitCode = 1;
-} else {
-  process.stdout.write(`${JSON.stringify({ result: "GREEN", assertions, failureCount: 0, failureIds: [] })}\n`);
-}
+const summary = {
+  result: failures.length > 0 ? "RED" : notRun.length > 0 ? "NOT_RUN_PREREQUISITES" : "GREEN",
+  assertions,
+  failureCount: failures.length,
+  failureIds: failures,
+  notRunCount: notRun.length,
+  notRunIds: notRun,
+};
+process.stdout.write(`${JSON.stringify(summary)}\n`);
+// Failures exit 1. Checks that could not run exit 2: that is not a pass.
+process.exitCode = failures.length > 0 ? 1 : notRun.length > 0 ? 2 : 0;
