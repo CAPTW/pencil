@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "state_version": "2026-09-27.cloud-session-r4",
+  "state_version": "2026-09-28.pre-use-inspection-r1",
   "repository_branch": "main",
   "product_target": "P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST",
   "p3a_status": "COPY_ONLY_BY_OWNER_DECISION_SINGLE_COPY_BUTTON_STANDARD_EDIT_CAPTURE_OWNED_DESKTOP_QUALIFIED",
   "p3b_status": "CONSENT_BOUND_DEEP_CANDIDATE_NO_LIVE_ACCEPTANCE",
   "first_adapter_decision": "CHROMIUM_TEXTAREA_CONTENTEDITABLE_MV3",
   "active_phase": "MISSION_IMPLEMENTATION",
-  "active_step": "OWNER_DECISIONS_R4_APPLIED_MAIN_MERGE_INSTALL_RELEASE_SEPARATE",
+  "active_step": "PRE_USE_INSPECTION_DEFECTS_FIXED_SYNTHETIC_VERIFIED_OWNER_TRIAL_DECISION_PENDING",
   "active_task": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
   "completed_task": "GRAMMAR-P3B-R0-CURRENT-LOCAL-REPOSITORY-REAUDIT-PRODUCT-TARGET-RESET-MULTI-AGENT-DEVELOPMENT-CONTRACT-PHASE-STEP-ROADMAP-AND-MINIMAL-PROJECT-SOURCE-SUCCESSOR-R1",
   "exact_next_task": "GRAMMAR-P3B-P3-OWNER-PERSONAL-TRIAL-AND-EXTERNAL-BOUNDARY-DECISIONS",
@@ -126,7 +126,8 @@
     "Installed-package Chromium smoke test: unmodified installed extension and installer host registration, fresh sandboxed profile, real keyboard toolbar gesture: PASS (run 36331068541); the 39-check test is reclassified as a modified isolated extension fixture",
     "Separate fresh-context review pass (same model family, read-only); blocking and should-fix findings addressed",
     "Owner decisions r4: native Copy-only kept; desktop Apply merged into one session-bound Copy button; unreachable legacy paste path deleted with the R1/R2 regression tests kept; R3 accepted for the keyboard toolbar path only (mouse menu path, normal profile and Edge not verified); main merge, personal install and release remain separate",
-    "Round r4 verification: CI 36337934296 on 8e81fc8, all 34 steps PASS (single Copy button built-app flow with 0 editor reads and 0 state-changing messages, native Copy-only receipts, unmodified installed-package browser by keyboard); a fresh-context review found no blocking issue and its findings were fixed in e7b573f"
+    "Round r4 verification: CI 36337934296 on 8e81fc8, all 34 steps PASS (single Copy button built-app flow with 0 editor reads and 0 state-changing messages, native Copy-only receipts, unmodified installed-package browser by keyboard); a fresh-context review found no blocking issue and its findings were fixed in e7b573f",
+    "Pre-use inspection from cdf8553: install (missing Chrome key, rollback, resumable uninstall and -RemoveUserData, integrity, PowerShell 7), desktop (Cancel keeps the capture, busy rollback and wait, attempts, capture-ended, Instant draft visible and kept while Deep runs, honest messages), Chromium (card identity, kept suggestions, field choice incl. sensitive refusal, Deep reply never replaces an open card, bounded waits, worker slot and grant fixes), Providers (batch launchers unavailable, sign-in wording, Codex per-turn cap) and runtime marker restore; contract failures classified as environment gap and stale policy; endurance FAIL on 36357375075 recorded; two fresh-context same-family reviews fixed; live Provider, physical keyboard/IME and real profiles NOT_RUN"
   ],
   "native_capture_activation": "ACTIVE_STANDARD_EDIT_ONLY_OWNED_DESKTOP_QUALIFIED_OTHERS_DENIED",
   "chromium_deep_activation": "SOURCE_UNCONFIGURED_PERSONAL_INSTALLER_CONFIGURES_HOST_CONSENT_BOUND_SYNTHETIC_ONLY",

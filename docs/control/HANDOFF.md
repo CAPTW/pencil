@@ -2,6 +2,141 @@
 
 Mission: GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1. This is an incomplete mission checkpoint, not P3-A/P3-B or personal-use acceptance. Read AGENTS.md, the v1.1 contract override, control/mission.json and control/state.json. The Owner has already authorized internal continuation; no fresh per-step approval is needed.
 
+## Pre-use inspection round (2026-09-27/28): review and fixes before a limited personal trial
+
+Mission GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1. Base candidate cdf8553 (round r4). Goal: find, reproduce and fix what a person would meet in a limited personal trial (confusion, lost drafts, stuck installs, restart problems), not only re-run CI. Run 36339738039 stays evidence for cdf8553's scope only; it is not reused for code changed after it. Nothing here approves a personal install, a main merge or a release. `mission_completion` stays INCOMPLETE. This section supersedes the r4 verification figures for everything changed after cdf8553.
+
+Start checks: read AGENTS.md, contract 1.3.0, control/mission.json, control/state.json, this handoff and ACCEPTANCE_MATRIX. `python scripts/validate_governance.py --root .` PASS. HEAD cdf8553, clean, equal to the remote branch.
+
+Method:
+- Four read-only risk reviews (desktop lifecycle, widget, Chromium, install/runtime) set the risk list.
+- Each finding was reproduced before fixing. Evidence was one of: a failing unit test on the old code; the previous scripts on a stub package; headless Chromium with a copied extension and a synthetic host or the real engine (the Windows host under Wine); or a CI run.
+- Fixes got a regression test where one could be automated. Windows-only checks were batched into the mission CI.
+- Two fresh-context review passes then covered all of cdf8553..HEAD. Their findings are fixed below (review section).
+- Each record: cause → user impact → reproduction → fix → regression test → residual.
+
+### Findings fixed
+
+Install and package (13a3f13, 75a1dab):
+- I1 BLOCKER. Registration used New-Item on `HKCU\Software\Google\Chrome\NativeMessagingHosts\<name>`. Chrome creates that parent only when some host registers, so on a clean profile the default install stopped with "registry key ... does not exist". Fix: create each missing level, never `-Force` (which would replace existing hosts); `registered` is written only after the key points at host.json. Test: `missingParentKeysCreatedAndRegistered`.
+- I2 HIGH. A failure after the root was created left a folder with no receipt, so reinstall said "already exists" and uninstall said "Not a Grammar installation". Reproduced with the previous scripts on a stub package. Fix: the uninstaller and an `incomplete` receipt are written first, the registration is recorded before anything else can fail, and any error rolls back; an incomplete rollback names the uninstaller; an existing root is refused with upgrade steps. Tests: `registrationFailureRolledBack`, `existingRootRefused`.
+- I3 MEDIUM. Uninstall relied on host-tools it deleted early and could not resume after a lock. Fix: it removes its recorded key itself (only if the key still points at its manifest), deletes the receipt and itself last, and reports `problems/notes/complete/next`. Tests: `lockedUninstallIncompleteAndRepeatable`, `repeatedUninstallCompleted`, `uninstallRemovedOnlyItsRegistration`, `runningOwnCopyStoppedAndRemoved`.
+- I4 MEDIUM. `-RemoveUserData` deleted the settings, dictionary and Codex sign-in that every Grammar copy of the user shares, even while another copy ran. Fix: refused then; the guide no longer uses it by default. Test: `removeUserDataRefusedWhileAnotherCopyRuns`.
+- I5 Integrity. Files not in MANIFEST.json were installed unchecked, hidden files were not listed, and packaging accepted ignored or untracked files and assume-unchanged/skip-worktree edits. All are refused now. Tests: `changedFileRefused`, `unlistedFileRefused`; local packaging negatives.
+- I6 LOW. The uninstaller did not default to its own folder, and a trailing separator broke the receipt match. Covered only by local stub-package runs (Linux pwsh).
+- I7 MAJOR (review). With `-RemoveUserData` the root, including the receipt and uninstaller, was deleted before the user data. A locked user-data folder then left the data, including the app's Codex sign-in, with no uninstaller to rerun, although the result said to rerun it. Fix: user data goes first, after a fresh check for another running copy; the receipt and uninstaller always go last. Tests: `lockedUserDataKeepsReceiptAndUninstaller`, `repeatedRemoveUserDataCompleted` (task-owned folder, not the runner's AppData).
+- I8 MINOR (review). When removing the key failed, the fallback record `host/registration.json` was still deleted, so a rerun reported complete while the registration stayed. Fix: the record is kept. No automated test (the key must refuse removal).
+- I9 MINOR (review). A key that now points to another manifest made every run incomplete, and a rerun could never clear it. Fix: it is left untouched and reported as a note. Test: `foreignRegistrationLeftAndUninstallCompleted`.
+- I10 MINOR (review). Under Windows PowerShell 5.1 the installer failed with a .NET method error, and its rollback could delete the receipt before other files. Fix: `#Requires -Version 7.0`; the rollback removes the receipt and uninstaller last. The rollback path was run locally on Linux pwsh.
+
+Desktop capture lifecycle (1c7f1a3, 95c44cf):
+- D1 HIGH. Cancel (or Escape while Deep ran) ended the whole capture. The user saw the raw `invalid_session_state`, and the Instant draft, possibly edited, could no longer be copied. Fix: `cancel_rewrite` returns the capture to Captured. Tests: `cancel_deep_keeps_the_capture_and_its_instant_draft_usable` (fails on the old code); built-app step 7.
+- D2 HIGH. A busy Provider (an earlier request finishing, the startup probe, Refresh, Test connection) left the capture in Rewriting, so Deep and Copy failed until a new capture. Fix: `reserve_rewrite` rolls back to Captured and answers `provider_busy`; the widget waits up to 5 s when a request it stopped is still finishing (nothing was sent). Test: `busy_provider_reservation_returns_the_capture_to_captured` (fails on the old code).
+- D3. The late end of a cancelled request could end a newer Deep request. Fix: numbered attempts, checked when the request finishes and, after review, also at reservation. Tests: D1's test and `a_cancelled_attempt_cannot_reserve_or_undo_a_newer_one`.
+- D4 MEDIUM. Shortcut toggle, tray Hide and window close ended the capture silently, and the widget kept offering Copy. Fix: a `capture-ended` event, sent only when a capture actually ended (after review, so shutdown and shortcut warnings stay); `dismiss_window` hides even when the capture already ended. Tests: `closing_the_widget_still_ends_the_capture`; built-app step 8.
+- D5. Copy of an Instant draft made outdated by a mode or dictionary change reported `invalid_session_state` and ended a usable capture. Fix: `draft_outdated`, capture kept, message "A setting changed after this draft was made". Test: capture contract.
+- D6 HIGH (CI 36361143740). While Deep ran, the widget replaced the draft box with a spinner, so the local Instant draft could not be read, edited or copied until Deep ended (up to two minutes with a real Provider). Fix: the draft box stays, with a progress line naming Cancel for copying now. Test: built-app step 7 (the draft must appear while the slow synthetic Deep runs).
+- D7 HIGH. The backend emitted the Instant result only while the capture was Captured, so with auto rewrite it was lost whenever Deep started first. Fix: kept for an open capture (Captured, Rewriting or Ready). Test: `the_instant_draft_belongs_to_an_open_capture_while_deep_runs`; built-app steps 7-12b.
+- D8 MEDIUM (review). Run Deep on a ready result said "This capture is no longer active" although Copy still worked. Fix: the button is disabled while a result is ready, and the command answers `rewrite_result_ready`. Tests: mvp contract, the D7 test (`is_ready`).
+- D9 MEDIUM (review). A language change in Grammar mode cleared the Instant cache, so an edited draft could not be copied and the message blamed the mode or dictionary. Grammar Instant depends on no language setting, and a language change that matters changes the intent. Fix: the separate language invalidation is gone. No automated test.
+- D10 LOW (review). The Cancel status promised a draft that did not exist (modes without Instant, or nothing to change). Fix: it says "Deep cancelled" then.
+
+Widget (a2e56d2, 01da908):
+- W1 HIGH. After a mode, target or reference language change the new Deep result never appeared: there were two draft stores and only one was cleared. Fix: both reset together once per intent change. Test: built-app step 6.
+- W2 MEDIUM. Dictionary, profile, import, "Save suggested", mode and language changes silently discarded an edited draft. Fix: a confirmation first; declining changes nothing. No automated test (window.confirm path); it is on the Owner's manual list.
+- W3. A late Deep result or error could reset the rewriting state of a newer request. Fix: only the latest call may change the widget. Built-app step 7.
+- W4. Capture errors, Dismiss and stale rejections left the Instant runtime behind. Fix: one `clearCapture`.
+- W5. Raw codes reached users (`invalid_session_state`, `code: sentence`). `codex_unavailable` showed "Codex missing" even with another Provider selected (seen in 36357375075). Fix: sentences only. Tests: mvp and capture contracts.
+- W6. The error row is announced (role=alert), and focus moves to Dismiss after Copy.
+
+Chromium adapter (2c309bd, 766f7ae; reproduced in headless Chromium before fixing):
+- C1 HIGH. Moving through the suggestion list (Tab or hover) replaced the open card, so Accept applied a suggestion the user had not chosen. Fix: a card opens only on choice, and every action is bound to that suggestion object. Tests: "keyboard Accept applies the chosen suggestion and keeps the others", "pointer hover never changes the open card".
+- C2 MEDIUM. After a page edit without an input event, Deep then Accept overwrote a different range and reported "content verified". Fix: identity binding closes the stale card. Local harness only.
+- C3 HIGH. Accept or Apply edit emptied the whole list and never re-checked. Fix: the other suggestions stay (shifted) and the changed lines are re-checked. Browser test above.
+- C4 HIGH (keyboard). "Enable this field" enabled the last focused element, so passing links or buttons made a keyboard user enable, and possibly send to Deep, another field. Fix: links and buttons do not change the choice, the panel names the field ("Field to enable: ..."), and Alt+Shift+E enables the focused field. Browser test "Alt+Shift+E ...".
+- C5 MEDIUM. Each contenteditable Accept added two text nodes, so the field was disabled after about 8 Accepts. Fix: edit the nodes in place. Browser test: nine repeated Accepts.
+- C6 MEDIUM. A discarded reply, host error or expiry emptied every suggestion and left a stale status. Fix: only the affected parts are dropped, the whole field is re-checked after a discard or expiry, and each item expires on its own. Local harness only.
+- C7 LOW. Typing during Deep showed "Local engine unavailable". Fix: wait and re-check, bounded to 150 s after review.
+- C8 (worker). After "Check completed cleanup" succeeded, grants from before the failure still worked. Fix: recovery revokes them. Test: worker.test (fails on the old worker).
+- C9 (worker). A `cleanup_busy` reply to cleanup-reserve left a "reserving" marker that blocked Deep. Fix: the marker is dropped and the send reports busy, and after review the retiring slot is freed as well. Tests: worker.test, including "a document closed during a busy reserve frees its slot" (fails on the old worker).
+- C10 HIGH (CI 36361143740; a regression from the C4 fix). Clicking into a password field and pressing "Enable this field" enabled the previously chosen supported field and read it. Fix: any text field the user is in becomes the choice; an unsupported one is named "(not supported)" and refused. Reproduced locally with the real host (one extra analysis). Tests: the fixture's "sensitive label rejected" and "explicit sensitive metadata denied".
+- C11 MAJOR (review). A Deep reply replaced a card the user had opened while waiting, so a click aimed at its Accept could apply the whole-field rewrite. Fix: the result waits in the list. Test: "a Deep reply never replaces a card opened while waiting" (Deep reply held in the content world; fails on the old content.js).
+- C12 MAJOR (review). While Deep ran, expiry or re-render said "no cloud" or "Suggestions expired". Fix: the status keeps saying the field is being sent. No automated test.
+- C13 MINOR (review). Alt+Shift+E ignored Ctrl (AltGr) and composition, so typing Ę or Ē could enable and read a field. Fix: it requires no Ctrl or Meta and no composition, and refuses unsupported fields. No automated test.
+- C14 MINOR (review). A list button could open a different suggestion that had moved into its position. Fix: it opens only its own suggestion. The outcome of Accept, Apply edit, Copy or a refused action now stays until the user acts again. No automated test.
+
+Providers and runtime (7c41a11, 01da908):
+- P1 HIGH. A `.cmd`/`.bat` launcher (npm's `claude.cmd`) showed Ready, but Rust refuses multi-line arguments to batch files ("batch file arguments are invalid", reproduced with a probe under Wine), so every Deep request failed at spawn. Fix: reported unavailable with the remedy, and `claude.exe` is preferred. Test: `batch_launchers_are_unavailable_and_native_executables_are_not`.
+- P2 MEDIUM. A successful Claude rewrite whose text mentions logging in was reported as signed out. Fix: sign-in wording counts only in failed runs. Test: `successful_result_mentioning_login_is_not_signed_out`.
+- P3 MEDIUM. The Codex app-server stdout cap (64 MiB) counted the client's whole life, so a long session eventually failed a healthy request. Fix: it resets at `turn/completed`. Tests: `output_cap_covers_one_turn_not_the_client_lifetime` (fails on the old code), `output_cap_still_stops_a_runaway_turn`.
+- P4. A partial `remove_dir_all` could delete a runtime folder's ownership marker, and the deadline path did not restore it, so the folder was never reclaimed. Fix: every give-up path restores it. No deterministic test (needs a sharing violation mid-removal).
+
+### Contract failures at cdf8553 (63f07c9)
+
+- Engine contract, 17 checks: environment gap, not a product regression. They need Windows PowerShell 5.1 and the task-owned self-test roots. They are now NOT_RUN where these are missing (exit 2, never GREEN) and run for real in a CI step from an LF worktree. MAIN_RUNTIME_SOURCE_CHANGED was the P3-02 task's no-touch rule for main.rs (stale policy) and is retired; the engine boundary checks stay. Linux: 452 pass, 17 NOT_RUN.
+- Benchmark contract, 1 failure: stale policy. The P3-01 closed file set predates P3-02's two files; they joined the set under the same text checks. 136/136. The measurement itself never failed.
+
+### Failures during the round (kept as failures)
+
+- Endurance, run 36357375075: FAIL. Loaded run 2 started the synthetic child in 4.9 s under 8 spinning threads, timed out and missed the cleanup deadline, leaving one runtime folder; runs 3–6 were refused (`provider_cleanup_unresolved_restart_required`, fail closed). No budget or case was changed. Runs 36358305471, 36358600996 and 36361143740 passed (72 clean runs, 6/6 loaded timeouts reproduced). Classification: load variance on the hosted runner plus the P4 marker weakness (fixed).
+- Test defects, not product:
+  - The built-app step 6 assumed the widget was hidden (01da908).
+  - It also expected `source\n\n(translation)` for a one-line source, which the product joins as `source (translation)` (fac6038).
+  - The Chromium repeated-Accept loop accepted the engine's correct repeated-word suggestion instead of the misspelling, and plain End stopped at a wrapped line. Reproduced with the real engine (fac6038).
+- Product defects found by CI: D6/D7 (built-app step 7) and C10 (fixture), fixed in 95c44cf and 766f7ae.
+
+### Residual limits (not fixed in this round)
+
+- Claude and Antigravity receive the prompt (the selection plus matched terms) as a command-line argument, which other processes of the same user can read while Deep runs. Codex uses stdin. Changing it needs live Provider verification (out of scope).
+- The desktop Provider acknowledgement is stored per Provider and survives restart. With Auto rewrite on (the default) every capture is sent to that Provider. No screen withdraws it; `-RemoveUserData` resets it.
+- Copy is disabled while Deep runs (Cancel first). Escape does not close the desktop widget.
+- `cancel_cli_operation` still identifies an operation by token and intent, not attempt. In a one-hand-off window a stale operation may run on; its result is discarded, and the newer request waits via the busy retry.
+- History API or hash navigation removes the Chromium panel without a stated reason.
+- `%TEMP%\codex-pencil-runtime-v1` survives uninstall. What a real Provider writes there is NOT_RUN.
+- A stale Chromium cleanup temporary file keeps browser Deep blocked (fail closed); recovery is a reinstall.
+- Provider executable lookup checks the current directory first. The engine descriptor's `runtime_wired` flag is stale.
+- No automated regression test: W2, C2, C6, C12, C13, C14, D9, I8 and P4.
+- NOT_RUN:
+  - physical keyboard and IME;
+  - live Providers (Codex, Claude, Antigravity);
+  - normal user profiles and real documents;
+  - the mouse toolbar path, Edge, zoom/multi-monitor and long sessions.
+- Build reproducibility is not verified.
+
+### Review pass
+
+Two fresh-context review agents read cdf8553..HEAD read-only, split into desktop runtime, and Chromium plus package. They are the same model family as the author and had no shared conversation, so this is not an independent human review.
+- Desktop: no BLOCKER, 1 MAJOR (D8), 5 MINOR (D10, D9, the busy re-run, D4's unconditional event, attempts at reservation). All are fixed, except `cancel_cli_operation`'s identification (residual above).
+- Chromium and package: no BLOCKER, 3 MAJOR (C11, C12, I7), 7 MINOR (C13, C9's slot, C7's bound, C14 twice, I8/I9, I10). All are fixed.
+
+### Verification
+
+- Local:
+  - Wine: 217 Rust tests passed, 0 failed, 26 ignored (Windows-only live tests).
+  - Frontend typecheck, and every local Node contract.
+  - worker.test 49/49.
+  - The whole Chromium fixture, including synthetic Deep, in headless Chromium with the real host and synthetic child under Wine.
+  - Stub-package install, refusal, `-RemoveUserData` and rollback runs.
+- CI: see the final run named in the Owner report. Earlier runs in this round, with their failures, are listed above.
+
+### Owner's minimal manual checks (not run by this round)
+
+1. Check the ZIP hash, extract it into an empty folder, and install with `pwsh` (PowerShell 7) into a fresh folder. Confirm the Chrome extension ID matches `MANIFEST.json`.
+2. Desktop, in a standard Windows Edit field (for example a classic dialog's single-line box; the new Windows 11 Notepad is not a standard Edit and is refused):
+   - select Korean and English text, press Ctrl+Shift+G, edit the Instant draft, Copy, and paste it yourself;
+   - check that the original text did not change.
+3. Choose a Provider and allow Deep once with a short non-sensitive sentence, on your own account and at your own cost:
+   - the Instant draft stays editable while Deep runs;
+   - Cancel keeps it;
+   - changing the mode after editing asks first.
+4. Chromium, in a fresh profile with the action pinned:
+   - enable the document by keyboard (Alt+Shift+T);
+   - Alt+Shift+E in a non-sensitive textarea, then Accept one suggestion;
+   - a password field is refused;
+   - type Korean with the IME.
+5. Quit from the tray, restart, and confirm no capture or draft returns.
+6. Uninstall. Add `-RemoveUserData` only if the settings and dictionary should go, then confirm the folder and registration are gone.
+
 ## Review round r4 (2026-09-27): Owner decisions after round r3
 
 This section supersedes the "Kept, as Owner decisions" list and the Apply wording of round r3 below. `mission_completion` stays INCOMPLETE.

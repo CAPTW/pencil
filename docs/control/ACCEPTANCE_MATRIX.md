@@ -9,8 +9,8 @@ Evidence labels: CODE_PROVEN, TEST_PROVEN, LIVE_PROVEN, FIXTURE_PROVEN, DOCUMENT
 | `npm ci --offline --ignore-scripts --no-audit --no-fund` | TEST_PROVEN exit0, lock versions unchanged | Restore only, no actual Provider |
 | `npm run typecheck`; `npm run build:frontend` | TEST_PROVEN exit0 using actual Vite config | TS/build only, no UI Apply acceptance |
 | 13 existing Node core/provider/UI contracts | TEST_PROVEN exit0 | Mixed static/behavior, not end-to-end cancel/Apply |
-| engine contract with P3_02_NATIVE_SELF_TEST_ROOT and P3_02_UTF8_JSON_SELF_TEST_ROOT | FIXTURE_PROVEN 468/0 | Correct prerequisite runner tests, not live language quality |
-| historical benchmark contract | FAIL: 107 assertions/16 failures | Fixed file-set + LF/hash assumptions drifted; not 16 current engine defects |
+| engine contract with P3_02_NATIVE_SELF_TEST_ROOT and P3_02_UTF8_JSON_SELF_TEST_ROOT | Windows CI step "Instant engine and benchmark contracts" from an LF worktree: exit 0 (GREEN requires no failure and no NOT_RUN). Without Windows PowerShell 5.1 and the roots: NOT_RUN_PREREQUISITES, exit 2, never GREEN (Linux 452 pass, 17 NOT_RUN) | Correct prerequisite runner tests, not live language quality. MAIN_RUNTIME_SOURCE_CHANGED retired as stale policy (HANDOFF pre-use round) |
+| benchmark contract | TEST_PROVEN 136/136 GREEN (same CI step) | The cdf8553 failure was the P3-01 closed file set predating P3-02's two files (stale policy); the measurement never failed |
 | personal/daily bundle contracts | TEST_PROVEN 80/0 and GREEN | Legacy static contract + shortcut fixture; source-to-exe provenance still separately audited |
 | actual TS import and actual App canApply AST | FIXTURE_PROVEN 9 assertions; Instant edit true→false gate | F05 frontend condition; not native Apply |
 | `cargo check --manifest-path src-tauri/Cargo.toml --locked --offline` | TEST_PROVEN exit0 | Current Rust compiles |
@@ -56,3 +56,22 @@ Runtime/draft regressions and isolated Chromium local-Instant mutation rereads h
 Worker44 deterministic tests and native host16 tests pass for exact installation/token/generation receipt ownership, bounded four-slot storage, no-history persistence, cancellation races and restart reconciliation. Actual synthetic host4/4 verifies fresh-process query/ack after checked cleanup and rejects PENDING/wrong tickets. Unknown states remain blocked. These results do not qualify power loss, live Providers, native capture/clipboard, or whole-product A/B/C acceptance. Current browser and source/artifact receipts are in the resume-r3 external evidence directory referenced by HANDOFF.md.
 
 Actual isolated Chromium24 local checks also pass for restart reconciliation, both supported editors' protocol composition, delayed Instant response and explicit mutation rereads. A separate29-check partial run reached both editors' synthetic Deep success before a later fixture pointer interception; it is preserved as FAIL, not a complete Deep/browser PASS. The production activeTab protocol action was denied by Chromium and remains NOT_RUN. Read final extracted-package receipts independently.
+
+## Pre-use inspection round (2026-09-28)
+
+Findings, reproductions, fixes and residual limits are in HANDOFF.md ("Pre-use inspection round"). Evidence classes:
+
+- New Rust unit tests: TEST_PROVEN.
+  - Capture attempts, Cancel, busy reservation, open-capture Instant, batch launchers, Claude sign-in wording and the Codex per-turn output cap.
+  - Run under Wine locally and in the Windows CI job.
+- Built-app flow: FIXTURE_PROVEN on the owned synthetic desktop through the synthetic executable. It covers:
+  - Instant visible during Deep, Cancel, capture-ended and a held clipboard;
+  - Unicode/CRLF, password and empty selection;
+  - shortcut spam and restart.
+  - Not a live Provider.
+- Chromium: FIXTURE_PROVEN.
+  - The modified isolated extension runs in CI, and locally with the real host and synthetic child under Wine. It covers field choice incl. sensitive refusal, card identity, the Deep reply held while a card is open, and repeated Accepts.
+  - The unmodified installed package is covered only on the keyboard path (R3).
+- Install and uninstall failure paths: FIXTURE_PROVEN with task-owned roots, registry tree, stand-in processes and user-data folder.
+- No automated test: W2, C2, C6, C12, C13, C14, D9, I8 and P4 (code review only).
+- NOT_RUN: physical keyboard/IME, live Providers, normal profiles and real documents, the mouse toolbar path, Edge.
