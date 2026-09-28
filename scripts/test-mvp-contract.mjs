@@ -115,3 +115,10 @@ assert.equal(
 );
 assert.equal(contract.userFacingRuntimeErrorMessage("invalid_session_state"), "This capture is no longer active. Capture the selection again.");
 assert.equal(contract.userFacingRuntimeErrorMessage("some_unknown_code"), "some_unknown_code");
+// Codes the rewrite command returns for a busy Provider and for a capture whose
+// result is already ready: sentences, and never "no longer active".
+for (const code of ["provider_busy", "rewrite_result_ready"]) {
+  const message = contract.userFacingRuntimeErrorMessage(code);
+  assert.notEqual(message, code);
+  assert.doesNotMatch(message, /no longer active/);
+}

@@ -289,6 +289,24 @@ impl CaptureSessionStore {
             .is_ok_and(|current| current.lifecycle == CaptureLifecycle::Captured)
     }
 
+    /// True when the capture is current and holds a result ready to copy.
+    pub(crate) fn is_ready(&self, token: &SessionToken) -> bool {
+        self.current(token)
+            .is_ok_and(|current| current.lifecycle == CaptureLifecycle::Ready)
+    }
+
+    /// The selected text of a capture that is still open: waiting, running
+    /// Deep, or holding a Deep result. The local Instant draft belongs to all
+    /// three; a copied, cancelled or replaced capture has none.
+    pub(crate) fn open_source(&self, token: &SessionToken) -> Option<&str> {
+        let current = self.current(token).ok()?;
+        matches!(
+            current.lifecycle,
+            CaptureLifecycle::Captured | CaptureLifecycle::Rewriting | CaptureLifecycle::Ready
+        )
+        .then_some(current.selected_text.as_str())
+    }
+
     #[cfg(test)]
     pub(crate) fn finish_rewrite_success(
         &mut self,

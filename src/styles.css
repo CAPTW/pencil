@@ -824,13 +824,16 @@ h1 {
 }
 
 .result-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   flex: 1 0 132px;
   min-height: 132px;
 }
 
 .result-area textarea {
+  flex: 1 1 auto;
   width: 100%;
-  height: 100%;
   min-height: 132px;
   resize: none;
   padding: 13px 14px;
@@ -866,6 +869,15 @@ h1 {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.7);
   color: #54645b;
+}
+
+.deep-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #4f5c55;
+  font-size: 12px;
 }
 
 .loading-state {

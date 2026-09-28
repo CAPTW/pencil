@@ -249,6 +249,12 @@ const EMPTY_ENTRY_DRAFT: TerminologyEntryDraft = {
   note: null,
 };
 
+// Only promise a draft when there is one: Instant runs in Grammar mode only
+// and may find nothing to change.
+function deepCancelledStatus(draft: string): string {
+  return draft ? "Deep cancelled · the draft is still available" : "Deep cancelled";
+}
+
 function toErrorMessage(error: unknown): string {
   return userFacingRuntimeErrorMessage(error);
 }
@@ -343,6 +349,8 @@ export default function App() {
   const rewriteCallRef = useRef(0);
   const dismissButtonRef = useRef<HTMLButtonElement | null>(null);
   const terminologyEpochRef = useRef(0);
+  // The current draft for callbacks that must not re-subscribe on every edit.
+  const draftRef = useRef("");
 
   useEffect(() => {
     modeRef.current = settings.mode;
@@ -407,6 +415,10 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
   const rewrite = useCallback(async (
     mode: RewriteMode = modeRef.current,
     requestedToken: CaptureToken | null = currentTokenRef.current,
@@ -441,13 +453,34 @@ export default function App() {
     setError(null);
     setStatus(`Rewriting with ${providerDisplayName(providerRef.current)}`);
     try {
-      const next = parseTerminologyRewriteResult(await invoke<unknown>("rewrite_selected_text", {
-        sessionId: requestedToken.sessionId,
-        generation: requestedToken.generation,
-        mode,
-        targetLanguage: requestedIntent.targetLanguage,
-        autoReferenceLanguage: requestedIntent.autoReferenceLanguage,
-      }));
+      let response: unknown;
+      for (let waits = 0; ; waits += 1) {
+        try {
+          response = await invoke<unknown>("rewrite_selected_text", {
+            sessionId: requestedToken.sessionId,
+            generation: requestedToken.generation,
+            mode,
+            targetLanguage: requestedIntent.targetLanguage,
+            autoReferenceLanguage: requestedIntent.autoReferenceLanguage,
+          });
+          break;
+        } catch (reservationError) {
+          // The request that Cancel or an intent change just stopped may still
+          // be finishing. Nothing was sent (the capture is back in Captured),
+          // so wait for it briefly instead of failing the new request.
+          if (
+            String(reservationError) !== "provider_busy" ||
+            waits >= 20 ||
+            call !== rewriteCallRef.current ||
+            !sameRewriteIntent(currentIntentRef.current, requestedIntent)
+          ) {
+            throw reservationError;
+          }
+          setStatus("Waiting for the previous Deep request to stop");
+          await new Promise((resolve) => window.setTimeout(resolve, 250));
+        }
+      }
+      const next = parseTerminologyRewriteResult(response);
       if (!next) {
         throw new Error("Rewrite returned an invalid terminology contract.");
       }
@@ -489,7 +522,7 @@ export default function App() {
       const raw = nextError instanceof Error ? nextError.message : String(nextError);
       if (/cancel|interrupt/i.test(raw)) {
         setError(null);
-        setStatus("Deep cancelled · the draft is still available");
+        setStatus(deepCancelledStatus(draftRef.current));
         return;
       }
       setError(toErrorMessage(nextError));
@@ -507,7 +540,7 @@ export default function App() {
     rewriteCallRef.current += 1;
     rewritingIntentRef.current = null;
     setIsRewriting(false);
-    setStatus("Deep cancelled · the draft is still available");
+    setStatus(deepCancelledStatus(draftRef.current));
     try {
       await invoke("cancel_rewrite");
     } catch (nextError) {
@@ -1454,7 +1487,9 @@ export default function App() {
 
   const activeProviderStatus = providerSnapshot?.statuses.find((item) => item.kind === settings.activeProvider) ?? null;
   const providerReady = activeProviderStatus?.state === "ready" || (settings.activeProvider === "codex" && auth?.loggedIn === true);
-  const canRunDeep = Boolean(selection && providerReady && !isRewriting && !isCopying);
+  // A ready Deep result is copied or replaced by a new capture or intent;
+  // the capture cannot start another Deep request meanwhile.
+  const canRunDeep = Boolean(selection && providerReady && !isRewriting && !isCopying && !result);
   const canCancel = isRewriting;
   // After Copy the capture has ended but the copied draft stays visible, so
   // Dismiss still closes it (the same action as the header Close).
@@ -2191,13 +2226,18 @@ export default function App() {
               </div>
 
               <div className="result-area">
+                {/* The draft stays visible and editable while Deep runs: a later
+                    Deep result never replaces an edited draft. */}
                 {isRewriting ? (
-                  <div className="loading-state">
-                    <Loader2 className="spin" size={18} />
-                    <span>Working through {providerDisplayName(settings.activeProvider)}</span>
-                  </div>
-                ) : (
-                  <textarea
+                  <p className="deep-progress">
+                    <Loader2 className="spin" size={14} />
+                    <span>
+                      Working through {providerDisplayName(settings.activeProvider)}
+                      {draft ? " · Cancel to copy this draft now" : ""}
+                    </span>
+                  </p>
+                ) : null}
+                <textarea
                     value={draft}
                     onChange={(event) => {
                       const text = event.target.value;
@@ -2212,7 +2252,6 @@ export default function App() {
                     aria-label="Editable rewrite result text"
                     spellCheck={false}
                   />
-                )}
               </div>
 
               {visibleChoices(instantRuntime).length > 0 ? (
