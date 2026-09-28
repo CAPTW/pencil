@@ -71,7 +71,7 @@ export function applyFailureMessage(reason: ApplyFailureReason): string {
     case "invalid_session_state":
       return "This capture is no longer active. Capture the selection again.";
     case "draft_outdated":
-      return "The mode or dictionary changed after this draft was made, so it cannot be copied. Run Deep, or capture the selection again.";
+      return "A setting changed after this draft was made, so it cannot be copied. Run Deep, or capture the selection again.";
     default:
       return "There is nothing to copy.";
   }
