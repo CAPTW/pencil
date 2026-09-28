@@ -457,7 +457,7 @@ try {
   assert.equal(await draftValue(), 'please separate this line.', 'a later Deep result never replaces the shown draft');
   await page.getByRole('button', {name: 'Translate', exact: true}).click();
   await until('Deep translation shown after the mode change', async () => (await draftValue()) === 'Synthetic.', 20000);
-  await copyResult('copy-translation-with-source', 'please seperate this line.\n\n(Synthetic.)', 'Synthetic.');
+  await copyResult('copy-translation-with-source', 'please seperate this line. (Synthetic.)', 'Synthetic.');
   assert.equal(await editor.text(0), translateDoc);
   await page.getByRole('button', {name: 'Grammar', exact: true}).click();
   await closeWidget();

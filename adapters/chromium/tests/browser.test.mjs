@@ -222,11 +222,18 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  await page.locator('#editable').click();await page.getByRole('button',{name:'Enable this field',exact:true}).click();await suggestion.waitFor();await suggestion.click();await page.getByRole('button',{name:'Accept',exact:true}).click();
  assert.equal(await page.locator('#editable').textContent(),'separate');pass('simple contenteditable explicit Accept reread');
  // Accept edits the existing text nodes: a simple field stays supported
- // however often it is used (it used to gain two nodes per Accept).
+ // however often it is used (it used to gain two nodes per Accept). Each round
+ // types a new misspelling at the very end (plain End stops at a wrapped line)
+ // after "and", so the engine has no repeated word to suggest as well.
+ const typo=page.getByRole('button',{name:/Suggestion \d+:/}).filter({hasText:'seperate'});
+ let repeated='separate';
  for(let round=0;round<9;round++){
-   await page.locator('#editable').press('End');await page.keyboard.type(' seperate');
-   await suggestion.waitFor();await suggestion.click();await page.getByRole('button',{name:'Accept',exact:true}).click();
-   await page.waitForFunction(()=>!document.getElementById('editable').textContent.includes('seperate'));
+   await page.locator('#editable').press('Control+End');await page.keyboard.type(' and seperate');
+   await typo.waitFor();
+   assert.equal(await page.getByRole('button',{name:/Suggestion \d+:/}).count(),1,`round ${round}: only the new misspelling is suggested`);
+   await typo.click();await page.getByRole('button',{name:'Accept',exact:true}).click();
+   repeated+=' and separate';
+   await page.waitForFunction(text=>document.getElementById('editable').textContent.replace(/\u00a0/g,' ')===text,repeated);
  }
  assert.ok(await page.locator('#editable').evaluate(el=>el.childNodes.length)<=2,'no text node growth');
  assert.match(await page.getByRole('status').first().textContent(),/Applied; content verified|Local Instant active/,'field still enabled after repeated Accepts');
