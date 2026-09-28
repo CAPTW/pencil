@@ -445,3 +445,19 @@ test('cleanup_busy on reserve records nothing and leaves Deep usable',async()=>{
   assert.ok(f.controlPorts.length>before,'the next explicit send reserves again');
   assert.ok(f.ports.some(p=>p.posted.some(m=>m.op==='deep' && m.id==='r2')),'and is admitted');
 });
+
+// Review finding: a document closed while its reserve was answered
+// cleanup_busy stayed in the retiring set, so it used one of the four document
+// slots until the worker restarted.
+test('a document closed during a busy reserve frees its slot',async()=>{
+  const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});
+  f.controlAuto(false);
+  const pending=f.dispatch({...f.request(),op:'deep',provider:'claude'},f.sender());
+  for(let i=0;i<10 && !f.controlPorts.length;i++)await tick();
+  const reserve=f.controlPorts.at(-1);assert.equal(reserve.posted[0].op,'cleanup-reserve');
+  await f.command('disable');
+  reserve.onMessage.emit({...reserve.posted[0],error:'cleanup_busy',cleanup_complete:false});
+  assert.equal((await pending).error,'busy');
+  f.controlAuto(true);
+  for (const tab of [2,3,4,5]) assert.doesNotMatch((await f.command('enable',tab)).status,/limit/i,`tab ${tab} can be enabled`);
+});

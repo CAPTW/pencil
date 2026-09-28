@@ -320,17 +320,51 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
    await page.locator('#editable').fill('seperate');await suggestion.waitFor();await deepButton.click();
    await page.getByRole('button',{name:'Suggestion 1: Deep claude',exact:true}).waitFor();
    await page.getByRole('button',{name:'Accept',exact:true}).press('Enter');assert.equal(await page.locator('#editable').textContent(),'Synthetic.');pass('simple contenteditable Deep keyboard Accept reread');
+   // Review finding: the Deep reply replaced a card the user had opened while
+   // waiting, so a click aimed at its Accept could apply the whole-field
+   // rewrite. The reply is held in the content world until that card is open.
+   const gateDeep=hold=>worker.evaluate(async hold=>{
+     const [tab]=await chrome.tabs.query({url:'http://127.0.0.1:18437/*'});
+     return (await chrome.scripting.executeScript({target:{tabId:tab.id},args:[hold],func:hold=>{
+       if(!globalThis.fixtureDeepWrapped) {
+         globalThis.fixtureDeepWrapped=true;const send=chrome.runtime.sendMessage.bind(chrome.runtime);
+         chrome.runtime.sendMessage=async(...args)=>{
+           const result=await send(...args);
+           if(args[0]?.op==='deep' && globalThis.fixtureHoldDeep)
+             return new Promise(resolve=>{globalThis.fixtureReleaseDeep=()=>resolve(result);});
+           return result;
+         };
+       }
+       globalThis.fixtureHoldDeep=hold;
+       if(!hold){globalThis.fixtureReleaseDeep?.();globalThis.fixtureReleaseDeep=null;}
+       return !!globalThis.fixtureReleaseDeep;
+     }}))[0].result;
+   },hold);
+   await page.locator('#writing').click();await page.getByRole('button',{name:'Enable this field',exact:true}).click();
+   await page.locator('#writing').fill('seperate');await suggestion.waitFor();
+   await gateDeep(true);await deepButton.click();
+   for(let n=0;n<400 && !(await gateDeep(true));n++)await page.waitForTimeout(50);
+   assert.equal(await gateDeep(true),true,'the Deep reply arrived and is held');
+   await suggestion.click();await page.getByRole('button',{name:'Accept',exact:true}).waitFor();
+   await gateDeep(false);
+   await page.getByRole('button',{name:'Suggestion 1: Deep claude',exact:true}).waitFor();
+   assert.equal(await page.getByRole('button',{name:'Accept',exact:true}).count(),0,'no card was swapped in under the pointer');
+   assert.match(await page.getByRole('status').first().textContent(),/Deep result ready: choose it in the list/);
+   assert.equal(await page.locator('#writing').inputValue(),'seperate');
+   await page.getByRole('button',{name:'Suggestion 1: Deep claude',exact:true}).click();
+   await page.getByRole('button',{name:'Accept',exact:true}).click();assert.equal(await page.locator('#writing').inputValue(),'Synthetic.');
+   pass('a Deep reply never replaces a card opened while waiting');
    await page.locator('#writing').click();await page.getByRole('button',{name:'Enable this field',exact:true}).click();
    await page.locator('#writing').fill('seperate');await suggestion.waitFor();await deepButton.click();
-   for(let n=0;n<100 && (await worker.evaluate(()=>fixtureMetrics)).deep<3;n++)await page.waitForTimeout(20);
-   assert.equal((await worker.evaluate(()=>fixtureMetrics)).deep,3,'third explicit request observed before edit');
+   for(let n=0;n<100 && (await worker.evaluate(()=>fixtureMetrics)).deep<4;n++)await page.waitForTimeout(20);
+   assert.equal((await worker.evaluate(()=>fixtureMetrics)).deep,4,'fourth explicit request observed before edit');
    await page.locator('#writing').fill('user changed');await page.waitForTimeout(1200);
    assert.equal(await page.locator('#writing').inputValue(),'user changed');assert.equal(await page.getByRole('button',{name:'Suggestion 1: Deep claude',exact:true}).count(),0);pass('user edit cancels or discards Deep across its lifecycle');
    await popup.getByRole('button',{name:'Revoke Deep',exact:true}).click();await page.bringToFront();
-   assert.equal(await page.getByRole('button',{name:'Deep requires document permission in the popup',exact:true}).isDisabled(),true);pass('Deep permission revoked');assert.equal((await worker.evaluate(()=>fixtureMetrics)).deep,3);
+   assert.equal(await page.getByRole('button',{name:'Deep requires document permission in the popup',exact:true}).isDisabled(),true);pass('Deep permission revoked');assert.equal((await worker.evaluate(()=>fixtureMetrics)).deep,4);
    // Every Provider process maps to an explicit Deep request: no silent replay or fallback.
    const spawned=(await readFile(join(process.env.P01_CASE_DIR,'spawns.log'),'utf8')).split(/\r?\n/).filter(Boolean).length;
-   assert.ok(spawned>=2 && spawned<=3,`provider spawns ${spawned} for 3 explicit requests`);pass('Provider processes never exceed explicit Deep requests');
+   assert.ok(spawned>=3 && spawned<=4,`provider spawns ${spawned} for 4 explicit requests`);pass('Provider processes never exceed explicit Deep requests');
  }
  await page.getByRole('button',{name:'Pause field',exact:true}).click();const paused=(await worker.evaluate(()=>fixtureMetrics)).analyses;
  await page.locator('#writing').fill('seperate');await page.waitForTimeout(1200);assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,paused);pass('pause clears cache and prevents inference');

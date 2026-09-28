@@ -8,7 +8,7 @@
   let timer = null, heartbeat = null, expiry = null, observer = null, inflight = false, pending = null, deferredInstant = null;
   let selectedIndex = null, editBox = null, sequence = 0;
   let deepProvider = null, deepRequest = null, deepButton = null, draftVersion = 0;
-  let enableTarget = null, reanalyzeAll = false;
+  let enableTarget = null, reanalyzeAll = false, held = false, busyWaits = 0;
   const sensitive = /password|passwd|secret|token|credit|card.?number|ssn|social.?security|medical|health|otp|one.?time|verification|auth|private|sensitive/i;
   function labelText(label) {
     if (!label) return '';
@@ -62,7 +62,7 @@
   }
   function wipeField() {
     cancelDeepUI();
-    clearTimeout(timer); clearTimeout(expiry); pending = null; deferredInstant = null;
+    clearTimeout(timer); clearTimeout(expiry); pending = null; deferredInstant = null; held = false; busyWaits = 0;
     session?.clear(); session = null; editor = null; composing = false;
     selectedIndex = null; editBox = null;
     list?.replaceChildren(); card?.replaceChildren();
@@ -84,8 +84,13 @@
     root?.remove(); root = shadow = status = list = card = panel = panelToggle = enableTarget = null; reanalyzeAll = false;
     if (notify && oldEpoch) chrome.runtime.sendMessage({op:'disable',epoch:oldEpoch}).catch(() => {});
   }
-  // The field "Enable this field" would enable. Links and buttons passed on
-  // the way to the panel do not change it; the panel names the field.
+  // The field "Enable this field" would enable: the text field the user was
+  // last in. An unsupported one stays chosen and is refused, never swapped
+  // for another field. Links and buttons passed on the way to the panel do
+  // not change it; the panel names the field.
+  function fieldLike(el) {
+    return el instanceof Element && (el.matches('textarea,input,select') || el.isContentEditable);
+  }
   function describeField(el) {
     const label = [...(el.labels || [])].map(labelText).join(' ') || el.getAttribute('aria-label') ||
       el.getAttribute('placeholder') || el.getAttribute('name') || el.id || (el.tagName === 'TEXTAREA' ? 'text area' : 'editable text');
@@ -93,17 +98,22 @@
   }
   function choose(el) {
     chosen = el;
-    if (enableTarget) enableTarget.textContent = chosen ? 'Field to enable: ' + describeField(chosen) : 'Select a text field in the page first.';
+    if (enableTarget) enableTarget.textContent = chosen ?
+      'Field to enable: ' + describeField(chosen) + (supported(chosen) ? '' : ' (not supported)') : 'Select a text field in the page first.';
   }
   function focus(event) {
     if (root?.contains(event.target)) return;
-    if (supported(event.target)) choose(event.target);
+    if (fieldLike(event.target)) choose(event.target);
   }
   function invalidate(clear = true) {
     if (!session) return;
     if(clear) session.cache = []; list.replaceChildren(); card.replaceChildren(); selectedIndex = null;
   }
-  function input(event) { if (event.target === editor) { cancelDeepUI(); invalidate(false); schedule(); } }
+  function input(event) { if (event.target === editor) { if (event.isTrusted) held = false; cancelDeepUI(); invalidate(false); schedule(); } }
+  // The outcome of an explicit action stays readable until the user acts
+  // again: later re-checks update the list, not this message.
+  function announce(message) { if (status) { status.textContent = message; held = true; } }
+  function deepSending(provider) { return 'Sending current enabled field to '+provider+'. Cancel or pause to stop.'; }
   // Keeps the suggestions still valid for `text` and re-checks what changed.
   function resync(text) {
     const request = text !== null && session ? session.update(text) : null;
@@ -111,7 +121,7 @@
     if (request) pending = request;
     render(); schedule();
   }
-  function compositionStart(event) { if (event.target === editor) { composing = true; cancelDeepUI(); invalidate(false); clearTimeout(timer); } }
+  function compositionStart(event) { if (event.target === editor) { composing = true; held = false; cancelDeepUI(); invalidate(false); clearTimeout(timer); } }
   function compositionEnd(event) { if (event.target === editor) { composing = false; schedule(); } }
   function scheduleLayout() {
     if (!root || layoutFrame !== null) return;
@@ -145,7 +155,8 @@
     if (!event.isTrusted) return;
     if (event.altKey && event.shiftKey && event.code === 'KeyG') { event.preventDefault(); disable(true); }
     // Keyboard users enable exactly the field they are in.
-    else if (event.altKey && event.shiftKey && event.code === 'KeyE' && !event.composedPath().includes(root) && supported(event.target)) {
+    else if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.isComposing && event.code === 'KeyE' &&
+        !event.composedPath().includes(root) && fieldLike(event.target)) {
       event.preventDefault(); enableField(event.target);
     }
     else if (!event.isComposing && event.key === 'Escape' && event.composedPath().includes(root) && !panel.hidden) {
@@ -178,11 +189,13 @@
       const response = await chrome.runtime.sendMessage({version:1,op:'analyze',id:String(++sequence),epoch,
         revision:request.revision,text:request.text});
       if (session !== owner || !epoch) return;
-      if (response?.error === 'busy') {
-        // A Deep request (or its cleanup) is still using the host: wait, then re-check.
-        status.textContent = 'Waiting for the Deep request to finish…';
+      if (response?.error === 'busy' && busyWaits < 150) {
+        // A Deep request (or its cleanup) is still using the host: wait, then
+        // re-check. A request that never ends does not keep the page waiting.
+        busyWaits++; status.textContent = 'Waiting for the Deep request to finish…';
         reanalyzeAll = true; clearTimeout(timer); timer = setTimeout(analyzeChanged, 1000); return;
       }
+      busyWaits = 0;
       if (!response || response.error) { status.textContent = 'Local engine unavailable. Disable, check host, then enable again.'; invalidate(); return; }
       if (composing && response.epoch === epoch && response.revision === request.revision) {
         deferredInstant = {owner,request,suggestions:response.suggestions};return;
@@ -200,11 +213,16 @@
     list.replaceChildren(); card.replaceChildren(); selectedIndex = null;
     const now = Date.now();
     session.cache = session.cache.filter(s => now < s.expires);
-    status.textContent = session.cache.some(s=>s.rule.startsWith('deep:')) ? 'Deep result cached for review. Apply is explicit.' : 'Local Instant active · ' + session.cache.length + ' suggestions · no cloud';
+    if (deepRequest) status.textContent = deepSending(deepRequest.provider);
+    else if (!held) status.textContent = session.cache.some(s=>s.rule.startsWith('deep:')) ? 'Deep result cached for review. Apply is explicit.' : 'Local Instant active · ' + session.cache.length + ' suggestions · no cloud';
     // A suggestion opens only when it is chosen (click, Enter or Space).
-    // Moving through the list, by keyboard or pointer, never changes the card.
+    // Moving through the list, by keyboard or pointer, never changes the card,
+    // and a button opens only the suggestion it was drawn for.
     session.cache.forEach((s,index) => {
-      const b = button((s.source || 'Insert') + ' → ' + s.replacement, () => show(index, true));
+      const b = button((s.source || 'Insert') + ' → ' + s.replacement, () => {
+        if (session?.cache[index] !== s) { render(); announce('The suggestion list changed. Choose the suggestion again.'); return; }
+        show(index, true);
+      });
       b.setAttribute('aria-label', 'Suggestion ' + (index+1) + ': ' + s.message);
       list.append(b);
     });
@@ -229,7 +247,7 @@
       if (open && at < open.expires) { scheduleExpiry(live); return; }
     }
     reanalyzeAll = true;
-    if(!dirtyDraft()) {invalidate();status.textContent='Suggestions expired. Edit the field to check it again.';return;}
+    if(!dirtyDraft()) {invalidate();status.textContent=deepRequest ? deepSending(deepRequest.provider) : 'Suggestions expired. Edit the field to check it again.';return;}
     session.cache=[];list.replaceChildren();
     for(const action of card.querySelectorAll('button')) {
       if(['Accept','Apply edit','Ignore'].includes(action.textContent))action.disabled=true;
@@ -245,17 +263,18 @@
     if (!s) return;
     if (selectedIndex === index && editBox) return;
     if (dirtyDraft() && !chosenByUser) return;
+    if (chosenByUser) held = false;
     selectedIndex = index; card.replaceChildren();
     const label = document.createElement('label'); label.textContent = s.message + ' · Edit replacement';
     editBox = document.createElement('textarea'); editBox.value = s.replacement; editBox.maxLength = MAX_TEXT;
     editBox.setAttribute('aria-label','Edit replacement'); label.append(editBox); card.append(label);
     // Every action is bound to this exact suggestion, not to its list position.
     const same = () => session?.cache[index] === s;
-    const stale = () => { status.textContent = 'The suggestion list changed. Choose the suggestion again.'; render(); };
+    const stale = () => { render(); announce('The suggestion list changed. Choose the suggestion again.'); };
     card.append(button('Accept', () => apply(index, s, s.replacement)),button('Apply edit', () => apply(index, s, editBox.value)),
       button('Dismiss', () => { if (!same()) return stale(); session.dismiss(index);render();focusEditor(); }),
       button('Ignore', () => { if (!same()) return stale(); session.dismiss(index,true);render();focusEditor(); }),
-      button('Copy', async () => { try { await navigator.clipboard.writeText(editBox.value); status.textContent='Copied'; } catch { editBox.focus(); editBox.select(); status.textContent='Press Ctrl+C to copy selected replacement'; } }));
+      button('Copy', async () => { try { await navigator.clipboard.writeText(editBox.value); announce('Copied'); } catch { editBox.focus(); editBox.select(); announce('Press Ctrl+C to copy selected replacement'); } }));
     editBox.addEventListener('input',()=>draftVersion++);
     if (chosenByUser) editBox.focus({preventScroll:true});
   }
@@ -275,21 +294,25 @@
     if(session.update(text))render();
     const owner=session, target=editor, provider=deepProvider, draft=draftVersion;
     const request={version:1,op:'deep',id:String(++sequence),epoch,revision:owner.revision,text,provider};
-    deepRequest=request;status.textContent='Sending current enabled field to '+provider+'. Cancel or pause to stop.';
+    deepRequest=request;held=false;status.textContent=deepSending(provider);
     try {
       const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));
       const hash=[...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');
       if(deepRequest!==request || session!==owner || read()!==text)return;
       const result=await chrome.runtime.sendMessage(request);
       if(deepRequest!==request || session!==owner || editor!==target || epoch!==request.epoch)return;
-      if(result?.error) {status.textContent='Deep unavailable: '+String(result.error).slice(0,80)+'. No retry or fallback.';return;}
+      if(result?.error) {announce('Deep unavailable: '+String(result.error).slice(0,80)+'. No retry or fallback.');return;}
       if(read()!==text || owner.revision!==request.revision || draftVersion!==draft || deepProvider!==provider ||
           result?.epoch!==request.epoch || result.revision!==request.revision || result.provider!==provider || result.source_sha256!==hash ||
-          result.cleanup_complete!==true || typeof result.replacement!=='string' || result.replacement.length>MAX_TEXT) {status.textContent='Deep result stale or invalid. No changes applied.';return;}
+          result.cleanup_complete!==true || typeof result.replacement!=='string' || result.replacement.length>MAX_TEXT) {announce('Deep result stale or invalid. No changes applied.');return;}
+      // A card the user opened while waiting is never swapped for the Deep
+      // one under the pointer: the result waits in the list.
+      const cardOpen = selectedIndex !== null && editBox?.isConnected;
       owner.cache=[{start:0,end:text.length,source:text,replacement:result.replacement,rule:'deep:'+provider,message:'Deep '+provider,
         epoch,revision:owner.revision,expires:Date.now()+60000}];
-      render();show(0);
-    } catch {if(deepRequest===request && status)status.textContent='Deep connection unavailable. No retry.';}
+      deepRequest=null;render();
+      if (cardOpen) announce('Deep result ready: choose it in the list.'); else show(0);
+    } catch {if(deepRequest===request)announce('Deep connection unavailable. No retry.');}
     finally {if(deepRequest===request)deepRequest=null;}
   }
   function apply(index, expected, replacement) {
@@ -297,17 +320,17 @@
     // that moved into its list position.
     if (!session || session.cache[index] !== expected) {
       if (session) render();
-      if (status) status.textContent = 'The suggestion list changed. Choose the suggestion again.';
+      announce('The suggestion list changed. Choose the suggestion again.');
       return;
     }
     const current = read(), mutation = current !== null ? session.replacement(index,current,replacement) : null;
-    if (!mutation || composing) { resync(current); status.textContent='Changed or unsupported field. Apply rejected.'; return; }
+    if (!mutation || composing) { resync(current); announce('Changed or unsupported field. Apply rejected.'); return; }
     const target = editor, owner = session;
     // beforeinput handlers may modify the page. Revalidate AFTER synchronous page callbacks.
     const before = new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertReplacementText',data:replacement});
     if (!target.dispatchEvent(before) || session !== owner || editor !== target || read() !== current) {
       if (session===owner && editor===target) resync(read()); else invalidate();
-      status.textContent='Editor rejected replacement or changed. Copy only.'; return;
+      announce('Editor rejected replacement or changed. Copy only.'); return;
     }
     if (target.tagName === 'TEXTAREA') {
       const start=target.selectionStart,end=target.selectionEnd,direction=target.selectionDirection;
@@ -322,7 +345,7 @@
         if (!endNode && mutation.end <= offset+node.length) {endNode=node;endOffset=mutation.end-offset;}
         offset+=node.length;
       }
-      if (!startNode || !endNode) { invalidate(); status.textContent='Range unavailable. Copy only.'; return; }
+      if (!startNode || !endNode) { invalidate(); announce('Range unavailable. Copy only.'); return; }
       // Edit the existing text nodes in place: new nodes would push a simple
       // field past the supported node count after a few Accepts.
       if (startNode === endNode) startNode.replaceData(startOffset, endOffset - startOffset, replacement);
@@ -335,7 +358,7 @@
     target.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertReplacementText',data:replacement}));
     const actual=read();
     if (session===owner) resync(actual); else invalidate();
-    status.textContent=actual===mutation.next ? 'Applied; content verified. Native undo is not guaranteed.' : 'Editor changed during Apply. No retry; inspect the field.';
+    announce(actual===mutation.next ? 'Applied; content verified. Native undo is not guaranteed.' : 'Editor changed during Apply. No retry; inspect the field.');
     focusEditor();
   }
   function enableField(target) {
@@ -345,7 +368,7 @@
     editor=target;session=new DocumentSession(epoch);status.textContent='Local Instant active';schedule();
   }
   function enable(newEpoch) {
-    disable(); epoch=newEpoch; chosen=supported(document.activeElement) ? document.activeElement : null;
+    disable(); epoch=newEpoch; chosen=fieldLike(document.activeElement) ? document.activeElement : null;
     root=document.createElement('div');root.id='grammar-local-assist';
     root.style.cssText='position:fixed;right:12px;top:12px;z-index:2147483647;width:340px;max-width:calc(100vw - 16px);pointer-events:none;';
     shadow=root.attachShadow({mode:'open'});

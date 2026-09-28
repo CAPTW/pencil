@@ -288,7 +288,8 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
           const ticket=reserved.cleanup_ticket;
           await markDeep(marker,{ticket,phase:'pending'});return ticket;
         });
-        if(ticket==='busy')return {error:'busy'};
+        // Nothing was recorded: a document closed meanwhile has nothing to retire.
+        if(ticket==='busy') {retiring.delete(s);return {error:'busy'};}
         if(!ticket) {retiring.delete(s);return {error:'permission_revoked'};}
 
         if(s.closed || admission.cancelled || admission.generation!==s.grantGeneration || s.deepProvider!==provider || nativeUnsafe || recovering) {
