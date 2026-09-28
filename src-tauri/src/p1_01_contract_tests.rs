@@ -550,6 +550,27 @@ fn shortcut_trigger_gate_accepts_one_press_and_no_repeat_or_release() {
     assert!(!gate.handle(false, ShortcutEventState::Pressed));
 }
 
+// The release is only polled, so it can be late or missing; the latch must not
+// swallow the next real press (MOD_NOREPEAT already rules out auto-repeat).
+// CI 36364343895 saw a quick close-and-press start no capture; this was the
+// only silent drop path found.
+#[test]
+fn a_missed_release_never_swallows_the_next_press() {
+    use std::time::{Duration, Instant};
+    let mut gate = ShortcutTriggerGate::default();
+    let start = Instant::now();
+    assert!(gate.handle_at(true, ShortcutEventState::Pressed, start));
+    assert!(
+        !gate.handle_at(true, ShortcutEventState::Pressed, start + Duration::from_millis(100)),
+        "the same press reported twice is still one press"
+    );
+    assert!(
+        gate.handle_at(true, ShortcutEventState::Pressed, start + Duration::from_millis(300)),
+        "a later press counts even though its predecessor's release was never seen"
+    );
+    assert!(!gate.handle_at(false, ShortcutEventState::Pressed, start + Duration::from_secs(5)));
+}
+
 #[test]
 fn active_shortcut_toggles_from_visible_widget_to_hidden_widget() {
     let mut gate = ShortcutTriggerGate::default();
