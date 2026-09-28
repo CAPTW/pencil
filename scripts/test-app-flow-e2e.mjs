@@ -561,6 +561,53 @@ try {
   if (await widgetVisible()) await closeWidget();
   pass('a password field and an empty selection were refused with a clear message and no capture');
 
+  // 12b. Shortcut spam: five quick presses race capture and hide inside the
+  //      app, so the state they leave differs from run to run. In every case
+  //      only the selection is captured, the documents never change, and
+  //      Copy delivers the shown capture's own draft or refuses without
+  //      writing the clipboard. The next capture then works normally.
+  const spamDoc = 'Spam check: please seperate this.';
+  const spamSelection = 'please seperate this.';
+  await prepareSelection(0, spamDoc, spamSelection);
+  const beforeSpamCaptures = (await captures()).length;
+  const clipboardBeforeSpam = await editor.clipboard();
+  const beforeSpam = await beginUntouched();
+  for (let press = 0; press < 5; press += 1) await editor.hotkey();
+  await sleep(3000);
+  const spamCaptures = (await captures()).slice(beforeSpamCaptures);
+  assert.ok(spamCaptures.length >= 1, 'the first press captured');
+  assert.ok(spamCaptures.every((capture) => capture.selectedText === spamSelection), 'shortcut spam captured only the selection');
+  let spamOutcome = 'widget hidden';
+  if (await widgetVisible()) {
+    await cancelDeepIfRunning();
+    if (await copyEnabled()) {
+      const shown = await draftValue();
+      await copy.click();
+      await until('Copy outcome after shortcut spam', async () =>
+        ['Copied — paste it into the field', 'Copy failed', 'Stale result rejected', 'Copy rejected'].includes((await status.textContent()) ?? ''));
+      spamOutcome = await status.textContent();
+      const clipboard = await editor.clipboard();
+      if (spamOutcome === 'Copied — paste it into the field') {
+        assert.equal(shown, 'please separate this.', 'the copied draft belongs to the spam selection');
+        assert.equal(clipboard, shown, 'Copy delivered exactly the shown draft');
+      } else {
+        assert.equal(clipboard, clipboardBeforeSpam, 'a refused Copy never writes the clipboard');
+        assert.ok((await errorText()).length > 0, 'a refused Copy says why');
+      }
+    } else {
+      spamOutcome = 'Copy not offered';
+    }
+  }
+  await assertEditorsUntouched('shortcut-spam', beforeSpam);
+  if (await widgetVisible()) await closeWidget();
+  await sleep(300);
+  await captureAndWaitInstant(0, spamDoc, spamSelection, 'please separate this.');
+  await cancelDeepIfRunning();
+  await copyResult('copy-after-shortcut-spam', 'please separate this.');
+  assert.equal(await editor.text(0), spamDoc);
+  await closeWidget();
+  pass(`five quick shortcut presses (${spamCaptures.length} captures, then: ${spamOutcome}) captured only the selection, changed no document, delivered no other text, and the next capture worked`);
+
   // 13. Restart: settings persist; no capture, draft or selection comes back.
   const settingsBeforeRestart = await loadSettings();
   await browser.close();

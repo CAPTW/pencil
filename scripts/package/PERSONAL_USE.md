@@ -30,8 +30,12 @@ pwsh -NoProfile -File .\grammar-package\Install-Grammar.ps1
 
 ## 사용
 
-- 데스크톱: `<설치 위치>\codex-pencil.exe` 를 실행합니다. 표준 Edit 필드에서 텍스트를 선택하고 `Ctrl+Shift+G` 를 누르면 로컬 Instant 초안이 나타납니다. 초안을 고친 뒤 **Copy** 를 누릅니다. 결과가 클립보드에 복사되고 창에 "Copied — paste it into the field" 가 표시됩니다. 원래 필드는 바뀌지 않으므로 직접 붙여넣습니다. 초안은 창에 남고, 다음 선택을 캡처할 때까지 Copy는 비활성화됩니다. 번역의 "원문 + 번역" 형식도 Copy할 때 적용됩니다. 클라우드 동의는 Deep을 요청할 때만 묻습니다.
-- 브라우저: 먼저 확장 아이콘을 툴바에 고정합니다(퍼즐 아이콘 → 핀. 시험은 버튼이 미리 고정된 새 프로필을 썼습니다). 검증된 경로는 키보드입니다. `Alt+Shift+T` 로 툴바로 이동하고, 오른쪽 방향키(필요하면 Tab)로 Grammar 버튼에 초점을 맞춘 뒤 Space 를 누릅니다. 팝업에서 Tab 으로 **Enable this document** 에 초점을 맞추고 Space 를 누릅니다. 마우스로 누르는 경로는 검증되지 않았습니다. 그다음 필드에서 **Enable this field** 를 누릅니다. 제안 카드에서 Accept / Apply edit / Dismiss / Ignore / Copy 를 키보드나 마우스로 선택합니다.
+- 데스크톱: `<설치 위치>\codex-pencil.exe` 를 실행합니다. 표준 Edit 필드에서 텍스트를 선택하고 `Ctrl+Shift+G` 를 누르면 로컬 Instant 초안이 나타납니다. 초안을 고친 뒤 **Copy** 를 누릅니다. 결과가 클립보드에 복사되고 창에 "Copied — paste it into the field" 가 표시됩니다. 원래 필드는 바뀌지 않으므로 직접 붙여넣습니다. 초안은 창에 남고, 다음 선택을 캡처할 때까지 Copy는 비활성화됩니다. 번역의 "원문 + 번역" 형식도 Copy할 때 적용됩니다(한 줄 원문은 `원문 (번역)`, 여러 줄 원문은 빈 줄 뒤 `(번역)`). 클라우드 동의는 Deep을 요청할 때만 묻습니다.
+  - Deep 동의는 Provider 별로 저장되어 재시작 뒤에도 유지됩니다. 동의한 뒤에는 **Auto rewrite**(기본 켜짐)가 켜져 있는 한 캡처할 때마다 선택문이 그 Provider 로 전송됩니다. 캡처마다 직접 정하려면 설정에서 Auto rewrite 를 끄고 필요할 때 **Run Deep** 을 누릅니다. 저장된 동의를 되돌리는 화면은 없습니다(`-RemoveUserData` 로 사용자 데이터를 지우면 초기화됩니다).
+  - Deep 이 실행되는 동안에는 Copy 가 비활성화됩니다. Instant 초안을 바로 쓰려면 **Cancel**(또는 결과 영역에서 Escape)을 누릅니다. Cancel 은 Deep만 멈추고, 캡처와 (고친) 초안은 그대로 남아 Copy할 수 있습니다. 창을 닫거나 단축키·트레이로 숨기면 그 캡처는 끝나며 더 이상 Copy할 수 없습니다.
+  - 초안을 직접 고친 뒤 모드·번역 언어·사전을 바꾸면, 고친 초안을 버릴지 먼저 묻습니다. 취소하면 아무것도 바뀌지 않습니다.
+  - Claude Deep 은 네이티브 `claude.exe` 가 필요합니다. npm 으로 설치된 `claude.cmd` 만 있으면 여러 줄 요청을 전달할 수 없어 상태가 "사용할 수 없음"으로 표시됩니다. Antigravity 도 같은 이유로 `agy.exe` 가 필요합니다.
+- 브라우저: 먼저 확장 아이콘을 툴바에 고정합니다(퍼즐 아이콘 → 핀. 시험은 버튼이 미리 고정된 새 프로필을 썼습니다). 검증된 경로는 키보드입니다. `Alt+Shift+T` 로 툴바로 이동하고, 오른쪽 방향키(필요하면 Tab)로 Grammar 버튼에 초점을 맞춘 뒤 Space 를 누릅니다. 팝업에서 Tab 으로 **Enable this document** 에 초점을 맞추고 Space 를 누릅니다. 마우스로 누르는 경로는 검증되지 않았습니다. 그다음 필드를 켭니다. 패널의 "Field to enable: <필드 이름>" 이 켜질 필드를 알려 주며, **Enable this field** 를 누르거나 그 필드 안에서 `Alt+Shift+E` 를 누르면 바로 그 필드만 켜집니다. 제안 목록에서 하나를 고르면(클릭, Enter, Space) 그 제안의 카드가 열리고, Accept / Apply edit / Dismiss / Ignore / Copy 는 그 제안에만 적용됩니다. 목록을 지나가거나 마우스를 올리는 것만으로는 카드가 바뀌지 않습니다. Accept 뒤에도 다른 제안은 남습니다.
 
 ## 제거
 
@@ -55,6 +59,11 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\GrammarPersonal\Uninstall-Grammar.ps1"
 ## 남은 제한 (자세한 PASS/FAIL/NOT_RUN 은 HANDOFF.md)
 
 - 실제 Provider(Codex/Claude/Antigravity) 호출, 계정 로그인, 비용은 검증하지 않았습니다(NOT_RUN).
+- Claude·Antigravity Deep 은 선택문과 일치한 용어가 담긴 요청을 명령줄 인수로 전달합니다. 요청이 실행되는 동안 같은 Windows 사용자의 다른 프로그램(또는 관리자)이 프로세스 목록에서 그 내용을 볼 수 있습니다. Codex 는 표준 입력으로 전달합니다.
+- 데스크톱 창은 Escape 로 닫히지 않습니다(Deep 실행 중 결과 영역의 Escape 는 Deep 만 취소합니다). Dismiss, 창의 닫기 버튼 또는 단축키를 씁니다.
+- 브라우저 페이지가 주소만 바꾸는 이동(history API, `#` 이동)을 하면 패널이 이유 표시 없이 사라집니다. 문서를 다시 켜면 됩니다.
+- 제거 후에도 `%TEMP%\codex-pencil-runtime-v1` 폴더가 남습니다. Deep 을 실행할 때 Provider 의 작업 폴더로 쓰이며, 요청마다 만든 하위 폴더는 끝나면 지웁니다. Grammar 자신은 여기에 표시 파일만 쓰지만, 실제 Provider 가 작업 중 무엇을 쓰는지는 검증하지 않았습니다(NOT_RUN). Grammar 가 실행 중이 아니면 지워도 됩니다.
+- 브라우저 Deep 의 정리 기록 파일이 비정상 종료 등으로 불완전하게 남으면, 안전을 위해 브라우저 Deep 이 계속 막힙니다. 팝업의 **Check completed cleanup** 도 "Cleanup check failed; Deep remains blocked" 로 끝납니다. 기록은 설치 폴더에 있으므로 확장을 다시 로드해도 풀리지 않습니다. 패키지를 제거한 뒤 다시 설치합니다. Instant 는 영향을 받지 않습니다.
 - 물리 키보드·IME·확대/축소·다중 모니터·장시간 사용은 자동 합성 환경에서만 확인했습니다.
 - 데스크톱 편집기에 결과를 자동으로 넣는 기능은 없습니다(Owner 결정으로 Copy-only 유지). 다른 프로세스의 편집기에는 "확인한 범위가 그대로일 때만 바꾸기"를 한 번에 수행하는 방법이 없어, 확인 직후 그 앱이 텍스트를 바꾸면 덮어쓸 수 있기 때문입니다.
 - Copy는 클립보드의 기존 내용(이미지, 파일, 서식 있는 텍스트 포함)을 결과 텍스트로 바꾸며, 이전 내용을 되돌리지 않습니다.
