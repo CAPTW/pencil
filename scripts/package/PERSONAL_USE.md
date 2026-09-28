@@ -14,7 +14,7 @@
 
 ## 설치
 
-PowerShell 7에서 실행합니다.
+PowerShell 7(`pwsh`)에서 실행합니다. Windows PowerShell 5.1(탐색기의 "PowerShell로 실행")로는 설치 스크립트가 시작되지 않고 PowerShell 7이 필요하다고 알립니다.
 
 ```powershell
 Get-FileHash .\<패키지>.zip -Algorithm SHA256   # package.ps1 이 출력한 zipSha256 과 같아야 합니다
