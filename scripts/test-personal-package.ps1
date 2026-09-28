@@ -216,10 +216,37 @@ switch ($Phase) {
       $stopped = Invoke-Pwsh (Join-Path $rootE 'Uninstall-Grammar.ps1') @()
       $own.WaitForExit(10000) | Out-Null
       $checks.runningOwnCopyStoppedAndRemoved = ($stopped.exit -eq 0) -and $own.HasExited -and -not (Test-Path -LiteralPath $rootE)
+
+      # 6. -RemoveUserData with a locked user-data file (a task-owned folder,
+      #    never the runner's AppData): the receipt and the uninstaller stay
+      #    until the user data is gone, so the same command finishes the job.
+      $rootF = Join-Path $work 'install-f'
+      $null = & (Join-Path $extracted 'Install-Grammar.ps1') -InstallRoot $rootF -SkipBrowserHost
+      $dataF = Join-Path $work 'user-data'
+      New-Item -ItemType Directory -Path $dataF | Out-Null
+      Set-Content -LiteralPath (Join-Path $dataF 'settings.json') -Value '{}'
+      $dataLock = [IO.File]::Open((Join-Path $dataF 'settings.json'), 'Open', 'Read', 'None')
+      try {
+        $firstF = Invoke-Pwsh (Join-Path $rootF 'Uninstall-Grammar.ps1') @('-RemoveUserData', '-UserDataDirectory', $dataF)
+      } finally { $dataLock.Dispose() }
+      $checks.lockedUserDataKeepsReceiptAndUninstaller = ($firstF.exit -ne 0) -and ($firstF.text -match 'run this uninstaller again') -and
+        (Test-Path -LiteralPath (Join-Path $rootF 'install-receipt.json')) -and (Test-Path -LiteralPath (Join-Path $rootF 'Uninstall-Grammar.ps1')) -and
+        (Test-Path -LiteralPath $dataF)
+      $secondF = Invoke-Pwsh (Join-Path $rootF 'Uninstall-Grammar.ps1') @('-RemoveUserData', '-UserDataDirectory', $dataF)
+      $checks.repeatedRemoveUserDataCompleted = ($secondF.exit -eq 0) -and -not (Test-Path -LiteralPath $rootF) -and -not (Test-Path -LiteralPath $dataF)
+
+      # 7. A registration that now points to another manifest is not this
+      #    installation's: it stays, and the uninstall still completes.
+      $rootG = Join-Path $work 'install-g'
+      $g = & (Join-Path $extracted 'Install-Grammar.ps1') -InstallRoot $rootG -NativeHostsKey $hosts | ConvertFrom-Json
+      Set-Item -LiteralPath $g.nativeHost.registryKey -Value 'C:\elsewhere\host.json'
+      $gu = Invoke-Pwsh (Join-Path $rootG 'Uninstall-Grammar.ps1') @()
+      $checks.foreignRegistrationLeftAndUninstallCompleted = ($gu.exit -eq 0) -and ($gu.text -match 'points to another manifest') -and
+        (Test-Path -LiteralPath $g.nativeHost.registryKey) -and -not (Test-Path -LiteralPath $rootG)
     } finally {
       foreach ($process in $stand) { if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } }
       if (Test-Path -LiteralPath $testKey) { Remove-Item -LiteralPath $testKey -Recurse }
-      foreach ($root in @('install-a', 'install-b', 'install-c', 'install-d', 'install-e')) {
+      foreach ($root in @('install-a', 'install-b', 'install-c', 'install-d', 'install-e', 'install-f', 'install-g')) {
         $path = Join-Path $work $root
         if (Test-Path -LiteralPath (Join-Path $path 'Uninstall-Grammar.ps1')) { $null = Invoke-Pwsh (Join-Path $path 'Uninstall-Grammar.ps1') @() }
       }
