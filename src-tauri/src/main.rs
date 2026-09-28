@@ -195,9 +195,17 @@ struct CaptureEndedEvent {
 
 async fn end_capture_and_notify(app: &AppHandle, reason: &'static str) {
     let state = app.state::<AppState>();
-    let active_turn = state.capture.lock().await.cancel_active_with_turn();
+    let (ended, active_turn) = {
+        let mut capture = state.capture.lock().await;
+        let ended = capture.has_active();
+        (ended, capture.cancel_active_with_turn())
+    };
     interrupt_active_turn(state.inner(), active_turn).await;
-    let _ = app.emit("capture-ended", CaptureEndedEvent { reason });
+    // Only an ended capture clears the widget: other notices (a shutdown or
+    // shortcut warning) stay while their cause does.
+    if ended {
+        let _ = app.emit("capture-ended", CaptureEndedEvent { reason });
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -421,6 +429,10 @@ async fn rewrite_selected_text(
     }
     let (selected_text, bound_intent, match_result, request_constraints, attempt) = {
         let mut capture = state.capture.lock().await;
+        if capture.is_ready(&token) {
+            // Not "no longer active": the result can still be copied.
+            return Err("rewrite_result_ready".to_string());
+        }
         let selected_text = capture
             .captured_source(&token)
             .map_err(|error| error.code().to_string())?;
@@ -511,6 +523,7 @@ async fn rewrite_selected_text(
             settings_snapshot.active_provider,
             &token,
             &bound_intent,
+            attempt,
         )?
     };
     let rewrite = ProviderManager::execute(&operation, &selected_text, intent, &request_constraints, &state.codex)
@@ -599,17 +612,28 @@ async fn rewrite_selected_text(
     }
 }
 
-/// Reserves the selected Provider for the Deep request that begin_rewrite_bound
-/// started. If nothing can start (for example an earlier request is still
-/// finishing), the capture returns to Captured, so its Instant draft can still
-/// be copied and Deep can run again.
+/// Reserves the selected Provider for the Deep request (`attempt`) that
+/// begin_rewrite_bound started. A request that was cancelled or replaced in
+/// the meantime starts nothing and leaves the capture to the newer request.
+/// If nothing can start (for example an earlier request is still finishing),
+/// the capture returns to Captured, so its Instant draft can still be copied
+/// and Deep can run again.
 pub(crate) fn reserve_rewrite(
     capture: &mut CaptureSessionStore,
     providers: &mut ProviderManager,
     kind: ProviderKind,
     token: &SessionToken,
     bound_intent: &BoundRewriteIntent,
+    attempt: u64,
 ) -> Result<Arc<provider::manager::ProviderOperation>, String> {
+    if !capture.owns_rewrite(token, attempt) {
+        return Err(if capture.is_captured(token) {
+            "rewrite_cancelled"
+        } else {
+            "rewrite_superseded"
+        }
+        .to_string());
+    }
     capture
         .validate_rewriting_bound_intent(token, bound_intent)
         .map_err(|error| error.code().to_string())?;
@@ -618,7 +642,10 @@ pub(crate) fn reserve_rewrite(
         .and_then(|()| providers.reserve_capture(kind, token.clone(), bound_intent.clone()));
     reserved.map_err(|error| {
         let _ = capture.finish_rewrite_failure_bound(token, bound_intent);
-        error.to_string()
+        match error {
+            provider::types::ProviderError::Busy => "provider_busy".to_string(),
+            other => other.to_string(),
+        }
     })
 }
 
@@ -1099,7 +1126,7 @@ async fn save_settings(
             return Err("provider_busy".to_string());
         }
     }
-    let (previous_intent, next_intent, terminology_changed, language_changed, provider_changed, active_provider) = {
+    let (previous_intent, next_intent, terminology_changed, provider_changed, active_provider) = {
         let mut configuration = state
             .configuration
             .lock()
@@ -1121,10 +1148,9 @@ async fn save_settings(
             .map_err(str::to_string)?;
         let next_intent = settings.rewrite_intent().map_err(str::to_string)?;
         let terminology_changed = configuration.settings.terminology != settings.terminology;
-        let language_changed = configuration.settings.translation.target_language
-            != settings.translation.target_language
-            || configuration.settings.translation.auto_reference_language
-                != settings.translation.auto_reference_language;
+        // A language change that matters (Translate) changes the intent and
+        // is handled with it. Instant runs only in Grammar, which no language
+        // setting affects, so its draft stays valid.
         let provider_changed = configuration.settings.active_provider != settings.active_provider;
         settings::save(&app, &settings)?;
         configuration.settings = settings.clone();
@@ -1133,7 +1159,6 @@ async fn save_settings(
             previous_intent,
             next_intent,
             terminology_changed,
-            language_changed,
             provider_changed,
             settings.active_provider,
         )
@@ -1170,14 +1195,6 @@ async fn save_settings(
             p3_03_runtime::invalidate_cache(
                 instant.cache_mut(),
                 p3_03_runtime::InstantInvalidationReason::ProfileChange,
-            );
-        }
-    }
-    if language_changed {
-        if let Ok(mut instant) = state.instant.lock() {
-            p3_03_runtime::invalidate_cache(
-                instant.cache_mut(),
-                p3_03_runtime::InstantInvalidationReason::LanguageChange,
             );
         }
     }
@@ -2085,8 +2102,10 @@ fn spawn_instant_for_capture(app: AppHandle, token: SessionToken, source: String
             Err(_) => return,
         };
         {
+            // Deep may already be running (auto rewrite): the Instant draft
+            // still belongs to the capture while it is open.
             let capture = state.capture.lock().await;
-            if capture.captured_source(&token).ok().as_deref() != Some(source.as_str()) {
+            if capture.open_source(&token) != Some(source.as_str()) {
                 return;
             }
         }

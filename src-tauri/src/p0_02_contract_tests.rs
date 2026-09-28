@@ -530,19 +530,82 @@ fn busy_provider_reservation_returns_the_capture_to_captured() {
     let earlier = capture(&mut store, "earlier", 101, 2001);
     let bound = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
     store.begin_rewrite_bound(&earlier, bound.clone()).unwrap();
-    let busy = crate::reserve_rewrite(&mut store, &mut providers, ProviderKind::Codex, &earlier, &bound).unwrap();
+    let attempt = store.rewrite_attempt(&earlier).unwrap();
+    let busy = crate::reserve_rewrite(&mut store, &mut providers, ProviderKind::Codex, &earlier, &bound, attempt).unwrap();
 
     let token = capture(&mut store, "busy", 102, 2002);
     store.begin_rewrite_bound(&token, bound.clone()).unwrap();
-    let Err(error) = crate::reserve_rewrite(&mut store, &mut providers, ProviderKind::Codex, &token, &bound) else {
+    let attempt = store.rewrite_attempt(&token).unwrap();
+    let Err(error) = crate::reserve_rewrite(&mut store, &mut providers, ProviderKind::Codex, &token, &bound, attempt) else {
         panic!("a busy Provider must refuse the reservation");
     };
-    assert_eq!(error, "Another Provider request is still running. Try again in a moment.");
+    // A code the widget can wait on, never the raw sentence or a session error.
+    assert_eq!(error, "provider_busy");
     assert!(store.is_captured(&token), "nothing started, so the capture is Captured again");
     assert_eq!(store.captured_source(&token).unwrap(), "synthetic-source-busy");
 
     assert!(providers.finish(&busy));
     store.begin_rewrite_bound(&token, bound.clone()).unwrap();
-    assert!(crate::reserve_rewrite(&mut store, &mut providers, ProviderKind::Codex, &token, &bound).is_ok(),
+    let attempt = store.rewrite_attempt(&token).unwrap();
+    assert!(crate::reserve_rewrite(&mut store, &mut providers, ProviderKind::Codex, &token, &bound, attempt).is_ok(),
         "once the earlier request has finished, Deep can run again");
+}
+
+// Review finding: a request cancelled between its start and its reservation,
+// with Deep started again for the same intent, passed the intent check. It
+// then reserved the Provider after Cancel, or, when refused as busy, returned
+// the newer request's capture to Captured so that request's result was lost.
+#[test]
+fn a_cancelled_attempt_cannot_reserve_or_undo_a_newer_one() {
+    use crate::capture_session::BoundRewriteIntent;
+    use crate::provider::{ProviderKind, ProviderManager};
+    use crate::translation::RewriteIntent;
+    let mut store = CaptureSessionStore::default();
+    let mut providers = ProviderManager::default();
+    let token = capture(&mut store, "attempts", 101, 2001);
+    let bound = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
+    store.begin_rewrite_bound(&token, bound.clone()).unwrap();
+    let cancelled = store.rewrite_attempt(&token).unwrap();
+    store.cancel_rewrite_keep_capture();
+    assert_eq!(
+        crate::reserve_rewrite(&mut store, &mut providers, ProviderKind::Codex, &token, &bound, cancelled).err().as_deref(),
+        Some("rewrite_cancelled"),
+        "a cancelled request starts nothing"
+    );
+    assert!(store.is_captured(&token));
+
+    store.begin_rewrite_bound(&token, bound.clone()).unwrap();
+    let newer = store.rewrite_attempt(&token).unwrap();
+    assert_eq!(
+        crate::reserve_rewrite(&mut store, &mut providers, ProviderKind::Codex, &token, &bound, cancelled).err().as_deref(),
+        Some("rewrite_superseded"),
+        "the same intent does not make the cancelled request current again"
+    );
+    assert!(store.owns_rewrite(&token, newer), "the newer request keeps the capture");
+    assert!(providers.snapshot().busy_kind.is_none(), "nothing was reserved for the cancelled request");
+    assert!(crate::reserve_rewrite(&mut store, &mut providers, ProviderKind::Codex, &token, &bound, newer).is_ok());
+}
+
+// Built-app CI: with Deep started by auto rewrite before the local analysis
+// finished, the Instant draft was dropped (only Captured counted as open).
+#[test]
+fn the_instant_draft_belongs_to_an_open_capture_while_deep_runs() {
+    use crate::capture_session::BoundRewriteIntent;
+    use crate::translation::RewriteIntent;
+    let mut store = CaptureSessionStore::default();
+    let token = capture(&mut store, "open", 101, 2001);
+    assert_eq!(store.open_source(&token), Some("synthetic-source-open"));
+    let bound = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
+    store.begin_rewrite_bound(&token, bound.clone()).unwrap();
+    assert_eq!(store.open_source(&token), Some("synthetic-source-open"), "Deep running");
+    store.finish_rewrite_success_bound(&token, &bound).unwrap();
+    assert_eq!(store.open_source(&token), Some("synthetic-source-open"), "Deep result ready");
+    assert!(store.is_ready(&token), "Run Deep now is told the result is ready, not that the capture ended");
+    assert_eq!(store.captured_source(&token), Err(SessionError::InvalidState));
+
+    let newer = capture(&mut store, "newer", 102, 2002);
+    assert_eq!(store.open_source(&token), None, "a replaced capture has no Instant draft");
+    store.cancel_active_with_turn();
+    assert_eq!(store.open_source(&newer), None, "an ended capture has no Instant draft");
+    assert!(!store.is_ready(&newer));
 }
