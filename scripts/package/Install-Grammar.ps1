@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 # Personal installation of a verified Grammar package (current user only).
 # Verifies every packaged file against MANIFEST.json before copying anything,
 # installs into a fresh directory, and registers the Chromium native host for
@@ -93,7 +94,15 @@ try {
     catch { $left += 'the native host registration' }
   }
   if (-not $left) {
-    try { Remove-Item -LiteralPath $root -Recurse -Force } catch { $left += $root }
+    # The receipt and the uninstaller go last, so a partial rollback can
+    # still be finished with the uninstaller the message names.
+    $last = @('install-receipt.json', 'Uninstall-Grammar.ps1')
+    foreach ($child in @(Get-ChildItem -LiteralPath $root -Force | Where-Object { $_.Name -notin $last })) {
+      try { Remove-Item -LiteralPath $child.FullName -Recurse -Force } catch { $left += $child.FullName }
+    }
+    if (-not $left) {
+      try { Remove-Item -LiteralPath $root -Recurse -Force } catch { $left += $root }
+    }
   }
   if ($left) {
     throw "Install failed: $failure Cleanup was incomplete ($($left -join ', ')). Run `"$root\Uninstall-Grammar.ps1`" to remove it."
