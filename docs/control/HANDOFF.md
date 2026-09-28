@@ -40,6 +40,11 @@ Desktop capture lifecycle (1c7f1a3, 95c44cf):
 - D8 MEDIUM (review). Run Deep on a ready result said "This capture is no longer active" although Copy still worked. Fix: the button is disabled while a result is ready, and the command answers `rewrite_result_ready`. Tests: mvp contract, the D7 test (`is_ready`).
 - D9 MEDIUM (review). A language change in Grammar mode cleared the Instant cache, so an edited draft could not be copied and the message blamed the mode or dictionary. Grammar Instant depends on no language setting, and a language change that matters changes the intent. Fix: the separate language invalidation is gone. No automated test.
 - D10 LOW (review). The Cancel status promised a draft that did not exist (modes without Instant, or nothing to change). Fix: it says "Deep cancelled" then.
+- D11 (CI 36364343895). A shortcut press right after a closing press started no capture: no error, nothing in 15 s.
+  - The shortcut gate ignored every press until it saw the previous press's release. The hotkey crate only polls for the release (every 50 ms) and can report it late or never, and with MOD_NOREPEAT there is no auto-repeat to filter.
+  - Fix: a press is ignored only within 250 ms of the previous accepted one.
+  - The root cause is not proven: this is the only silent drop path found. On such a timeout the built-app flow now presses once more and reports whether the first press was dropped (still a FAIL).
+  - Test: `a_missed_release_never_swallows_the_next_press`.
 
 Widget (a2e56d2, 01da908):
 - W1 HIGH. After a mode, target or reference language change the new Deep result never appeared: there were two draft stores and only one was cleared. Fix: both reset together once per intent change. Test: built-app step 6.
@@ -84,6 +89,9 @@ Providers and runtime (7c41a11, 01da908):
   - It also expected `source\n\n(translation)` for a one-line source, which the product joins as `source (translation)` (fac6038).
   - The Chromium repeated-Accept loop accepted the engine's correct repeated-word suggestion instead of the misspelling, and plain End stopped at a wrapped line. Reproduced with the real engine (fac6038).
 - Product defects found by CI: D6/D7 (built-app step 7) and C10 (fixture), fixed in 95c44cf and 766f7ae.
+- Built-app flow, run 36364343895: FAIL at section 9's capture (see D11).
+  - Commit 971525a changes only docs relative to 75a1dab, which passed in 36364165671. The failure depends on timing.
+  - It is kept as a FAIL; the gate is fixed, and the test gained a diagnostic press.
 
 ### Residual limits (not fixed in this round)
 
@@ -117,7 +125,10 @@ Two fresh-context review agents read cdf8553..HEAD read-only, split into desktop
   - worker.test 49/49.
   - The whole Chromium fixture, including synthetic Deep, in headless Chromium with the real host and synthetic child under Wine.
   - Stub-package install, refusal, `-RemoveUserData` and rollback runs.
-- CI: see the final run named in the Owner report. Earlier runs in this round, with their failures, are listed above.
+- CI:
+  - 36364165671 on 75a1dab passed every step, including built-app sections 1-13 with shortcut spam and the fixture with synthetic Deep.
+  - 36364343895 on 971525a (docs only) failed built-app section 9 (D11).
+  - The run on the final commit is named in the Owner report; earlier failures are listed above.
 
 ### Owner's minimal manual checks (not run by this round)
 

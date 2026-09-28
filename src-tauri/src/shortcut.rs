@@ -205,22 +205,46 @@ pub(crate) enum WidgetVisibility {
     Visible,
 }
 
+/// A press closer than this to the previous one, without a release seen in
+/// between, is the same press. The shortcut is registered with MOD_NOREPEAT
+/// (no auto-repeat), and its release is only polled by the hotkey crate, so
+/// the release can arrive late or not at all: the latch must never outlast a
+/// moment, or it swallows the user's next real press. (CI 36364343895 saw a
+/// quick close-and-press start no capture; this latch is the only silent
+/// drop path found, not a proven cause.)
+const SAME_PRESS_WINDOW: std::time::Duration = std::time::Duration::from_millis(250);
+
 #[derive(Default)]
 pub(crate) struct ShortcutTriggerGate {
-    pressed: bool,
+    pressed_at: Option<std::time::Instant>,
 }
 
 impl ShortcutTriggerGate {
     pub(crate) fn handle(&mut self, is_active: bool, state: ShortcutEventState) -> bool {
+        self.handle_at(is_active, state, std::time::Instant::now())
+    }
+
+    pub(crate) fn handle_at(
+        &mut self,
+        is_active: bool,
+        state: ShortcutEventState,
+        now: std::time::Instant,
+    ) -> bool {
         match state {
             ShortcutEventState::Released => {
-                self.pressed = false;
+                self.pressed_at = None;
                 false
             }
             ShortcutEventState::Pressed if !is_active => false,
-            ShortcutEventState::Pressed if self.pressed => false,
+            ShortcutEventState::Pressed
+                if self
+                    .pressed_at
+                    .is_some_and(|at| now.saturating_duration_since(at) < SAME_PRESS_WINDOW) =>
+            {
+                false
+            }
             ShortcutEventState::Pressed => {
-                self.pressed = true;
+                self.pressed_at = Some(now);
                 true
             }
         }

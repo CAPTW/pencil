@@ -286,7 +286,16 @@ try {
     const before = (await captures()).length;
     await prepareSelection(index, text, selected);
     await editor.hotkey();
-    const token = await until('selection captured', async () => (await captures())[before], 15000);
+    let token;
+    try {
+      token = await until('selection captured', async () => (await captures())[before], 15000);
+    } catch (error) {
+      // Still a failure: one more press only tells a dropped press from an
+      // app that stopped capturing.
+      await editor.hotkey();
+      const second = await until('capture after a second press', async () => (await captures())[before], 5000).catch(() => null);
+      throw new Error(`${error.message}; ${second ? 'a second press captured, so the first press was dropped' : 'a second press captured nothing either'}`);
+    }
     assert.equal(token.selectedText, selected);
     await until('widget shown for the capture', widgetVisible);
     await until('Instant candidate', async () => (await draftValue()) === expectedCandidate, 15000);
