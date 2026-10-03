@@ -707,6 +707,32 @@ try {
   pass(`five quick shortcut presses (${spamCaptures.length} captures, then: ${spamOutcome}) captured only the selection, changed no document, delivered no other text, and the next capture worked`);
 
   // 13. Restart: settings persist; no capture, draft or selection comes back.
+  // Native MOD_NOREPEAT must suppress repeated key-downs even though Grammar
+  // no longer guesses press identity from asynchronously polled releases.
+  await prepareSelection(0, spamDoc, spamSelection);
+  const beforeRepeatCaptures = (await captures()).length;
+  const beforeRepeatEditors = await beginUntouched();
+  assert.equal(await editor.command('HOTKEY_REPEAT'), 'SENT 9');
+  await until('repeat key-down captured', async () => (await captures()).length > beforeRepeatCaptures);
+  await until('repeat key-down Instant', async () => (await draftValue()) === 'please separate this.');
+  await sleep(300);
+  assert.equal((await captures()).length, beforeRepeatCaptures + 1, 'MOD_NOREPEAT dispatched once');
+  assert.equal(await widgetVisible(), true, 'repeat key-down did not toggle the widget');
+  await cancelDeepIfRunning();
+  await assertEditorsUntouched('native-key-repeat', beforeRepeatEditors);
+  await copyResult('copy-after-native-key-repeat', 'please separate this.');
+  await closeWidget();
+  pass('native repeated key-downs dispatch once; Copy matches and editors stay unchanged');
+
+  for (let cycle = 0; cycle < 6; cycle += 1) {
+    await captureAndWaitInstant(0, `Cycle ${cycle}: ${spamSelection}`, spamSelection, 'please separate this.');
+    await cancelDeepIfRunning();
+    await copyResult(`successive-capture-${cycle}`, 'please separate this.');
+    await closeWidget();
+  }
+  pass('six successive close and recapture cycles preserve exact Copy and unchanged editors');
+
+  // Restart: settings persist; no capture, draft or selection comes back.
   const beforeRestartRevoke = await loadSettings();
   await page.evaluate(settings => window.__TAURI_INTERNALS__.invoke('save_settings', {settings}), {...beforeRestartRevoke,autoRewrite:false,cloudProcessingAcknowledgementVersion:0,claudeCloudAcknowledgementVersion:0,antigravityCloudAcknowledgementVersion:0});
   const settingsBeforeRestart = await loadSettings();

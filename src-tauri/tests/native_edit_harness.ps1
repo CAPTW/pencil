@@ -473,6 +473,13 @@ public static class NativeEditHarness
                 // The configured default shortcut; the app's global hotkey receives it.
                 INPUT[] keys = { Key(0x11, false), Key(0x10, false), Key(0x47, false), Key(0x47, true), Key(0x10, true), Key(0x11, true) };
                 return "SENT " + SendInput((uint)keys.Length, keys, Marshal.SizeOf(typeof(INPUT)));
+            case "HOTKEY_REPEAT":
+                // Repeated key-downs without releasing G emulate held-key
+                // repeat. The registered MOD_NOREPEAT hotkey must fire once.
+                INPUT[] repeatedKeys = { Key(0x11, false), Key(0x10, false),
+                    Key(0x47, false), Key(0x47, false), Key(0x47, false), Key(0x47, false),
+                    Key(0x47, true), Key(0x10, true), Key(0x11, true) };
+                return "SENT " + SendInput((uint)repeatedKeys.Length, repeatedKeys, Marshal.SizeOf(typeof(INPUT)));
             case "CLIPBOARD":
                 return "CLIP " + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(Clipboard.ContainsText() ? Clipboard.GetText() : ""));
             case "CLIPLOCK":
