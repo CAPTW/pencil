@@ -14,7 +14,7 @@ import {createRequire} from 'node:module';
 import {spawn, execFileSync} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {mkdir, writeFile, readFile} from 'node:fs/promises';
-import {existsSync, readFileSync} from 'node:fs';
+import {existsSync, readFileSync, statSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {resolve, join, dirname} from 'node:path';
@@ -1175,6 +1175,7 @@ try {
     const marker = join(out, 'exit-child.json');
     await until('synthetic exit child started', async () => existsSync(marker));
     const child = JSON.parse(await readFile(marker, 'utf8'));
+    const childStartedAt = statSync(marker).mtimeMs;
     assert.equal(alive(child.pid), true);
     const sessionRoot = dirname(child.cwd);
     assert.equal(dirname(sessionRoot).toLowerCase(), join(process.env.TEMP, 'codex-pencil-runtime-v1').toLowerCase());
@@ -1199,11 +1200,12 @@ try {
       pass('dismissing Quit confirmation preserves app and active synthetic Deep');
       let accepted = false;
       page.once('dialog', async dialog => { await dialog.accept(); accepted = true; });
+      assert.ok(Date.now()-childStartedAt < 60000, 'finite child has at least 30s left before natural expiry');
       gesture = {status:'QUIT_CONFIRMED', appPid:app.pid, requestedUnixMs:Date.now(), method:'window-power-button-confirm'};
       await quit.click({noWaitAfter:true}).catch(error => {
         if (!page.isClosed()) throw error;
       });
-      assert.equal(accepted, true);
+      await until('quit confirmation accepted', async () => accepted, 2000);
     } else {
     // A separately guarded existing-login helper drives only the owned shell
     // icon and exact app menu. UIA ProcessId can be zero for XAML elements;
@@ -1212,6 +1214,7 @@ try {
     await until('owned guest tray gesture receipt', async () => existsSync('C:/GrammarOutput/tray-gesture.json'), 30000);
     gesture = JSON.parse(await readFile('C:/GrammarOutput/tray-gesture.json','utf8'));
     assert.equal(gesture.status, 'QUIT_CLICKED');
+    assert.ok(gesture.requestedUnixMs-childStartedAt < 60000, 'finite child has at least 30s left at Quit');
     }
     await until('natural app exit after explicit Quit', async () => !alive(app.pid), 20000);
     await until('synthetic Provider exit', async () => !alive(child.pid), 2000);
@@ -1220,6 +1223,7 @@ try {
     assert.equal(app.exitCode, 0);
     await assertEditorsUntouched(windowExitTest ? 'window-quit' : 'tray-quit', untouched);
     const exitReceipt = {...gesture, appExitCode:app.exitCode, elapsedMs:Date.now()-gesture.requestedUnixMs,
+      childAgeAtQuitMs:gesture.requestedUnixMs-childStartedAt,
       providerExited:true, sessionRemoved:true, forcedTerminationBeforeProof:false};
     if (windowExitTest) windowExitReceipt = exitReceipt; else trayExitReceipt = exitReceipt;
     pass(`real ${windowExitTest ? 'window' : 'tray'} Quit during synthetic Deep exits naturally with child and runtime session removed`);
