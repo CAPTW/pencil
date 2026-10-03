@@ -1,17 +1,17 @@
 {
   "schema_version": 1,
-  "state_version": "2026-10-04.shutdown-admission",
+  "state_version": "2026-10-04.window-quit",
   "repository_branch": "main",
   "product_target": "P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST",
   "p3a_status": "COPY_ONLY_BY_OWNER_DECISION_SINGLE_COPY_BUTTON_STANDARD_EDIT_CAPTURE_OWNED_DESKTOP_QUALIFIED",
   "p3b_status": "CONSENT_BOUND_DEEP_CANDIDATE_NO_LIVE_ACCEPTANCE",
   "first_adapter_decision": "CHROMIUM_TEXTAREA_CONTENTEDITABLE_MV3",
   "active_phase": "MISSION_IMPLEMENTATION",
-  "active_step": "INSTALLED_TRAY_EXIT_TARGET_UNAVAILABLE_PRODUCT_BASELINE_RETAINED",
+  "active_step": "INSTALLED_WINDOW_QUIT_SYNTHETIC_CLEANUP_QUALIFIED_TRAY_GAP_RETAINED",
   "active_task": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
   "completed_task": "GRAMMAR-P3B-R0-CURRENT-LOCAL-REPOSITORY-REAUDIT-PRODUCT-TARGET-RESET-MULTI-AGENT-DEVELOPMENT-CONTRACT-PHASE-STEP-ROADMAP-AND-MINIMAL-PROJECT-SOURCE-SUCCESSOR-R1",
-  "exact_next_task": "GRAMMAR-LOCAL-OWNED-TRAY-ACCESS-PREREQUISITE",
-  "next_task_status": "TRAY_TARGET_UNAVAILABLE_NO_NORMAL_EXIT_ACCEPTANCE_OTHER_INTERNAL_WORK_ALLOWED",
+  "exact_next_task": "GRAMMAR-LOCAL-INSTALLED-SHUTDOWN-FAILURE-RETRY-QUALIFICATION",
+  "next_task_status": "CONTINUE_INTERNAL_CONTROLLED_CLEANUP_FAILURE_RETRY_NO_LIVE_PROVIDER",
   "acceptance_boundary": "CANDIDATE_SYNTHETIC_ONLY_NO_WHOLE_PRODUCT_ACCEPTANCE",
   "provider_kinds": [
     "codex",
@@ -132,7 +132,8 @@
     "Local d85f323 desktop repair: identity-bound capture-ended events, failure-preserving Dismiss and coalesced shortcut operations; old-package regression and first-repair FAIL retained. Clean receipt-bound package passed 19 app-flow checks in each of two fresh Medium-integrity Sandboxes, synthetic Provider only, explicit guest WebView2 runtime. All 52 editor counter records have zero state changes; both uninstall receipts complete, Sandbox inventory empty. Capture tests 2 PASS, shortcut tests 10 PASS/1 ignored, TS capture/draft contracts and typecheck PASS. Separate review by same integrator only; Current-package installed Chromium keyboard smoke also passed 11 checks with unchanged extension, exact mutation rereads, revocation and complete cleanup; physical IME/live Provider remain outstanding. No main adoption, remote push, or Project Source application. Evidence: D:/dev/grammar-evidence/grammar-app-flow-20261003/RESULT.md",
     "Prepared owned Medium-integrity Sandbox hands-on session from unchanged d85f323 package; app/editor running and guide shown, Auto rewrite false and all Deep consent absent verified. Physical keyboard/IME NOT_RUN pending Owner input; no live Provider or general profile install. Initial missing guest Notepad failure preserved with complete uninstall; dedicated guide replaced that dependency. Evidence: D:/dev/grammar-evidence/grammar-hands-on-20261003/STATUS.md",
     "Owner requested additional agent-run tests: app Rust suite 221 PASS/26 ignored, core 215 assertions PASS, worker 49 PASS; installed-host modified isolated Chromium fixture with synthetic Deep 44 PASS in fresh Medium Sandbox, browser sandbox enabled. Fixture registration/profile/host cleanup and package uninstall complete; all guests stopped. Pending hands-on session closed without claiming physical keyboard/IME acceptance. No product source changes, no authentication/live Provider. Evidence: D:/dev/grammar-evidence/grammar-auto-regression-20261003/RESULT.md",
-    "Account-free start UI: local Instant instructions and explicit close-to-select action lead the signed-out Codex idle pane; Codex Deep login is optional/collapsed. Clean a305f15 package passed 20 installed-app checks and 11 unmodified installed-browser keyboard checks in fresh Medium Sandboxes; local start changes no settings/consent, then capture/Instant/Copy succeeds without an account. Both uninstalls complete and guest inventory empty. Driver-only d5a3865 corrects accessible heading discovery. No live login/Provider, no main adoption/push; evidence D:/dev/grammar-evidence/grammar-local-start-20261003/RESULT.md"
+    "Account-free start UI: local Instant instructions and explicit close-to-select action lead the signed-out Codex idle pane; Codex Deep login is optional/collapsed. Clean a305f15 package passed 20 installed-app checks and 11 unmodified installed-browser keyboard checks in fresh Medium Sandboxes; local start changes no settings/consent, then capture/Instant/Copy succeeds without an account. Both uninstalls complete and guest inventory empty. Driver-only d5a3865 corrects accessible heading discovery. No live login/Provider, no main adoption/push; evidence D:/dev/grammar-evidence/grammar-local-start-20261003/RESULT.md",
+    "Local window Quit product f90f3d5: explicit confirmation, existing managed shutdown; fresh Medium installed app35 PASS, natural exit0 with synthetic child and runtime session removed (434ms single observation, not budget); editor records64 with zero state changes. App Rust231 PASS/26 ignored; typecheck/contracts/governance/build/package PASS. Uninstall complete, all owned guests stopped. Tray registration restricted-Medium false versus ExistingLogin true is diagnostic only; tray route remains unqualified. Browser unchanged and not rerun. Evidence: D:/dev/grammar-evidence/grammar-window-exit-20261004/RESULT.md"
   ],
   "native_capture_activation": "ACTIVE_STANDARD_EDIT_ONLY_OWNED_DESKTOP_QUALIFIED_OTHERS_DENIED",
   "chromium_deep_activation": "SOURCE_UNCONFIGURED_PERSONAL_INSTALLER_CONFIGURES_HOST_CONSENT_BOUND_SYNTHETIC_ONLY",
