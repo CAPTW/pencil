@@ -526,3 +526,14 @@ async fn cli_cancel_same_intent_retry_does_not_mistake_old_operation_for_new_att
     assert!(!new.is_complete());
     state.providers.lock().await.finish(&new);
 }
+
+#[tokio::test]
+async fn shutdown_providers_does_not_reopen_provider_admission_after_cleanup() {
+    use crate::provider::types::ProviderKind;
+    let state = crate::AppState::default();
+    crate::shutdown_providers(&state).await.unwrap();
+    let mut manager = state.providers.lock().await;
+    assert!(manager.reserve(ProviderKind::Codex, "late-probe".into(), true).is_err(),
+        "a status refresh must not launch new processes after cleanup completes");
+    assert!(manager.reserve(ProviderKind::Codex, "late-rewrite".into(), false).is_err());
+}
