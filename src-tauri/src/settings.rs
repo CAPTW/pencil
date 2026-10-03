@@ -636,3 +636,51 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| format!("Could not resolve app config directory: {error}"))?;
     Ok(dir.join("settings.json"))
 }
+
+/// Consent increases require the explicit review action, never a stale settings save.
+pub(crate) fn cloud_ack(settings: &AppSettings, kind: ProviderKind) -> u32 {
+    match kind {
+        ProviderKind::Codex => settings.cloud_processing_acknowledgement_version,
+        ProviderKind::Antigravity => settings.antigravity_cloud_acknowledgement_version,
+        ProviderKind::Claude => settings.claude_cloud_acknowledgement_version,
+    }
+}
+
+pub(crate) fn consent_change(previous: &AppSettings, next: &AppSettings, acknowledged: Option<ProviderKind>) -> Result<bool, &'static str> {
+    let mut revoked = false;
+    for kind in [ProviderKind::Codex, ProviderKind::Antigravity, ProviderKind::Claude] {
+        let old = cloud_ack(previous, kind);
+        let new = cloud_ack(next, kind);
+        if new > old && (acknowledged != Some(kind) || next.active_provider != kind) {
+            return Err("cloud_consent_requires_explicit_review");
+        }
+        revoked |= new < old;
+    }
+    Ok(revoked)
+}
+
+#[cfg(test)]
+mod consent_tests {
+    use super::*;
+    #[test]
+    fn stale_settings_cannot_restore_revoked_consent() {
+        let current = AppSettings::default();
+        let mut stale = current.clone();
+        stale.cloud_processing_acknowledgement_version = 1;
+        assert_eq!(consent_change(&current, &stale, None), Err("cloud_consent_requires_explicit_review"));
+        assert_eq!(consent_change(&current, &stale, Some(ProviderKind::Codex)), Ok(false));
+        assert_eq!(consent_change(&stale, &current, None), Ok(true));
+    }
+    #[test]
+    fn review_cannot_grant_another_provider() {
+        let current = AppSettings::default();
+        let mut next = current.clone();
+        next.claude_cloud_acknowledgement_version = 1;
+        assert!(consent_change(&current, &next, Some(ProviderKind::Codex)).is_err());
+        assert!(consent_change(&current, &next, Some(ProviderKind::Claude)).is_err());
+        next.active_provider = ProviderKind::Claude;
+        assert_eq!(consent_change(&current, &next, Some(ProviderKind::Claude)), Ok(false));
+        next.cloud_processing_acknowledgement_version = 1;
+        assert!(consent_change(&current, &next, Some(ProviderKind::Claude)).is_err());
+    }
+}
