@@ -656,9 +656,23 @@ try {
   const beforeSpamCaptures = (await captures()).length;
   const clipboardBeforeSpam = await editor.clipboard();
   const beforeSpam = await beginUntouched();
+  console.log('SHORTCUT_SPAM_PRECONDITIONS', JSON.stringify({
+    widgetVisible: await widgetVisible(),
+    foreground: await editor.command('FOREGROUND'),
+    selection: await editor.command('SEL 0'),
+    sourceMatches: await editor.text(0) === spamDoc,
+  }));
   for (let press = 0; press < 5; press += 1) await editor.hotkey();
   await sleep(3000);
   const spamCaptures = (await captures()).slice(beforeSpamCaptures);
+  console.log('SHORTCUT_SPAM_RESULT', JSON.stringify({
+    captureCount: spamCaptures.length,
+    widgetVisible: await widgetVisible(),
+    foreground: await editor.command('FOREGROUND'),
+    selection: await editor.command('SEL 0'),
+    sourceMatches: await editor.text(0) === spamDoc,
+    error: await errorText(),
+  }));
   assert.ok(spamCaptures.length >= 1, 'the first press captured');
   assert.ok(spamCaptures.every((capture) => capture.selectedText === spamSelection), 'shortcut spam captured only the selection');
   let spamOutcome = 'widget hidden';
