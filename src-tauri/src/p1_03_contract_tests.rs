@@ -437,3 +437,10 @@ fn mode_and_terminology_revision_changes_take_the_active_turn_once() {
         None
     );
 }
+
+
+#[test]
+fn close_recovery_identity_serializes_no_document_text() {
+    let identity = crate::CaptureIdentity { session_id: "owned-session".into(), generation: 7 };
+    assert_eq!(serde_json::to_value(identity).unwrap(), serde_json::json!({"sessionId": "owned-session", "generation": 7}));
+}

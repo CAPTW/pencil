@@ -1259,6 +1259,23 @@ fn take_startup_notices(state: State<'_, AppState>) -> Result<Vec<String>, Strin
     Ok(std::mem::take(&mut *notices))
 }
 
+// Read-only identity for explicit Close after a WebView reload. It never
+// restores source text; dismiss_window still revalidates this exact token.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CaptureIdentity {
+    session_id: String,
+    generation: u64,
+}
+
+#[tauri::command]
+async fn active_capture_identity(state: State<'_, AppState>) -> Result<Option<CaptureIdentity>, String> {
+    Ok(state.capture.lock().await.active_token().map(|token| CaptureIdentity {
+        session_id: token.session_id,
+        generation: token.generation,
+    }))
+}
+
 #[tauri::command]
 async fn dismiss_window(
     session_id: Option<String>,
@@ -1546,6 +1563,7 @@ fn main() {
         .plugin(global_shortcut_plugin())
         .invoke_handler(tauri::generate_handler![
             add_terminology_entry,
+            active_capture_identity,
             add_terminology_profile,
             apply_replacement,
             apply_terminology_import,

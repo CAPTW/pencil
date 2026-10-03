@@ -39,6 +39,7 @@ import {
   copiedNotice,
   captureEndedMatches,
   parseApplyOutcome,
+  parseCaptureToken,
   parseSelectionCaptured,
   sameCaptureToken,
   type CaptureToken,
@@ -893,7 +894,8 @@ export default function App() {
 
   async function acknowledgeCloudProcessing() {
     const reviewedToken = currentTokenRef.current;
-    if (!reviewedToken) return;
+    const reviewedIntent = currentIntentRef.current;
+    if (!reviewedToken || !reviewedIntent) return;
     const action = ++consentActionRef.current;
     const kind = settings.activeProvider;
     const saved = await saveSettings({
@@ -907,12 +909,13 @@ export default function App() {
     }, kind);
     if (!saved || action !== consentActionRef.current
       || !sameCaptureToken(reviewedToken, currentTokenRef.current)
+      || !sameRewriteIntent(reviewedIntent, currentIntentRef.current)
       || kind !== providerRef.current) return;
     cloudAcknowledgementRef.current = saved.cloudProcessingAcknowledgementVersion;
     providerAckRef.current = cloudAckFor(saved, saved.activeProvider);
     setCloudReviewOpen(false);
     // Continue only the capture reviewed before the asynchronous settings save.
-    await rewrite(saved.mode, reviewedToken, saved.translation.targetLanguage);
+    await rewrite(saved.mode, reviewedToken, saved.translation.targetLanguage, saved.translation.autoReferenceLanguage);
   }
 
   async function revokeCloudConsent() {
@@ -987,6 +990,9 @@ export default function App() {
     if (!confirmDiscardEditedDraft("Changing the mode")) {
       return;
     }
+    // Invalidate before the queued save can finish an older consent action.
+    consentActionRef.current += 1;
+    setCloudReviewOpen(false);
     const next = { ...settings, mode };
     const saved = await saveSettings(next);
     if (!saved) {
@@ -1011,6 +1017,7 @@ export default function App() {
       resetDraftForNewIntent(selection.token);
       setStatus("Selection captured");
       if (saved.autoRewrite) {
+        providerAckRef.current = cloudAckFor(saved, saved.activeProvider);
         void rewrite(saved.mode, selection.token, saved.translation.targetLanguage);
       }
     }
@@ -1019,6 +1026,10 @@ export default function App() {
   async function chooseTargetLanguage(targetLanguage: TranslationTargetLanguage) {
     if (settings.mode === "translate" && !confirmDiscardEditedDraft("Changing the target language")) {
       return;
+    }
+    if (settings.mode === "translate") {
+      consentActionRef.current += 1;
+      setCloudReviewOpen(false);
     }
     const next = {
       ...settings,
@@ -1045,6 +1056,7 @@ export default function App() {
       resetDraftForNewIntent(selection.token);
       setStatus("Translation target changed");
       if (saved.autoRewrite) {
+        providerAckRef.current = cloudAckFor(saved, saved.activeProvider);
         void rewrite("translate", selection.token, saved.translation.targetLanguage);
       }
     }
@@ -1059,6 +1071,10 @@ export default function App() {
       !confirmDiscardEditedDraft("Changing the reference language")
     ) {
       return;
+    }
+    if (settings.mode === "translate" && settings.translation.targetLanguage === "auto") {
+      consentActionRef.current += 1;
+      setCloudReviewOpen(false);
     }
     const saved = await saveSettings({
       ...settings,
@@ -1083,6 +1099,7 @@ export default function App() {
       resetDraftForNewIntent(selection.token);
       setStatus("Auto reference language changed");
       if (saved.autoRewrite) {
+        providerAckRef.current = cloudAckFor(saved, saved.activeProvider);
         void rewrite(
           "translate",
           selection.token,
@@ -1515,9 +1532,16 @@ export default function App() {
       ? currentTokenRef.current === null
       : sameCaptureToken(currentTokenRef.current, token);
     try {
+      let closingToken = token;
+      if (!closingToken) {
+        const identity = await invoke<unknown>("active_capture_identity");
+        if (!stillCurrent()) return; // A new capture arrived during the read.
+        closingToken = parseCaptureToken(identity);
+        if (identity !== null && !closingToken) throw new Error("Invalid capture identity response");
+      }
       await invoke("dismiss_window", {
-        sessionId: token?.sessionId ?? null,
-        generation: token?.generation ?? null,
+        sessionId: closingToken?.sessionId ?? null,
+        generation: closingToken?.generation ?? null,
       });
       if (stillCurrent()) clearCapture();
     } catch (nextError) {

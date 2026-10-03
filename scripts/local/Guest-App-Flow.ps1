@@ -24,7 +24,7 @@ try {
  if(Test-Path C:\GrammarAppFlow\app-flow\result.json){Copy-Item C:\GrammarAppFlow\app-flow\result.json C:\GrammarOutput\app-result.json}
  if($node.ExitCode -ne 0){throw 'App harness failed; see preserved logs'}
  $result=Get-Content C:\GrammarOutput\app-result.json -Raw|ConvertFrom-Json
- if($result.status -ne 'PASS' -or $result.checks.Count -lt 28){throw 'Incomplete app result'}
+ if($result.status -ne 'PASS' -or $result.checks.Count -lt 33){throw 'Incomplete app result'}
  $report.status='PASS'
 }catch{$report.error=$_.Exception.Message;$_|Out-String|Set-Content C:\GrammarOutput\medium-error.txt}
 finally {
