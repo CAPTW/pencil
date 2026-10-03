@@ -644,3 +644,14 @@ Rust app 225 PASS/26 ignored; typecheck, capture/draft/window contracts, syntax,
 All five guest installs removed completely; all five owned guests stopped; final inventory empty. Browser sandbox enabled, installed host matches build hash, profile removed and installed extension unchanged. Only keyboard toolbar activation qualified; Mouse/Invoke fallback failures remain recorded. No real Provider/login, physical keyboard/IME, ordinary profiles, Edge, main adoption, push, release or canonical exact-12 export/Owner Project UI application. Mission remains INCOMPLETE.
 
 Evidence and full hashes: D:/dev/grammar-evidence/grammar-consent-intent-20261003/RESULT.md. Package remains bound to 419ee3c when record commits advance HEAD. Local Source materiality updated. Next is limited Owner-assisted physical keyboard/IME trial; manual helper pins package-consent-intent but was not launched.
+
+
+### Owner input session prepared — 2026-10-03 14:01 UTC
+
+Owned Sandbox 19f3ae29-4bc2-49f3-84b9-77df7ade0579 is intentionally left open for Owner input. Product/package 419ee3c847a0a5f6ddd6ed9044da0e12657934f2, Medium launcher and explicit guest WebView2 154.0.4258.53. READY_AWAITING_OWNER_INPUT and GUIDE_SHOWN verified. Auto rewrite false; all Deep consent absent. App/editor started. Networking and host clipboard redirection disabled; read-only payload and fresh task-owned output only. No actual Provider/account use.
+
+Physical keyboard and IME remain NOT_RUN. Empty guestLanguageTags is unknown IME availability, not a successful test. User should use only the synthetic editor, select a sentence, Ctrl+Shift+G, edit draft, Copy, and manually paste into Synthetic Other Editor; original source must remain unchanged. Try Korean composition only if already available. Repeat close/capture three times. Do not install input features or log in.
+
+Runner waits at most 60 minutes from 2026-10-03T14:01:02Z, then terminates its owned children and attempts production uninstall. finish.request in output ends the wait early. No claim of future cleanup completion until uninstall.json is inspected. Closing the VM early may prevent an uninstall receipt. Agent is not continuing background work; the bounded guest runner remains active. Inspect receipt and stop this exact owned Sandbox at next follow-up. Main/remote unchanged; mission INCOMPLETE.
+
+Evidence: D:/dev/grammar-evidence/grammar-hands-on-419ee3c-20261003/STATUS.md and output receipts.
