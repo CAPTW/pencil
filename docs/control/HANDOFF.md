@@ -668,3 +668,16 @@ Same-integrator review only. These tests qualify the exercised deterministic ord
 Physical keyboard/IME, real Provider, ordinary profiles, Edge and whole-product acceptance remain unqualified. Main/push/release unchanged. Next optional external evidence is Owner physical input or separately authorized live Provider; no repeated manual-session launch without an expressed desire to test. Internal safe development remains authorized if a concrete defect or gap is selected.
 
 Evidence: D:/dev/grammar-evidence/grammar-post-trial-audit-20261003/RESULT.md.
+
+
+## Same-intent cancellation repair — 2026-10-04
+
+Same-intent retry cancellation defect reproduced on test commit 00b5d0a: after invalidation and another begin with the same token/intent, the old Provider reservation was mistaken for a valid new operation and cancellation was skipped. Product 6444140c3986b61ffd7493fee7a626fc28c80cee carries the existing rewrite attempt into ProviderOperation and requires matching attempt plus intent before protecting it. No timeout, consent or cleanup contract changed.
+
+Unchanged regression assertion passes after repair; it checks old operation identity, preservation of the new capture attempt and protection after the new operation is reserved. This is deterministic production-helper execution, not measured installed-UI reproduction or live Provider inference. Full app Rust 228 PASS/26 ignored; host Rust 16 PASS; typecheck and seven Provider contract groups PASS. Existing warnings retained. Same-integrator separate review recorded in REVIEW.md; not independent review.
+
+Clean build and package passed. Installed app 33/33, installed unmodified Chromium keyboard 11/11 PASS in separate Medium-integrity Sandboxes. All 62 editor counter records show zero state changes. Existing driver f2340b28692504ae9c37b6c6cb69d5f4eab00a14ef7e02f823e77bb37861c044 unchanged. Browser enabled-field mutation rereads pass; browser sandbox on, host hash matches build, profile removed, installed extension unchanged. Both uninstalls complete; both guests stopped and inventory empty. Explicit guest WebView2 runtime and synthetic Provider remain test conditions. Mouse/Invoke fallback does not qualify mouse activation.
+
+Physical keyboard/IME, real Provider/accounts, ordinary profiles, Edge, reproducible build and whole-product acceptance remain NOT_RUN/unqualified. Main, remote and release unchanged; mission INCOMPLETE. Manual helper updated to this package but not launched. No canonical exact-12 Source export or Owner Project UI application. Next internal option: cancellation/shutdown admission review; physical input remains optional and requires actual observations, not repeated automatic session launch.
+
+Evidence/full hashes: D:/dev/grammar-evidence/grammar-cancel-attempt-20261004/RESULT.md. Record commits do not relabel the 6444140 package.

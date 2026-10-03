@@ -42,3 +42,5 @@ Same-integrator review only. These tests qualify the exercised deterministic ord
 Physical keyboard/IME, real Provider, ordinary profiles, Edge and whole-product acceptance remain unqualified. Main/push/release unchanged. Next optional external evidence is Owner physical input or separately authorized live Provider; no repeated manual-session launch without an expressed desire to test. Internal safe development remains authorized if a concrete defect or gap is selected.
 
 Evidence: D:/dev/grammar-evidence/grammar-post-trial-audit-20261003/RESULT.md.
+
+Current candidate 6444140 fixes missed cancellation when the same intent retries; red production-path test and unchanged green assertion, app Rust 228/host 16, installed app 33/browser keyboard 11 PASS. Both guests removed/stopped. Next internal review: cancellation/shutdown admission; no real Provider authority. Evidence: grammar-cancel-attempt-20261004/RESULT.md.
