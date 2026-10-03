@@ -1750,7 +1750,7 @@ fn global_shortcut_plugin() -> TauriPlugin<tauri::Wry> {
             if activation.is_none() { return; }
             // Do not queue captures: they can read a later foreground target and
             // publish older errors/selections over a newer capture. Releases
-            // still reach the key gate above, even while an operation is busy.
+            // never activate capture; native MOD_NOREPEAT filters held keys.
             let Some(operation) = ShortcutOperationGuard::try_begin(state.shortcut_operation.clone()) else { return; };
             // Read visibility again after admission; the preceding operation may
             // have finished between the initial key event and this reservation.
