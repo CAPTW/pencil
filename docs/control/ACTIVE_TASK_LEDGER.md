@@ -29,3 +29,16 @@ Latest consent-overlap checkpoint: 61c8d93 suppresses late grant continuation af
 Current binding checkpoint: 910730d pins pending consent to its reviewed capture and invalidates it on Provider choice before the queued save. Red3 reproduces both stale requests; green app 28 and browser 11 PASS, complete removal and empty Sandbox inventory. One existing synthetic active-precondition FAIL remains preserved without load acceptance. Next: pending-consent intent/reload qualification. See latest HANDOFF and grammar-consent-binding-20261003/RESULT.md; no live Provider/main/push authority inferred.
 
 Current intent/reload checkpoint: 419ee3c, installed app 33 and Chromium keyboard 11 PASS, Rust app 225 PASS/26 ignored. Old-package intent dispatch and reload Close failures reproduced; identical final driver passes. All five installs removed and guests stopped. Next: Owner-assisted physical keyboard/IME trial, local-only synthetic documents. No actual account/Provider authority inferred. See grammar-consent-intent-20261003/RESULT.md and latest HANDOFF.
+
+
+## Physical trial closed; additional automated cancellation audit
+
+The prepared physical-input guest was ended using its finish.request. Production uninstall receipt reports complete, no installation/registration/user-data/process remnants. Exact owned Sandbox 19f3ae29-4bc2-49f3-84b9-77df7ade0579 stopped; inventory empty. No physical-input observations were supplied, so keyboard/IME remain NOT_RUN.
+
+Additional agent-run tests: Provider contracts seven groups PASS (mixed static wiring and behavior, not live Provider acceptance); Chromium production core 215 assertions and worker 49 tests PASS; host Rust 16 PASS; app Rust 227 PASS, 26 ignored. Two new tests invoke the real app cancel_cli_operation helper: valid bound rewrite remains protected, invalidated rewrite cancellation reaches the executor pre-dispatch guard, reservation remains busy until finish, stale finish cannot remove a newer reservation, unbound cancellation sets its owned flag without claiming completion, and empty cancellation is inert. Only in-memory AppState and synthetic text used; no real CLI, account, profile, clipboard or desktop accessed. Existing compiler warnings retained.
+
+Same-integrator review only. These tests qualify the exercised deterministic orderings, not all cancellation interleavings or native cleanup timing. No new production defect established or product change made in this round. Existing package/source 419ee3c and its prior 33 app/11 browser receipts remain the installed qualification; test-only commits do not relabel that binary. No rebuild needed for test/document-only changes.
+
+Physical keyboard/IME, real Provider, ordinary profiles, Edge and whole-product acceptance remain unqualified. Main/push/release unchanged. Next optional external evidence is Owner physical input or separately authorized live Provider; no repeated manual-session launch without an expressed desire to test. Internal safe development remains authorized if a concrete defect or gap is selected.
+
+Evidence: D:/dev/grammar-evidence/grammar-post-trial-audit-20261003/RESULT.md.

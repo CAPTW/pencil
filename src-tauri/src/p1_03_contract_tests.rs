@@ -444,3 +444,52 @@ fn close_recovery_identity_serializes_no_document_text() {
     let identity = crate::CaptureIdentity { session_id: "owned-session".into(), generation: 7 };
     assert_eq!(serde_json::to_value(identity).unwrap(), serde_json::json!({"sessionId": "owned-session", "generation": 7}));
 }
+
+// Exercise the actual app cancellation helper without starting a Provider,
+// touching a profile, or using a desktop/clipboard.
+#[tokio::test]
+async fn cli_cancel_targets_invalidated_capture_and_keeps_its_reservation_until_finished() {
+    use crate::provider::{manager::ProviderManager, types::{ProviderError, ProviderKind}};
+    let state = crate::AppState::default();
+    let token = state.capture.lock().await.capture(
+        "cancel-owned".into(), "synthetic".into(), WindowTarget::new(101, 202),
+    ).unwrap();
+    let intent = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
+    state.capture.lock().await.begin_rewrite_bound(&token, intent.clone()).unwrap();
+    let operation = state.providers.lock().await.reserve_capture(
+        ProviderKind::Codex, token.clone(), intent,
+    ).unwrap();
+    // A delayed old cancellation must leave the currently valid rewrite alone.
+    assert!(crate::cancel_cli_operation(&state).await.is_none());
+    state.capture.lock().await.cancel_rewrite_keep_capture();
+    let cancelled = crate::cancel_cli_operation(&state).await.unwrap();
+    assert!(std::sync::Arc::ptr_eq(&operation, &cancelled));
+    assert!(!operation.is_complete());
+    assert!(state.providers.lock().await.reserve(ProviderKind::Codex, "new".into(), false).is_err());
+    // execute checks cancellation before dispatch; no CLI/account is accessed.
+    assert!(matches!(ProviderManager::execute(
+        &operation, "synthetic", RewriteIntent::grammar(), &[], &state.codex,
+    ).await, Err(ProviderError::Cancelled)));
+    assert!(state.capture.lock().await.active_token().is_some());
+    assert!(state.providers.lock().await.finish(&operation));
+    assert!(operation.is_complete());
+    let newer = state.providers.lock().await.reserve(ProviderKind::Codex, "new".into(), false).unwrap();
+    assert!(!state.providers.lock().await.finish(&operation));
+    assert!(std::sync::Arc::ptr_eq(&newer, &state.providers.lock().await.cancel_handle().unwrap()));
+    state.providers.lock().await.finish(&newer);
+}
+
+#[tokio::test]
+async fn cli_cancel_unbound_operation_sets_owned_flag_without_claiming_completion() {
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+    let state = crate::AppState::default();
+    let flag = Arc::new(AtomicBool::new(false));
+    let operation = state.providers.lock().await.reserve_with_cancel(
+        crate::provider::types::ProviderKind::Codex, "synthetic-unbound".into(), flag.clone(),
+    ).unwrap();
+    assert!(Arc::ptr_eq(&operation, &crate::cancel_cli_operation(&state).await.unwrap()));
+    assert!(flag.load(Ordering::SeqCst));
+    assert!(!operation.is_complete());
+    state.providers.lock().await.finish(&operation);
+    assert!(crate::cancel_cli_operation(&state).await.is_none());
+}
