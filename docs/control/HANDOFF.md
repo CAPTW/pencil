@@ -497,3 +497,11 @@ Release attempts whose source changed during security fixes are superseded and m
 5. Regenerate exact12 Source from canonical main only after adoption; this checkpoint can emit PREVIEW_NOT_QUALIFIED. Manual Project UI application remains Owner work and does not block internal development.
 
 No background continuation is implied by this handoff. On resume reuse this mission worktree and its authorization; record reviewed path claim transfer, rather than creating another recovery mission. No remote push/release or account/system changes are authorized.
+
+## Local prerequisite repair — 2026-10-03
+
+Owner requested local continuation after the ba58b7d Sandbox trial. Only this local branch takes over the inherited cloud claim; remote and main are unchanged. Clean-guest evidence is preserved outside the repo at `D:/dev/grammar-evidence/grammar-local-trial-ba58b7d/LOCAL_TRIAL_20261003.md`. Original host exited 0xC0000135 until a test-only VC runtime was supplied; the desktop required an explicit WebView2 runtime path. Conditional browser 11-check and bounded UIA Copy evidence do not constitute unconditional installation acceptance or the full 18-check app suite.
+
+The host release command now explicitly enables static CRT on Windows MSVC and rejects caller Rust flag overrides; the exact configuration is part of receipt verification. No dependency versions changed. The installer runs the packaged app's `--check-webview2` mode (Tauri/Wry loader) before filesystem/registry installation, with 30-second wait and bounded termination of its owned probe. That mode exits before app state, settings, Provider initialization or GUI construction. It checks discovery only, not complete browser initialization. Missing runtime leads to an actionable message without automatic installation.
+
+Validation before release rebuild: governance and eight negative provenance cases passed. Production-installer synthetic probe cases cover available, missing, abnormal exit and timeout. Fresh committed build, PE imports and new Sandbox results will be recorded separately; no new product acceptance is asserted here. Evidence root: `D:/dev/grammar-evidence/grammar-local-fix-20261003`. No live Provider, main adoption, remote push or release.

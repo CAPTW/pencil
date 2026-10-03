@@ -1513,6 +1513,12 @@ async fn invalidate_terminology_capture(state: &State<'_, AppState>) {
 }
 
 fn main() {
+    // Installer-only discovery: exit before settings, Provider probes or any GUI.
+    // Exit 78 means the current process cannot discover a WebView2 runtime.
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--check-webview2")) {
+        let available = tauri::webview_version().is_ok_and(|version| !version.trim().is_empty());
+        std::process::exit(if available { 0 } else { 78 });
+    }
     let app = tauri::Builder::default()
         .manage(AppState::default())
         .plugin(tauri_plugin_opener::init())

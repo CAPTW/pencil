@@ -47,7 +47,7 @@ function Same-Source($a, $b) {
     $a.subject -ceq $b.subject -and $a.trackedBytesSha256 -ceq $b.trackedBytesSha256 -and
     $a.clean -is [bool] -and $b.clean -is [bool] -and $a.clean -and $b.clean
 }
-$command = 'node_modules/.bin/tauri.cmd build --no-bundle --no-sign -- --locked --offline --bin codex-pencil; cargo build --manifest-path src-tauri/Cargo.toml --release --locked --offline --bin grammar-chromium-host'
+$command = 'node_modules/.bin/tauri.cmd build --no-bundle --no-sign -- --locked --offline --bin codex-pencil; CARGO_ENCODED_RUSTFLAGS=-C<US>target-feature=+crt-static cargo build --manifest-path src-tauri/Cargo.toml --release --locked --offline --bin grammar-chromium-host'
 if ($VerifyOnly) {
   if (-not $ExecutablePath) { throw 'ExecutablePath required for receipt verification' }
   $receipt = Get-Content -LiteralPath $receiptFile -Raw | ConvertFrom-Json
@@ -78,6 +78,11 @@ if (Test-Path -LiteralPath $target) { throw 'Fresh target already exists' }
 New-Item -ItemType Directory -Path $target | Out-Null
 $started = [DateTime]::UtcNow.ToString('o')
 $oldTarget = $env:CARGO_TARGET_DIR
+$oldEncodedFlags = $env:CARGO_ENCODED_RUSTFLAGS
+# This receipt describes a controlled release configuration, not caller flags.
+if ($env:RUSTFLAGS -or $env:CARGO_ENCODED_RUSTFLAGS) { throw 'Release receipt requires RUSTFLAGS and CARGO_ENCODED_RUSTFLAGS to be unset' }
+$hostTriple = (& rustc -vV | Select-String '^host: ').ToString().Substring(6)
+if ($hostTriple -notmatch '-windows-msvc$') { throw 'Personal release requires the Windows MSVC toolchain' }
 try {
   $env:CARGO_TARGET_DIR = $target
   Push-Location -LiteralPath $source
@@ -85,11 +90,14 @@ try {
     & (Join-Path $source 'node_modules/.bin/tauri.cmd') build --no-bundle --no-sign -- --locked --offline --bin codex-pencil 2>&1 | Tee-Object -FilePath (Join-Path $target 'build-output.log')
     $buildExit = $LASTEXITCODE
     if ($buildExit -ne 0) { throw "Desktop build failed with exit $buildExit; no receipt emitted" }
+    # Encoded flags take precedence over target config. Static CRT removes the
+    # otherwise unfulfilled VCRUNTIME140.dll prerequisite on a clean machine.
+    $env:CARGO_ENCODED_RUSTFLAGS = '-C' + [char]31 + 'target-feature=+crt-static'
     & cargo build --manifest-path src-tauri/Cargo.toml --release --locked --offline --bin grammar-chromium-host 2>&1 | Tee-Object -FilePath (Join-Path $target 'host-build-output.log')
     $hostExit = $LASTEXITCODE
     if ($hostExit -ne 0) { throw "Host build failed with exit $hostExit; no receipt emitted" }
   } finally { Pop-Location }
-} finally { $env:CARGO_TARGET_DIR = $oldTarget }
+} finally { $env:CARGO_TARGET_DIR = $oldTarget; $env:CARGO_ENCODED_RUSTFLAGS = $oldEncodedFlags }
 if ($buildExit -ne 0) { throw "Build failed with exit $buildExit; no receipt emitted" }
 $after = Measure-Source
 if (-not (Same-Source $before $after)) { throw 'Source changed during build; no receipt emitted' }

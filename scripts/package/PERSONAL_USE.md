@@ -14,6 +14,8 @@
 
 ## 설치
 
+Microsoft WebView2 Runtime이 필요합니다. 설치기는 패키지 앱의 실제 런타임 검색을 먼저 실행하며, 검색 실패·비정상 종료·시간 초과 시 폴더나 등록을 만들지 않습니다. 런타임을 자동 설치하지 않습니다. [Microsoft 공식 WebView2 안내](https://developer.microsoft.com/microsoft-edge/webview2/)에서 설치한 후 다시 시도하세요. 이 검색 성공만으로 UI 동작 전체가 검증되는 것은 아닙니다. Chromium 호스트는 MSVC CRT를 정적으로 연결합니다.
+
 PowerShell 7(`pwsh`)에서 실행합니다. Windows PowerShell 5.1(탐색기의 "PowerShell로 실행")로는 설치 스크립트가 시작되지 않고 PowerShell 7이 필요하다고 알립니다.
 
 ```powershell
