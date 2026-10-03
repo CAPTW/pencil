@@ -655,3 +655,16 @@ Physical keyboard and IME remain NOT_RUN. Empty guestLanguageTags is unknown IME
 Runner waits at most 60 minutes from 2026-10-03T14:01:02Z, then terminates its owned children and attempts production uninstall. finish.request in output ends the wait early. No claim of future cleanup completion until uninstall.json is inspected. Closing the VM early may prevent an uninstall receipt. Agent is not continuing background work; the bounded guest runner remains active. Inspect receipt and stop this exact owned Sandbox at next follow-up. Main/remote unchanged; mission INCOMPLETE.
 
 Evidence: D:/dev/grammar-evidence/grammar-hands-on-419ee3c-20261003/STATUS.md and output receipts.
+
+
+## Physical trial closed; additional automated cancellation audit
+
+The prepared physical-input guest was ended using its finish.request. Production uninstall receipt reports complete, no installation/registration/user-data/process remnants. Exact owned Sandbox 19f3ae29-4bc2-49f3-84b9-77df7ade0579 stopped; inventory empty. No physical-input observations were supplied, so keyboard/IME remain NOT_RUN.
+
+Additional agent-run tests: Provider contracts seven groups PASS (mixed static wiring and behavior, not live Provider acceptance); Chromium production core 215 assertions and worker 49 tests PASS; host Rust 16 PASS; app Rust 227 PASS, 26 ignored. Two new tests invoke the real app cancel_cli_operation helper: valid bound rewrite remains protected, invalidated rewrite cancellation reaches the executor pre-dispatch guard, reservation remains busy until finish, stale finish cannot remove a newer reservation, unbound cancellation sets its owned flag without claiming completion, and empty cancellation is inert. Only in-memory AppState and synthetic text used; no real CLI, account, profile, clipboard or desktop accessed. Existing compiler warnings retained.
+
+Same-integrator review only. These tests qualify the exercised deterministic orderings, not all cancellation interleavings or native cleanup timing. No new production defect established or product change made in this round. Existing package/source 419ee3c and its prior 33 app/11 browser receipts remain the installed qualification; test-only commits do not relabel that binary. No rebuild needed for test/document-only changes.
+
+Physical keyboard/IME, real Provider, ordinary profiles, Edge and whole-product acceptance remain unqualified. Main/push/release unchanged. Next optional external evidence is Owner physical input or separately authorized live Provider; no repeated manual-session launch without an expressed desire to test. Internal safe development remains authorized if a concrete defect or gap is selected.
+
+Evidence: D:/dev/grammar-evidence/grammar-post-trial-audit-20261003/RESULT.md.
