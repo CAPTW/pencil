@@ -777,7 +777,7 @@ try {
         await draft.fill('Preserve the new capture draft.');
       } else {
         await page.getByRole('button', {name: 'Settings', exact: true}).click();
-        await page.getByRole('radio', {name: /^Codex/}).check();
+        await page.getByRole('radio', {name: /^Codex/}).click();
       }
       await page.evaluate(() => window.__grammarConsentOverlap.release());
       if (change === 'provider') {
