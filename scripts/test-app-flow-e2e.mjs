@@ -631,6 +631,10 @@ try {
   // Delay delivery of a REAL grant-save response. Backend, settings, and
   // rewrite endpoints stay unchanged; only the owned page's IPC scheduling
   // is controlled. Two explicit UI grants queue before a UI revocation.
+  await page.evaluate(async () => {
+    const settings = await window.__TAURI_INTERNALS__.invoke('load_settings');
+    await window.__TAURI_INTERNALS__.invoke('save_settings', {settings: {...settings, autoRewrite: true}});
+  });
   await page.reload(); await waitForBridge();
   await captureAndWaitInstant(0, 'Consent overlap: this are wrong.', 'this are wrong.', 'this is wrong.');
   await page.evaluate(() => {
@@ -650,7 +654,6 @@ try {
     };
   });
   try {
-    await runDeep.click();
     await draft.fill('Keep my draft across overlapping consent actions.');
     const grant = page.getByRole('button', {name: '동의하고 계속', exact: true});
     await grant.click();
@@ -688,6 +691,11 @@ try {
 
   // Cancelling a pending review must suppress its delayed continuation.
   // This does not undo an already persisted provider permission.
+  await page.evaluate(async () => {
+    const settings = await window.__TAURI_INTERNALS__.invoke('load_settings');
+    await window.__TAURI_INTERNALS__.invoke('save_settings', {settings: {...settings, autoRewrite: true}});
+  });
+  await page.reload(); await waitForBridge();
   await captureAndWaitInstant(0, 'Review cancel: this are wrong.', 'this are wrong.', 'this is wrong.');
   await page.evaluate(() => {
     const bridge = window.__TAURI_INTERNALS__;
@@ -706,7 +714,6 @@ try {
     };
   });
   try {
-    await runDeep.click();
     await draft.fill('Keep my draft after cancelling the pending review.');
     await page.getByRole('button', {name: '동의하고 계속', exact: true}).click();
     await until('review grant response is held', async () => page.evaluate(() => window.__grammarConsentOverlap.held));
