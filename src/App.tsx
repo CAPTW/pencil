@@ -2031,43 +2031,62 @@ export default function App() {
         ) : settings.activeProvider === "codex" && !auth?.loggedIn && !selection && !draft ? (
           <div className="login-pane">
             <div className="login-copy">
-              {codexCheck && !codexCheck.available ? <AlertTriangle size={22} /> : <LogIn size={22} />}
+              <Keyboard size={22} />
               <div>
-                <h2>Sign in with ChatGPT</h2>
-                <p>{loginStatusLabel}</p>
+                <h2>Use Instant without signing in</h2>
+                <p>Local suggestions and Copy need no account or Codex CLI.</p>
               </div>
             </div>
+            <p className="local-start-instructions">
+              Close this window, select text in a supported editor, then press {settings.shortcut.primary.display}.
+              Review or edit the result, then Copy and paste it yourself.
+            </p>
+            <button className="primary-button" type="button" onClick={dismiss}>
+              <Keyboard size={16} />
+              Close and use local Instant
+            </button>
 
-            {codexCheck && !codexCheck.available ? (
-              <div className="missing-codex">
-                Codex CLI must be installed and available on PATH.
-              </div>
-            ) : null}
-
-            {deviceLogin ? (
-              <div className="device-code">
-                <span>Device code</span>
-                <strong>{deviceLogin.userCode}</strong>
-                <div className="device-actions">
-                  <button type="button" onClick={openDeviceLoginPage}>
-                    Open login page
-                  </button>
-                  <button type="button" onClick={cancelDeviceLogin}>
-                    Cancel
-                  </button>
+            <details className="optional-deep-login">
+              <summary>Optional: sign in for Codex Deep</summary>
+              <div className="login-copy">
+                {codexCheck && !codexCheck.available ? <AlertTriangle size={22} /> : <LogIn size={22} />}
+                <div>
+                  <h2>Sign in with ChatGPT</h2>
+                  <p>{loginStatusLabel}</p>
                 </div>
               </div>
-            ) : null}
 
-            <button
-              className="primary-button"
-              type="button"
-              onClick={startDeviceLogin}
-              disabled={isStartingLogin || Boolean(codexCheck && !codexCheck.available)}
-            >
-              {isStartingLogin ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}
-              Start device login
-            </button>
+              {codexCheck && !codexCheck.available ? (
+                <div className="missing-codex">
+                  Codex Deep requires Codex CLI on PATH. Local Instant still works without it.
+                </div>
+              ) : null}
+
+              {deviceLogin ? (
+                <div className="device-code">
+                  <span>Device code</span>
+                  <strong>{deviceLogin.userCode}</strong>
+                  <div className="device-actions">
+                    <button type="button" onClick={openDeviceLoginPage}>
+                      Open login page
+                    </button>
+                    <button type="button" onClick={cancelDeviceLogin}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={startDeviceLogin}
+                disabled={isStartingLogin || Boolean(codexCheck && !codexCheck.available)}
+              >
+                {isStartingLogin ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}
+                Start device login
+              </button>
+            </details>
           </div>
         ) : (
           <>
