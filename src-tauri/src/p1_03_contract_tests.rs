@@ -536,4 +536,46 @@ async fn shutdown_providers_does_not_reopen_provider_admission_after_cleanup() {
     assert!(manager.reserve(ProviderKind::Codex, "late-probe".into(), true).is_err(),
         "a status refresh must not launch new processes after cleanup completes");
     assert!(manager.reserve(ProviderKind::Codex, "late-rewrite".into(), false).is_err());
+    drop(manager);
+    assert_eq!(state.codex.get().await.err().unwrap(), "codex_shutdown_restart_required");
+    // A repeated cleanup attempt must not clear either terminal fence.
+    crate::shutdown_providers(&state).await.unwrap();
+    assert_eq!(state.codex.get().await.err().unwrap(), "codex_shutdown_restart_required");
+}
+
+#[tokio::test]
+async fn shutdown_closes_admission_before_waiting_and_retains_completion_ownership() {
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+    use crate::provider::types::ProviderKind;
+    let state = crate::AppState::default();
+    let flag = Arc::new(AtomicBool::new(false));
+    let op = state.providers.lock().await.reserve_with_cancel(
+        ProviderKind::Codex, "synthetic-held".into(), flag.clone()).unwrap();
+    let finish = async {
+        while !flag.load(Ordering::SeqCst) { tokio::task::yield_now().await; }
+        assert!(!op.is_complete());
+        assert!(state.providers.lock().await.reserve(ProviderKind::Codex, "late".into(), true).is_err());
+        assert_eq!(state.codex.get().await.err().unwrap(), "codex_shutdown_restart_required");
+        assert!(state.providers.lock().await.finish(&op));
+    };
+    let (result, ()) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        tokio::join!(crate::shutdown_providers(&state), finish)
+    }).await.unwrap();
+    result.unwrap();
+    assert!(op.is_complete());
+    assert!(state.providers.lock().await.reserve(ProviderKind::Codex, "later".into(), true).is_err());
+}
+
+#[tokio::test]
+async fn abandoned_shutdown_wait_does_not_reopen_admission_or_claim_completion() {
+    use crate::provider::types::ProviderKind;
+    let state = crate::AppState::default();
+    let op = state.providers.lock().await.reserve(ProviderKind::Codex, "owned".into(), true).unwrap();
+    assert!(tokio::time::timeout(std::time::Duration::from_millis(10),
+        crate::shutdown_providers(&state)).await.is_err());
+    assert!(!op.is_complete());
+    assert!(state.providers.lock().await.reserve(ProviderKind::Codex, "late".into(), true).is_err());
+    assert_eq!(state.codex.get().await.err().unwrap(), "codex_shutdown_restart_required");
+    state.providers.lock().await.finish(&op);
+    crate::shutdown_providers(&state).await.unwrap();
 }

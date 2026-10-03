@@ -19,6 +19,7 @@ use std::sync::{
 use tokio::sync::Mutex;
 
 pub(crate) struct ProviderManager {
+    shutting_down: bool,
     active: ProviderKind,
     busy: Option<ProviderKind>,
     operation: Option<Arc<ProviderOperation>>,
@@ -53,6 +54,7 @@ impl ProviderOperation {
 impl Default for ProviderManager {
     fn default() -> Self {
         Self {
+            shutting_down: false,
             active: ProviderKind::Codex,
             busy: None,
             operation: None,
@@ -118,6 +120,15 @@ impl ProviderManager {
         self.operation.clone()
     }
 
+    /// Terminal admission fence for app exit. Finishing the owned operation
+    /// must not reopen admission, including when teardown fails or is retried.
+    pub(crate) fn begin_shutdown(&mut self) -> Option<Arc<ProviderOperation>> {
+        self.shutting_down = true;
+        let operation = self.operation.clone();
+        if let Some(operation) = &operation { operation.cancel(); }
+        operation
+    }
+
     pub(crate) fn reserve(
         &mut self,
         kind: ProviderKind,
@@ -169,6 +180,9 @@ impl ProviderManager {
         )>,
         cancel: Arc<AtomicBool>,
     ) -> Result<Arc<ProviderOperation>, ProviderError> {
+        if self.shutting_down {
+            return Err(ProviderError::Faulted("provider_shutdown_restart_required".into()));
+        }
         if !self_test && kind != self.active {
             return Err(ProviderError::SilentFallbackRejected);
         }
