@@ -90,6 +90,14 @@ function hasExactKeys(value: Record<string, unknown>, expected: readonly string[
   );
 }
 
+// Identity only: recovery must never fetch or restore a previous document/draft.
+export function parseCaptureToken(value: unknown): CaptureToken | null {
+  if (!isRecord(value) || !hasExactKeys(value, ["sessionId", "generation"]) ||
+    typeof value.sessionId !== "string" || value.sessionId.length === 0 ||
+    typeof value.generation !== "number" || !Number.isSafeInteger(value.generation) || value.generation <= 0) return null;
+  return { sessionId: value.sessionId, generation: value.generation };
+}
+
 export function parseSelectionCaptured(value: unknown): SelectionCapturedPayload | null {
   if (!isRecord(value) || !hasExactKeys(value, ["sessionId", "generation", "selectedText"])) {
     return null;
