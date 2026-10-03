@@ -74,7 +74,7 @@ use provider::{ProviderKind, ProviderManager, ProviderSnapshot, SelfTestRecord};
 use serde::Serialize;
 use settings::{AppSettings, RewriteMode, SettingsRecoveryCode, TerminologySettings};
 use shortcut::{
-    route_shortcut_activation, PrimaryShortcut, ShortcutActivation, ShortcutCandidate,
+    route_shortcut_activation, PrimaryShortcut, ShortcutActivation, ShortcutCandidate, ShortcutOperationGuard,
     ShortcutEventState, ShortcutManager, ShortcutPersistence, ShortcutRegistrar,
     ShortcutRegistrarError, ShortcutStartupStatus, ShortcutTriggerGate, ShortcutUpdateStatus,
     WidgetVisibility,
@@ -140,6 +140,7 @@ struct AppState {
     pending_device_login: StdMutex<Option<PendingDeviceLogin>>,
     terminology: StdMutex<TerminologyRuntime>,
     shortcut_trigger: StdMutex<ShortcutTriggerGate>,
+    shortcut_operation: Arc<AtomicBool>,
     startup_notices: StdMutex<Vec<String>>,
     shutdown_started: AtomicBool,
     shutdown_complete: AtomicBool,
@@ -156,6 +157,7 @@ impl Default for AppState {
             pending_device_login: StdMutex::new(None),
             terminology: StdMutex::new(TerminologyRuntime::default()),
             shortcut_trigger: StdMutex::new(ShortcutTriggerGate::default()),
+            shortcut_operation: Arc::new(AtomicBool::new(false)),
             startup_notices: StdMutex::new(Vec::new()),
             shutdown_started: AtomicBool::new(false),
             shutdown_complete: AtomicBool::new(false),
@@ -1733,24 +1735,36 @@ fn global_shortcut_plugin() -> TauriPlugin<tauri::Wry> {
             let activation = state.shortcut_trigger.lock().ok().and_then(|mut trigger| {
                 route_shortcut_activation(&mut trigger, is_active, event_state, widget_visibility)
             });
+            if activation.is_none() { return; }
+            // Do not queue captures: they can read a later foreground target and
+            // publish older errors/selections over a newer capture. Releases
+            // still reach the key gate above, even while an operation is busy.
+            let Some(operation) = ShortcutOperationGuard::try_begin(state.shortcut_operation.clone()) else { return; };
+            // Read visibility again after admission; the preceding operation may
+            // have finished between the initial key event and this reservation.
+            let activation = if app.get_webview_window("main")
+                .and_then(|window| window.is_visible().ok()).unwrap_or(false) {
+                ShortcutActivation::HideWidget
+            } else { ShortcutActivation::CaptureSelection };
             match activation {
-                Some(ShortcutActivation::CaptureSelection) => {
+                ShortcutActivation::CaptureSelection => {
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
+                        let _operation = operation;
                         if let Err(message) = capture_from_hotkey(app.clone()).await {
                             let _ = app.emit("capture-error", CaptureErrorEvent { message });
                             let _ = show_main_window(&app, None);
                         }
                     });
                 }
-                Some(ShortcutActivation::HideWidget) => {
+                ShortcutActivation::HideWidget => {
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
+                        let _operation = operation;
                         end_capture_and_notify(&app, "shortcut_hide").await;
                         let _ = hide_main_window(&app);
                     });
                 }
-                None => {}
             }
         })
         .build()
