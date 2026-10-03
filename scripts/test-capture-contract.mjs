@@ -145,3 +145,11 @@ for (const reason of ["empty_replacement", "invalid_session_state", "draft_outda
   assert.doesNotMatch(contract.applyFailureMessage(reason), /may have reached the field|Apply/);
 }
 console.log("capture contract: PASS");
+
+const active = {sessionId: "new", generation: 2};
+assert.equal(contract.captureEndedMatches({sessionId: "old", generation: 1, reason: "shortcut"}, active), false);
+assert.equal(contract.captureEndedMatches({...active, reason: "shortcut"}, active), true);
+assert.equal(contract.captureEndedMatches({reason: "shortcut"}, active), false);
+assert.equal(contract.captureEndedMatches({...active, generation: 0, reason: "shortcut"}, active), false);
+assert.equal(contract.captureEndedMatches({...active, reason: "shortcut"}, null), false);
+console.log("capture-ended identity: production contract PASS");

@@ -189,7 +189,10 @@ struct CaptureErrorEvent {
 /// shortcut toggle, tray Hide, or closing the window), so the widget clears
 /// the capture instead of offering Copy for it.
 #[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CaptureEndedEvent {
+    session_id: String,
+    generation: u64,
     reason: &'static str,
 }
 
@@ -197,14 +200,18 @@ async fn end_capture_and_notify(app: &AppHandle, reason: &'static str) {
     let state = app.state::<AppState>();
     let (ended, active_turn) = {
         let mut capture = state.capture.lock().await;
-        let ended = capture.has_active();
+        let ended = capture.active_token();
         (ended, capture.cancel_active_with_turn())
     };
     interrupt_active_turn(state.inner(), active_turn).await;
     // Only an ended capture clears the widget: other notices (a shutdown or
     // shortcut warning) stay while their cause does.
-    if ended {
-        let _ = app.emit("capture-ended", CaptureEndedEvent { reason });
+    if let Some(token) = ended {
+        let _ = app.emit("capture-ended", CaptureEndedEvent {
+            session_id: token.session_id,
+            generation: token.generation,
+            reason,
+        });
     }
 }
 

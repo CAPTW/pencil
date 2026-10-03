@@ -37,6 +37,7 @@ import {
   applyFailureEndsCapture,
   applyFailureMessage,
   copiedNotice,
+  captureEndedMatches,
   parseApplyOutcome,
   parseSelectionCaptured,
   sameCaptureToken,
@@ -730,7 +731,8 @@ export default function App() {
 
     // The backend ended the capture itself (shortcut toggle, tray Hide or
     // closing the window): nothing of it may stay copyable in the widget.
-    void listen<unknown>("capture-ended", () => {
+    void listen<unknown>("capture-ended", (event) => {
+      if (!captureEndedMatches(event.payload, currentTokenRef.current)) return;
       clearCapture();
       setError(null);
       setStatus("Capture closed");
@@ -1471,14 +1473,18 @@ export default function App() {
 
   async function dismiss() {
     const token = currentTokenRef.current;
-    clearCapture();
+    const stillCurrent = () => token === null
+      ? currentTokenRef.current === null
+      : sameCaptureToken(currentTokenRef.current, token);
     try {
       await invoke("dismiss_window", {
         sessionId: token?.sessionId ?? null,
         generation: token?.generation ?? null,
       });
+      if (stillCurrent()) clearCapture();
     } catch (nextError) {
-      if (!currentTokenRef.current) {
+      // Keep the token/draft for a retry; never clear a newer selection.
+      if (stillCurrent()) {
         setError(toErrorMessage(nextError));
         setStatus("Dismiss failed");
       }
