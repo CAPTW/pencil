@@ -12,15 +12,15 @@ function EditorCommand([string]$line){
  if($read.Result -ne 'OK'){throw 'Editor command rejected'}
 }
 try {
- $manifest=Get-Content C:\GrammarPayload\package-flow2\MANIFEST.json -Raw|ConvertFrom-Json
- if($manifest.sourceCommit -ne 'd85f3234494ebb8deeae22c289d2038f5005270e'){throw 'Unexpected trial package'}
+ $manifest=Get-Content C:\GrammarPayload\package-start\MANIFEST.json -Raw|ConvertFrom-Json
+ if($manifest.sourceCommit -ne 'a305f1574e5fc5e10c78bb78177d48250061e0ab'){throw 'Unexpected trial package'}
  $report.sourceCommit=$manifest.sourceCommit
  $env:PATH=($env:PATH.Split(';')|Where-Object{$_ -ine 'C:\GrammarPayload\pwsh'}) -join ';'
  $runtime=Get-ChildItem 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application' -Directory|Where-Object{Test-Path (Join-Path $_.FullName 'msedgewebview2.exe')}|Sort-Object Name|Select-Object -Last 1
  if(-not $runtime){throw 'Guest WebView2 absent'}
  $env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER=$runtime.FullName
  $report.explicitGuestRuntime=$runtime.FullName
- & C:\GrammarPayload\package-flow2\Install-Grammar.ps1 -InstallRoot C:\GrammarTrial | Out-Null
+ & C:\GrammarPayload\package-start\Install-Grammar.ps1 -InstallRoot C:\GrammarTrial | Out-Null
  $config=Join-Path $env:APPDATA 'com.local.codexpencil'
  New-Item -ItemType Directory $config -Force|Out-Null
  $settings=Join-Path $config 'settings.json'
