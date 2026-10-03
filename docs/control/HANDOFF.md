@@ -681,3 +681,16 @@ Clean build and package passed. Installed app 33/33, installed unmodified Chromi
 Physical keyboard/IME, real Provider/accounts, ordinary profiles, Edge, reproducible build and whole-product acceptance remain NOT_RUN/unqualified. Main, remote and release unchanged; mission INCOMPLETE. Manual helper updated to this package but not launched. No canonical exact-12 Source export or Owner Project UI application. Next internal option: cancellation/shutdown admission review; physical input remains optional and requires actual observations, not repeated automatic session launch.
 
 Evidence/full hashes: D:/dev/grammar-evidence/grammar-cancel-attempt-20261004/RESULT.md. Record commits do not relabel the 6444140 package.
+
+
+## Managed shutdown admission — 2026-10-04
+
+Managed Provider shutdown admission defect reproduced in 057811e: shutdown_providers returned successfully, but the manager still admitted a late probe. Product 34aae4fd8a2bfc74693f5df4200f3a36d20a0da1 closes manager admission under its existing lock, cancels and retains the current operation until completion, and permanently closes desktop Codex cache admission. Temporary headless cache cleanup retains its original semantics. Failed/abandoned desktop teardown does not reopen admission or count as cleanup completion; Provider work then requires restart. No budget or consent policy was relaxed.
+
+Actual production-helper tests cover successful shutdown, late probe/rewrite denial, cache get rejection, waiting for existing ownership, abandoned wait and repeated teardown. App Rust 231 PASS/26 ignored; host Rust 16 PASS; typecheck and seven Provider contract groups PASS. Same-integrator review only, in REVIEW.md. Existing warnings retained. The failure log remains in red.log.
+
+Clean build/package source hashes match before/after. Fresh Medium Windows Sandbox installed app 33/33 and unmodified installed Chromium keyboard 11/11 PASS. Native editor counter records 62, state changes zero; exact Copy and source/range readback pass. Browser host matches receipt, sandbox enabled, profile removed and installed extension unchanged. Both uninstalls complete and both guests stopped; inventory empty. The app guest started slowly; cause not established. One host read preceded app-result publication and failed; completed receipts were subsequently verified without changing/retrying the test or budgets.
+
+Shutdown defect proof is deterministic backend execution; the installed suite is general regression, not an interactive tray-exit race qualification. Independent account/login subprocess paths, real Providers/accounts, physical keyboard/IME, ordinary profiles and Edge remain unqualified. No main adoption, remote push, release or canonical exact-12 export/Owner Project UI application. Mission INCOMPLETE. Next internal qualification: installed synthetic active-Provider tray-exit and cleanup flow; do not infer authority for login or live inference. Manual helper updated but not launched.
+
+Full evidence/hashes: D:/dev/grammar-evidence/grammar-shutdown-admission-20261004/RESULT.md. Records after 34aae4f do not relabel its package.
