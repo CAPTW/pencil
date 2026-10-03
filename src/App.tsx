@@ -308,6 +308,7 @@ export default function App() {
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   // Cloud consent gates only a pending Deep request; local Instant stays usable.
   const [cloudReviewOpen, setCloudReviewOpen] = useState(false);
+  const [revokingConsent, setRevokingConsent] = useState(false);
   const [selfTestBusy, setSelfTestBusy] = useState<ProviderKind | null>(null);
   const [selfTestNotes, setSelfTestNotes] = useState<Record<string, string>>({});
   const [prerequisites, setPrerequisites] = useState<PrerequisiteReport | null>(null);
@@ -352,14 +353,17 @@ export default function App() {
   const terminologyEpochRef = useRef(0);
   // The current draft for callbacks that must not re-subscribe on every edit.
   const draftRef = useRef("");
+  const consentActionRef = useRef(0);
+  const consentRevokingRef = useRef(false);
+  const settingsSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 
   useEffect(() => {
     modeRef.current = settings.mode;
     providerRef.current = settings.activeProvider;
-    providerAckRef.current = cloudAckFor(settings, settings.activeProvider);
+    providerAckRef.current = consentRevokingRef.current ? 0 : cloudAckFor(settings, settings.activeProvider);
     targetLanguageRef.current = settings.translation.targetLanguage;
     autoReferenceLanguageRef.current = settings.translation.autoReferenceLanguage;
-    autoRewriteRef.current = settings.autoRewrite;
+    autoRewriteRef.current = !consentRevokingRef.current && settings.autoRewrite;
     cloudAcknowledgementRef.current = settings.cloudProcessingAcknowledgementVersion;
   }, [settings]);
 
@@ -401,19 +405,23 @@ export default function App() {
     }
   }, []);
 
-  const saveSettings = useCallback(async (next: AppSettings): Promise<AppSettings | null> => {
-    try {
-      const saved = parseAppSettings(await invoke<unknown>("save_settings", { settings: next }));
-      if (!saved) {
-        setError("Settings returned an invalid response. Your previous settings remain active.");
+  const saveSettings = useCallback(async (next: AppSettings, acknowledgeProvider: ProviderKind | null = null): Promise<AppSettings | null> => {
+    const pending = settingsSaveQueueRef.current.then(async () => {
+      try {
+        const saved = parseAppSettings(await invoke<unknown>("save_settings", { settings: next, acknowledgeProvider }));
+        if (!saved) {
+          setError("Settings returned an invalid response. Your previous settings remain active.");
+          return null;
+        }
+        setSettings(saved);
+        return saved;
+      } catch (nextError) {
+        setError(toErrorMessage(nextError));
         return null;
       }
-      setSettings(saved);
-      return saved;
-    } catch (nextError) {
-      setError(toErrorMessage(nextError));
-      return null;
-    }
+    });
+    settingsSaveQueueRef.current = pending;
+    return pending;
   }, []);
 
   useEffect(() => {
@@ -426,7 +434,7 @@ export default function App() {
     targetLanguage: TranslationTargetLanguage = targetLanguageRef.current,
     autoReferenceLanguage: TranslationReferenceLanguage = autoReferenceLanguageRef.current,
   ) => {
-    if (!requestedToken) {
+    if (!requestedToken || consentRevokingRef.current) {
       return;
     }
     if (providerAckRef.current < CLOUD_PROCESSING_DISCLOSURE_VERSION) {
@@ -884,6 +892,7 @@ export default function App() {
   }
 
   async function acknowledgeCloudProcessing() {
+    const action = ++consentActionRef.current;
     const kind = settings.activeProvider;
     const saved = await saveSettings({
       ...settings,
@@ -893,8 +902,8 @@ export default function App() {
         kind === "antigravity" ? CLOUD_PROCESSING_DISCLOSURE_VERSION : settings.antigravityCloudAcknowledgementVersion,
       claudeCloudAcknowledgementVersion:
         kind === "claude" ? CLOUD_PROCESSING_DISCLOSURE_VERSION : settings.claudeCloudAcknowledgementVersion,
-    });
-    if (!saved) return;
+    }, kind);
+    if (!saved || action !== consentActionRef.current) return;
     cloudAcknowledgementRef.current = saved.cloudProcessingAcknowledgementVersion;
     providerAckRef.current = cloudAckFor(saved, saved.activeProvider);
     setCloudReviewOpen(false);
@@ -905,6 +914,35 @@ export default function App() {
     } else {
       setStatus("Selection captured");
     }
+  }
+
+  async function revokeCloudConsent() {
+    if (consentRevokingRef.current) return;
+    consentRevokingRef.current = true;
+    consentActionRef.current += 1;
+    setRevokingConsent(true);
+    // Block local auto-dispatch and late publications immediately; keep the draft.
+    autoRewriteRef.current = false;
+    providerAckRef.current = 0;
+    cloudAcknowledgementRef.current = 0;
+    rewriteCallRef.current += 1;
+    rewritingIntentRef.current = null;
+    setCloudReviewOpen(false);
+    const saved = await saveSettings({ ...settings, autoRewrite: false,
+      cloudProcessingAcknowledgementVersion: 0,
+      antigravityCloudAcknowledgementVersion: 0,
+      claudeCloudAcknowledgementVersion: 0 });
+    if (saved) {
+      setIsRewriting(false);
+      setStatus("Deep consent revoked — Instant draft kept");
+    } else {
+      // Persistence failure is not successful revocation. Still stop this request.
+      try { await invoke("cancel_rewrite"); setIsRewriting(false); }
+      catch (nextError) { setError(toErrorMessage(nextError)); }
+      setStatus("Consent was not saved. Deep cancellation requested; retry revocation.");
+    }
+    consentRevokingRef.current = false;
+    setRevokingConsent(false);
   }
 
   async function cancelDeviceLogin() {
@@ -1495,7 +1533,7 @@ export default function App() {
   const providerReady = activeProviderStatus?.state === "ready" || (settings.activeProvider === "codex" && auth?.loggedIn === true);
   // A ready Deep result is copied or replaced by a new capture or intent;
   // the capture cannot start another Deep request meanwhile.
-  const canRunDeep = Boolean(selection && providerReady && !isRewriting && !isCopying && !result);
+  const canRunDeep = Boolean(selection && providerReady && !isRewriting && !isCopying && !revokingConsent && !result);
   const canCancel = isRewriting;
   // After Copy the capture has ended but the copied draft stays visible, so
   // Dismiss still closes it (the same action as the header Close).
@@ -1509,6 +1547,7 @@ export default function App() {
       (result || instantDraftProof(instantRuntime, selection.token, selection.sourceText, draft)) &&
       draft.length > 0 &&
       !isCopying &&
+      !revokingConsent &&
       !isRewriting &&
       (result ? sameRewriteIntent(resultIntentRef.current, currentIntentRef.current) : true),
   );
@@ -1642,6 +1681,16 @@ export default function App() {
                   : settings.shortcut.primary.display}
               </button>
             </label>
+            <section className="provider-settings" aria-label="Deep consent">
+              <h3>Deep consent</h3>
+              <p>Consent is saved per Provider and survives restart. With Auto rewrite on, a capture may send text after consent.</p>
+              <p>{(["codex", "antigravity", "claude"] as ProviderKind[]).map(kind =>
+                `${providerDisplayName(kind)}: ${cloudAckFor(settings, kind) >= CLOUD_PROCESSING_DISCLOSURE_VERSION ? "allowed" : "not allowed"}`
+              ).join(" · ")}</p>
+              <button type="button" className="secondary-button" disabled={revokingConsent}
+                onClick={() => void revokeCloudConsent()}>Revoke all Deep consent</button>
+              <p>Revocation stops the current Deep request and turns off Auto rewrite. Already sent text cannot be recalled. Your draft stays available.</p>
+            </section>
             <section className="provider-settings" aria-label="Providers">
               <div className="translation-settings-heading">
                 <div>

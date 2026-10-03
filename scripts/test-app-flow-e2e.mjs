@@ -477,7 +477,7 @@ try {
   // and consent are saved the way the consent dialog saves them; the widget
   // reloads to pick them up.
   const saved = await loadSettings();
-  await page.evaluate((settings) => window.__TAURI_INTERNALS__.invoke('save_settings', {settings}), {
+  await page.evaluate((settings) => window.__TAURI_INTERNALS__.invoke('save_settings', {settings, acknowledgeProvider: 'claude'}), {
     ...saved,
     activeProvider: 'claude',
     claudeCloudAcknowledgementVersion: 1,
@@ -533,6 +533,41 @@ try {
   await copyResult('copy-after-cancel', 'this is wrong.');
   await closeWidget();
   pass('Cancel stopped only Deep; the Instant draft stayed and was copied');
+
+  // Revoke during a synthetic Deep request; local draft and capture stay usable.
+  const consentBeforeRevoke = await loadSettings();
+  const revokeToken = await captureAndWaitInstant(0, 'Revocation: this are wrong.', 'this are wrong.', 'this is wrong.');
+  await until('Deep running before consent revocation', async () => await cancelDeep.isEnabled());
+  await draft.fill('My edited local draft.');
+  await page.getByRole('button', {name: 'Settings', exact: true}).click();
+  await page.getByRole('button', {name: 'Revoke all Deep consent', exact: true}).click();
+  await until('consent persisted as revoked', async () => {
+    const s = await loadSettings();
+    return !s.autoRewrite && s.cloudProcessingAcknowledgementVersion === 0 && s.claudeCloudAcknowledgementVersion === 0 && s.antigravityCloudAcknowledgementVersion === 0;
+  });
+  await page.getByRole('button', {name: 'Done', exact: true}).click();
+  await until('revocation acknowledged', async () => (await status.textContent()) === 'Deep consent revoked — Instant draft kept');
+  assert.equal(await draftValue(), 'My edited local draft.');
+  const staleSave = await page.evaluate(async settings => {
+    try { await window.__TAURI_INTERNALS__.invoke('save_settings', {settings}); return 'ACCEPTED'; }
+    catch(e) { return String(e); }
+  }, consentBeforeRevoke);
+  assert.equal(staleSave, 'cloud_consent_requires_explicit_review');
+  const deniedDeep = await page.evaluate(async token => {
+    try { await window.__TAURI_INTERNALS__.invoke('rewrite_selected_text', {...token, mode:'grammar',targetLanguage:null,autoReferenceLanguage:null}); return 'ACCEPTED'; }
+    catch(e) { return String(e); }
+  }, revokeToken);
+  assert.equal(deniedDeep, 'cloud_processing_disclosure_required');
+  await until('revoked operation finished cleanup', async () =>
+    (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('provider_snapshot'))).busyKind === null, 20000);
+  await sleep(1200);
+  assert.equal(await draftValue(), 'My edited local draft.', 'late Deep cannot replace edited draft after revocation');
+  await copyResult('copy-after-revoke', 'My edited local draft.');
+  await closeWidget();
+  pass('revocation stops Deep, preserves edited Copy draft, rejects new Deep and stale settings consent');
+  // Restore explicit synthetic test consent for the remaining original cases.
+  await page.evaluate(settings => window.__TAURI_INTERNALS__.invoke('save_settings', {settings,acknowledgeProvider:'claude'}), consentBeforeRevoke);
+  await page.reload(); await waitForBridge();
 
   // 8. The shortcut toggle ends the capture in the backend and tells the widget.
   const hideDoc = 'Hide check: please seperate here.';
@@ -658,6 +693,8 @@ try {
   pass(`five quick shortcut presses (${spamCaptures.length} captures, then: ${spamOutcome}) captured only the selection, changed no document, delivered no other text, and the next capture worked`);
 
   // 13. Restart: settings persist; no capture, draft or selection comes back.
+  const beforeRestartRevoke = await loadSettings();
+  await page.evaluate(settings => window.__TAURI_INTERNALS__.invoke('save_settings', {settings}), {...beforeRestartRevoke,autoRewrite:false,cloudProcessingAcknowledgementVersion:0,claudeCloudAcknowledgementVersion:0,antigravityCloudAcknowledgementVersion:0});
   const settingsBeforeRestart = await loadSettings();
   await browser.close();
   killTree(app.pid);

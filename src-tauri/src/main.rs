@@ -297,7 +297,7 @@ async fn complete_onboarding(
         .settings
         .clone();
     settings.onboarding_version = settings::ONBOARDING_VERSION;
-    save_settings(app, settings, state).await
+    save_settings(app, settings, None, state).await
 }
 
 #[tauri::command]
@@ -453,6 +453,10 @@ async fn rewrite_selected_text(
             .map_err(|_| "configuration_unavailable".to_string())?
             .settings
             .clone();
+        if settings.active_provider != settings_snapshot.active_provider
+            || settings::cloud_ack(&settings, settings_snapshot.active_provider) < settings::CLOUD_PROCESSING_DISCLOSURE_VERSION {
+            return Err("cloud_processing_disclosure_required".to_string());
+        }
         if settings.rewrite_intent().map_err(str::to_string)? != intent {
             return Err("stale_rewrite_intent".to_string());
         }
@@ -1119,6 +1123,7 @@ async fn mutate_terminology(
 async fn save_settings(
     app: AppHandle,
     settings: AppSettings,
+    acknowledge_provider: Option<ProviderKind>,
     state: State<'_, AppState>,
 ) -> Result<AppSettings, String> {
     settings.validate().map_err(str::to_string)?;
@@ -1135,7 +1140,9 @@ async fn save_settings(
             return Err("provider_busy".to_string());
         }
     }
-    let (previous_intent, next_intent, terminology_changed, provider_changed, active_provider) = {
+    // Serialize consent persistence/cancellation with rewrite admission.
+    let mut consent_capture = state.capture.lock().await;
+    let (previous_intent, next_intent, terminology_changed, provider_changed, active_provider, consent_revoked) = {
         let mut configuration = state
             .configuration
             .lock()
@@ -1151,6 +1158,8 @@ async fn save_settings(
         if settings.shortcut != configuration.settings.shortcut {
             return Err("shortcut_update_requires_transaction".to_string());
         }
+        let consent_revoked = settings::consent_change(&configuration.settings, &settings, acknowledge_provider)
+            .map_err(str::to_string)?;
         let previous_intent = configuration
             .settings
             .rewrite_intent()
@@ -1170,8 +1179,11 @@ async fn save_settings(
             terminology_changed,
             provider_changed,
             settings.active_provider,
+            consent_revoked,
         )
     };
+    let revoked_turn = if consent_revoked { consent_capture.cancel_rewrite_keep_capture() } else { None };
+    drop(consent_capture);
 
     let active_turn = if previous_intent != next_intent || terminology_changed {
         let mut capture = state.capture.lock().await;
@@ -1190,7 +1202,7 @@ async fn save_settings(
     } else {
         None
     };
-    interrupt_active_turn(state.inner(), active_turn).await;
+    interrupt_active_turn(state.inner(), revoked_turn.or(active_turn)).await;
     if previous_intent != next_intent {
         if let Ok(mut instant) = state.instant.lock() {
             p3_03_runtime::invalidate_cache(
