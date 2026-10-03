@@ -870,6 +870,7 @@ try {
         assert.equal((await loadSettings()).claudeCloudAcknowledgementVersion, 1, 'reload does not erase the real persisted grant');
         assert.equal(await draft.inputValue().catch(() => ''), '');
         assert.equal(await copyEnabled(), false);
+        await closeWidget(); // Normal Close must recover the identity without restoring text.
       } else {
         if (change === 'mode') await page.getByRole('button', {name: 'Translate', exact: true}).click();
         if (change === 'target') await page.getByRole('combobox', {name: /^Target language/}).selectOption('ko');
@@ -909,11 +910,55 @@ try {
         if (probe) { probe.release?.(); window.fetch = probe.original; delete window.__grammarConsentOverlap; }
       });
       await cancelDeepIfRunning();
-      if (await widgetVisible()) await closeWidget();
+      if (await widgetVisible()) {
+        if (change === 'reload') { await editor.hotkey(); await until('reload cleanup shortcut hid widget', async () => !(await widgetVisible())); }
+        else await closeWidget();
+      }
       await until('intent case provider idle', async () => (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('provider_snapshot'))).busyKind === null, 20000);
     }
   }
   assert.deepEqual(intentFailures, [], 'pending consent intent/reload regressions');
+
+  // A delayed identity read for Close must not dismiss a newly arrived capture.
+  await page.evaluate(async () => {
+    const settings = await window.__TAURI_INTERNALS__.invoke('load_settings');
+    await window.__TAURI_INTERNALS__.invoke('save_settings', {settings: {...settings, mode: 'grammar', autoRewrite: false}});
+  });
+  await page.reload(); await waitForBridge();
+  await captureAndWaitInstant(0, 'Before reload race: this are wrong.', 'this are wrong.', 'this is wrong.');
+  await page.reload(); await waitForBridge();
+  await page.evaluate(() => {
+    const original = window.fetch;
+    const probe = {held: false, release: null, original, dismisses: 0};
+    window.__grammarCloseRead = probe;
+    window.fetch = async function(input, init) {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      const command = url.hostname === 'ipc.localhost' ? url.pathname.slice(1) : '';
+      if (command === 'dismiss_window') probe.dismisses++;
+      const result = await original.call(this, input, init);
+      if (command === 'active_capture_identity' && !probe.held) {
+        probe.held = true;
+        await new Promise(resolve => {probe.release = resolve;});
+      }
+      return result;
+    };
+  });
+  try {
+    await closeButton.click();
+    await until('orphan identity response held', async () => page.evaluate(() => window.__grammarCloseRead.held));
+    await editor.hotkey(); await until('old capture closed by shortcut', async () => !(await widgetVisible()));
+    await captureAndWaitInstant(0, 'New reload race: please seperate here.', 'please seperate here.', 'please separate here.');
+    await draft.fill('New capture must survive old Close.');
+    await page.evaluate(() => window.__grammarCloseRead.release());
+    await sleep(1200);
+    assert.equal(await page.evaluate(() => window.__grammarCloseRead.dismisses), 0, 'stale identity read never submits Dismiss for the new capture');
+    assert.equal(await widgetVisible(), true);
+    await copyResult('copy-after-stale-close-identity', 'New capture must survive old Close.');
+    pass('delayed Close identity cannot dismiss a newer capture; exact edited Copy survives');
+  } finally {
+    await page.evaluate(() => { const probe = window.__grammarCloseRead; if(probe){probe.release?.();window.fetch=probe.original;delete window.__grammarCloseRead;} });
+    if (await widgetVisible()) await closeWidget();
+  }
   await page.evaluate(settings => window.__TAURI_INTERNALS__.invoke('save_settings', {settings,acknowledgeProvider:'claude'}), consentBeforeRevoke);
   await page.reload(); await waitForBridge();
 
