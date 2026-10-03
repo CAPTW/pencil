@@ -652,7 +652,7 @@ pub(crate) fn reserve_rewrite(
         .map_err(|error| error.code().to_string())?;
     let reserved = providers
         .set_active(kind)
-        .and_then(|()| providers.reserve_capture(kind, token.clone(), bound_intent.clone()));
+        .and_then(|()| providers.reserve_capture(kind, token.clone(), bound_intent.clone(), attempt));
     reserved.map_err(|error| {
         let _ = capture.finish_rewrite_failure_bound(token, bound_intent);
         match error {
@@ -1507,8 +1507,9 @@ async fn cancel_cli_operation(state: &AppState) -> Option<Arc<provider::manager:
     let capture = state.capture.lock().await;
     let operation = state.providers.lock().await.cancel_handle();
     if let Some(operation) = &operation {
-        if let Some((token, intent)) = &operation.capture_binding {
-            if capture.validate_rewriting_bound_intent(token, intent).is_ok() {
+        if let Some((token, intent, attempt)) = &operation.capture_binding {
+            if capture.owns_rewrite(token, *attempt)
+                && capture.validate_rewriting_bound_intent(token, intent).is_ok() {
                 return None; // This is a newer, still valid operation.
             }
         }
