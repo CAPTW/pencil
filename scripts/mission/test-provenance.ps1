@@ -26,7 +26,7 @@ $exe = Join-Path $EvidenceRoot 'synthetic-not-executable.exe'
 # Fabricated structures are used ONLY as negative test input. No positive build/acceptance is asserted.
 $template = [ordered]@{
   schemaVersion = 1; classification = 'LOCAL_EXECUTED_RELEASE_BUILD'
-  command = 'node_modules/.bin/tauri.cmd build --no-bundle --no-sign -- --locked --offline --bin codex-pencil; cargo build --manifest-path src-tauri/Cargo.toml --release --locked --offline --bin grammar-chromium-host'
+  command = 'node_modules/.bin/tauri.cmd build --no-bundle --no-sign -- --locked --offline --bin codex-pencil; CARGO_ENCODED_RUSTFLAGS=-C<US>target-feature=+crt-static cargo build --manifest-path src-tauri/Cargo.toml --release --locked --offline --bin grammar-chromium-host'
   exitCode = 0; freshTarget = $true
   startedUtc = '2026-01-01T00:00:00Z'; finishedUtc = '2026-01-01T00:00:01Z'
   before = $source; after = $source

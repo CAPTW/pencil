@@ -40,6 +40,23 @@ $root = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\', '/')
 if (Test-Path -LiteralPath $root) {
   throw "InstallRoot already exists: $root. To upgrade, run its Uninstall-Grammar.ps1 first (settings and dictionary stay unless you add -RemoveUserData), or choose a new directory."
 }
+# Ask the packaged app's own loader before creating files or registry entries.
+# No GUI, user settings or Provider initialization occurs in this mode.
+$probe = [Diagnostics.ProcessStartInfo]::new((Join-Path $package 'codex-pencil.exe'))
+$probe.UseShellExecute = $false
+$probe.CreateNoWindow = $true
+$probe.ArgumentList.Add('--check-webview2')
+$process = [Diagnostics.Process]::Start($probe)
+try {
+  if (-not $process.WaitForExit(30000)) {
+    $process.Kill($true)
+    if (-not $process.WaitForExit(5000)) { throw 'WebView2 prerequisite probe did not terminate; nothing installed.' }
+    throw 'WebView2 prerequisite probe timed out; nothing installed.'
+  }
+  if ($process.ExitCode -ne 0) {
+    throw "WebView2 runtime is unavailable (probe exit $($process.ExitCode)); nothing installed. Install Microsoft WebView2 Evergreen Runtime from https://developer.microsoft.com/microsoft-edge/webview2/ and retry."
+  }
+} finally { $process.Dispose() }
 $receiptPath = Join-Path $root 'install-receipt.json'
 $receipt = [ordered]@{
   schema = 'grammar-personal-install/v1'
