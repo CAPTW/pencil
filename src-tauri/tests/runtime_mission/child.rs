@@ -71,6 +71,15 @@ fn main() {
         return;
     }
     match mode.as_str() {
+        "exit-hold" => {
+            // Dedicated installed-exit test: no sentence or argv is recorded.
+            let dir = std::path::PathBuf::from(env::var("P01_EXIT_DIR").unwrap());
+            let cwd = env::current_dir().unwrap();
+            fs::write(dir.join("exit-child.json"), format!(
+                "{{\"pid\":{},\"cwd\":{}}}", std::process::id(), json_string(cwd.to_str().unwrap())
+            )).unwrap();
+            thread::sleep(Duration::from_secs(90));
+        }
         "pipe-holder" | "early-descendant" => {
             let mut child = Command::new(env::current_exe().unwrap())
                 .arg("--fixture-descendant")
