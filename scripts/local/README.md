@@ -14,7 +14,7 @@ No supplementary CRT, machine-wide runtime install, HKLM debugging policy, execu
 
 ## User-assisted input session
 
-`Guest-App-HandsOn.ps1` uses the same Medium launcher and guarded mappings with the current 419ee3c package in `package-consent-intent`. Also copy `Guest-Trial-Guide.ps1` to the read-only payload. It installs only in the guest, seeds fresh local-only settings (Auto rewrite false and all Deep acknowledgements zero), starts the existing synthetic native editor and the installed app, and opens a Korean instruction window. It verifies the saved safety settings before writing READY_AWAITING_OWNER_INPUT. The guide writes GUIDE_SHOWN separately; verify both receipts before directing the user to interact.
+`Guest-App-HandsOn.ps1` uses the same Medium launcher and guarded mappings with the current 6444140 package in `package-cancel-attempt`. Also copy `Guest-Trial-Guide.ps1` to the read-only payload. It installs only in the guest, seeds fresh local-only settings (Auto rewrite false and all Deep acknowledgements zero), starts the existing synthetic native editor and the installed app, and opens a Korean instruction window. It verifies the saved safety settings before writing READY_AWAITING_OWNER_INPUT. The guide writes GUIDE_SHOWN separately; verify both receipts before directing the user to interact.
 
 The user physically selects/types/copies/pastes only in the synthetic editor. No input text, clipboard contents or keystrokes are recorded by these scripts; status records remain NOT_RUN until user observations are separately provided. An empty guest language list is unknown availability, not successful Korean IME verification. If unavailable, do not install input features or use synthetic composition events as a substitute for this trial.
 
@@ -36,3 +36,6 @@ Pending consent binding checkpoint 910730d: installed-app driver requires 28 che
 
 
 Intent/reload checkpoint 419ee3c: installed app 33/33 and installed Chromium keyboard 11/11 PASS, full app Rust 225 PASS/26 ignored. Held real grant responses cannot submit the previous intent after mode/active language changes. Fresh consent still works. Reload restores no draft or pending work, and explicit Close recovers only opaque identity with existing exact-token validation; a newer capture survives delayed reads. All installs removed/guests stopped. Manual helper updated but not launched. Next is physical keyboard/IME trial; actual Provider remains NOT_RUN. Evidence: D:/dev/grammar-evidence/grammar-consent-intent-20261003/RESULT.md.
+
+
+Cancellation attempt checkpoint 6444140: same-intent retry no longer protects the old operation from cancellation. App 33/browser keyboard 11 installed checks PASS, Rust app 228/host 16. Manual helper pins package-cancel-attempt; not launched. Evidence: D:/dev/grammar-evidence/grammar-cancel-attempt-20261004/RESULT.md.
