@@ -42,3 +42,10 @@ Cancellation attempt checkpoint 6444140: same-intent retry no longer protects th
 
 
 Managed shutdown checkpoint 34aae4f closes Provider/Codex admission before desktop teardown, retaining ownership until actual completion. App Rust 231/host16; installed app33/browser keyboard11 PASS. These installed regressions are not a tray-exit race test. Manual helper pins package-shutdown-admission but was not launched. Evidence: D:/dev/grammar-evidence/grammar-shutdown-admission-20261004/RESULT.md.
+
+
+## Optional installed tray-exit test (not qualified)
+
+GRAMMAR_TRAY_EXIT_TEST=1 extends the app driver only in an owned Sandbox. Compile child.rs with static CRT and provide Guest-Tray-Quit.ps1 and Guest-Tray-Broker.ps1 in the read-only payload. Run the broker once using the guest ExistingLogin context, hidden, while the product runner stays Medium. Use a fresh output directory: request/gesture receipts must not be reused. The broker accepts only an integer PID with the exact installed test app path; it does not accept commands. The driver starts a finite synthetic child and proves exit/cleanup before its final forced-cleanup block. Default tests do not enable this experimental path.
+
+Current qualification: TARGET_UNAVAILABLE, not PASS. The owned shell did not expose/activate the named tray icon; ProcessId0 XAML elements now use hit-test window ownership, but keyboard focus stayed on Start. No screenshot/coordinate guessing fallback. See D:/dev/grammar-evidence/grammar-tray-exit-20261004/RESULT.md. Previous package regression remains separately valid. No installed product change or user manual trial is implied.

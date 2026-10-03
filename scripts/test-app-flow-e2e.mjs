@@ -17,9 +17,12 @@ import {mkdir, writeFile, readFile} from 'node:fs/promises';
 import {existsSync, readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {resolve, join} from 'node:path';
+import {resolve, join, dirname} from 'node:path';
 
 const sandbox = process.env.GRAMMAR_OWNED_SANDBOX_TEST === '1';
+const trayExitTest = process.env.GRAMMAR_TRAY_EXIT_TEST === '1';
+assert.ok(!trayExitTest || sandbox, 'tray exit test is owned Sandbox only');
+let trayExitReceipt = null;
 let packageCommit = null;
 if (sandbox) {
   assert.equal(process.platform, 'win32');
@@ -242,6 +245,7 @@ try {
         WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}`,
         CODEX_PENCIL_CLAUDE_BIN: syntheticProvider,
         P01_FIXTURE_MODE_FILE: providerModeFile,
+        ...(trayExitTest ? {P01_EXIT_DIR: out} : {}),
       },
       stdio: 'ignore',
     });
@@ -1148,6 +1152,47 @@ try {
   assert.equal((await restartedCopy.count()) > 0 && (await restartedCopy.isEnabled()), false, 'nothing to copy after the restart');
   assert.deepEqual(await invokeCopy(unicodeToken, 'OLD-SHOULD-NOT-COPY'), {status: 'rejected_stale'});
   pass('after a restart no capture, draft or selection came back and settings persisted');
+  if (trayExitTest) {
+    await setProviderMode('exit-hold');
+    const saved = await loadSettings();
+    await page.evaluate(settings => window.__TAURI_INTERNALS__.invoke('save_settings', {
+      settings, acknowledgeProvider:'claude',
+    }), {...saved, activeProvider:'claude', mode:'grammar', autoRewrite:false, claudeCloudAcknowledgementVersion:1});
+    if (await widgetVisible()) await closeWidget();
+    const before = (await captures()).length;
+    await prepareSelection(0, 'Exit trial: this are wrong.', 'this are wrong.');
+    await editor.hotkey();
+    const token = await until('exit trial captured', async () => (await captures())[before]);
+    const untouched = await beginUntouched();
+    await page.evaluate(token => {
+      window.__exitTrialRequest = window.__TAURI_INTERNALS__.invoke('rewrite_selected_text', {
+        sessionId:token.sessionId, generation:token.generation, mode:'grammar', targetLanguage:null, autoReferenceLanguage:null,
+      }).then(() => 'completed', () => 'cancelled');
+    }, token);
+    const marker = join(out, 'exit-child.json');
+    await until('synthetic exit child started', async () => existsSync(marker));
+    const child = JSON.parse(await readFile(marker, 'utf8'));
+    assert.equal(alive(child.pid), true);
+    const sessionRoot = dirname(child.cwd);
+    assert.equal(dirname(sessionRoot).toLowerCase(), join(process.env.TEMP, 'codex-pencil-runtime-v1').toLowerCase());
+    assert.equal(existsSync(sessionRoot), true);
+    // A separately guarded existing-login helper drives only the owned shell
+    // icon and exact app menu. UIA ProcessId can be zero for XAML elements;
+    // the helper verifies their actual window owner. Product stays Medium.
+    await writeFile('C:/GrammarOutput/tray-request.json', JSON.stringify({appPid:app.pid}));
+    await until('owned guest tray gesture receipt', async () => existsSync('C:/GrammarOutput/tray-gesture.json'), 30000);
+    const gesture = JSON.parse(await readFile('C:/GrammarOutput/tray-gesture.json','utf8'));
+    assert.equal(gesture.status, 'QUIT_CLICKED');
+    await until('natural app exit after tray Quit', async () => !alive(app.pid), 20000);
+    await until('synthetic Provider exit', async () => !alive(child.pid), 2000);
+    assert.equal(existsSync(sessionRoot), false, 'actual runtime session removed before exit');
+    await until('zero app exit code', async () => app.exitCode !== null, 2000);
+    assert.equal(app.exitCode, 0);
+    await assertEditorsUntouched('tray-quit', untouched);
+    trayExitReceipt = {...gesture, appExitCode:app.exitCode, elapsedMs:Date.now()-gesture.requestedUnixMs,
+      providerExited:true, sessionRemoved:true, forcedTerminationBeforeProof:false};
+    pass('real tray Quit during synthetic Deep exits naturally with child and runtime session removed');
+  }
 } catch (error) {
   failure = error;
   console.error('FAIL', error?.stack ?? error);
@@ -1184,6 +1229,13 @@ try {
     app_kind: process.env.GRAMMAR_APP_KIND ?? 'unspecified',
     result_delivery: 'COPY_ONLY',
     checks,
+    tray_exit: trayExitReceipt,
+    tray_exit_enabled: trayExitTest,
+    tray_exit_artifacts: trayExitTest ? Object.fromEntries([
+      ['fixture', syntheticProvider],
+      ['gesture', 'C:/GrammarPayload/Guest-Tray-Quit.ps1'],
+      ['broker', 'C:/GrammarPayload/Guest-Tray-Broker.ps1'],
+    ].map(([name,path]) => [name,createHash('sha256').update(readFileSync(path)).digest('hex')])) : null,
     // Message counts only (no text): reads and state-changing messages per step.
     editor_messages: editorMessages,
     failure: failure ? scrub(failure) : null,
