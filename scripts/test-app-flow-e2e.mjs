@@ -287,13 +287,13 @@ try {
   // Without a capture the result pane is not rendered while Codex is signed out.
   const copyEnabled = async () => (await copy.count()) > 0 && (await copy.isEnabled());
 
-  // Idle, the widget shows the main pane, or the Codex sign-in pane when Codex is
-  // not signed in (as on this runner). A capture always opens the main pane, so
-  // local Instant and Copy never depend on a cloud account.
-  const signIn = page.getByRole('heading', {name: 'Sign in with ChatGPT', exact: true});
+  // Idle, signed-out Codex users see the account-free start pane. The optional
+  // login heading is collapsed, so discover the visible local heading instead.
+  // A capture opens the local review pane without a cloud account.
+  const localStart = page.getByRole('heading', {name: 'Use Instant without signing in', exact: true});
   const idlePane = await until('idle widget pane rendered', async () =>
-    ((await copy.count()) > 0 && 'main') || ((await signIn.count()) > 0 && 'codex-sign-in'), 30000);
-  if (idlePane === 'codex-sign-in') {
+    ((await copy.count()) > 0 && 'main') || ((await localStart.count()) > 0 && 'local-start'), 30000);
+  if (idlePane === 'local-start') {
     const beforeLocalStart = await loadSettings();
     await page.getByRole('heading', {name: 'Use Instant without signing in', exact: true}).waitFor();
     assert.equal(await page.getByRole('button', {name: 'Start device login', exact: true}).isVisible(), false,
