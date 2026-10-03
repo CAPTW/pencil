@@ -146,3 +146,11 @@ export function parseApplyOutcome(value: unknown): ApplyOutcome | null {
   }
   return null;
 }
+
+/** A late backend cancellation must never clear a newer capture. */
+export function captureEndedMatches(value: unknown, current: CaptureToken | null): boolean {
+  if (!isRecord(value) || !hasExactKeys(value, ["sessionId", "generation", "reason"]) ||
+      typeof value.reason !== "string") return false;
+  const token = parseSelectionCaptured({sessionId: value.sessionId, generation: value.generation, selectedText: ""});
+  return sameCaptureToken(token, current);
+}

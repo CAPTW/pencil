@@ -588,6 +588,11 @@ impl CaptureSessionStore {
         None
     }
 
+    /// Snapshot the exact capture before cancellation releases the store lock.
+    pub(crate) fn active_token(&self) -> Option<SessionToken> {
+        self.current.as_ref().filter(|_| self.has_active()).map(|current| current.token.clone())
+    }
+
     pub(crate) fn has_active(&self) -> bool {
         self.current.as_ref().is_some_and(|current| {
             !matches!(
@@ -674,6 +679,19 @@ impl CaptureSessionStore {
 #[cfg(test)]
 mod mission_draft_tests {
     use super::*;
+    #[test]
+    fn ended_notification_keeps_old_identity_after_a_new_capture() {
+        let mut store = CaptureSessionStore::default();
+        let old = store.capture("old".into(), "source".into(), WindowTarget::new(1, 2)).unwrap();
+        let ended = store.active_token().unwrap();
+        store.cancel_active_with_turn();
+        assert!(store.active_token().is_none());
+        let new = store.capture("new".into(), "next".into(), WindowTarget::new(1, 2)).unwrap();
+        assert_eq!(ended, old);
+        assert_ne!(ended, new);
+        assert_eq!(store.active_token(), Some(new));
+    }
+
     #[test]
     fn edited_instant_keeps_capture_source_candidate_and_revision_binding() {
         let mut store = CaptureSessionStore::default();

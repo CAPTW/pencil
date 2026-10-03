@@ -13,10 +13,28 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {spawn, execFileSync} from 'node:child_process';
 import {createInterface} from 'node:readline';
-import {mkdir, writeFile} from 'node:fs/promises';
-import {existsSync} from 'node:fs';
+import {mkdir, writeFile, readFile} from 'node:fs/promises';
+import {existsSync, readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {fileURLToPath} from 'node:url';
 import {resolve, join} from 'node:path';
 
+const sandbox = process.env.GRAMMAR_OWNED_SANDBOX_TEST === '1';
+let packageCommit = null;
+if (sandbox) {
+  assert.equal(process.platform, 'win32');
+  assert.equal(process.env.USERNAME, 'WDAGUtilityAccount');
+  assert.notEqual(process.env.COMPUTERNAME, (await readFile('C:/GrammarPayload/host-machine.txt', 'utf8')).trim());
+  assert.equal(process.cwd().toLowerCase(), 'c:\\grammarpayload');
+  assert.equal(resolve(process.env.GRAMMAR_APP_EXE).toLowerCase(), 'c:\\grammartrial\\codex-pencil.exe');
+  assert.match(resolve(process.env.GRAMMAR_EVIDENCE).toLowerCase(), /^c:\\grammarapp[a-z0-9-]+$/);
+  assert.match(execFileSync('whoami.exe', ['/groups', '/fo', 'csv'], {encoding: 'utf8'}), /S-1-16-8192/, 'medium integrity required');
+  const manifest = JSON.parse(await readFile('C:/GrammarTrial/MANIFEST.json', 'utf8'));
+  const expected = manifest.files.find((file) => file.path === 'codex-pencil.exe');
+  assert.equal(createHash('sha256').update(await readFile(process.env.GRAMMAR_APP_EXE)).digest('hex'), expected.sha256);
+  assert.match(manifest.sourceCommit, /^[0-9a-f]{40}$/);
+  packageCommit = manifest.sourceCommit;
+} else {
 const OWNED_REFS = ['refs/heads/codex/grammar-autonomous-r1', 'refs/heads/claude/eloquent-faraday-hh62qc'];
 for (const [key, expected] of [
   ['GITHUB_ACTIONS', 'true'],
@@ -27,6 +45,8 @@ for (const [key, expected] of [
   assert.equal(process.env[key], expected, `owned desktop opt-in: ${key}`);
 }
 assert.ok(OWNED_REFS.includes(process.env.GITHUB_REF), 'owned desktop opt-in: GITHUB_REF');
+
+}
 
 const require = createRequire(import.meta.url);
 const {chromium} = require(process.env.GRAMMAR_PLAYWRIGHT);
@@ -73,7 +93,9 @@ const range = (haystack, needle) => {
 
 class Editor {
   constructor() {
-    this.process = spawn('powershell.exe', ['-NoProfile', '-STA', '-File', harnessScript], {
+    this.process = sandbox
+      ? spawn('C:/GrammarPayload/test-runtime/NativeEditor.exe', [], {stdio: ['pipe', 'pipe', 'ignore']})
+      : spawn('powershell.exe', ['-NoProfile', '-STA', '-File', harnessScript], {
       stdio: ['pipe', 'pipe', 'ignore'],
     });
     this.replies = [];
@@ -335,6 +357,15 @@ try {
   assert.equal(await draftValue(), 'Please separate these items.');
   pass('shortcut captured the exact selection; local Instant is usable without cloud consent and declining Deep sends nothing');
   await draft.fill('Please separate these items carefully.');
+  // The backend may finish cancelling an older Provider after recapture.
+  await page.evaluate((generation) => window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {
+    event: 'capture-ended', payload: {sessionId: 'previous-capture', generation, reason: 'shortcut'},
+  }), token1.generation);
+  await sleep(300);
+  assert.equal(await draftValue(), 'Please separate these items carefully.', 'late ended event must preserve newer edited draft');
+  assert.equal(await copyEnabled(), true, 'late ended event must preserve newer capture token');
+  pass('late capture-ended notification cannot clear a different current capture or its edited draft');
+
   await copyResult('copy-edited-draft', 'Please separate these items carefully.');
   assert.equal(await editor.text(0), doc);
   await closeWidget();
@@ -662,9 +693,10 @@ try {
   }
   const result = {
     status: failure ? 'FAIL' : 'PASS',
-    source_sha: process.env.GITHUB_SHA,
-    run_id: process.env.GITHUB_RUN_ID,
-    classification: 'SYNTHETIC_OWNED_WINDOWS_DESKTOP_BUILT_APP',
+    source_sha: sandbox ? packageCommit : process.env.GITHUB_SHA,
+    harness_sha256: createHash('sha256').update(readFileSync(fileURLToPath(import.meta.url))).digest('hex'),
+    run_id: sandbox ? 'LOCAL_SANDBOX_MEDIUM_INTEGRITY' : process.env.GITHUB_RUN_ID,
+    classification: sandbox ? 'LOCAL_SANDBOX_MEDIUM_INSTALLED_APP_SYNTHETIC_PROVIDER' : 'SYNTHETIC_OWNED_WINDOWS_DESKTOP_BUILT_APP',
     app_kind: process.env.GRAMMAR_APP_KIND ?? 'unspecified',
     result_delivery: 'COPY_ONLY',
     checks,
