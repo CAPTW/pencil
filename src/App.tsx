@@ -892,6 +892,8 @@ export default function App() {
   }
 
   async function acknowledgeCloudProcessing() {
+    const reviewedToken = currentTokenRef.current;
+    if (!reviewedToken) return;
     const action = ++consentActionRef.current;
     const kind = settings.activeProvider;
     const saved = await saveSettings({
@@ -903,17 +905,14 @@ export default function App() {
       claudeCloudAcknowledgementVersion:
         kind === "claude" ? CLOUD_PROCESSING_DISCLOSURE_VERSION : settings.claudeCloudAcknowledgementVersion,
     }, kind);
-    if (!saved || action !== consentActionRef.current) return;
+    if (!saved || action !== consentActionRef.current
+      || !sameCaptureToken(reviewedToken, currentTokenRef.current)
+      || kind !== providerRef.current) return;
     cloudAcknowledgementRef.current = saved.cloudProcessingAcknowledgementVersion;
     providerAckRef.current = cloudAckFor(saved, saved.activeProvider);
     setCloudReviewOpen(false);
-    // The review only opens for a pending Deep request (automatic or Run Deep).
-    const token = currentTokenRef.current;
-    if (token) {
-      await rewrite(saved.mode, token, saved.translation.targetLanguage);
-    } else {
-      setStatus("Selection captured");
-    }
+    // Continue only the capture reviewed before the asynchronous settings save.
+    await rewrite(saved.mode, reviewedToken, saved.translation.targetLanguage);
   }
 
   async function revokeCloudConsent() {
@@ -1716,6 +1715,10 @@ export default function App() {
                         checked={selected}
                         disabled={busy}
                         onChange={() => {
+                          // Invalidate before queuing the save: an older grant may
+                          // finish while this provider change is still pending.
+                          consentActionRef.current += 1;
+                          setCloudReviewOpen(false);
                           void saveSettings({ ...settings, activeProvider: item.kind });
                         }}
                       />
