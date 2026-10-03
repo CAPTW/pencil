@@ -14,7 +14,7 @@ No supplementary CRT, machine-wide runtime install, HKLM debugging policy, execu
 
 ## User-assisted input session
 
-`Guest-App-HandsOn.ps1` uses the same Medium launcher and guarded mappings with the current 427e5cb package in `package-revoke`. Also copy `Guest-Trial-Guide.ps1` to the read-only payload. It installs only in the guest, seeds fresh local-only settings (Auto rewrite false and all Deep acknowledgements zero), starts the existing synthetic native editor and the installed app, and opens a Korean instruction window. It verifies the saved safety settings before writing READY_AWAITING_OWNER_INPUT. The guide writes GUIDE_SHOWN separately; verify both receipts before directing the user to interact.
+`Guest-App-HandsOn.ps1` uses the same Medium launcher and guarded mappings with the current 8e2e0f0 package in `package-shortcut`. Also copy `Guest-Trial-Guide.ps1` to the read-only payload. It installs only in the guest, seeds fresh local-only settings (Auto rewrite false and all Deep acknowledgements zero), starts the existing synthetic native editor and the installed app, and opens a Korean instruction window. It verifies the saved safety settings before writing READY_AWAITING_OWNER_INPUT. The guide writes GUIDE_SHOWN separately; verify both receipts before directing the user to interact.
 
 The user physically selects/types/copies/pastes only in the synthetic editor. No input text, clipboard contents or keystrokes are recorded by these scripts; status records remain NOT_RUN until user observations are separately provided. An empty guest language list is unknown availability, not successful Korean IME verification. If unavailable, do not install input features or use synthetic composition events as a substitute for this trial.
 
@@ -22,4 +22,6 @@ The session waits at most 60 minutes, or until `finish.request` appears in its t
 
 Latest account-free start checkpoint: app E2E now requires at least 20 checks, including the visible local-start action; local package identity is a305f15 and test-driver correction is d5a3865. The installed app never needs a login for local Instant/Copy. See D:/dev/grammar-evidence/grammar-local-start-20261003/RESULT.md.
 
-Latest desktop consent checkpoint: the app driver now requires 21 checks, including synthetic Deep revocation, kept edited draft, stale consent-save denial and revoked settings after restart. The manual runner pins 427e5cb. Browser document consent remains separate from desktop consent.
+Desktop consent checkpoint 427e5cb added synthetic Deep revocation, kept edited draft, stale consent-save denial and revoked settings after restart. Browser document consent remains separate from desktop consent.
+
+Current shortcut checkpoint 8e2e0f0: the app driver requires 23 checks, adding native repeated key-down one-dispatch behavior and six successive close/recapture cycles. Compile NativeEditor.exe from the current harness (HOTKEY_REPEAT command required); preserve fixture source and binary hashes. The manual runner pins package-shortcut but is not automatically launched by the automated tests. Evidence: D:/dev/grammar-evidence/grammar-shortcut-native-20261003/RESULT.md.
