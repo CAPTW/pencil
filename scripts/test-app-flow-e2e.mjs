@@ -293,7 +293,16 @@ try {
   const signIn = page.getByRole('heading', {name: 'Sign in with ChatGPT', exact: true});
   const idlePane = await until('idle widget pane rendered', async () =>
     ((await copy.count()) > 0 && 'main') || ((await signIn.count()) > 0 && 'codex-sign-in'), 30000);
-  if (await widgetVisible()) await closeWidget();
+  if (idlePane === 'codex-sign-in') {
+    const beforeLocalStart = await loadSettings();
+    await page.getByRole('heading', {name: 'Use Instant without signing in', exact: true}).waitFor();
+    assert.equal(await page.getByRole('button', {name: 'Start device login', exact: true}).isVisible(), false,
+      'optional cloud login is collapsed on the account-free start screen');
+    await page.getByRole('button', {name: 'Close and use local Instant', exact: true}).click();
+    await until('local start closes widget', async () => !(await widgetVisible()));
+    assert.deepEqual(await loadSettings(), beforeLocalStart, 'local start grants no consent or settings change');
+    pass('account-free local start is primary, closes the widget, and grants no Deep consent');
+  } else if (await widgetVisible()) await closeWidget();
   pass(`first-run onboarding completed and the widget closed to the tray (idle pane: ${idlePane})`);
 
   async function prepareSelection(index, text, selected) {

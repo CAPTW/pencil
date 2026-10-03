@@ -162,6 +162,23 @@ h1 {
   gap: 14px;
 }
 
+.local-start-instructions {
+  margin: 0;
+  color: var(--text-instruction);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.optional-deep-login > summary {
+  cursor: pointer;
+  color: var(--text-guidance);
+  font-size: 13px;
+}
+
+.optional-deep-login > :not(summary) {
+  margin-top: 12px;
+}
+
 .disclosure-pane {
   display: grid;
   gap: 14px;
