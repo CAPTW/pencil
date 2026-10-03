@@ -388,3 +388,37 @@ impl PrimaryShortcut {
         }
     }
 }
+
+/// Coalesce presses while one capture/hide operation is already running.
+/// RAII releases admission on normal return, error, panic or task cancellation.
+pub(crate) struct ShortcutOperationGuard(std::sync::Arc<std::sync::atomic::AtomicBool>);
+impl ShortcutOperationGuard {
+    pub(crate) fn try_begin(busy: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Option<Self> {
+        busy.compare_exchange(false, true, std::sync::atomic::Ordering::AcqRel,
+            std::sync::atomic::Ordering::Acquire).ok().map(|_| Self(busy))
+    }
+}
+impl Drop for ShortcutOperationGuard {
+    fn drop(&mut self) { self.0.store(false, std::sync::atomic::Ordering::Release); }
+}
+#[cfg(test)]
+mod operation_tests {
+    use super::*;
+    #[test]
+    fn concurrent_shortcuts_coalesce_and_next_press_is_admitted() {
+        let busy = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let first = ShortcutOperationGuard::try_begin(busy.clone()).unwrap();
+        for _ in 0..100 { assert!(ShortcutOperationGuard::try_begin(busy.clone()).is_none()); }
+        drop(first);
+        assert!(ShortcutOperationGuard::try_begin(busy).is_some());
+    }
+    #[test]
+    fn failed_operation_releases_admission() {
+        let busy = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let _ = std::panic::catch_unwind({ let busy = busy.clone(); move || {
+            let _guard = ShortcutOperationGuard::try_begin(busy).unwrap();
+            panic!("synthetic failure");
+        }});
+        assert!(ShortcutOperationGuard::try_begin(busy).is_some());
+    }
+}
