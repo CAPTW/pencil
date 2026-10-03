@@ -540,6 +540,19 @@ fn reset_candidate_restores_the_default_through_the_same_transaction() {
 }
 
 #[test]
+fn distinct_native_no_repeat_presses_do_not_wait_for_polled_release() {
+    let mut gate = ShortcutTriggerGate::default();
+    // global-hotkey registers MOD_NOREPEAT: these are distinct WM_HOTKEY
+    // activations even when its separate release-polling thread is late.
+    assert_eq!(route_shortcut_activation(&mut gate, true,
+        ShortcutEventState::Pressed, WidgetVisibility::Visible),
+        Some(ShortcutActivation::HideWidget));
+    assert_eq!(route_shortcut_activation(&mut gate, true,
+        ShortcutEventState::Pressed, WidgetVisibility::Hidden),
+        Some(ShortcutActivation::CaptureSelection));
+}
+
+#[test]
 fn shortcut_trigger_gate_accepts_one_press_and_no_repeat_or_release() {
     let mut gate = ShortcutTriggerGate::default();
 
