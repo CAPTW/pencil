@@ -56,6 +56,7 @@ const RUNTIME_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   session_token_required: "The widget lost track of the current capture. Capture the selection again.",
   rewrite_interrupted: "The Deep request was interrupted. Run Deep again.",
   cloud_consent_requires_explicit_review: "Deep consent changed. Reopen Settings and review cloud processing before granting consent again.",
+  settings_previous_stage_failed: "Settings could not be saved. Check that the settings folder is writable and not locked, then retry. Previous settings remain active.",
   cloud_processing_disclosure_required: "Review cloud processing before using Deep.",
   provider_busy: "Another Provider request is still running. Try again in a moment.",
   rewrite_result_ready: "A result is already ready for this capture. Copy it, or capture the selection again to run Deep again.",

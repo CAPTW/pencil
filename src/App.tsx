@@ -933,13 +933,14 @@ export default function App() {
       antigravityCloudAcknowledgementVersion: 0,
       claudeCloudAcknowledgementVersion: 0 });
     if (saved) {
+      setError(null);
       setIsRewriting(false);
       setStatus("Deep consent revoked — Instant draft kept");
     } else {
       // Persistence failure is not successful revocation. Still stop this request.
       try { await invoke("cancel_rewrite"); setIsRewriting(false); }
       catch (nextError) { setError(toErrorMessage(nextError)); }
-      setStatus("Consent was not saved. Deep cancellation requested; retry revocation.");
+      setStatus("Consent was not saved. Previous permissions remain; Deep cancellation requested. Retry revocation.");
     }
     consentRevokingRef.current = false;
     setRevokingConsent(false);
