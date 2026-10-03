@@ -2163,6 +2163,9 @@ export default function App() {
                     className="secondary-button"
                     type="button"
                     onClick={() => {
+                      // A real grant save may still be awaiting its IPC response.
+                      // Cancel its pending Deep continuation, not stored consent.
+                      consentActionRef.current += 1;
                       setCloudReviewOpen(false);
                       setStatus("Deep not sent · Instant stays local");
                     }}
