@@ -751,13 +751,13 @@ try {
     await captureAndWaitInstant(0, 'Original review: this are wrong.', 'this are wrong.', 'this is wrong.');
   await page.evaluate(() => {
     const original = window.fetch;
-    const probe = {grants: 0, rewrites: 0, held: false, release: null, original};
+    const probe = {grants: 0, rewrites: 0, rewriteTokens: [], held: false, release: null, original};
     window.__grammarConsentOverlap = probe;
     window.fetch = async function(input, init) {
       const url = typeof input === 'string' ? input : input.url;
       const command = new URL(url).hostname === 'ipc.localhost' ? new URL(url).pathname.slice(1) : '';
       const args = command && typeof init?.body === 'string' ? JSON.parse(init.body) : {};
-      if (command === 'rewrite_selected_text') probe.rewrites++;
+      if (command === 'rewrite_selected_text') { probe.rewrites++; probe.rewriteTokens.push({sessionId: args.sessionId, generation: args.generation}); }
       const hold = command === 'save_settings' && args?.acknowledgeProvider === 'claude' && ++probe.grants === 1;
       const result = await original.call(this, input, init);
       if (hold) {
@@ -770,9 +770,10 @@ try {
     try {
       await page.getByRole('button', {name: '동의하고 계속', exact: true}).click();
       await until('binding grant response held', async () => page.evaluate(() => window.__grammarConsentOverlap.held));
+      let replacementCapture = null;
       if (change === 'capture') {
         await closeWidget();
-        await captureAndWaitInstant(0, 'New review: please seperate here.', 'please seperate here.', 'please separate here.');
+        replacementCapture = await captureAndWaitInstant(0, 'New review: please seperate here.', 'please seperate here.', 'please separate here.');
         await draft.fill('Preserve the new capture draft.');
       } else {
         await page.getByRole('button', {name: 'Settings', exact: true}).click();
@@ -789,7 +790,11 @@ try {
       assert.equal(requests, 0, 'a late consent response must not dispatch after ' + change + ' changes');
       if (change === 'capture') {
         assert.equal(await page.getByRole('dialog').count(), 1, 'old completion must not close the new capture review');
-        await page.getByRole('dialog').getByRole('button', {name: '취소', exact: true}).click();
+        await page.getByRole('dialog').getByRole('button', {name: '동의하고 계속', exact: true}).click();
+        await until('explicit new capture grant completes synthetic Deep', async () => (await status.textContent()) === 'Replacement ready', 20000);
+        const requestsAfterNewGrant = await page.evaluate(() => window.__grammarConsentOverlap.rewriteTokens);
+        assert.ok(requestsAfterNewGrant.length > 0, 'a new explicit grant still runs Deep');
+        for (const token of requestsAfterNewGrant) assert.deepEqual(token, {sessionId: replacementCapture.sessionId, generation: replacementCapture.generation});
         await copyResult('copy-after-consent-capture-change', 'Preserve the new capture draft.');
       } else {
         assert.equal((await loadSettings()).cloudProcessingAcknowledgementVersion, 0, 'provider switch grants no Codex consent');
