@@ -626,6 +626,105 @@ try {
   await copyResult('copy-after-consent-save-retry', 'Keep this local draft after a save failure.');
   await closeWidget();
   pass('failed consent save cancels Deep, preserves draft and disk; retry persists revocation and clears the error');
+
+
+  // Delay delivery of a REAL grant-save response. Backend, settings, and
+  // rewrite endpoints stay unchanged; only the owned page's IPC scheduling
+  // is controlled. Two explicit UI grants queue before a UI revocation.
+  await page.reload(); await waitForBridge();
+  await captureAndWaitInstant(0, 'Consent overlap: this are wrong.', 'this are wrong.', 'this is wrong.');
+  await page.evaluate(() => {
+    const bridge = window.__TAURI_INTERNALS__;
+    const original = bridge.invoke;
+    const probe = {grants: 0, rewrites: 0, held: false, release: null, original};
+    window.__grammarConsentOverlap = probe;
+    bridge.invoke = async function(command, args, ...rest) {
+      if (command === 'rewrite_selected_text') probe.rewrites++;
+      const hold = command === 'save_settings' && args?.acknowledgeProvider === 'claude' && ++probe.grants === 1;
+      const result = await original.call(this, command, args, ...rest);
+      if (hold) {
+        probe.held = true;
+        await new Promise(resolve => { probe.release = resolve; });
+      }
+      return result;
+    };
+  });
+  try {
+    await runDeep.click();
+    await draft.fill('Keep my draft across overlapping consent actions.');
+    const grant = page.getByRole('button', {name: '동의하고 계속', exact: true});
+    await grant.click();
+    await until('real grant persisted but its response is held', async () => page.evaluate(() => window.__grammarConsentOverlap.held));
+    assert.equal((await loadSettings()).claudeCloudAcknowledgementVersion, 1, 'first grant actually persisted');
+    await grant.click();
+    await page.getByRole('button', {name: 'Settings', exact: true}).click();
+    const revoke = page.getByRole('button', {name: 'Revoke all Deep consent', exact: true});
+    await revoke.click();
+    assert.equal(await revoke.isDisabled(), true, 'duplicate revocation is unavailable while queued');
+    assert.equal(await page.evaluate(() => window.__grammarConsentOverlap.rewrites), 0);
+    await page.evaluate(() => window.__grammarConsentOverlap.release());
+    await until('queued revocation persisted', async () => {
+      const settings = await loadSettings();
+      return !settings.autoRewrite && ['cloudProcessingAcknowledgementVersion','claudeCloudAcknowledgementVersion','antigravityCloudAcknowledgementVersion'].every(key => settings[key] === 0);
+    });
+    await page.getByRole('button', {name: 'Done', exact: true}).click();
+    await until('overlap revocation acknowledged', async () => (await status.textContent()) === 'Deep consent revoked — Instant draft kept');
+    await sleep(1200);
+    const counts = await page.evaluate(() => ({grants: window.__grammarConsentOverlap.grants, rewrites: window.__grammarConsentOverlap.rewrites}));
+    assert.deepEqual(counts, {grants: 2, rewrites: 0}, 'neither stale grant completion starts Deep');
+    assert.equal((await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('provider_snapshot'))).busyKind, null);
+    assert.equal(await draftValue(), 'Keep my draft across overlapping consent actions.');
+    assert.equal(await errorText(), '');
+    await copyResult('copy-after-overlapping-consent', 'Keep my draft across overlapping consent actions.');
+    await closeWidget();
+    console.log('CONSENT_OVERLAP', JSON.stringify({...counts, persistedRevoked: true, controlledRealResponseDelivery: true}));
+    pass('two UI grants followed by revocation: real delayed responses cannot restore consent or start Deep; edited draft copies exactly');
+  } finally {
+    await page.evaluate(() => {
+      const probe = window.__grammarConsentOverlap;
+      if (probe) { probe.release?.(); window.__TAURI_INTERNALS__.invoke = probe.original; delete window.__grammarConsentOverlap; }
+    });
+  }
+
+  // Cancelling a pending review must suppress its delayed continuation.
+  // This does not undo an already persisted provider permission.
+  await captureAndWaitInstant(0, 'Review cancel: this are wrong.', 'this are wrong.', 'this is wrong.');
+  await page.evaluate(() => {
+    const bridge = window.__TAURI_INTERNALS__;
+    const original = bridge.invoke;
+    const probe = {grants: 0, rewrites: 0, held: false, release: null, original};
+    window.__grammarConsentOverlap = probe;
+    bridge.invoke = async function(command, args, ...rest) {
+      if (command === 'rewrite_selected_text') probe.rewrites++;
+      const hold = command === 'save_settings' && args?.acknowledgeProvider === 'claude' && ++probe.grants === 1;
+      const result = await original.call(this, command, args, ...rest);
+      if (hold) {
+        probe.held = true;
+        await new Promise(resolve => { probe.release = resolve; });
+      }
+      return result;
+    };
+  });
+  try {
+    await runDeep.click();
+    await draft.fill('Keep my draft after cancelling the pending review.');
+    await page.getByRole('button', {name: '동의하고 계속', exact: true}).click();
+    await until('review grant response is held', async () => page.evaluate(() => window.__grammarConsentOverlap.held));
+    await page.getByRole('dialog').getByRole('button', {name: '취소', exact: true}).click();
+    await page.evaluate(() => window.__grammarConsentOverlap.release());
+    await sleep(1200);
+    assert.equal(await page.evaluate(() => window.__grammarConsentOverlap.rewrites), 0, 'cancelling the pending review prevents late grant continuation from sending Deep');
+    assert.equal(await status.textContent(), 'Deep not sent · Instant stays local');
+    assert.equal((await loadSettings()).claudeCloudAcknowledgementVersion, 1, 'cancelling a pending request is not persisted consent revocation');
+    await copyResult('copy-after-pending-review-cancel', 'Keep my draft after cancelling the pending review.');
+    await closeWidget();
+    pass('review cancellation supersedes the delayed real grant response without sending Deep; existing permission remains explicit');
+  } finally {
+    await page.evaluate(() => {
+      const probe = window.__grammarConsentOverlap;
+      if (probe) { probe.release?.(); window.__TAURI_INTERNALS__.invoke = probe.original; delete window.__grammarConsentOverlap; }
+    });
+  }
   await page.evaluate(settings => window.__TAURI_INTERNALS__.invoke('save_settings', {settings,acknowledgeProvider:'claude'}), consentBeforeRevoke);
   await page.reload(); await waitForBridge();
 
