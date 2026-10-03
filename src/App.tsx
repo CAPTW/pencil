@@ -13,6 +13,7 @@ import {
   LogIn,
   Keyboard,
   Plus,
+  Power,
   RefreshCcw,
   RotateCcw,
   Search,
@@ -1526,6 +1527,16 @@ export default function App() {
     void startWindowDrag(event, getCurrentWindow()).catch(() => undefined);
   }
 
+  async function quitApp() {
+    if (!window.confirm("Quit Grammar? The current draft will be discarded and active Deep work will stop.")) return;
+    try {
+      await invoke("quit_app");
+    } catch (nextError) {
+      setError(toErrorMessage(nextError));
+      setStatus("Quit failed");
+    }
+  }
+
   async function dismiss() {
     const token = currentTokenRef.current;
     const stillCurrent = () => token === null
@@ -1605,6 +1616,9 @@ export default function App() {
             </div>
           </div>
           <div className="topbar-actions">
+            <button className="icon-button" type="button" onClick={quitApp} disabled={isCopying} aria-label="Quit Grammar" title="Quit Grammar">
+              <Power size={16} />
+            </button>
             <button
               className="icon-button"
               type="button"
@@ -1630,6 +1644,7 @@ export default function App() {
             <ul className="disclosure-list">
               <li>Default shortcut: {settings.shortcut.primary.display}</li>
               <li>Tray icon: Show Grammar, Settings, Provider Status, Quit</li>
+              <li>The power button quits Grammar; Close only hides the widget.</li>
               <li>Provider status and Test connection live in Settings</li>
               <li>Instant is local. Deep uses only the selected Provider.</li>
             </ul>

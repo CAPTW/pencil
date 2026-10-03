@@ -41,7 +41,7 @@ pwsh -NoProfile -File .\grammar-package\Install-Grammar.ps1
 
 ## 제거
 
-먼저 트레이 메뉴의 Quit 으로 Grammar 를 끄고, 설치 폴더를 연 탐색기·터미널 창을 닫습니다.
+먼저 앱 상단의 전원 버튼(**Quit Grammar**)을 누르고 확인하거나, 트레이 메뉴의 Quit으로 Grammar를 끄세요. 전원 버튼의 확인을 취소하면 앱과 진행 중인 작업이 유지됩니다. Close는 창만 숨깁니다. 종료 시 현재 초안은 저장되지 않으며, 정리를 완료하지 못하면 앱이 열린 채 오류를 표시합니다. 앱이 종료된 뒤 설치 폴더를 연 탐색기·터미널 창을 닫습니다.
 
 ```powershell
 pwsh -NoProfile -File "$env:LOCALAPPDATA\GrammarPersonal\Uninstall-Grammar.ps1"

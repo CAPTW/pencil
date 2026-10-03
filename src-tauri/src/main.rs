@@ -1552,6 +1552,13 @@ async fn invalidate_terminology_capture(state: &State<'_, AppState>) {
     interrupt_active_turn(state.inner(), active_turn).await;
 }
 
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    // The normal ExitRequested handler owns cancellation and cleanup. Do not
+    // terminate directly or bypass its fail-closed completion check.
+    app.exit(0);
+}
+
 fn main() {
     // Installer-only discovery: exit before settings, Provider probes or any GUI.
     // Exit 78 means the current process cannot discover a WebView2 runtime.
@@ -1584,6 +1591,7 @@ fn main() {
             open_device_login_page,
             provider_snapshot,
             query_terminology_entries,
+            quit_app,
             refresh_providers,
             rename_terminology_profile,
             reset_primary_shortcut,

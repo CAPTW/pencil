@@ -21,8 +21,11 @@ import {resolve, join, dirname} from 'node:path';
 
 const sandbox = process.env.GRAMMAR_OWNED_SANDBOX_TEST === '1';
 const trayExitTest = process.env.GRAMMAR_TRAY_EXIT_TEST === '1';
-assert.ok(!trayExitTest || sandbox, 'tray exit test is owned Sandbox only');
+const windowExitTest = process.env.GRAMMAR_WINDOW_EXIT_TEST === '1';
+assert.ok(!(trayExitTest && windowExitTest), 'select one exit route per run');
+assert.ok(!(trayExitTest || windowExitTest) || sandbox, 'exit test is owned Sandbox only');
 let trayExitReceipt = null;
+let windowExitReceipt = null;
 let packageCommit = null;
 if (sandbox) {
   assert.equal(process.platform, 'win32');
@@ -245,7 +248,7 @@ try {
         WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${cdpPort}`,
         CODEX_PENCIL_CLAUDE_BIN: syntheticProvider,
         P01_FIXTURE_MODE_FILE: providerModeFile,
-        ...(trayExitTest ? {P01_EXIT_DIR: out} : {}),
+        ...(trayExitTest || windowExitTest ? {P01_EXIT_DIR: out} : {}),
       },
       stdio: 'ignore',
     });
@@ -1152,7 +1155,7 @@ try {
   assert.equal((await restartedCopy.count()) > 0 && (await restartedCopy.isEnabled()), false, 'nothing to copy after the restart');
   assert.deepEqual(await invokeCopy(unicodeToken, 'OLD-SHOULD-NOT-COPY'), {status: 'rejected_stale'});
   pass('after a restart no capture, draft or selection came back and settings persisted');
-  if (trayExitTest) {
+  if (trayExitTest || windowExitTest) {
     await setProviderMode('exit-hold');
     const saved = await loadSettings();
     await page.evaluate(settings => window.__TAURI_INTERNALS__.invoke('save_settings', {
@@ -1176,22 +1179,50 @@ try {
     const sessionRoot = dirname(child.cwd);
     assert.equal(dirname(sessionRoot).toLowerCase(), join(process.env.TEMP, 'codex-pencil-runtime-v1').toLowerCase());
     assert.equal(existsSync(sessionRoot), true);
+    let gesture;
+    if (windowExitTest) {
+      const quit = page.getByRole('button', {name:'Quit Grammar', exact:true});
+      const exitDraft = page.getByLabel('Editable rewrite result text', {exact:true});
+      await exitDraft.fill('Keep this edited exit-trial draft.');
+      let dismissed = false;
+      page.once('dialog', async dialog => {
+        assert.equal(dialog.type(), 'confirm');
+        assert.match(dialog.message(), /current draft will be discarded/);
+        await dialog.dismiss(); dismissed = true;
+      });
+      await quit.click();
+      await until('quit confirmation dismissed', async () => dismissed);
+      assert.equal(alive(app.pid), true);
+      assert.equal(alive(child.pid), true);
+      assert.equal(existsSync(sessionRoot), true);
+      assert.equal(await exitDraft.inputValue(), 'Keep this edited exit-trial draft.');
+      pass('dismissing Quit confirmation preserves app and active synthetic Deep');
+      let accepted = false;
+      page.once('dialog', async dialog => { await dialog.accept(); accepted = true; });
+      gesture = {status:'QUIT_CONFIRMED', appPid:app.pid, requestedUnixMs:Date.now(), method:'window-power-button-confirm'};
+      await quit.click({noWaitAfter:true}).catch(error => {
+        if (!page.isClosed()) throw error;
+      });
+      assert.equal(accepted, true);
+    } else {
     // A separately guarded existing-login helper drives only the owned shell
     // icon and exact app menu. UIA ProcessId can be zero for XAML elements;
     // the helper verifies their actual window owner. Product stays Medium.
     await writeFile('C:/GrammarOutput/tray-request.json', JSON.stringify({appPid:app.pid}));
     await until('owned guest tray gesture receipt', async () => existsSync('C:/GrammarOutput/tray-gesture.json'), 30000);
-    const gesture = JSON.parse(await readFile('C:/GrammarOutput/tray-gesture.json','utf8'));
+    gesture = JSON.parse(await readFile('C:/GrammarOutput/tray-gesture.json','utf8'));
     assert.equal(gesture.status, 'QUIT_CLICKED');
-    await until('natural app exit after tray Quit', async () => !alive(app.pid), 20000);
+    }
+    await until('natural app exit after explicit Quit', async () => !alive(app.pid), 20000);
     await until('synthetic Provider exit', async () => !alive(child.pid), 2000);
     assert.equal(existsSync(sessionRoot), false, 'actual runtime session removed before exit');
     await until('zero app exit code', async () => app.exitCode !== null, 2000);
     assert.equal(app.exitCode, 0);
-    await assertEditorsUntouched('tray-quit', untouched);
-    trayExitReceipt = {...gesture, appExitCode:app.exitCode, elapsedMs:Date.now()-gesture.requestedUnixMs,
+    await assertEditorsUntouched(windowExitTest ? 'window-quit' : 'tray-quit', untouched);
+    const exitReceipt = {...gesture, appExitCode:app.exitCode, elapsedMs:Date.now()-gesture.requestedUnixMs,
       providerExited:true, sessionRemoved:true, forcedTerminationBeforeProof:false};
-    pass('real tray Quit during synthetic Deep exits naturally with child and runtime session removed');
+    if (windowExitTest) windowExitReceipt = exitReceipt; else trayExitReceipt = exitReceipt;
+    pass(`real ${windowExitTest ? 'window' : 'tray'} Quit during synthetic Deep exits naturally with child and runtime session removed`);
   }
 } catch (error) {
   failure = error;
@@ -1231,6 +1262,9 @@ try {
     checks,
     tray_exit: trayExitReceipt,
     tray_exit_enabled: trayExitTest,
+    window_exit: windowExitReceipt,
+    window_exit_enabled: windowExitTest,
+    exit_fixture_sha256: trayExitTest || windowExitTest ? createHash('sha256').update(readFileSync(syntheticProvider)).digest('hex') : null,
     tray_exit_artifacts: trayExitTest ? Object.fromEntries([
       ['fixture', syntheticProvider],
       ['gesture', 'C:/GrammarPayload/Guest-Tray-Quit.ps1'],
