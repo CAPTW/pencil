@@ -600,6 +600,8 @@ try {
   try {
     const bytesBeforeFailure = await readFile(settingsPath);
     await page.getByRole('button', {name: 'Settings', exact: true}).click();
+    assert.equal((await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('provider_snapshot'))).busyKind, 'claude',
+      'synthetic Deep is still active immediately before the failed revocation');
     await page.getByRole('button', {name: 'Revoke all Deep consent', exact: true}).click();
     await page.getByRole('button', {name: 'Done', exact: true}).click();
     await until('consent persistence failure reported', async () => /Consent.*not saved|Consent could not be saved/.test((await status.textContent()) ?? ''));
