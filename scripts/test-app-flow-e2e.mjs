@@ -872,10 +872,10 @@ try {
         assert.equal(await copyEnabled(), false);
       } else {
         if (change === 'mode') await page.getByRole('button', {name: 'Translate', exact: true}).click();
-        if (change === 'target') await page.getByLabel('Target language', {exact: true}).selectOption('ko');
+        if (change === 'target') await page.getByRole('combobox', {name: /^Target language/}).selectOption('ko');
         if (change === 'reference') {
           await page.getByRole('button', {name: 'Settings', exact: true}).click();
-          await page.getByLabel('Auto reference language', {exact: true}).selectOption('ko');
+          await page.getByRole('combobox', {name: /^Auto reference language/}).selectOption('ko');
         }
         await page.evaluate(() => window.__grammarConsentOverlap.release());
         await until('changed intent persisted', async () => {
