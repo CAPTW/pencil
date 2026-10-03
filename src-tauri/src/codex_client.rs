@@ -185,6 +185,7 @@ pub struct CodexClient {
 }
 
 pub struct CodexClientCache {
+    admission_closed: AtomicBool,
     client: Mutex<Option<Arc<CodexClient>>>,
     connect_gate: Mutex<()>,
     connecting: StdMutex<Option<Arc<AtomicBool>>>,
@@ -195,6 +196,7 @@ pub struct CodexClientCache {
 impl Default for CodexClientCache {
     fn default() -> Self {
         Self {
+            admission_closed: AtomicBool::new(false),
             client: Mutex::new(None),
             connect_gate: Mutex::new(()),
             connecting: StdMutex::new(None),
@@ -205,6 +207,13 @@ impl Default for CodexClientCache {
 }
 
 impl CodexClientCache {
+    pub(crate) fn close_admission(&self) {
+        self.admission_closed.store(true, Ordering::SeqCst);
+        if let Some(cancel) = self.connecting.lock().unwrap().as_ref() {
+            cancel.store(true, Ordering::SeqCst);
+        }
+    }
+
     pub async fn get(&self) -> Result<Arc<CodexClient>, String> {
         self.get_cancel(Arc::new(AtomicBool::new(false))).await
     }
@@ -223,6 +232,9 @@ impl CodexClientCache {
         cancel: Arc<AtomicBool>,
     ) -> Result<Arc<CodexClient>, String> {
         let _gate = self.connect_gate.lock().await;
+        if self.admission_closed.load(Ordering::SeqCst) {
+            return Err("codex_shutdown_restart_required".into());
+        }
         if self.shutting_down.load(Ordering::SeqCst) {
             return Err("rewrite_interrupted".into());
         }
@@ -244,7 +256,7 @@ impl CodexClientCache {
             self.client.lock().await.take();
         }
         *self.connecting.lock().unwrap() = Some(cancel.clone());
-        if self.shutting_down.load(Ordering::SeqCst) {
+        if self.shutting_down.load(Ordering::SeqCst) || self.admission_closed.load(Ordering::SeqCst) {
             cancel.store(true, Ordering::SeqCst);
         }
         let result = CodexClient::connect_cancel(cancel.clone()).await;

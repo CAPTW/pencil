@@ -1519,7 +1519,8 @@ async fn cancel_cli_operation(state: &AppState) -> Option<Arc<provider::manager:
 }
 
 async fn shutdown_providers(state: &AppState) -> Result<(), &'static str> {
-    let operation = cancel_cli_operation(state).await;
+    state.codex.close_admission();
+    let operation = state.providers.lock().await.begin_shutdown();
     tokio::time::timeout(std::time::Duration::from_secs(8), async {
         let cli = async {
             if let Some(operation) = operation {
