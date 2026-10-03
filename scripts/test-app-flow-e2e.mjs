@@ -67,6 +67,25 @@ const setProviderMode = (mode) => writeFile(providerModeFile, mode);
 await setProviderMode('success');
 
 const checks = [];
+let settingsLocker = null;
+async function lockOwnedSettings() {
+  const settingsPath = join(process.env.APPDATA, 'com.local.codexpencil', 'settings.json');
+  assert.ok(existsSync(settingsPath), 'owned installed settings exist');
+  settingsLocker = spawn('powershell.exe', ['-NoProfile', '-Command',
+    '$f=[IO.File]::Open($env:GRAMMAR_SETTINGS_LOCK_PATH,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read); try { [Console]::WriteLine("LOCKED"); [Console]::Out.Flush(); [Console]::ReadLine() | Out-Null } finally { $f.Dispose() }'],
+    {env: {...process.env, GRAMMAR_SETTINGS_LOCK_PATH: settingsPath}, windowsHide: true, stdio: ['pipe','pipe','pipe']});
+  let ready = false;
+  settingsLocker.stdout.on('data', data => { if (data.toString().includes('LOCKED')) ready = true; });
+  await until('owned settings file locked against rename', async () => ready, 10000);
+  return settingsPath;
+}
+async function unlockOwnedSettings() {
+  if (!settingsLocker) return;
+  settingsLocker.stdin.end('\n');
+  const child = settingsLocker;
+  await until('settings lock released', async () => child.exitCode !== null, 10000);
+  settingsLocker = null;
+}
 let failure = null;
 const pass = (name) => {
   checks.push(name);
@@ -570,6 +589,41 @@ try {
   await page.reload(); await waitForBridge();
 
   // 8. The shortcut toggle ends the capture in the backend and tells the widget.
+  // Real filesystem failure, without a product fault hook: prevent renaming
+  // only this fresh owned profile's settings file while revocation saves.
+  await captureAndWaitInstant(0, 'Save failure: this are wrong.', 'this are wrong.', 'this is wrong.');
+  await until('Deep active before failed consent save', async () => await cancelDeep.isEnabled());
+  await draft.fill('Keep this local draft after a save failure.');
+  const settingsBeforeFailure = await loadSettings();
+  const settingsPath = await lockOwnedSettings();
+  try {
+    const bytesBeforeFailure = await readFile(settingsPath);
+    await page.getByRole('button', {name: 'Settings', exact: true}).click();
+    await page.getByRole('button', {name: 'Revoke all Deep consent', exact: true}).click();
+    await page.getByRole('button', {name: 'Done', exact: true}).click();
+    await until('consent persistence failure reported', async () => /Consent.*not saved|Consent could not be saved/.test((await status.textContent()) ?? ''));
+    assert.deepEqual(await loadSettings(), settingsBeforeFailure, 'failed save does not claim persisted revocation');
+    assert.deepEqual(await readFile(settingsPath), bytesBeforeFailure, 'failed save leaves exact persisted settings intact');
+    await until('failed consent save cancels and cleans Deep', async () =>
+      (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('provider_snapshot'))).busyKind === null, 20000);
+    assert.equal(await draftValue(), 'Keep this local draft after a save failure.');
+    console.log('CONSENT_SAVE_FAILURE', JSON.stringify({status: await status.textContent(), error: await errorText(), providerIdle: true, draftKept: true}));
+    await copyResult('copy-after-consent-save-failure', 'Keep this local draft after a save failure.');
+  } finally { await unlockOwnedSettings(); }
+  await page.getByRole('button', {name: 'Settings', exact: true}).click();
+  await page.getByRole('button', {name: 'Revoke all Deep consent', exact: true}).click();
+  await page.getByRole('button', {name: 'Done', exact: true}).click();
+  await until('retry revocation succeeded', async () => (await status.textContent()) === 'Deep consent revoked — Instant draft kept');
+  const afterRetry = await loadSettings();
+  assert.equal(afterRetry.autoRewrite, false);
+  for (const key of ['cloudProcessingAcknowledgementVersion','claudeCloudAcknowledgementVersion','antigravityCloudAcknowledgementVersion']) assert.equal(afterRetry[key], 0);
+  assert.equal(await errorText(), '', 'successful retry clears the previous persistence error');
+  await closeWidget();
+  pass('failed consent save cancels Deep, preserves draft and disk; retry persists revocation and clears the error');
+  await page.evaluate(settings => window.__TAURI_INTERNALS__.invoke('save_settings', {settings,acknowledgeProvider:'claude'}), consentBeforeRevoke);
+  await page.reload(); await waitForBridge();
+
+  // Shortcut toggle ends the capture in the backend and tells the widget.
   const hideDoc = 'Hide check: please seperate here.';
   const hideToken = await captureAndWaitInstant(0, hideDoc, 'please seperate here.', 'please separate here.');
   await cancelDeepIfRunning();
@@ -767,12 +821,13 @@ try {
     .catch(() => null);
   if (widgetState) console.error('WIDGET_STATE', JSON.stringify(widgetState));
 } finally {
+  try { await unlockOwnedSettings(); } catch (error) { failure ??= error; }
   try {
     await browser?.close();
   } catch {
     // CDP connection already gone.
   }
-  const pids = [app?.pid, editor.process.pid].filter(Boolean);
+  const pids = [app?.pid, editor.process.pid, settingsLocker?.pid].filter(Boolean);
   for (const pid of pids) killTree(pid);
   await sleep(1500);
   const residual = pids.filter(alive);
