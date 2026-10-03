@@ -456,8 +456,9 @@ async fn cli_cancel_targets_invalidated_capture_and_keeps_its_reservation_until_
     ).unwrap();
     let intent = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
     state.capture.lock().await.begin_rewrite_bound(&token, intent.clone()).unwrap();
+    let attempt = state.capture.lock().await.rewrite_attempt(&token).unwrap();
     let operation = state.providers.lock().await.reserve_capture(
-        ProviderKind::Codex, token.clone(), intent,
+        ProviderKind::Codex, token.clone(), intent, attempt,
     ).unwrap();
     // A delayed old cancellation must leave the currently valid rewrite alone.
     assert!(crate::cancel_cli_operation(&state).await.is_none());

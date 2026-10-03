@@ -323,11 +323,12 @@ async fn stale_cancel_does_not_target_new_valid_capture() {
         capture.begin_rewrite_bound(&token, intent.clone()).unwrap();
         token
     };
+    let attempt = state.capture.lock().await.rewrite_attempt(&token).unwrap();
     let op = state
         .providers
         .lock()
         .await
-        .reserve_capture(ProviderKind::Codex, token.clone(), intent)
+        .reserve_capture(ProviderKind::Codex, token.clone(), intent, attempt)
         .unwrap();
     assert!(cancel_cli_operation(&state).await.is_none());
     state.capture.lock().await.cancel_active_with_turn();

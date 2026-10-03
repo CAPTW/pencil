@@ -34,6 +34,7 @@ pub(crate) struct ProviderOperation {
     pub(crate) capture_binding: Option<(
         crate::capture_session::SessionToken,
         crate::capture_session::BoundRewriteIntent,
+        u64,
     )>,
     cancel: Arc<AtomicBool>,
     cli_slot: Arc<Mutex<Option<ActiveCliProcess>>>,
@@ -136,12 +137,13 @@ impl ProviderManager {
         kind: ProviderKind,
         token: crate::capture_session::SessionToken,
         intent: crate::capture_session::BoundRewriteIntent,
+        attempt: u64,
     ) -> Result<Arc<ProviderOperation>, ProviderError> {
         self.reserve_bound(
             kind,
             format!("{}:{}", token.session_id, token.generation),
             false,
-            Some((token, intent)),
+            Some((token, intent, attempt)),
             Arc::new(AtomicBool::new(false)),
         )
     }
@@ -163,6 +165,7 @@ impl ProviderManager {
         capture_binding: Option<(
             crate::capture_session::SessionToken,
             crate::capture_session::BoundRewriteIntent,
+            u64,
         )>,
         cancel: Arc<AtomicBool>,
     ) -> Result<Arc<ProviderOperation>, ProviderError> {
