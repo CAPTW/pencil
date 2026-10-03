@@ -736,6 +736,80 @@ try {
       if (probe) { probe.release?.(); window.fetch = probe.original; delete window.__grammarConsentOverlap; }
     });
   }
+
+  // Bind a pending consent continuation to its original capture and provider.
+  // Exercise both schedules even if one reproduces a regression.
+  const bindingFailures = [];
+  for (const change of ['capture', 'provider']) {
+    await setProviderMode('success');
+    await page.evaluate(async () => {
+      const settings = await window.__TAURI_INTERNALS__.invoke('load_settings');
+      await window.__TAURI_INTERNALS__.invoke('save_settings', {settings: {...settings, activeProvider: 'claude', autoRewrite: true,
+        cloudProcessingAcknowledgementVersion: 0, claudeCloudAcknowledgementVersion: 0, antigravityCloudAcknowledgementVersion: 0}});
+    });
+    await page.reload(); await waitForBridge();
+    await captureAndWaitInstant(0, 'Original review: this are wrong.', 'this are wrong.', 'this is wrong.');
+  await page.evaluate(() => {
+    const original = window.fetch;
+    const probe = {grants: 0, rewrites: 0, held: false, release: null, original};
+    window.__grammarConsentOverlap = probe;
+    window.fetch = async function(input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      const command = new URL(url).hostname === 'ipc.localhost' ? new URL(url).pathname.slice(1) : '';
+      const args = command && typeof init?.body === 'string' ? JSON.parse(init.body) : {};
+      if (command === 'rewrite_selected_text') probe.rewrites++;
+      const hold = command === 'save_settings' && args?.acknowledgeProvider === 'claude' && ++probe.grants === 1;
+      const result = await original.call(this, input, init);
+      if (hold) {
+        probe.held = true;
+        await new Promise(resolve => { probe.release = resolve; });
+      }
+      return result;
+    };
+  });
+    try {
+      await page.getByRole('button', {name: '동의하고 계속', exact: true}).click();
+      await until('binding grant response held', async () => page.evaluate(() => window.__grammarConsentOverlap.held));
+      if (change === 'capture') {
+        await closeWidget();
+        await captureAndWaitInstant(0, 'New review: please seperate here.', 'please seperate here.', 'please separate here.');
+        await draft.fill('Preserve the new capture draft.');
+      } else {
+        await page.getByRole('button', {name: 'Settings', exact: true}).click();
+        await page.getByRole('radio', {name: /^Codex/}).check();
+      }
+      await page.evaluate(() => window.__grammarConsentOverlap.release());
+      if (change === 'provider') {
+        await until('new provider persisted', async () => (await loadSettings()).activeProvider === 'codex');
+        await page.getByRole('button', {name: 'Done', exact: true}).click();
+      }
+      await sleep(1200);
+      const requests = await page.evaluate(() => window.__grammarConsentOverlap.rewrites);
+      console.log('CONSENT_BINDING', JSON.stringify({change, rewriteTransportRequests: requests}));
+      assert.equal(requests, 0, 'a late consent response must not dispatch after ' + change + ' changes');
+      if (change === 'capture') {
+        assert.equal(await page.getByRole('dialog').count(), 1, 'old completion must not close the new capture review');
+        await page.getByRole('dialog').getByRole('button', {name: '취소', exact: true}).click();
+        await copyResult('copy-after-consent-capture-change', 'Preserve the new capture draft.');
+      } else {
+        assert.equal((await loadSettings()).cloudProcessingAcknowledgementVersion, 0, 'provider switch grants no Codex consent');
+        await copyResult('copy-after-consent-provider-change', 'this is wrong.');
+      }
+      pass('pending consent ' + change + ' change rejects late Deep continuation and preserves exact local Copy');
+    } catch (error) {
+      bindingFailures.push(change + ': ' + error.message);
+      console.error('CONSENT_BINDING_FAIL', change, error.message);
+    } finally {
+      await page.evaluate(() => {
+        const probe = window.__grammarConsentOverlap;
+        if (probe) { probe.release?.(); window.fetch = probe.original; delete window.__grammarConsentOverlap; }
+      });
+      await cancelDeepIfRunning();
+      if (await widgetVisible()) await closeWidget();
+      await until('binding case provider idle', async () => (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('provider_snapshot'))).busyKind === null, 20000);
+    }
+  }
+  assert.deepEqual(bindingFailures, [], 'pending consent binding regressions');
   await page.evaluate(settings => window.__TAURI_INTERNALS__.invoke('save_settings', {settings,acknowledgeProvider:'claude'}), consentBeforeRevoke);
   await page.reload(); await waitForBridge();
 
