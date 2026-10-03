@@ -638,14 +638,16 @@ try {
   await page.reload(); await waitForBridge();
   await captureAndWaitInstant(0, 'Consent overlap: this are wrong.', 'this are wrong.', 'this is wrong.');
   await page.evaluate(() => {
-    const bridge = window.__TAURI_INTERNALS__;
-    const original = bridge.invoke;
+    const original = window.fetch;
     const probe = {grants: 0, rewrites: 0, held: false, release: null, original};
     window.__grammarConsentOverlap = probe;
-    bridge.invoke = async function(command, args, ...rest) {
+    window.fetch = async function(input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      const command = new URL(url).hostname === 'ipc.localhost' ? new URL(url).pathname.slice(1) : '';
+      const args = command && typeof init?.body === 'string' ? JSON.parse(init.body) : {};
       if (command === 'rewrite_selected_text') probe.rewrites++;
       const hold = command === 'save_settings' && args?.acknowledgeProvider === 'claude' && ++probe.grants === 1;
-      const result = await original.call(this, command, args, ...rest);
+      const result = await original.call(this, input, init);
       if (hold) {
         probe.held = true;
         await new Promise(resolve => { probe.release = resolve; });
@@ -685,7 +687,7 @@ try {
   } finally {
     await page.evaluate(() => {
       const probe = window.__grammarConsentOverlap;
-      if (probe) { probe.release?.(); window.__TAURI_INTERNALS__.invoke = probe.original; delete window.__grammarConsentOverlap; }
+      if (probe) { probe.release?.(); window.fetch = probe.original; delete window.__grammarConsentOverlap; }
     });
   }
 
@@ -698,14 +700,16 @@ try {
   await page.reload(); await waitForBridge();
   await captureAndWaitInstant(0, 'Review cancel: this are wrong.', 'this are wrong.', 'this is wrong.');
   await page.evaluate(() => {
-    const bridge = window.__TAURI_INTERNALS__;
-    const original = bridge.invoke;
+    const original = window.fetch;
     const probe = {grants: 0, rewrites: 0, held: false, release: null, original};
     window.__grammarConsentOverlap = probe;
-    bridge.invoke = async function(command, args, ...rest) {
+    window.fetch = async function(input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      const command = new URL(url).hostname === 'ipc.localhost' ? new URL(url).pathname.slice(1) : '';
+      const args = command && typeof init?.body === 'string' ? JSON.parse(init.body) : {};
       if (command === 'rewrite_selected_text') probe.rewrites++;
       const hold = command === 'save_settings' && args?.acknowledgeProvider === 'claude' && ++probe.grants === 1;
-      const result = await original.call(this, command, args, ...rest);
+      const result = await original.call(this, input, init);
       if (hold) {
         probe.held = true;
         await new Promise(resolve => { probe.release = resolve; });
@@ -729,7 +733,7 @@ try {
   } finally {
     await page.evaluate(() => {
       const probe = window.__grammarConsentOverlap;
-      if (probe) { probe.release?.(); window.__TAURI_INTERNALS__.invoke = probe.original; delete window.__grammarConsentOverlap; }
+      if (probe) { probe.release?.(); window.fetch = probe.original; delete window.__grammarConsentOverlap; }
     });
   }
   await page.evaluate(settings => window.__TAURI_INTERNALS__.invoke('save_settings', {settings,acknowledgeProvider:'claude'}), consentBeforeRevoke);
