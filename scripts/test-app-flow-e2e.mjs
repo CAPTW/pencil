@@ -22,10 +22,21 @@ import {resolve, join, dirname} from 'node:path';
 const sandbox = process.env.GRAMMAR_OWNED_SANDBOX_TEST === '1';
 const trayExitTest = process.env.GRAMMAR_TRAY_EXIT_TEST === '1';
 const windowExitTest = process.env.GRAMMAR_WINDOW_EXIT_TEST === '1';
+const windowExitFailureTest = process.env.GRAMMAR_WINDOW_EXIT_FAILURE_TEST === '1';
+assert.ok(!windowExitFailureTest || windowExitTest, 'cleanup failure test requires window exit route');
 assert.ok(!(trayExitTest && windowExitTest), 'select one exit route per run');
 assert.ok(!(trayExitTest || windowExitTest) || sandbox, 'exit test is owned Sandbox only');
 let trayExitReceipt = null;
 let windowExitReceipt = null;
+let windowExitFailureReceipt = null;
+let runtimeLocker = null;
+async function releaseRuntimeLock() {
+  if (!runtimeLocker) return;
+  runtimeLocker.stdin.end('\n');
+  await until('owned runtime lock released', async () => runtimeLocker.exitCode !== null, 10000);
+  assert.equal(runtimeLocker.exitCode, 0);
+  runtimeLocker = null;
+}
 let packageCommit = null;
 if (sandbox) {
   assert.equal(process.platform, 'win32');
@@ -1180,6 +1191,16 @@ try {
     const sessionRoot = dirname(child.cwd);
     assert.equal(dirname(sessionRoot).toLowerCase(), join(process.env.TEMP, 'codex-pencil-runtime-v1').toLowerCase());
     assert.equal(existsSync(sessionRoot), true);
+    if (windowExitFailureTest) {
+      const lockPath = join(child.cwd, 'owned-cleanup-lock.txt');
+      await writeFile(lockPath, 'synthetic cleanup boundary');
+      runtimeLocker = spawn('powershell.exe', ['-NoProfile', '-Command',
+        '$f=[IO.File]::Open($env:GRAMMAR_RUNTIME_LOCK_PATH,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read); try { [Console]::WriteLine("LOCKED"); [Console]::Out.Flush(); [Console]::ReadLine() | Out-Null } finally { $f.Dispose() }'],
+        {env:{...process.env,GRAMMAR_RUNTIME_LOCK_PATH:lockPath},windowsHide:true,stdio:['pipe','pipe','pipe']});
+      let locked = false;
+      runtimeLocker.stdout.on('data', data => { if (data.toString().includes('LOCKED')) locked = true; });
+      await until('owned runtime file locked', async () => locked, 10000);
+    }
     let gesture;
     if (windowExitTest) {
       const quit = page.getByRole('button', {name:'Quit Grammar', exact:true});
@@ -1216,6 +1237,18 @@ try {
     assert.equal(gesture.status, 'QUIT_CLICKED');
     assert.ok(gesture.requestedUnixMs-childStartedAt < 60000, 'finite child has at least 30s left at Quit');
     }
+    if (windowExitFailureTest) {
+      await until('visible shutdown cleanup failure', async () => (await page.locator('.error-row').textContent().catch(() => '')).includes('Shutdown incomplete'), 12000);
+      assert.equal(alive(app.pid), true);
+      assert.equal(alive(child.pid), false);
+      assert.equal(existsSync(sessionRoot), true);
+      windowExitFailureReceipt = {blockedWithAppAlive:true, childExited:true, sessionRetained:true, lockReleased:false, retrySucceeded:false};
+      pass('locked runtime file prevents shutdown; app reports failure and child has exited');
+      await releaseRuntimeLock();
+      windowExitFailureReceipt.lockReleased = true;
+      page.once('dialog', async dialog => { await dialog.accept(); });
+      await page.getByRole('button', {name:'Quit Grammar', exact:true}).click({noWaitAfter:true}).catch(error => { if (!page.isClosed()) throw error; });
+    }
     await until('natural app exit after explicit Quit', async () => !alive(app.pid), 20000);
     await until('synthetic Provider exit', async () => !alive(child.pid), 2000);
     assert.equal(existsSync(sessionRoot), false, 'actual runtime session removed before exit');
@@ -1226,6 +1259,7 @@ try {
       childAgeAtQuitMs:gesture.requestedUnixMs-childStartedAt,
       providerExited:true, sessionRemoved:true, forcedTerminationBeforeProof:false};
     if (windowExitTest) windowExitReceipt = exitReceipt; else trayExitReceipt = exitReceipt;
+    if (windowExitFailureReceipt) windowExitFailureReceipt.retrySucceeded = true;
     pass(`real ${windowExitTest ? 'window' : 'tray'} Quit during synthetic Deep exits naturally with child and runtime session removed`);
   }
 } catch (error) {
@@ -1240,13 +1274,14 @@ try {
     .catch(() => null);
   if (widgetState) console.error('WIDGET_STATE', JSON.stringify(widgetState));
 } finally {
+  try { await releaseRuntimeLock(); } catch (error) { failure ??= error; }
   try { await unlockOwnedSettings(); } catch (error) { failure ??= error; }
   try {
     await browser?.close();
   } catch {
     // CDP connection already gone.
   }
-  const pids = [app?.pid, editor.process.pid, settingsLocker?.pid].filter(Boolean);
+  const pids = [app?.pid, editor.process.pid, settingsLocker?.pid, runtimeLocker?.pid].filter(Boolean);
   for (const pid of pids) killTree(pid);
   await sleep(1500);
   const residual = pids.filter(alive);
@@ -1268,6 +1303,7 @@ try {
     tray_exit_enabled: trayExitTest,
     window_exit: windowExitReceipt,
     window_exit_enabled: windowExitTest,
+    window_exit_failure: windowExitFailureReceipt,
     exit_fixture_sha256: trayExitTest || windowExitTest ? createHash('sha256').update(readFileSync(syntheticProvider)).digest('hex') : null,
     tray_exit_artifacts: trayExitTest ? Object.fromEntries([
       ['fixture', syntheticProvider],
