@@ -696,6 +696,10 @@ try {
   const beforeRestartRevoke = await loadSettings();
   await page.evaluate(settings => window.__TAURI_INTERNALS__.invoke('save_settings', {settings}), {...beforeRestartRevoke,autoRewrite:false,cloudProcessingAcknowledgementVersion:0,claudeCloudAcknowledgementVersion:0,antigravityCloudAcknowledgementVersion:0});
   const settingsBeforeRestart = await loadSettings();
+  assert.equal(settingsBeforeRestart.autoRewrite, false);
+  assert.equal(settingsBeforeRestart.cloudProcessingAcknowledgementVersion, 0);
+  assert.equal(settingsBeforeRestart.claudeCloudAcknowledgementVersion, 0);
+  assert.equal(settingsBeforeRestart.antigravityCloudAcknowledgementVersion, 0);
   await browser.close();
   killTree(app.pid);
   await until('app exited for the restart', async () => !alive(app.pid), 20000);
