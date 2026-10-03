@@ -1,17 +1,17 @@
 {
   "schema_version": 1,
-  "state_version": "2026-10-03.local-full-app-flow",
+  "state_version": "2026-10-03.local-hands-on-ready",
   "repository_branch": "main",
   "product_target": "P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST",
   "p3a_status": "COPY_ONLY_BY_OWNER_DECISION_SINGLE_COPY_BUTTON_STANDARD_EDIT_CAPTURE_OWNED_DESKTOP_QUALIFIED",
   "p3b_status": "CONSENT_BOUND_DEEP_CANDIDATE_NO_LIVE_ACCEPTANCE",
   "first_adapter_decision": "CHROMIUM_TEXTAREA_CONTENTEDITABLE_MV3",
   "active_phase": "MISSION_IMPLEMENTATION",
-  "active_step": "LOCAL_INSTALLED_APP_AND_CHROMIUM_ISOLATED_TRIAL_PASS",
+  "active_step": "ISOLATED_HANDS_ON_SESSION_READY_AWAITING_OWNER_INPUT",
   "active_task": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
   "completed_task": "GRAMMAR-P3B-R0-CURRENT-LOCAL-REPOSITORY-REAUDIT-PRODUCT-TARGET-RESET-MULTI-AGENT-DEVELOPMENT-CONTRACT-PHASE-STEP-ROADMAP-AND-MINIMAL-PROJECT-SOURCE-SUCCESSOR-R1",
   "exact_next_task": "GRAMMAR-OWNER-ASSISTED-PHYSICAL-IME-AND-PERSONAL-TRIAL-SCOPE",
-  "next_task_status": "LOCAL_SYNTHETIC_CHECKPOINT_COMPLETE_EXTERNAL_TRIAL_SCOPE_PENDING",
+  "next_task_status": "PHYSICAL_INPUT_OBSERVATIONS_PENDING_NOT_RUN",
   "acceptance_boundary": "CANDIDATE_SYNTHETIC_ONLY_NO_WHOLE_PRODUCT_ACCEPTANCE",
   "provider_kinds": [
     "codex",
@@ -129,7 +129,8 @@
     "Round r4 verification: CI 36337934296 on 8e81fc8, all 34 steps PASS (single Copy button built-app flow with 0 editor reads and 0 state-changing messages, native Copy-only receipts, unmodified installed-package browser by keyboard); a fresh-context review found no blocking issue and its findings were fixed in e7b573f",
     "Pre-use inspection from cdf8553: install (missing Chrome key, rollback, resumable uninstall and -RemoveUserData, integrity, PowerShell 7), desktop (Cancel keeps the capture, busy rollback and wait, attempts, capture-ended, Instant draft visible and kept while Deep runs, honest messages), Chromium (card identity, kept suggestions, field choice incl. sensitive refusal, Deep reply never replaces an open card, bounded waits, worker slot and grant fixes), Providers (batch launchers unavailable, sign-in wording, Codex per-turn cap) and runtime marker restore; contract failures classified as environment gap and stale policy; endurance FAIL on 36357375075 recorded; two fresh-context same-family reviews fixed; live Provider, physical keyboard/IME and real profiles NOT_RUN",
     "Local b0814c0 prerequisite repair: static MSVC CRT host and packaged-app WebView2 preflight; eight provenance and four installer probe tests, clean build, no-supplemental-CRT guest host, installed Chromium keyboard 11 checks and bounded desktop UIA Copy PASS; WebView2 explicit path condition retained, full 18-check app CDP suite still blocked; both guest installs removed and Sandbox stopped; no main adoption or remote push",
-    "Local d85f323 desktop repair: identity-bound capture-ended events, failure-preserving Dismiss and coalesced shortcut operations; old-package regression and first-repair FAIL retained. Clean receipt-bound package passed 19 app-flow checks in each of two fresh Medium-integrity Sandboxes, synthetic Provider only, explicit guest WebView2 runtime. All 52 editor counter records have zero state changes; both uninstall receipts complete, Sandbox inventory empty. Capture tests 2 PASS, shortcut tests 10 PASS/1 ignored, TS capture/draft contracts and typecheck PASS. Separate review by same integrator only; Current-package installed Chromium keyboard smoke also passed 11 checks with unchanged extension, exact mutation rereads, revocation and complete cleanup; physical IME/live Provider remain outstanding. No main adoption, remote push, or Project Source application. Evidence: D:/dev/grammar-evidence/grammar-app-flow-20261003/RESULT.md"
+    "Local d85f323 desktop repair: identity-bound capture-ended events, failure-preserving Dismiss and coalesced shortcut operations; old-package regression and first-repair FAIL retained. Clean receipt-bound package passed 19 app-flow checks in each of two fresh Medium-integrity Sandboxes, synthetic Provider only, explicit guest WebView2 runtime. All 52 editor counter records have zero state changes; both uninstall receipts complete, Sandbox inventory empty. Capture tests 2 PASS, shortcut tests 10 PASS/1 ignored, TS capture/draft contracts and typecheck PASS. Separate review by same integrator only; Current-package installed Chromium keyboard smoke also passed 11 checks with unchanged extension, exact mutation rereads, revocation and complete cleanup; physical IME/live Provider remain outstanding. No main adoption, remote push, or Project Source application. Evidence: D:/dev/grammar-evidence/grammar-app-flow-20261003/RESULT.md",
+    "Prepared owned Medium-integrity Sandbox hands-on session from unchanged d85f323 package; app/editor running and guide shown, Auto rewrite false and all Deep consent absent verified. Physical keyboard/IME NOT_RUN pending Owner input; no live Provider or general profile install. Initial missing guest Notepad failure preserved with complete uninstall; dedicated guide replaced that dependency. Evidence: D:/dev/grammar-evidence/grammar-hands-on-20261003/STATUS.md"
   ],
   "native_capture_activation": "ACTIVE_STANDARD_EDIT_ONLY_OWNED_DESKTOP_QUALIFIED_OTHERS_DENIED",
   "chromium_deep_activation": "SOURCE_UNCONFIGURED_PERSONAL_INSTALLER_CONFIGURES_HOST_CONSENT_BOUND_SYNTHETIC_ONLY",
