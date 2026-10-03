@@ -596,6 +596,7 @@ try {
   await draft.fill('Keep this local draft after a save failure.');
   const settingsBeforeFailure = await loadSettings();
   const settingsPath = await lockOwnedSettings();
+  let consentSaveError = '';
   try {
     const bytesBeforeFailure = await readFile(settingsPath);
     await page.getByRole('button', {name: 'Settings', exact: true}).click();
@@ -608,7 +609,8 @@ try {
       (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('provider_snapshot'))).busyKind === null, 20000);
     assert.equal(await draftValue(), 'Keep this local draft after a save failure.');
     console.log('CONSENT_SAVE_FAILURE', JSON.stringify({status: await status.textContent(), error: await errorText(), providerIdle: true, draftKept: true}));
-    await copyResult('copy-after-consent-save-failure', 'Keep this local draft after a save failure.');
+    consentSaveError = await errorText();
+    assert.equal(await copyEnabled(), true, 'local draft remains available after failed save');
   } finally { await unlockOwnedSettings(); }
   await page.getByRole('button', {name: 'Settings', exact: true}).click();
   await page.getByRole('button', {name: 'Revoke all Deep consent', exact: true}).click();
@@ -618,6 +620,8 @@ try {
   assert.equal(afterRetry.autoRewrite, false);
   for (const key of ['cloudProcessingAcknowledgementVersion','claudeCloudAcknowledgementVersion','antigravityCloudAcknowledgementVersion']) assert.equal(afterRetry[key], 0);
   assert.equal(await errorText(), '', 'successful retry clears the previous persistence error');
+  assert.doesNotMatch(consentSaveError, /settings_previous_stage_failed/, 'storage error has actionable UI wording');
+  await copyResult('copy-after-consent-save-retry', 'Keep this local draft after a save failure.');
   await closeWidget();
   pass('failed consent save cancels Deep, preserves draft and disk; retry persists revocation and clears the error');
   await page.evaluate(settings => window.__TAURI_INTERNALS__.invoke('save_settings', {settings,acknowledgeProvider:'claude'}), consentBeforeRevoke);
