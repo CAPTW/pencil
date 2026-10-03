@@ -815,6 +815,105 @@ try {
     }
   }
   assert.deepEqual(bindingFailures, [], 'pending consent binding regressions');
+
+  const intentFailures = [];
+  for (const change of ['mode', 'target', 'reference', 'reload']) {
+    await setProviderMode('success');
+    await page.evaluate(async change => {
+      const settings = await window.__TAURI_INTERNALS__.invoke('load_settings');
+      await window.__TAURI_INTERNALS__.invoke('save_settings', {settings: {...settings, activeProvider: 'claude', autoRewrite: true,
+        mode: ['target','reference'].includes(change) ? 'translate' : 'grammar',
+        translation: {...settings.translation, targetLanguage: change === 'reference' ? 'auto' : 'en', autoReferenceLanguage: 'en', applyFormat: 'translation_only'},
+        cloudProcessingAcknowledgementVersion: 0, claudeCloudAcknowledgementVersion: 0, antigravityCloudAcknowledgementVersion: 0}});
+    }, change);
+    await page.reload(); await waitForBridge();
+    const beforeIntentCapture = (await captures()).length;
+    await prepareSelection(0, 'Intent review: this are wrong.', 'this are wrong.');
+    await editor.hotkey();
+    const intentToken = await until('intent case captured', async () => (await captures())[beforeIntentCapture]);
+    await until('intent review visible', async () => await page.getByRole('dialog').count() === 1);
+    const submitted = [];
+    const recordRequest = request => {
+      const url = new URL(request.url());
+      if (url.hostname === 'ipc.localhost' && url.pathname === '/rewrite_selected_text') {
+        const args = request.postDataJSON();
+        submitted.push({sessionId: args.sessionId, generation: args.generation, mode: args.mode, targetLanguage: args.targetLanguage, autoReferenceLanguage: args.autoReferenceLanguage});
+      }
+    };
+    page.on('request', recordRequest);
+  await page.evaluate(() => {
+    const original = window.fetch;
+    const probe = {grants: 0, rewrites: 0, held: false, release: null, original};
+    window.__grammarConsentOverlap = probe;
+    window.fetch = async function(input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      const command = new URL(url).hostname === 'ipc.localhost' ? new URL(url).pathname.slice(1) : '';
+      const args = command && typeof init?.body === 'string' ? JSON.parse(init.body) : {};
+      if (command === 'rewrite_selected_text') probe.rewrites++;
+      const hold = command === 'save_settings' && args?.acknowledgeProvider === 'claude' && ++probe.grants === 1;
+      const result = await original.call(this, input, init);
+      if (hold) {
+        probe.held = true;
+        await new Promise(resolve => { probe.release = resolve; });
+      }
+      return result;
+    };
+  });
+    try {
+      await page.getByRole('dialog').getByRole('button', {name: '동의하고 계속', exact: true}).click();
+      await until('intent grant response held', async () => page.evaluate(() => window.__grammarConsentOverlap.held));
+      if (change === 'reload') {
+        // The real save completed; only response delivery is held in the old JS context.
+        await page.reload(); await waitForBridge();
+        await sleep(1200);
+        assert.equal(submitted.length, 0, 'reload must not replay the pending Deep');
+        assert.equal((await loadSettings()).claudeCloudAcknowledgementVersion, 1, 'reload does not erase the real persisted grant');
+        assert.equal(await draft.inputValue().catch(() => ''), '');
+        assert.equal(await copyEnabled(), false);
+      } else {
+        if (change === 'mode') await page.getByRole('button', {name: 'Translate', exact: true}).click();
+        if (change === 'target') await page.getByLabel('Target language', {exact: true}).selectOption('ko');
+        if (change === 'reference') {
+          await page.getByRole('button', {name: 'Settings', exact: true}).click();
+          await page.getByLabel('Auto reference language', {exact: true}).selectOption('ko');
+        }
+        await page.evaluate(() => window.__grammarConsentOverlap.release());
+        await until('changed intent persisted', async () => {
+          const settings = await loadSettings();
+          return change === 'mode' ? settings.mode === 'translate' : change === 'target' ? settings.translation.targetLanguage === 'ko' : settings.translation.autoReferenceLanguage === 'ko';
+        });
+        if (change === 'reference') await page.getByRole('button', {name: 'Done', exact: true}).click();
+        await sleep(1200);
+        console.log('CONSENT_INTENT', JSON.stringify({change, requests: submitted}));
+        assert.equal(submitted.length, 0, 'changed ' + change + ' must suppress superseded Deep continuation');
+        await until('new intent disclosure available', async () => await page.getByRole('dialog').count() === 1);
+        await page.getByRole('dialog').getByRole('button', {name: '동의하고 계속', exact: true}).click();
+        await until('explicit new intent Deep finished', async () => (await status.textContent()) === 'Replacement ready', 20000);
+        assert.ok(submitted.length > 0, 'new explicit grant still sends Deep');
+        for (const request of submitted) {
+          assert.equal(request.sessionId, intentToken.sessionId); assert.equal(request.generation, intentToken.generation);
+          assert.equal(request.mode, 'translate');
+          assert.equal(request.targetLanguage, change === 'reference' ? 'auto' : change === 'target' ? 'ko' : 'en');
+          assert.equal(request.autoReferenceLanguage, change === 'reference' ? 'ko' : null);
+        }
+        await copyResult('copy-after-consent-' + change, 'Synthetic.');
+      }
+      pass('pending consent ' + change + ' change suppresses old continuation and preserves the explicit current-intent boundary');
+    } catch (error) {
+      intentFailures.push(change + ': ' + error.message);
+      console.error('CONSENT_INTENT_FAIL', change, error.message);
+    } finally {
+      page.off('request', recordRequest);
+      await page.evaluate(() => {
+        const probe = window.__grammarConsentOverlap;
+        if (probe) { probe.release?.(); window.fetch = probe.original; delete window.__grammarConsentOverlap; }
+      });
+      await cancelDeepIfRunning();
+      if (await widgetVisible()) await closeWidget();
+      await until('intent case provider idle', async () => (await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('provider_snapshot'))).busyKind === null, 20000);
+    }
+  }
+  assert.deepEqual(intentFailures, [], 'pending consent intent/reload regressions');
   await page.evaluate(settings => window.__TAURI_INTERNALS__.invoke('save_settings', {settings,acknowledgeProvider:'claude'}), consentBeforeRevoke);
   await page.reload(); await waitForBridge();
 
