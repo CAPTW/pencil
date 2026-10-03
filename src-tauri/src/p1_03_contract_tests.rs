@@ -493,3 +493,35 @@ async fn cli_cancel_unbound_operation_sets_owned_flag_without_claiming_completio
     state.providers.lock().await.finish(&operation);
     assert!(crate::cancel_cli_operation(&state).await.is_none());
 }
+
+#[tokio::test]
+async fn cli_cancel_same_intent_retry_does_not_mistake_old_operation_for_new_attempt() {
+    use crate::provider::types::ProviderKind;
+    let state = crate::AppState::default();
+    let intent = BoundRewriteIntent::without_terminology(RewriteIntent::grammar());
+    let mut capture = state.capture.lock().await;
+    let token = capture.capture("retry".into(), "synthetic".into(), WindowTarget::new(101, 202)).unwrap();
+    capture.begin_rewrite_bound(&token, intent.clone()).unwrap();
+    let first = capture.rewrite_attempt(&token).unwrap();
+    let old = crate::reserve_rewrite(&mut capture, &mut *state.providers.lock().await,
+        ProviderKind::Codex, &token, &intent, first).unwrap();
+    capture.cancel_rewrite_keep_capture();
+    // The next IPC request starts the same intent before the old cancellation
+    // continuation reacquires capture. Its Provider reservation has not run yet.
+    capture.begin_rewrite_bound(&token, intent.clone()).unwrap();
+    let second = capture.rewrite_attempt(&token).unwrap();
+    assert_ne!(first, second);
+    drop(capture);
+    let cancelled = crate::cancel_cli_operation(&state).await
+        .expect("old operation must be cancelled even while the same intent retries");
+    assert!(std::sync::Arc::ptr_eq(&old, &cancelled));
+    assert!(state.capture.lock().await.owns_rewrite(&token, second));
+    state.providers.lock().await.finish(&old);
+    let mut capture = state.capture.lock().await;
+    let new = crate::reserve_rewrite(&mut capture, &mut *state.providers.lock().await,
+        ProviderKind::Codex, &token, &intent, second).unwrap();
+    drop(capture);
+    assert!(crate::cancel_cli_operation(&state).await.is_none(), "new attempt must survive delayed old cancellation");
+    assert!(!new.is_complete());
+    state.providers.lock().await.finish(&new);
+}
