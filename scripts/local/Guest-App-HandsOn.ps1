@@ -12,15 +12,15 @@ function EditorCommand([string]$line){
  if($read.Result -ne 'OK'){throw 'Editor command rejected'}
 }
 try {
- $manifest=Get-Content C:\GrammarPayload\package-consent-save\MANIFEST.json -Raw|ConvertFrom-Json
- if($manifest.sourceCommit -ne '175aafac59efef957a21a7209ae227fa46e11c2a'){throw 'Unexpected trial package'}
+ $manifest=Get-Content C:\GrammarPayload\package-consent-overlap\MANIFEST.json -Raw|ConvertFrom-Json
+ if($manifest.sourceCommit -ne '61c8d9313ad95889b6420243b45ac365d9bd2637'){throw 'Unexpected trial package'}
  $report.sourceCommit=$manifest.sourceCommit
  $env:PATH=($env:PATH.Split(';')|Where-Object{$_ -ine 'C:\GrammarPayload\pwsh'}) -join ';'
  $runtime=Get-ChildItem 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application' -Directory|Where-Object{Test-Path (Join-Path $_.FullName 'msedgewebview2.exe')}|Sort-Object Name|Select-Object -Last 1
  if(-not $runtime){throw 'Guest WebView2 absent'}
  $env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER=$runtime.FullName
  $report.explicitGuestRuntime=$runtime.FullName
- & C:\GrammarPayload\package-consent-save\Install-Grammar.ps1 -InstallRoot C:\GrammarTrial | Out-Null
+ & C:\GrammarPayload\package-consent-overlap\Install-Grammar.ps1 -InstallRoot C:\GrammarTrial | Out-Null
  $config=Join-Path $env:APPDATA 'com.local.codexpencil'
  New-Item -ItemType Directory $config -Force|Out-Null
  $settings=Join-Path $config 'settings.json'
