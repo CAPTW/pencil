@@ -241,6 +241,7 @@ impl CodexClientCache {
         if self.cleanup_blocked.load(Ordering::SeqCst) {
             return Err("codex_cleanup_unresolved_restart_required".into());
         }
+        crate::provider::cli::cleanup_status()?;
         if cancel.load(Ordering::SeqCst) {
             return Err("rewrite_interrupted".into());
         }
@@ -255,6 +256,9 @@ impl CodexClientCache {
             }
             self.client.lock().await.take();
         }
+        // A previous watcher may have retained a filesystem cleanup failure.
+        // Do not start another process while that owned workspace remains.
+        crate::provider::cli::cleanup_status()?;
         *self.connecting.lock().unwrap() = Some(cancel.clone());
         if self.shutting_down.load(Ordering::SeqCst) || self.admission_closed.load(Ordering::SeqCst) {
             cancel.store(true, Ordering::SeqCst);
@@ -283,6 +287,13 @@ impl CodexClientCache {
     }
 
     pub(crate) async fn shutdown_checked(&self) -> Result<(), String> {
+        self.shutdown_processes_checked().await?;
+        crate::provider::cli::cleanup_status().map_err(str::to_owned)
+    }
+
+    // Process evidence stays terminal; filesystem ownership lives in the shared
+    // runtime queue so desktop Quit can retry it under its existing deadline.
+    pub(crate) async fn shutdown_processes_checked(&self) -> Result<(), String> {
         self.shutting_down.store(true, Ordering::SeqCst);
         if let Some(cancel) = self.connecting.lock().unwrap().as_ref() {
             cancel.store(true, Ordering::SeqCst);
@@ -494,10 +505,9 @@ impl CodexClient {
             Ok(value) => value,
             Err(error) => {
                 let deadline = std::time::Instant::now() + crate::provider::cli::CLEANUP_BUDGET;
-                return match runtime.close_before(deadline) {
-                    Ok(()) => Err(error),
-                    Err(cleanup) => Err(format!("{error};cleanup={cleanup}")),
-                };
+                // The queue separately retains failed filesystem ownership.
+                let _ = crate::provider::cli::close_workspace(runtime, deadline);
+                return Err(error);
             }
         };
 
@@ -1367,10 +1377,9 @@ fn spawn_child_watcher(
         }
         drop(child);
         drop(process_job);
-        let workspace_cleanup = runtime.close_before(deadline.into_std());
-        if cleanup.is_ok() {
-            cleanup = workspace_cleanup;
-        }
+        // Report process/reap/reader failures independently. Even a dropped
+        // connecting client cannot discard a failed filesystem cleanup owner.
+        let _ = crate::provider::cli::close_workspace(runtime, deadline.into_std());
         let _ = shutdown_completed.send(cleanup);
     });
 }

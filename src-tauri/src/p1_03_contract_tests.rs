@@ -579,3 +579,28 @@ async fn abandoned_shutdown_wait_does_not_reopen_admission_or_claim_completion()
     state.providers.lock().await.finish(&op);
     crate::shutdown_providers(&state).await.unwrap();
 }
+
+#[cfg(windows)]
+#[tokio::test]
+#[ignore = "isolated filesystem-only test; uses global cleanup queue"]
+async fn desktop_shutdown_retries_retained_workspace_without_reopening_admission() {
+    use std::{os::windows::fs::OpenOptionsExt, time::{Duration, Instant}};
+    let root = std::env::temp_dir().join(format!("grammar-shutdown-test-{}", uuid::Uuid::new_v4()));
+    let workspace = crate::runtime_isolation::RuntimeWorkspace::create_under(&root).unwrap();
+    let session = workspace.cwd().parent().unwrap().to_owned();
+    let locked = workspace.cwd().join("synthetic-lock");
+    std::fs::write(&locked, b"synthetic").unwrap();
+    let handle = std::fs::OpenOptions::new().read(true).share_mode(1).open(&locked).unwrap();
+    assert!(crate::provider::cli::close_workspace(workspace, Instant::now()+Duration::from_secs(2)).is_err());
+    // A separate cache cannot start even a probe while cleanup remains pending.
+    let cache = crate::codex_client::CodexClientCache::default();
+    assert_eq!(cache.get().await.err().unwrap(), "provider_cleanup_unresolved_restart_required");
+    let state = crate::AppState::default();
+    assert_eq!(crate::shutdown_providers(&state).await, Err("provider_shutdown_cleanup_failed"));
+    assert!(session.exists());
+    drop(handle);
+    crate::shutdown_providers(&state).await.unwrap();
+    assert!(!session.exists());
+    assert_eq!(state.codex.get().await.err().unwrap(), "codex_shutdown_restart_required");
+    std::fs::remove_dir_all(root).unwrap();
+}

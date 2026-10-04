@@ -119,7 +119,7 @@ static PENDING_WORKSPACES: std::sync::Mutex<PendingWorkspaceCleanup> = std::sync
 pub(crate) fn pending_workspace_cleanup() -> bool {
     !PENDING_WORKSPACES.lock().unwrap_or_else(|p| p.into_inner()).0.is_empty()
 }
-fn close_workspace(workspace: RuntimeWorkspace, deadline: std::time::Instant) -> Result<(), String> {
+pub(crate) fn close_workspace(workspace: RuntimeWorkspace, deadline: std::time::Instant) -> Result<(), String> {
     PENDING_WORKSPACES.lock().unwrap_or_else(|p| p.into_inner()).close(workspace, deadline)
 }
 pub(crate) fn retry_workspace_cleanup(deadline: std::time::Instant) -> Result<(), String> {
