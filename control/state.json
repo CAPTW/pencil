@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state_version": "2026-10-05.desktop-apply-priority",
+  "state_version": "2026-10-05.desktop-apply-target-binding",
   "repository_branch": "main",
   "product_target": "P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST",
   "p3a_status": "DESKTOP_DIRECT_APPLY_RESTORATION_PRIORITY_COPY_ONLY_TEMPORARY_CONTAINMENT",
@@ -78,7 +78,7 @@
       ]
     },
     {
-      "verdict": "NATIVE_MUTATION_REMOVED_COPY_ONLY_BY_OWNER_DECISION_LEGACY_PASTE_DELETED",
+      "verdict": "DESKTOP_APPLY_RESTORATION_IN_PROGRESS_COPY_ONLY_TEMPORARY_CONTAINMENT",
       "id": "F-06",
       "historical_verdict": "CONFIRMED_CURRENT_DEFECT",
       "historical_evidence": [

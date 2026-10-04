@@ -11,6 +11,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <functional>
+#include <new>
 
 namespace grammar {
 using Microsoft::WRL::ComPtr;
@@ -20,6 +22,9 @@ struct ApplyGrant {
     std::atomic<unsigned long long> revision{0};
     bool field_eligible = false;
     std::chrono::steady_clock::time_point deadline;
+    // Recheck target-side authority inside the lock, including before mutation.
+    // Missing binding is never permission to use a caller-supplied context.
+    std::function<bool(ITfContext*, TfEditCookie)> verify_binding;
 };
 
 class TsfApplySession final : public ITfEditSession {
@@ -42,6 +47,7 @@ class TsfApplySession final : public ITfEditSession {
         hr = range->ShiftEndToRange(cookie, end.Get(), TF_ANCHOR_END); if (FAILED(hr)) return hr;
         // One extra unit detects overflow, rather than accepting a prefix.
         std::vector<WCHAR> buffer(65535); ULONG count = 0;
+        ++text_reads;
         hr = range->GetText(cookie, 0, buffer.data(), static_cast<ULONG>(buffer.size()), &count);
         if (FAILED(hr) || count >= buffer.size()) return E_FAIL;
         text.assign(buffer.data(), count); return S_OK;
@@ -50,6 +56,7 @@ public:
     ApplyResult result = ApplyResult::pending;
     bool called = false;
     unsigned mutation_calls = 0;
+    unsigned text_reads = 0;
     unsigned diagnostic_stage = 0; // Content-free native qualification only.
     HRESULT diagnostic_read_result = E_PENDING;
     size_t diagnostic_text_units = 0;
@@ -66,7 +73,7 @@ public:
     }
     ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&refs_); }
     ULONG STDMETHODCALLTYPE Release() override { auto n = InterlockedDecrement(&refs_); if (!n) delete this; return n; }
-    HRESULT STDMETHODCALLTYPE DoEditSession(TfEditCookie cookie) override {
+    HRESULT STDMETHODCALLTYPE DoEditSession(TfEditCookie cookie) override try {
         if (called) return E_UNEXPECTED;
         called = true; result = ApplyResult::rejected;
         diagnostic_stage = 1;
@@ -74,6 +81,7 @@ public:
             grant_->revision.load() != revision_ || std::chrono::steady_clock::now() >= grant_->deadline ||
             !context_ || source_.size() > 65534 || replacement_.empty() || replacement_.size() > 65534 ||
             source_.find(L'\0') != std::wstring::npos || replacement_.find(L'\0') != std::wstring::npos ||
+            !grant_->verify_binding || !grant_->verify_binding(context_.Get(), cookie) ||
             start_ >= end_ || !boundary(start_) || !boundary(end_) ||
             source_.size() - (end_ - start_) + replacement_.size() > 65534) return S_FALSE;
         TF_STATUS status{};
@@ -100,7 +108,8 @@ public:
         if (FAILED(range.As(&acp)) || FAILED(acp->GetExtent(&start, &length)) ||
             start != start_ || length != end_ - start_) return S_FALSE;
         if (grant_->revision.load() != revision_ || !grant_->field_eligible ||
-            std::chrono::steady_clock::now() >= grant_->deadline) return S_FALSE;
+            std::chrono::steady_clock::now() >= grant_->deadline ||
+            !grant_->verify_binding(context_.Get(), cookie)) return S_FALSE;
         diagnostic_stage = 7;
         // Everything above runs inside the same TSF write session as SetText.
         ++mutation_calls;
@@ -111,6 +120,7 @@ public:
         if (FAILED(read_all(cookie, actual)) || actual != expected) return E_FAIL;
         result = ApplyResult::applied;
         return S_OK;
-    }
+    } catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
+      catch (...) { return E_FAIL; } // Preserve mutation_unconfirmed after SetText.
 };
 }

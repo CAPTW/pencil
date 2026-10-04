@@ -53,6 +53,9 @@ int wmain(int argc, wchar_t** argv) {
                 SendMessageW(edit, EM_SETSEL, scenario == 2 || scenario == 11 ? 0 : 6, scenario == 2 || scenario == 11 ? 5 : 11);
                 pump(50);
                 auto grant = std::make_shared<grammar::ApplyGrant>();
+                // Legacy transaction-only probe. Real capture/binding is tested
+                // separately; this is deliberately synthetic authority.
+                grant->verify_binding = [expected = context.Get()](ITfContext* current, TfEditCookie) { return current == expected; };
                 grant->field_eligible = scenario != 5;
                 grant->deadline = std::chrono::steady_clock::now() + std::chrono::seconds(scenario == 4 ? -1 : 5);
                 if (scenario == 3) grant->valid = false;
