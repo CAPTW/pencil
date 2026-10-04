@@ -1519,15 +1519,23 @@ async fn cancel_cli_operation(state: &AppState) -> Option<Arc<provider::manager:
 }
 
 async fn shutdown_providers(state: &AppState) -> Result<(), &'static str> {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(8);
+    // Only work retained before this explicit request is a retry. A new failure
+    // must be reported first; do not silently renew its cleanup budget.
+    let retry_workspace = provider::cli::pending_workspace_cleanup();
     state.codex.close_admission();
     let operation = state.providers.lock().await.begin_shutdown();
-    tokio::time::timeout(std::time::Duration::from_secs(8), async {
+    tokio::time::timeout_at(deadline, async {
         let cli = async {
             if let Some(operation) = operation {
                 while !operation.is_complete() { tokio::time::sleep(std::time::Duration::from_millis(5)).await; }
             }
         };
         let (_, cleanup) = tokio::join!(cli, state.codex.shutdown_checked());
+        if retry_workspace {
+            provider::cli::retry_workspace_cleanup(deadline.into_std())
+                .map_err(|_| "provider_shutdown_cleanup_failed")?;
+        }
         provider::cli::cleanup_status().map_err(|_| "provider_shutdown_cleanup_failed")?;
         cleanup.map_err(|_| "provider_shutdown_cleanup_failed")
     }).await.map_err(|_| "provider_shutdown_timeout")?

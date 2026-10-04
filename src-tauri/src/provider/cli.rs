@@ -96,8 +96,37 @@ pub(crate) fn batch_launcher_reason(path: &Path, cli: &str) -> Option<String> {
 }
 
 static CLEANUP_BLOCKED: AtomicBool = AtomicBool::new(false);
+// Process/reap failures remain terminal. Filesystem failures keep ownership and
+// block new requests, but may be retried by the explicit desktop shutdown path.
+#[derive(Default)]
+struct PendingWorkspaceCleanup(Vec<RuntimeWorkspace>);
+impl PendingWorkspaceCleanup {
+    fn close(&mut self, mut workspace: RuntimeWorkspace, deadline: std::time::Instant) -> Result<(), String> {
+        let result = workspace.try_close_before(deadline);
+        if result.is_err() { self.0.push(workspace); }
+        result
+    }
+    fn retry(&mut self, deadline: std::time::Instant) -> Result<(), String> {
+        let mut error = None;
+        self.0.retain_mut(|workspace| match workspace.try_close_before(deadline) {
+            Ok(()) => false,
+            Err(e) => { error = Some(e); true }
+        });
+        error.map_or(Ok(()), Err)
+    }
+}
+static PENDING_WORKSPACES: std::sync::Mutex<PendingWorkspaceCleanup> = std::sync::Mutex::new(PendingWorkspaceCleanup(Vec::new()));
+pub(crate) fn pending_workspace_cleanup() -> bool {
+    !PENDING_WORKSPACES.lock().unwrap_or_else(|p| p.into_inner()).0.is_empty()
+}
+fn close_workspace(workspace: RuntimeWorkspace, deadline: std::time::Instant) -> Result<(), String> {
+    PENDING_WORKSPACES.lock().unwrap_or_else(|p| p.into_inner()).close(workspace, deadline)
+}
+pub(crate) fn retry_workspace_cleanup(deadline: std::time::Instant) -> Result<(), String> {
+    PENDING_WORKSPACES.lock().unwrap_or_else(|p| p.into_inner()).retry(deadline)
+}
 pub(crate) fn cleanup_status() -> Result<(), &'static str> {
-    if CLEANUP_BLOCKED.load(Ordering::SeqCst) {
+    if CLEANUP_BLOCKED.load(Ordering::SeqCst) || pending_workspace_cleanup() {
         Err("provider_cleanup_unresolved_restart_required")
     } else {
         Ok(())
@@ -293,7 +322,7 @@ pub(crate) async fn run_bounded(
     if limit.is_zero() {
         return Err("provider_lifetime_budget_too_small".into());
     }
-    if CLEANUP_BLOCKED.load(Ordering::SeqCst) {
+    if cleanup_status().is_err() {
         return Err("provider_cleanup_unresolved_restart_required".into());
     }
     record_phase("request_start", None);
@@ -330,8 +359,8 @@ pub(crate) async fn run_bounded(
             None,
         );
         record_phase("cleanup_filesystem_begin", None);
-        let cleanup = workspace
-            .close_before(teardown_deadline(tokio::time::Instant::now(), deadline).into_std());
+        let cleanup = close_workspace(workspace,
+            teardown_deadline(tokio::time::Instant::now(), deadline).into_std());
         record_phase(
             if cleanup.is_ok() {
                 "cleanup_filesystem_end"
@@ -340,10 +369,7 @@ pub(crate) async fn run_bounded(
             },
             None,
         );
-        cleanup.map_err(|error| {
-            CLEANUP_BLOCKED.store(true, Ordering::SeqCst);
-            error
-        })?;
+        cleanup?;
         return if cancel.load(Ordering::SeqCst) {
             Ok(CapturedProcess {
                 exit_code: None,
@@ -377,7 +403,7 @@ pub(crate) async fn run_bounded(
             Err(error) => {
                 record_phase("spawn_job_failed", None);
                 record_phase("cleanup_filesystem_begin", None);
-                let cleanup = workspace.close_before(deadline.into_std());
+                let cleanup = close_workspace(workspace, deadline.into_std());
                 record_phase(
                     if cleanup.is_ok() {
                         "cleanup_filesystem_end"
@@ -386,12 +412,11 @@ pub(crate) async fn run_bounded(
                     },
                     None,
                 );
-                if let Err(cleanup) = cleanup {
-                    CLEANUP_BLOCKED.store(true, Ordering::SeqCst);
-                    return Err(format!("{error};cleanup={cleanup}"));
-                }
                 if error.contains("cleanup") {
                     CLEANUP_BLOCKED.store(true, Ordering::SeqCst);
+                }
+                if let Err(cleanup) = cleanup {
+                    return Err(format!("{error};cleanup={cleanup}"));
                 }
                 return Err(error);
             }
@@ -460,7 +485,7 @@ pub(crate) async fn run_bounded(
     drop(child);
     drop(job);
     record_phase("cleanup_filesystem_begin", None);
-    let workspace_cleanup = workspace.close_before(cleanup_deadline.into_std());
+    let workspace_cleanup = close_workspace(workspace, cleanup_deadline.into_std());
     record_phase(
         if workspace_cleanup.is_ok() {
             "cleanup_filesystem_end"
@@ -469,10 +494,10 @@ pub(crate) async fn run_bounded(
         },
         None,
     );
+    if cleanup.is_err() { CLEANUP_BLOCKED.store(true, Ordering::SeqCst); }
     let cleanup = cleanup.and(workspace_cleanup);
     record_phase("cleanup_end", None);
     if let Err(cleanup_error) = cleanup {
-        CLEANUP_BLOCKED.store(true, Ordering::SeqCst);
         let cause = match &outcome {
             Err(error) => error.as_str(),
             Ok(value) if value.cancelled => "provider_cancelled",
@@ -486,6 +511,47 @@ pub(crate) async fn run_bounded(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_workspace_cleanup_retains_ownership_until_lock_release() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let root = std::env::temp_dir().join(format!("grammar-owned-cleanup-test-{}", uuid::Uuid::new_v4()));
+        let workspace = RuntimeWorkspace::create_under(&root).unwrap();
+        let session = workspace.cwd().parent().unwrap().to_path_buf();
+        let locked = workspace.cwd().join("synthetic-lock");
+        std::fs::write(&locked, b"synthetic").unwrap();
+        let handle = std::fs::OpenOptions::new().read(true).share_mode(1).open(&locked).unwrap();
+        let mut pending = PendingWorkspaceCleanup::default();
+        assert!(pending.close(workspace, std::time::Instant::now()+Duration::from_secs(2)).is_err());
+        assert_eq!(pending.0.len(), 1);
+        assert!(session.exists());
+        assert!(pending.retry(std::time::Instant::now()+Duration::from_secs(2)).is_err());
+        assert_eq!(pending.0.len(), 1);
+        drop(handle);
+        pending.retry(std::time::Instant::now()+Duration::from_secs(2)).unwrap();
+        assert!(pending.0.is_empty());
+        assert!(!session.exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn retry_requires_original_marker_and_does_not_renew_expired_deadline() {
+        let root = std::env::temp_dir().join(format!("grammar-owned-cleanup-test-{}", uuid::Uuid::new_v4()));
+        let workspace = RuntimeWorkspace::create_under(&root).unwrap();
+        let session = workspace.cwd().parent().unwrap().to_path_buf();
+        let marker = session.join(".codex-pencil-runtime-owner-v1");
+        let original = std::fs::read(&marker).unwrap();
+        let mut pending = PendingWorkspaceCleanup::default();
+        assert!(pending.close(workspace, std::time::Instant::now()).is_err());
+        std::fs::write(&marker, b"unowned").unwrap();
+        assert!(pending.retry(std::time::Instant::now()+Duration::from_secs(2)).is_err());
+        assert!(session.exists());
+        std::fs::write(&marker, original).unwrap();
+        pending.retry(std::time::Instant::now()+Duration::from_secs(2)).unwrap();
+        assert!(!session.exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn request_budget_expires_at_boundary_without_deadline_restart() {
