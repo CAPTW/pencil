@@ -25,3 +25,7 @@ Do not propagate the historical overclaim. Stabilization must prove the bounded 
 ## Historical authority handling
 
 The September 6 export, P0/P1/P2/P3 gate documents and prior root audit remain evidence, not current status authority. Existing ignored/untracked sources and other worktrees are preserved. Local branches whose tips are ancestors of main are historical/merged; dirty contents are not abandoned or owner-adopted by inference. Remote relationship is local tracking only; no fetch/push is authorized.
+
+## Owner correction — 2026-10-05: restore desktop direct Apply first
+
+The Owner explicitly reaffirmed desktop direct Apply as a core requirement and instructed that fixing it take highest priority. This supersedes the r3/r4 interpretation of Copy-only as a permanent product decision. Existing Copy-only remains temporary safety containment until an actual supported native target is qualified. The R1/R2 evidence stays valid and must not be bypassed. Unrelated Codex spawn-cleanup work is deferred. Work inside the original mission may implement the target-side edit transaction and required desktop integration; no permission is inferred for live Provider/account use, ordinary-profile/system registration, security weakening, push or release.
