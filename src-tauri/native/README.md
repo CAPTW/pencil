@@ -18,17 +18,36 @@ support for arbitrary desktop applications or hostile/noncompliant text stores.
 
 The native probe runs only in Windows Sandbox on owned synthetic controls, using
 an in-process TSF manager. It does not implement the cross-process integration.
-The explicit grant and revision are supplied by the fixture, not by a deployed
-capture/revision service. Eligibility rejection is a flag-level test, not a
-password-field privacy qualification. Read-only/composition branches require
-their own native tests. Probe text is bounded English; Unicode/IME/undo and
-timeout-after-mutation UI semantics remain to qualify.
+The original transaction probe still supplies synthetic grants. The newer
+`tsf_capture.hpp` and `native-apply-tsf-binding-probe.cpp` obtain actual source and
+selection in a TSF read session and issue a single-use, context-bound grant.
+The binding checks process/thread, native window, context/document identity,
+visibility, enabled/read-only/password state, TOM protected/hidden formatting,
+composition and an allowlist of plain input scopes before reading text. Unknown
+or mixed eligibility fails closed. This is qualification of owned RichEdit50W,
+not a privacy guarantee for arbitrary applications.
+
+An actual ITfTextEditSink advances the revision after every write session,
+including property-only and no-op writes. A target-thread window subclass revokes
+before forwarding password, read-only, character-format, style and destruction
+messages. This handles observed RichEdit reentrancy: EM_SETPASSWORDCHAR can run a
+pending TSF write before updating the password style. The subclass never reads
+keyboard events or text, sends input, changes focus or injects into a process.
+Subscriptions are removed with the binding; sinks and grants hold weak references.
+
+The binding is explicitly enabled by the fixture, not by a deployed opt-in UI.
+Capture admission expires after five seconds; issued grants expire after thirty
+seconds. These are conservative prototype bounds, not accepted product latency
+or Deep budgets. Use and destruction must stay on the owning STA. Cross-process
+transport, service activation, focus/navigation lifecycle, composition/physical
+IME, undo and timeout-after-mutation UI semantics remain unqualified.
 
 ## Next implementation work
 
 1. Add the opt-in, target-side TSF service and authenticated, bounded local
    capture/apply bridge. Keep service lifetime, document/context identity,
-   process identity, revision sink and explicit user grant bound together.
+   process identity, revision sink and explicit user grant bound together. Use
+   the new binding instead of manufacturing an ApplyGrant from IPC fields.
 2. Obtain and recheck eligibility (including sensitive input scope) in the
    target thread before any text read; clear grants on focus/document changes,
    composition, disable, cancellation, process/bridge disconnect and expiry.
@@ -64,3 +83,20 @@ Execute in the owned Medium-integrity Sandbox: default tests RichEdit50W;
 `--standard-edit` tests the standard Edit control. Nonzero exit is a failure or
 unsupported environment, never an Apply pass. Guest stdout and actual editor
 content rereads are the result evidence; build success alone proves neither.
+
+For the capture/binding probe, compile `native-apply-tsf-binding-probe.cpp` with
+the same flags, adding `oleaut32.lib comctl32.lib`. The final owned-Sandbox run
+contains 23 scenarios (40 reported checks), including source/selection and input
+scope changes reverted to their original values, queued privacy changes,
+revocation, replacement captures, destroyed bindings, protected/hidden fields,
+wrong-window identity, opt-out, replay and Korean/emoji source preservation.
+All negative Apply cases require zero text reads and zero SetText calls; all
+editor contents are reread. This is not installed-widget or external-app evidence.
+
+Relevant API contracts:
+- [OnEndEdit](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itftexteditsink-onendedit)
+  is the completion notification for a write edit session.
+- [GetAppProperty](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfcontext-getappproperty)
+  reads properties maintained by the context owner; unsupported is not consent.
+- [GetProtected](https://learn.microsoft.com/en-us/windows/win32/api/tom/nf-tom-itextfont-getprotected)
+  distinguishes unprotected, protected and undefined formatting.
