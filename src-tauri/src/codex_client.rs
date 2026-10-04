@@ -3499,6 +3499,50 @@ mod tests {
 mod runtime_protocol_tests {
     use super::*;
 
+    #[cfg(windows)]
+    #[tokio::test]
+    #[ignore = "isolated process-only test; uses global cleanup queue"]
+    async fn native_codex_locked_workspace_shutdown_retry() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let root = PathBuf::from(std::env::var("GRAMMAR_CODEX_CLEANUP_TEST_ROOT").unwrap());
+        assert!(!root.exists(), "fresh task-owned root required");
+        let runtime = RuntimeWorkspace::create_under(&root).unwrap();
+        let cwd = runtime.cwd().to_owned();
+        let session = cwd.parent().unwrap().to_owned();
+        let locked = cwd.join("synthetic-lock");
+        std::fs::write(&locked, b"synthetic").unwrap();
+        let handle = std::fs::OpenOptions::new().read(true).share_mode(1).open(&locked).unwrap();
+        let mut command = Command::new("powershell.exe");
+        command.args(["-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 60"])
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).current_dir(&cwd);
+        let (mut child, job) = ProcessJob::spawn(&mut command).await.unwrap();
+        let (tx, rx) = oneshot::channel();
+        let (done_tx, done_rx) = oneshot::channel();
+        let stderr = child.stderr.take().unwrap();
+        let (client, failure) = CodexClient::from_io(
+            child.stdout.take().unwrap(), child.stdin.take().unwrap(),
+            ChildShutdown { tx: StdMutex::new(Some(tx)), completed: Mutex::new(Some(done_rx)), result: StdMutex::new(None) }, cwd,
+        );
+        client.io_tasks.lock().unwrap().push(spawn_stderr_drain(stderr, failure.clone()));
+        spawn_child_watcher(child, rx, done_tx, failure, runtime, job, client.io_tasks.clone());
+        let client = Arc::new(client);
+        let cache = CodexClientCache::default();
+        *cache.client.lock().await = Some(client.clone());
+        cache.close_admission();
+        assert!(cache.shutdown_checked().await.is_err());
+        assert!(session.exists());
+        assert!(crate::provider::cli::pending_workspace_cleanup(), "failed workspace must retain an explicit owner");
+        assert!(client.shutdown.wait().await.is_ok(), "process receipt must not become a filesystem error");
+        assert!(client.io_tasks.lock().unwrap().is_empty());
+        drop(handle);
+        crate::provider::cli::retry_workspace_cleanup(std::time::Instant::now()+Duration::from_secs(5)).unwrap();
+        cache.shutdown_checked().await.unwrap();
+        assert!(!session.exists());
+        assert!(!crate::provider::cli::pending_workspace_cleanup());
+        assert_eq!(cache.get().await.err().unwrap(), "codex_shutdown_restart_required");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[tokio::test]
     async fn dropped_shutdown_wait_retains_receipt_and_failure() {
         let (tx, rx) = oneshot::channel();
