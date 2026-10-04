@@ -1531,7 +1531,7 @@ async fn shutdown_providers(state: &AppState) -> Result<(), &'static str> {
                 while !operation.is_complete() { tokio::time::sleep(std::time::Duration::from_millis(5)).await; }
             }
         };
-        let (_, cleanup) = tokio::join!(cli, state.codex.shutdown_checked());
+        let (_, cleanup) = tokio::join!(cli, state.codex.shutdown_processes_checked());
         if retry_workspace {
             provider::cli::retry_workspace_cleanup(deadline.into_std())
                 .map_err(|_| "provider_shutdown_cleanup_failed")?;
