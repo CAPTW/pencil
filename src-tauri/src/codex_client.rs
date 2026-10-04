@@ -3510,6 +3510,79 @@ mod runtime_protocol_tests {
 
     #[cfg(windows)]
     #[tokio::test]
+    #[ignore = "isolated synthetic stdio process test; uses global cleanup queue"]
+    async fn native_codex_protocol_client_drop_retains_cleanup() {
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::{Foundation::CloseHandle, System::Threading::{OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE}};
+        for mode in ["initialized", "invalid-json", "abandoned-handshake"] {
+            assert!(!crate::provider::cli::pending_workspace_cleanup());
+            let root = std::env::temp_dir().join(format!("grammar-protocol-test-{}", uuid::Uuid::new_v4()));
+            let runtime = RuntimeWorkspace::create_under(&root).unwrap();
+            let cwd = runtime.cwd().to_owned();
+            let session = cwd.parent().unwrap().to_owned();
+            let locked = cwd.join("synthetic-lock");
+            std::fs::write(&locked, b"synthetic").unwrap();
+            let lock = std::fs::OpenOptions::new().read(true).share_mode(1).open(&locked).unwrap();
+            let script = root.join("server.ps1");
+            let reply = match mode {
+                "invalid-json" => "[Console]::Out.WriteLine('not-json'); [Console]::Out.Flush()",
+                "abandoned-handshake" => "",
+                _ => "[Console]::Out.WriteLine(('{\"id\":' + $request.id + ',\"result\":{}}')); [Console]::Out.Flush(); $notice = [Console]::In.ReadLine() | ConvertFrom-Json; if($notice.method -ne 'initialized'){exit 42}; [IO.File]::WriteAllText('initialized-seen','synthetic')",
+            };
+            std::fs::write(&script, format!("$ErrorActionPreference='Stop'\n$request = [Console]::In.ReadLine() | ConvertFrom-Json\nif($request.method -ne 'initialize'){{exit 41}}\n[IO.File]::WriteAllText('request-seen','synthetic')\n{reply}\nStart-Sleep -Seconds 60\n")).unwrap();
+            let mut command = Command::new("powershell.exe");
+            command.args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-File"])
+                .arg(&script).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).current_dir(&cwd);
+            let (mut child, job) = ProcessJob::spawn(&mut command).await.unwrap();
+            let process = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, child.id().unwrap()) };
+            assert!(!process.is_null());
+            let (tx, rx) = oneshot::channel();
+            let (done_tx, done_rx) = oneshot::channel();
+            let stderr = child.stderr.take().unwrap();
+            let (client, failure) = CodexClient::from_io(child.stdout.take().unwrap(), child.stdin.take().unwrap(),
+                ChildShutdown { tx: StdMutex::new(Some(tx)), completed: Mutex::new(Some(done_rx)), result: StdMutex::new(None) }, cwd.clone());
+            client.io_tasks.lock().unwrap().push(spawn_stderr_drain(stderr, failure.clone()));
+            let io_tasks = client.io_tasks.clone();
+            spawn_child_watcher(child, rx, done_tx, failure, runtime, job, io_tasks.clone());
+            if mode == "abandoned-handshake" {
+                tokio::time::timeout(Duration::from_secs(10), async {
+                    tokio::select! {
+                        result = client.perform_handshake() => panic!("unexpected completion: {result:?}"),
+                        _ = async { while !cwd.join("request-seen").exists() { tokio::time::sleep(Duration::from_millis(5)).await; } } => {}
+                    }
+                }).await.unwrap();
+            } else {
+                let result = timeout(Duration::from_secs(10), client.perform_handshake()).await.unwrap();
+                if mode == "initialized" {
+                    result.unwrap(); assert!(client.is_healthy());
+                    timeout(Duration::from_secs(10), async {
+                        while !cwd.join("initialized-seen").exists() { tokio::time::sleep(Duration::from_millis(5)).await; }
+                    }).await.unwrap();
+                }
+                else { assert!(matches!(result, Err(ProtocolError::InvalidJson))); }
+            }
+            // No shutdown waiter/cache remains: Drop must still stop the child,
+            // join readers and transfer failed workspace ownership to the queue.
+            drop(client);
+            timeout(Duration::from_secs(10), async {
+                while !crate::provider::cli::pending_workspace_cleanup() { tokio::time::sleep(Duration::from_millis(5)).await; }
+            }).await.unwrap();
+            assert_eq!(unsafe { WaitForSingleObject(process, 0) }, 0, "child must exit before filesystem receipt");
+            unsafe { CloseHandle(process); }
+            assert!(io_tasks.lock().unwrap().is_empty());
+            assert!(session.exists());
+            assert!(crate::provider::cli::cleanup_status().is_err());
+            drop(lock);
+            crate::provider::cli::retry_workspace_cleanup(std::time::Instant::now()+Duration::from_secs(5)).unwrap();
+            assert!(!session.exists());
+            assert!(!crate::provider::cli::pending_workspace_cleanup());
+            std::fs::remove_dir_all(&root).unwrap();
+            println!("PASS synthetic protocol {mode}: child exited, readers retired, retained workspace removed");
+        }
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
     #[ignore = "isolated process-only test; uses global cleanup queue"]
     async fn native_codex_locked_workspace_shutdown_retry() {
         use std::os::windows::fs::OpenOptionsExt;
