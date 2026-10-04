@@ -609,11 +609,13 @@ try {
   // 8. The shortcut toggle ends the capture in the backend and tells the widget.
   // Real filesystem failure, without a product fault hook: prevent renaming
   // only this fresh owned profile's settings file while revocation saves.
+  // Prepare the PowerShell lock before starting the finite synthetic Deep.
+  // Cold helper startup must not consume the operation's four-second lifetime.
+  const settingsBeforeFailure = await loadSettings();
+  const settingsPath = await lockOwnedSettings();
   await captureAndWaitInstant(0, 'Save failure: this are wrong.', 'this are wrong.', 'this is wrong.');
   await until('Deep active before failed consent save', async () => await cancelDeep.isEnabled());
   await draft.fill('Keep this local draft after a save failure.');
-  const settingsBeforeFailure = await loadSettings();
-  const settingsPath = await lockOwnedSettings();
   let consentSaveError = '';
   try {
     const bytesBeforeFailure = await readFile(settingsPath);
