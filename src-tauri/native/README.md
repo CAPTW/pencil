@@ -100,3 +100,44 @@ Relevant API contracts:
   reads properties maintained by the context owner; unsupported is not consent.
 - [GetProtected](https://learn.microsoft.com/en-us/windows/win32/api/tom/nf-tom-itextfont-getprotected)
   distinguishes unprotected, protected and undefined formatting.
+
+## Local channel admission (not yet connected)
+
+`apply_channel.hpp` implements an experimental inbound transport boundary.
+It creates a first-instance, single-instance local byte pipe with an explicit
+logon-SID DACL and remote clients disabled. Admission pins a caller-supplied live
+process handle (not a reusable PID alone), checks user/logon/session and Medium
+integrity metadata, compares the kernel pipe client PID, and requires a random
+256-bit capability and strictly ordered request number. Malformed requests,
+replay, revocation, dead peers, timeout and broken connections invalidate admission.
+The capability is removed from the returned request, never logged, and zeroed
+on revocation/destruction. Request buffers are cleared before reuse and on failure.
+
+Header/version/command/length checks precede payload allocation. UTF-16LE text
+is bounded to65534 code units, rejects NUL/unpaired surrogates, and is only allowed
+for the Apply message. Header and body share one absolute caller-provided deadline.
+Pipe reads require nonblocking mode, so there is no abandoned blocking reader or
+pending OVERLAPPED buffer. This polling reader belongs on a dedicated I/O worker,
+not the editor STA. Admission itself has one owning thread; concurrent access is
+not supported by this prototype.
+
+The trusted activation/bootstrap mechanism is **not implemented**. The native
+probe pins a process it creates and sends the capability through one explicitly
+inherited anonymous-pipe handle, never via command line/environment/file. This
+does not authenticate a deployed Grammar executable or discover a trusted broker.
+An admitted Apply frame still has **no document mutation authority**: capture ID,
+revision, current target, explicit action and the TSF grant must be checked by
+the future target dispatcher. Bidirectional replies, STA dispatch, disconnect
+revocation of queued TSF work, service activation and widget wiring remain work.
+No background listener, service registration or product UI path uses this header.
+
+Build `scripts/mission/native-apply-channel-probe.cpp` with the previous compiler
+flags and `bcrypt.lib advapi32.lib`; run only in the owned Medium Sandbox.
+Its28 cases use actual child processes and local pipes, including wrong peer and
+capability, dead peer, replay, disable, malformed/oversized/truncated messages,
+invalid UTF-16, maximum payload, duplicate server and a header/body deadline
+sharing check. Different user/logon/integrity rejection, allocator faults and
+hostile-process compromise are not established by these same-token fixtures.
+
+API basis: [kernel client PID](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeclientprocessid)
+and [named-pipe access control](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights).
