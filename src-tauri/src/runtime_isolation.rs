@@ -19,6 +19,7 @@ const REMOVE_RETRY_DELAY: Duration = Duration::from_millis(50);
 pub(crate) struct RuntimeWorkspace {
     session_root: PathBuf,
     cwd: PathBuf,
+    owner: (u32, u64),
 }
 
 impl RuntimeWorkspace {
@@ -26,7 +27,7 @@ impl RuntimeWorkspace {
         Self::create_under(&std::env::temp_dir())
     }
 
-    fn create_under(temp_root: &Path) -> Result<Self, String> {
+    pub(crate) fn create_under(temp_root: &Path) -> Result<Self, String> {
         let base = temp_root.join(BASE_NAME);
         prepare_base(&base)?;
         cleanup_stale_sessions(&base, unix_now(), process_is_alive)?;
@@ -35,7 +36,8 @@ impl RuntimeWorkspace {
         fs::create_dir(&session_root)
             .map_err(|_| "runtime_session_directory_create_failed".to_string())?;
         let marker = session_root.join(SESSION_MARKER);
-        if let Err(error) = write_session_marker(&marker, std::process::id(), unix_now()) {
+        let owner = (std::process::id(), unix_now());
+        if let Err(error) = write_session_marker(&marker, owner.0, owner.1) {
             let _ = fs::remove_dir(&session_root);
             return Err(error);
         }
@@ -45,7 +47,7 @@ impl RuntimeWorkspace {
             return Err("runtime_cwd_create_failed".to_string());
         }
 
-        Ok(Self { session_root, cwd })
+        Ok(Self { session_root, cwd, owner })
     }
 
     pub(crate) fn cwd(&self) -> &Path {
@@ -62,6 +64,22 @@ impl RuntimeWorkspace {
         let result = remove_owned_session_before(&self.session_root, deadline);
         self.session_root.clear();
         self.cwd.clear();
+        result
+    }
+
+    /// Retain exact ownership after failure so the caller can retry explicitly.
+    pub(crate) fn try_close_before(&mut self, deadline: Instant) -> Result<(), String> {
+        if self.session_root.as_os_str().is_empty() { return Ok(()); }
+        let result = match fs::symlink_metadata(&self.session_root) {
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+            _ if read_session_marker(&self.session_root.join(SESSION_MARKER)) != Some(self.owner) =>
+                Err("runtime_session_not_owned".into()),
+            _ => remove_owned_session_before(&self.session_root, deadline),
+        };
+        if result.is_ok() {
+            self.session_root.clear();
+            self.cwd.clear();
+        }
         result
     }
 }
