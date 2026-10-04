@@ -178,6 +178,7 @@ class TsfCaptureSession final : public ITfEditSession {
     LONG refs_ = 1;
     std::weak_ptr<TsfBindingState> state_;
     const unsigned long long revision_;
+    const std::function<bool()> authority_;
     const std::chrono::steady_clock::time_point deadline_ = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 public:
     bool called = false, captured = false;
@@ -185,8 +186,8 @@ public:
     std::wstring source;
     LONG start = -1, end = -1;
     std::shared_ptr<ApplyGrant> grant;
-    explicit TsfCaptureSession(const std::shared_ptr<TsfBindingState>& state)
-        : state_(state), revision_(state->revision) {}
+    explicit TsfCaptureSession(const std::shared_ptr<TsfBindingState>& state, std::function<bool()> authority)
+        : state_(state), revision_(state->revision), authority_(std::move(authority)) {}
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** out) override {
         if (!out) return E_POINTER;
         *out = nullptr;
@@ -199,7 +200,7 @@ public:
         if (called) return E_UNEXPECTED;
         called = true;
         auto state = state_.lock();
-        if (!state || std::chrono::steady_clock::now() >= deadline_ ||
+        if (!state || !authority_ || !authority_() || std::chrono::steady_clock::now() >= deadline_ ||
             state->revision != revision_ || !state->eligible(state->context.Get(), cookie)) return S_FALSE;
         TF_SELECTION selected{}; ULONG count = 0;
         if (FAILED(state->context->GetSelection(cookie, TF_DEFAULT_SELECTION, 1, &selected, &count)) || count != 1) return S_FALSE;
@@ -217,7 +218,7 @@ public:
             count >= buffer.size() || static_cast<ULONG>(end) > count) return S_FALSE;
         std::wstring text(buffer.data(), count);
         if (text.find(L'\0') != std::wstring::npos || !state->eligible(state->context.Get(), cookie) ||
-            state->revision != revision_ || std::chrono::steady_clock::now() >= deadline_) return S_FALSE;
+            state->revision != revision_ || !authority_() || std::chrono::steady_clock::now() >= deadline_) return S_FALSE;
         state->invalidate(); // Supersede every earlier capture before issuing.
         auto issued = std::make_shared<ApplyGrant>();
         const auto revision = state->revision;

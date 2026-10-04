@@ -10,6 +10,8 @@
 #include <vector>
 #include <string>
 #include <sddl.h>
+#include <atomic>
+#include <memory>
 
 namespace grammar {
 class ChannelHandle {
@@ -24,14 +26,15 @@ public:
 enum class ChannelCommand : uint32_t { capture = 1, apply = 2, cancel = 3, disable = 4 };
 using ChannelCapability = std::array<unsigned char, 32>;
 struct ChannelHeader {
-    uint32_t version = 1;
+    uint32_t version = 2;
     ChannelCommand command = ChannelCommand::capture;
     uint64_t sequence = 1;
+    uint64_t capture_id = 0; // Target-issued ID, never a caller-supplied HWND/range.
     uint32_t payload_bytes = 0;
     uint32_t reserved = 0;
     ChannelCapability capability{};
 };
-static_assert(sizeof(ChannelHeader) == 56, "Windows little-endian wire header must be exact");
+static_assert(sizeof(ChannelHeader) == 64, "Windows little-endian wire header must be exact");
 static_assert(sizeof(wchar_t) == 2, "Wire text is UTF-16LE");
 inline constexpr DWORD channel_max_payload = 65534 * sizeof(wchar_t);
 
@@ -111,11 +114,34 @@ inline bool same_local_identity(HANDLE process) {
     return level(a) == SECURITY_MANDATORY_MEDIUM_RID && level(b) == SECURITY_MANDATORY_MEDIUM_RID;
 }
 
+// Safe for the editor STA to consult while the I/O worker owns admission. Both
+// kernel handles are retained, preventing reuse, and revocation is atomic.
+class ApplyConnectionLease final {
+    ChannelHandle process_, pipe_;
+    std::atomic<bool> revoked_{false};
+    static HANDLE duplicate(HANDLE handle) {
+        HANDLE value = nullptr;
+        if (!DuplicateHandle(GetCurrentProcess(), handle, GetCurrentProcess(), &value, 0, FALSE, DUPLICATE_SAME_ACCESS)) return nullptr;
+        return value;
+    }
+public:
+    ApplyConnectionLease(HANDLE process, HANDLE pipe) : process_(duplicate(process)), pipe_(duplicate(pipe)) {}
+    void revoke() { revoked_.store(true); }
+    bool alive() const {
+        ULONG pid = 0;
+        return !revoked_.load() && process_.get() && pipe_.get() &&
+            WaitForSingleObject(process_.get(), 0) == WAIT_TIMEOUT &&
+            PeekNamedPipe(pipe_.get(), nullptr, 0, nullptr, nullptr, nullptr) &&
+            GetNamedPipeClientProcessId(pipe_.get(), &pid) && pid == GetProcessId(process_.get());
+    }
+};
+
 class ApplyChannelAdmission final {
     ChannelHandle peer_;
     ChannelCapability capability_{};
     uint64_t next_ = 1;
     bool enabled_ = false;
+    std::shared_ptr<ApplyConnectionLease> lease_;
     static HANDLE duplicate(HANDLE process) {
         HANDLE value = nullptr;
         if (!DuplicateHandle(GetCurrentProcess(), process, GetCurrentProcess(), &value,
@@ -132,7 +158,8 @@ public:
     ~ApplyChannelAdmission() { revoke(); }
     const ChannelCapability& bootstrap_capability() const { return capability_; }
     bool alive() const { return enabled_ && WaitForSingleObject(peer_.get(), 0) == WAIT_TIMEOUT; }
-    void revoke() { enabled_ = false; SecureZeroMemory(capability_.data(), capability_.size()); }
+    void revoke() { enabled_ = false; if (lease_) lease_->revoke(); SecureZeroMemory(capability_.data(), capability_.size()); }
+    std::shared_ptr<ApplyConnectionLease> lease() const { return lease_; } // I/O owner only.
     bool peer_matches(HANDLE serverPipe) const {
         ULONG actual = 0;
         return alive() && PeekNamedPipe(serverPipe, nullptr, 0, nullptr, nullptr, nullptr) &&
@@ -146,11 +173,15 @@ public:
         const bool body = header.command == ChannelCommand::apply ?
             header.payload_bytes > 0 && header.payload_bytes <= channel_max_payload && header.payload_bytes % sizeof(wchar_t) == 0 :
             header.payload_bytes == 0;
-        if (!peer_matches(serverPipe) || difference || header.version != 1 || header.reserved ||
+        const bool reference = header.command == ChannelCommand::apply || header.command == ChannelCommand::cancel ?
+            header.capture_id != 0 : header.capture_id == 0;
+        if (!peer_matches(serverPipe) || difference || header.version != 2 || header.reserved || !reference ||
             !known || !body || header.sequence != next_ || next_ == (std::numeric_limits<uint64_t>::max)()) {
             revoke(); return false;
         }
         ++next_;
+        if (!lease_) lease_ = std::make_shared<ApplyConnectionLease>(peer_.get(), serverPipe);
+        if (!lease_->alive()) { revoke(); return false; }
         if (header.command == ChannelCommand::disable) revoke();
         return true;
     }

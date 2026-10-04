@@ -58,7 +58,7 @@ int wmain() {
                 SendMessageW(edit, EM_SETCHARFORMAT, SCF_SELECTION, reinterpret_cast<LPARAM>(&format));
             }
             pump(50);
-            auto capture = new grammar::TsfCaptureSession(binding->state);
+            auto capture = new grammar::TsfCaptureSession(binding->state, [] { return true; }); // Trusted in-process fixture.
             HRESULT completed = E_PENDING;
             HRESULT request = context->RequestEditSession(client, capture, TF_ES_ASYNC | TF_ES_READ, &completed);
             for (int i = 0; i < 100 && !capture->called && SUCCEEDED(request); ++i) pump(10);
@@ -81,7 +81,7 @@ int wmain() {
                     if (FAILED(setScope(edit, IS_PASSWORD)) || FAILED(setScope(edit, IS_TEXT))) return 11;
                 }
                 if (scenario == 12) {
-                    auto newer = new grammar::TsfCaptureSession(binding->state);
+                    auto newer = new grammar::TsfCaptureSession(binding->state, [] { return true; });
                     request = context->RequestEditSession(client, newer, TF_ES_ASYNC | TF_ES_READ, &completed);
                     for (int i = 0; i < 100 && !newer->called && SUCCEEDED(request); ++i) pump(10);
                     if (!newer->captured) ++failures;
