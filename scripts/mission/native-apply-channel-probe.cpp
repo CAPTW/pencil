@@ -40,7 +40,7 @@ static int child(int argc, wchar_t** argv) {
         if (scenario == 26) { body[0] = 0x3d; body[1] = 0xd8; body[2] = 0; body[3] = 0xde; }
     }
     if (scenario == 2) header.capability[0] ^= 1;
-    if (scenario == 4) header.version = 2;
+    if (scenario == 4) header.version = 3;
     if (scenario == 5) { header.command = ChannelCommand::apply; header.payload_bytes = channel_max_payload + 2; }
     if (scenario == 6) { header.command = ChannelCommand::apply; header.payload_bytes = 3; }
     if (scenario == 8) header.sequence = 2;
@@ -50,6 +50,13 @@ static int child(int argc, wchar_t** argv) {
     if (scenario == 16) header.payload_bytes = 2;
     if (scenario == 17) header.reserved = 1;
     if (scenario == 18) header.sequence = (std::numeric_limits<uint64_t>::max)();
+    if (header.command == ChannelCommand::apply) header.capture_id = 1; // Admission-only fixture, no document authority.
+    if (scenario >= 28) {
+        body.clear(); header.payload_bytes = 0;
+        header.command = scenario == 28 ? ChannelCommand::capture : scenario == 32 ? ChannelCommand::disable : ChannelCommand::cancel;
+        header.capture_id = scenario == 30 ? 0 : 1;
+        if (scenario == 29) { header.command = ChannelCommand::apply; header.capture_id = 0; header.payload_bytes = 2; body = {'x', 0}; }
+    }
     auto deadline = GetTickCount64() + 2000;
     if (scenario == 27) {
         if (!write_bytes(pipe.get(), &header, 8, deadline)) return 34;
@@ -75,7 +82,7 @@ int wmain(int argc, wchar_t** argv) {
     WCHAR executable[32768]{};
     if (!GetModuleFileNameW(nullptr, executable, 32768)) return 3;
     int failures = 0;
-    for (int scenario = 0; scenario < 28; ++scenario) {
+    for (int scenario = 0; scenario < 33; ++scenario) {
         OwnedApplyPipe pipe;
         if (pipe.get() == INVALID_HANDLE_VALUE) { printf("pipe_creation_failed=%lu\n", GetLastError()); return 4; }
         ConnectNamedPipe(pipe.get(), nullptr); // Nonblocking: begin listening.
@@ -125,7 +132,7 @@ int wmain(int argc, wchar_t** argv) {
         bool accepted = receive_apply_request(pipe.get(), admission, request,
             started + ((scenario == 11 || scenario == 12 || scenario == 27) ? 150 : 1500));
         auto elapsed = GetTickCount64() - started;
-        bool expected = scenario == 0 || scenario == 1 || scenario == 7 || scenario == 10 || scenario == 20 || scenario == 22 || scenario == 26;
+        bool expected = scenario == 0 || scenario == 1 || scenario == 7 || scenario == 10 || scenario == 20 || scenario == 22 || scenario == 26 || scenario == 31;
         bool pass = accepted == expected && (!accepted || connected);
         if (scenario == 7 || scenario == 10) {
             ChannelRequest repeated;
