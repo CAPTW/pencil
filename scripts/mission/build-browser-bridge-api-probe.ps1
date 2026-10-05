@@ -19,7 +19,6 @@ $sourceCommit=& git -C $source rev-parse HEAD
 function Get-ProbeInputs {
     $files=@(Get-ChildItem -LiteralPath (Join-Path $source 'src-tauri/native') -File | Where-Object Extension -in '.hpp','.cpp')
     $files+=@($names | ForEach-Object {Get-Item (Join-Path $PSScriptRoot "native-$_-probe.cpp")})
-    $files+=Get-Item (Join-Path $PSScriptRoot 'native-browser-bridge-probe.cpp')
     $files+=Get-Item (Join-Path $PSScriptRoot "native-browser-bridge-probe.cpp")
     $files+=Get-Item $PSCommandPath
     @($files | Sort-Object FullName | ForEach-Object {[ordered]@{path=$_.FullName.Substring($source.Length+1);sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
