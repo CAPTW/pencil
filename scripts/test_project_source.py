@@ -157,6 +157,27 @@ def run(repo):
         record("preview_refused_without_opt_in", lambda: rejected(lambda: ps.verify(a, repo, False, True), ["PREVIEW_REFUSED"]))
         record("existing_output_refused", lambda: rejected(lambda: ps.make(repo, a, True), ["OUTPUT_ALREADY_EXISTS"]))
         ident = ps.identity(repo)
+        if state.get("source_package_policy") == "EXACT_12_OWNER_REQUESTED_CANDIDATE_OR_CANONICAL_SNAPSHOT":
+            record("candidate_policy_accepts_exact_branch", lambda: ps.candidate_check(state, ident))
+            no_authority = copy.deepcopy(state)
+            no_authority["source_package_policy"] = "EXACT_12_MARKDOWN_REPLACEMENT_CANONICAL_MAIN_ONLY"
+            record("candidate_missing_authority_refused", lambda: rejected(lambda: ps.candidate_check(no_authority, ident), ["CANDIDATE_SOURCE_NOT_AUTHORIZED"]))
+            record("candidate_wrong_branch_refused", lambda: rejected(lambda: ps.candidate_check(state, {**ident, "branch": "main"}), ["CANDIDATE_BRANCH_NOT_AUTHORIZED"]))
+            promoted = copy.deepcopy(state)
+            promoted["mission_completion"] = "COMPLETE"
+            record("candidate_completion_overclaim_refused", lambda: rejected(lambda: ps.candidate_check(promoted, ident), ["CANDIDATE_ACCEPTANCE_OVERCLAIM"]))
+            record("candidate_preview_conflict_refused", lambda: rejected(lambda: ps.make(repo, temp / "conflict", True, True), ["EXPORT_MODE_CONFLICT"]))
+            actual_git = ps.git
+            def dirty_git(root, *args):
+                return "?? unreviewed.txt" if args == ("status", "--porcelain") else actual_git(root, *args)
+            with mock.patch.object(ps, "git", side_effect=dirty_git):
+                record("candidate_untracked_refused", lambda: rejected(lambda: ps.make(repo, temp / "dirty-candidate", candidate=True), ["CANDIDATE_DIRTY"]))
+            # Positive export is executed after the test/tool commit; do not mock
+            # cleanliness to claim an actual source-bound candidate package.
+            if not ps.git(repo, "status", "--porcelain"):
+                candidate_result = ps.make(repo, temp / "candidate", candidate=True)
+                record("candidate_actual_export_and_extraction", lambda: check(candidate_result["qualification"] == "OWNER_REQUESTED_CANDIDATE_SNAPSHOT" and candidate_result["fresh_extraction"] == "PASS", "actual clean candidate, exact12 extraction"))
+                record("candidate_verify_without_preview_override", lambda: ps.verify(temp / "candidate", repo, extract=True))
         with mock.patch.object(ps, "identity", return_value={**ident, "branch": "candidate/test-only"}):
             record("qualified_nonmain_refused", lambda: rejected(lambda: ps.make(repo, temp / "qualified", False), ["CANONICAL_MAIN_REQUIRED"]))
 

@@ -1,3 +1,14 @@
+> Current Source replacement decision (2026-10-05)
+>
+> Owner requests replacement from the local candidate, not main integration.
+> Source02 measured branch/HEAD describes the candidate; main remains4e833988.
+> Contract1.5.0 authorizes this exact candidate snapshot export. Upload only the
+> twelve payload markdown files; do not upload transport ZIP or metadata files.
+> UI upload and fresh-chat access/semantic checks remain Owner work. Continue
+> authorized development without treating that external step as product acceptance.
+> Latest installed Writer runtime0fc8624 is narrowly qualified; the next product
+> work is saved synthetic Writer DOCX and formatting-preserving Apply/Undo.
+
 # Current decisions and authority
 
 Decision set version: 2026-09-18.p3b-r0.1. Exact current task/next task and product states are stored once in `control/state.json`; exported Source 02 receives measured Git identity. This document defines durable decisions, not repeated volatile HEAD claims.

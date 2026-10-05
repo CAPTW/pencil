@@ -1,3 +1,11 @@
+> Current mission replacement policy (2026-10-05): Owner requests the current
+> candidate snapshot for Project Source replacement. Use `--candidate-snapshot`
+> from the clean committed `codex/grammar-local-trial-ba58b7d` worktree. It is
+> explicitly OWNER_REQUESTED_CANDIDATE_SNAPSHOT, not main adoption or product
+> acceptance. Exact12/hash/semantic/fresh-extraction checks remain mandatory.
+> Default canonical mode remains main-only; previews must not be applied.
+> Upload only payload/*.md manually; UI application remains unverified until done.
+
 # Source index and lifecycle
 
 Canonical semantic state: `control/state.json`. Canonical durable docs: `docs/control/`. Git branch/HEAD/tree/parent/subject are measured at export, not manually repeated in tracked files. `product_audit_base` labels a historical product snapshot; doc/tool commits do not change that tested source. The generator verifies product diff remains zero for this R0 package.

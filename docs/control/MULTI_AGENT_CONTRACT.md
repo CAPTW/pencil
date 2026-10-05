@@ -1,6 +1,6 @@
 # Grammar Tool-neutral Multi-Agent Development Contract
 
-Contract-Version: 1.4.0
+Contract-Version: 1.5.0
 
 ## Active mission override (Owner authorization, 2026-09-25)
 For GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1, the Owner explicitly authorizes investigation, implementation, tests, local commits, reviewed safe local main integration and continuation through P3-A stabilization and the first Chromium textarea/simple-contenteditable adapter for personal use. This section supersedes conflicting historical one-step gates below, fixed file/iteration/commit budgets, per-step new-worktree requirements and fresh Source UI upload prerequisites. Use one dedicated mission worktree; preserve historical failed candidates and unrelated work. Historical failures remain failures. Review changed main before integration; no history rewrite or forced conflict resolution.
@@ -17,6 +17,16 @@ In a Claude Code cloud session the Owner requested sequential execution of an ei
 The Owner explicitly expands this ongoing development mission to standard Windows Edit source replacement and global review/Accept integration for Text, DOCX, XLSX, HWP, HWPX, PPTX and webpages. Implement editor-aware adapters for the applications actually editing these formats; a file extension alone is not a safe mutation capability. This supersedes the original first-Chromium-only/no-other-adapter restriction for these named targets. Reuse the dedicated local candidate and preserve its accepted evidence. `scope_expansion=false` continues to forbid work beyond this now-explicit named scope, not the named adapters themselves.
 
 Explicit Accept after reviewing the replacement is required. Exact document/field/range/source/revision, sensitive-field refusal, user edit preservation and bounded cleanup remain mandatory. Unsupported or unverified implementations must not be enabled or claimed complete. All existing external-action boundaries remain: no user documents/profiles, credentials/accounts/live Provider inference, system-wide installation, remote push/release or main adoption in this local continuation. Installed Office or Hancom metadata is not authorization to use the user's open documents or normal desktop for tests. Use owned synthetic isolated environments. App-specific deployment prerequisites may limit only their dependent acceptance, not independent implementation.
+
+## Candidate Project Source replacement (Owner authorization, 2026-10-05)
+The Owner requests a replacement Project Source package from the current local
+candidate before continuing remaining development. Export the clean committed
+codex/grammar-local-trial-ba58b7d snapshot as OWNER_REQUESTED_CANDIDATE_SNAPSHOT,
+using the existing exact12 structure, measured candidate identity and full digest
+and extraction checks. This is eligible for manual Project Source replacement,
+not canonical main adoption, product acceptance, release or UI application proof.
+The default canonical export and non-applicable preview remain distinct modes.
+External UI upload remains Owner work and does not block authorized development.
 
 ## Historical task defaults (except active mission override)
 
