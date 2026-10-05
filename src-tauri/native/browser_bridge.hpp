@@ -139,7 +139,7 @@ public:
     }
     // False is a transport failure, not proof of no mutation. An Apply caller
     // must retain indeterminate status once transmission may have begun.
-    bool request(ChannelCommand command,const std::wstring& replacement,TargetReply& reply,std::wstring& source) {
+    bool request(ChannelCommand command,const std::wstring& replacement,TargetReply& reply,std::wstring& source,ULONGLONG outerDeadline=0) {
         reply={};reply.status=command==ChannelCommand::apply?4:0;source.clear();
         if(!connected_ || cancelled_ || !host_->alive() || GetTickCount64()>=lifetime_ ||
             replacement.size()>browser_bridge_units || sequence_==UINT64_MAX)return false;
@@ -149,7 +149,7 @@ public:
         ChannelHeader header;header.command=command;header.sequence=sequence_++;header.capture_id=capture_;
         header.capability=capability_;header.payload_bytes=static_cast<uint32_t>(replacement.size()*sizeof(wchar_t));
         if(command==ChannelCommand::apply)capture_=0;
-        const auto deadline=(std::min)(lifetime_,GetTickCount64()+3000);
+        const auto deadline=(std::min)((std::min)(lifetime_,GetTickCount64()+3000),outerDeadline?outerDeadline:UINT64_MAX);
         TargetReply received;
         bool ok=target_write(pipe_.get(),&header,sizeof(header),deadline,&cancelled_) &&
             target_write(pipe_.get(),replacement.data(),header.payload_bytes,deadline,&cancelled_) &&

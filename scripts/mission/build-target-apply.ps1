@@ -2,7 +2,8 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory)][string]$ExecutablePath,
-  [Parameter(Mandatory)][string]$OutputDirectory
+  [Parameter(Mandatory)][string]$OutputDirectory,
+  [string]$HostExecutablePath
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version 3.0
@@ -22,8 +23,15 @@ foreach($path in @($source,$output,$dev,$exe.FullName)){
 New-Item -ItemType Directory -Path $output | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $output 'obj') | Out-Null
 $hash=(Get-FileHash -LiteralPath $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+$hostHash=''
+if(-not $HostExecutablePath){$candidate=Join-Path $exe.DirectoryName 'grammar-chromium-host.exe';if(Test-Path -LiteralPath $candidate){$HostExecutablePath=$candidate}}
+if($HostExecutablePath){
+  $hostBinary=Get-Item -LiteralPath $HostExecutablePath
+  if($hostBinary.Name -cne 'grammar-chromium-host.exe'){throw 'Browser client must bind the installed host filename'}
+  $hostHash=(Get-FileHash -LiteralPath $hostBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+}
 $header=Join-Path $output 'trusted-build.hpp'
-[IO.File]::WriteAllLines($header,@(('#define GRAMMAR_TRUSTED_APP_SHA256 "'+$hash+'"'),'#define GRAMMAR_TRUSTED_APP_NAME L"codex-pencil.exe"'),[Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllLines($header,@(('#define GRAMMAR_TRUSTED_APP_SHA256 "'+$hash+'"'),'#define GRAMMAR_TRUSTED_APP_NAME L"codex-pencil.exe"',('#define GRAMMAR_TRUSTED_HOST_SHA256 "'+$hostHash+'"')),[Text.UTF8Encoding]::new($false))
 $dll=Join-Path $output 'target-apply.dll'
 $cpp=Join-Path $source 'src-tauri/native/target_apply.cpp'
 $api=Join-Path $source 'src-tauri/native/target_apply_api.cpp'
@@ -33,10 +41,12 @@ $command='"'+$dev+'" -arch=x64 && cl /nologo /std:c++17 /EHsc /MT /W4 /WX /DUNIC
 & $env:ComSpec /d /s /c $command *> (Join-Path $output 'build.log')
 if($LASTEXITCODE -ne 0){throw 'Target service compile/link failed; inspect build.log'}
 if((Get-FileHash -LiteralPath $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $hash){throw 'Broker changed while building target service'}
+if($HostExecutablePath -and (Get-FileHash -LiteralPath $hostBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $hostHash){throw 'Host changed while building target service'}
 $binary=Get-Item -LiteralPath $dll
 [ordered]@{
   classification='TARGET_SERVICE_BOUND_TO_BUILT_BROKER_NOT_ACCEPTANCE'
   brokerSha256=$hash; brokerFileName=$exe.Name; libraryPath=$binary.FullName
+  browserClientEnabled=[bool]$hostHash; hostSha256=$hostHash
   libraryBytes=$binary.Length; librarySha256=(Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant()
   compilerPolicy='MSVC_X64_CPP17_STATIC_CRT_W4_WX'; exitCode=0
 }

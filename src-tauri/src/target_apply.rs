@@ -51,6 +51,9 @@ impl TargetApplyRuntime {
     pub fn capture(&self, field: isize, epoch: u64) -> Result<TargetCapture, &'static str> {
         self.capture_with(field, epoch, load_api()?)
     }
+    pub fn capture_browser(&self, window: isize, epoch: u64) -> Result<TargetCapture, &'static str> {
+        self.capture_with(window, epoch, load_browser_api()?)
+    }
     fn capture_with(
         &self,
         field: isize,
@@ -207,8 +210,18 @@ fn load_api() -> Result<Arc<dyn Api>, &'static str> {
     // The module stays loaded for the broker process lifetime. An outstanding
     // native slot can outlive a caller timeout; unloading would invalidate it.
     static API: OnceLock<Result<Arc<dyn Api>, &'static str>> = OnceLock::new();
-    API.get_or_init(|| unsafe { WindowsApi::load().map(|api| Arc::new(api) as Arc<dyn Api>) })
+    API.get_or_init(|| unsafe { WindowsApi::load(false).map(|api| Arc::new(api) as Arc<dyn Api>) })
         .clone()
+}
+#[cfg(windows)]
+fn load_browser_api() -> Result<Arc<dyn Api>, &'static str> {
+    static API: OnceLock<Result<Arc<dyn Api>, &'static str>> = OnceLock::new();
+    API.get_or_init(|| unsafe { WindowsApi::load(true).map(|api| Arc::new(api) as Arc<dyn Api>) })
+        .clone()
+}
+#[cfg(not(windows))]
+fn load_browser_api() -> Result<Arc<dyn Api>, &'static str> {
+    Err("browser_review_unavailable")
 }
 #[cfg(not(windows))]
 fn load_api() -> Result<Arc<dyn Api>, &'static str> {
@@ -217,6 +230,7 @@ fn load_api() -> Result<Arc<dyn Api>, &'static str> {
 
 #[cfg(windows)]
 struct WindowsApi {
+    max_units: usize,
     create: unsafe extern "system" fn(isize, *mut u64) -> u32,
     capture: unsafe extern "system" fn(u64, *mut u16, u32, *mut u32) -> u32,
     apply: unsafe extern "system" fn(u64, *const u16, u32, *mut u32) -> u32,
@@ -225,7 +239,7 @@ struct WindowsApi {
 }
 #[cfg(windows)]
 impl WindowsApi {
-    unsafe fn load() -> Result<Self, &'static str> {
+    unsafe fn load(browser: bool) -> Result<Self, &'static str> {
         use windows_sys::Win32::System::LibraryLoader::*;
         let path = std::env::current_exe()
             .ok()
@@ -242,8 +256,9 @@ impl WindowsApi {
             return Err("native_apply_unavailable");
         }
         macro_rules! symbol {
-            ($name:literal,$ty:ty) => {{
-                match GetProcAddress(module, concat!($name, "\0").as_ptr()) {
+            ($name:literal,$browser:literal,$ty:ty) => {{
+                let name = if browser { concat!($browser, "\0") } else { concat!($name, "\0") };
+                match GetProcAddress(module, name.as_ptr()) {
                     Some(function) => {
                         std::mem::transmute::<unsafe extern "system" fn() -> isize, $ty>(function)
                     }
@@ -255,21 +270,26 @@ impl WindowsApi {
             }};
         }
         Ok(Self {
+            max_units: if browser { 8192 } else { 65534 },
             create: symbol!(
                 "GrammarTargetCreate",
+                "GrammarBrowserClientCreate",
                 unsafe extern "system" fn(isize, *mut u64) -> u32
             ),
             capture: symbol!(
                 "GrammarTargetCapture",
+                "GrammarBrowserClientCapture",
                 unsafe extern "system" fn(u64, *mut u16, u32, *mut u32) -> u32
             ),
             apply: symbol!(
                 "GrammarTargetApply",
+                "GrammarBrowserClientApply",
                 unsafe extern "system" fn(u64, *const u16, u32, *mut u32) -> u32
             ),
-            cancel: symbol!("GrammarTargetCancel", unsafe extern "system" fn(u64) -> u32),
+            cancel: symbol!("GrammarTargetCancel", "GrammarBrowserClientCancel", unsafe extern "system" fn(u64) -> u32),
             close: symbol!(
                 "GrammarTargetClose",
+                "GrammarBrowserClientClose",
                 unsafe extern "system" fn(u64, u32) -> u32
             ),
         })
@@ -286,11 +306,11 @@ impl Api for WindowsApi {
         }
     }
     fn capture(&self, cookie: u64) -> Result<String, &'static str> {
-        let mut text = vec![0u16; 65535];
+        let mut text = vec![0u16; self.max_units + 1];
         let mut units = 0;
         let code =
             unsafe { (self.capture)(cookie, text.as_mut_ptr(), text.len() as u32, &mut units) };
-        let result = if code == 0 && units > 0 && units < 65535 {
+        let result = if code == 0 && units > 0 && units as usize <= self.max_units {
             String::from_utf16(&text[..units as usize]).map_err(|_| "native_capture_invalid_text")
         } else {
             Err("native_capture_unavailable")
@@ -304,7 +324,7 @@ impl Api for WindowsApi {
     }
     fn apply(&self, cookie: u64, text: &str) -> DirectOutcome {
         let mut text: Vec<u16> = text.encode_utf16().collect();
-        if text.is_empty() || text.len() > 65534 || text.contains(&0) {
+        if text.is_empty() || text.len() > self.max_units || text.contains(&0) {
             return DirectOutcome::Rejected;
         }
         let mut outcome = 4;
@@ -336,6 +356,19 @@ fn direct_control_candidate(class_name: &str, style: u32) -> bool {
     class_name.eq_ignore_ascii_case("RichEdit50W")
         || (class_name.eq_ignore_ascii_case("Edit") && (style & 0x0004 == 0 || style & 0x0040 != 0))
 }
+
+#[cfg(windows)]
+pub(crate) fn is_browser_window(target: crate::capture_session::WindowTarget) -> Result<bool, String> {
+    use crate::native_edit::{EditPort, Win32EditPort};
+    let mut port = Win32EditPort::default();
+    if port.foreground_window() != target.hwnd || port.window_pid(target.hwnd) != Some(target.pid) {
+        return Err("capture_target_changed".into());
+    }
+    Ok(port.class_name(target.hwnd).and_then(|name| String::from_utf16(&name).ok())
+        .is_some_and(|name| name == "Chrome_WidgetWin_1"))
+}
+#[cfg(not(windows))]
+pub(crate) fn is_browser_window(_: crate::capture_session::WindowTarget) -> Result<bool, String> { Ok(false) }
 
 #[cfg(windows)]
 pub(crate) fn focused_field(
