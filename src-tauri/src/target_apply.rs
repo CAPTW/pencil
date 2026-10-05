@@ -58,6 +58,13 @@ impl TargetApplyRuntime {
             other => other,
         })
     }
+    pub fn capture_writer(&self, window: isize, epoch: u64) -> Result<TargetCapture, &'static str> {
+        let api = load_writer_api().map_err(|_| "writer_review_unavailable")?;
+        self.capture_with(window, epoch, api).map_err(|error| match error {
+            "native_capture_unavailable" | "native_apply_unavailable" => "writer_review_unavailable",
+            other => other,
+        })
+    }
     fn capture_with(
         &self,
         field: isize,
@@ -214,15 +221,22 @@ fn load_api() -> Result<Arc<dyn Api>, &'static str> {
     // The module stays loaded for the broker process lifetime. An outstanding
     // native slot can outlive a caller timeout; unloading would invalidate it.
     static API: OnceLock<Result<Arc<dyn Api>, &'static str>> = OnceLock::new();
-    API.get_or_init(|| unsafe { WindowsApi::load(false).map(|api| Arc::new(api) as Arc<dyn Api>) })
+    API.get_or_init(|| unsafe { WindowsApi::load(0).map(|api| Arc::new(api) as Arc<dyn Api>) })
         .clone()
 }
 #[cfg(windows)]
 fn load_browser_api() -> Result<Arc<dyn Api>, &'static str> {
     static API: OnceLock<Result<Arc<dyn Api>, &'static str>> = OnceLock::new();
-    API.get_or_init(|| unsafe { WindowsApi::load(true).map(|api| Arc::new(api) as Arc<dyn Api>) })
+    API.get_or_init(|| unsafe { WindowsApi::load(1).map(|api| Arc::new(api) as Arc<dyn Api>) })
         .clone()
 }
+#[cfg(windows)]
+fn load_writer_api() -> Result<Arc<dyn Api>, &'static str> {
+    static API: OnceLock<Result<Arc<dyn Api>, &'static str>> = OnceLock::new();
+    API.get_or_init(|| unsafe { WindowsApi::load(2).map(|api| Arc::new(api) as Arc<dyn Api>) }).clone()
+}
+#[cfg(not(windows))]
+fn load_writer_api() -> Result<Arc<dyn Api>, &'static str> { Err("writer_review_unavailable") }
 #[cfg(not(windows))]
 fn load_browser_api() -> Result<Arc<dyn Api>, &'static str> {
     Err("browser_review_unavailable")
@@ -243,7 +257,7 @@ struct WindowsApi {
 }
 #[cfg(windows)]
 impl WindowsApi {
-    unsafe fn load(browser: bool) -> Result<Self, &'static str> {
+    unsafe fn load(kind: u8) -> Result<Self, &'static str> {
         use windows_sys::Win32::System::LibraryLoader::*;
         let path = std::env::current_exe()
             .ok()
@@ -260,8 +274,8 @@ impl WindowsApi {
             return Err("native_apply_unavailable");
         }
         macro_rules! symbol {
-            ($name:literal,$browser:literal,$ty:ty) => {{
-                let name = if browser { concat!($browser, "\0") } else { concat!($name, "\0") };
+            ($name:literal,$browser:literal,$writer:literal,$ty:ty) => {{
+                let name = match kind { 1 => concat!($browser, "\0"), 2 => concat!($writer, "\0"), _ => concat!($name, "\0") };
                 match GetProcAddress(module, name.as_ptr()) {
                     Some(function) => {
                         std::mem::transmute::<unsafe extern "system" fn() -> isize, $ty>(function)
@@ -274,26 +288,26 @@ impl WindowsApi {
             }};
         }
         Ok(Self {
-            max_units: if browser { 8192 } else { 65534 },
+            max_units: if kind != 0 { 8192 } else { 65534 },
             create: symbol!(
                 "GrammarTargetCreate",
-                "GrammarBrowserClientCreate",
+                "GrammarBrowserClientCreate", "GrammarWriterClientCreate",
                 unsafe extern "system" fn(isize, *mut u64) -> u32
             ),
             capture: symbol!(
                 "GrammarTargetCapture",
-                "GrammarBrowserClientCapture",
+                "GrammarBrowserClientCapture", "GrammarWriterClientCapture",
                 unsafe extern "system" fn(u64, *mut u16, u32, *mut u32) -> u32
             ),
             apply: symbol!(
                 "GrammarTargetApply",
-                "GrammarBrowserClientApply",
+                "GrammarBrowserClientApply", "GrammarWriterClientApply",
                 unsafe extern "system" fn(u64, *const u16, u32, *mut u32) -> u32
             ),
-            cancel: symbol!("GrammarTargetCancel", "GrammarBrowserClientCancel", unsafe extern "system" fn(u64) -> u32),
+            cancel: symbol!("GrammarTargetCancel", "GrammarBrowserClientCancel", "GrammarWriterClientCancel", unsafe extern "system" fn(u64) -> u32),
             close: symbol!(
                 "GrammarTargetClose",
-                "GrammarBrowserClientClose",
+                "GrammarBrowserClientClose", "GrammarWriterClientClose",
                 unsafe extern "system" fn(u64, u32) -> u32
             ),
         })
@@ -373,6 +387,21 @@ pub(crate) fn is_browser_window(target: crate::capture_session::WindowTarget) ->
 }
 #[cfg(not(windows))]
 pub(crate) fn is_browser_window(_: crate::capture_session::WindowTarget) -> Result<bool, String> { Ok(false) }
+
+#[cfg(windows)]
+pub(crate) fn is_writer_window(target: crate::capture_session::WindowTarget) -> Result<bool, String> {
+    use crate::native_edit::{EditPort, Win32EditPort};
+    let mut port = Win32EditPort::default();
+    if port.foreground_window() != target.hwnd || port.window_pid(target.hwnd) != Some(target.pid) {
+        return Err("capture_target_changed".into());
+    }
+    // Metadata routing only. Native admission independently pins executable
+    // identity; the opted-in target core checks actual Writer document eligibility.
+    Ok(port.class_name(target.hwnd).and_then(|name| String::from_utf16(&name).ok())
+        .is_some_and(|name| name == "SALFRAME"))
+}
+#[cfg(not(windows))]
+pub(crate) fn is_writer_window(_: crate::capture_session::WindowTarget) -> Result<bool, String> { Ok(false) }
 
 #[cfg(windows)]
 pub(crate) fn focused_field(

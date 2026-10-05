@@ -2159,8 +2159,9 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
                 let state = app.state::<AppState>();
                 if state.shutdown_started.load(Ordering::SeqCst) { return Err("app_shutting_down".into()); }
                 let browser = target_apply::is_browser_window(target)?;
-                let field = if browser { None } else { target_apply::focused_field(target)? };
-                let native = if browser || field.is_some() {
+                let writer = target_apply::is_writer_window(target)?;
+                let field = if browser || writer { None } else { target_apply::focused_field(target)? };
+                let native = if browser || writer || field.is_some() {
                     let runtime = state.target_apply.clone();
                     let epoch = runtime.epoch().map_err(str::to_string)?;
                     // A browser target can only use its opted-in extension. A
@@ -2168,10 +2169,12 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
                     // editor/clipboard path (including sensitive browser fields).
                     let captured = tokio::task::spawn_blocking(move || if browser {
                         runtime.capture_browser(target.hwnd, epoch)
+                    } else if writer { runtime.capture_writer(target.hwnd, epoch)
                     } else { runtime.capture(field.expect("qualified native field"), epoch) }).await
                         .map_err(|_| "native_capture_worker_failed".to_string())?.map_err(str::to_string)?;
                     if (browser && !target_apply::is_browser_window(target)?) ||
-                        (!browser && target_apply::focused_field(target)? != field) {
+                        (writer && !target_apply::is_writer_window(target)?) ||
+                        (!browser && !writer && target_apply::focused_field(target)? != field) {
                         state.target_apply.cancel();
                         return Err("capture_target_changed".into());
                     }

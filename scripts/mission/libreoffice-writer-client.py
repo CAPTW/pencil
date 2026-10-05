@@ -1,5 +1,7 @@
 """Real Writer transaction fixture client; invoke only through guarded Sandbox launcher."""
 import json
+import ctypes
+import subprocess
 import os
 from pathlib import Path
 import sys
@@ -91,6 +93,11 @@ try:
     doc = desktop.loadComponentFromURL('private:factory/swriter', '_blank', 0,
         (arg('PropertyValue', 'Hidden', False), arg('PropertyValue', 'MacroExecutionMode', NEVER_EXECUTE)))
     assert doc.CurrentController.Frame.ContainerWindow.isVisible()
+    doc.CurrentController.Frame.activate()
+    ready_until = time.monotonic() + 5
+    while desktop.CurrentComponent != doc and time.monotonic() < ready_until:
+        time.sleep(.01)
+    assert desktop.CurrentComponent == doc, 'owned Writer document not active after load'
     service = ctx.ServiceManager.createInstanceWithContext('org.grammar.fixture.Writer', ctx)
     assert service is not None
     hooks = ctx.ServiceManager.createInstanceWithContext('org.grammar.fixture.Hooks', ctx)
@@ -100,6 +107,7 @@ try:
     record('capture-does-not-change-document', doc.Text.String == source)
     replacement = 'Reviewed 한국어 😀'
     reply = call('accept', Token=token, Replacement=replacement)
+    result['firstReplacement'] = dict(reply=reply, text=doc.Text.String)
     record('reviewed-replacement-exact', reply['status'] == 'APPLIED'
         and doc.Text.String == source.replace('Synthetic', replacement))
     record('modified-flag-and-notifications-restored', doc.isModified() and doc.isSetModifiedEnabled())
@@ -108,6 +116,31 @@ try:
         and doc.Text.String == after)
     doc.getUndoManager().undo()
     record('undo-original-exact', doc.Text.String == source)
+    doc.getUndoManager().redo()
+    record('redo-replacement-exact', doc.Text.String == source.replace('Synthetic', replacement))
+    doc.getUndoManager().undo()
+    record('second-undo-original-exact', doc.Text.String == source)
+    doc.getUndoManager().undo()
+    record('previous-native-history-preserved', doc.Text.String == '')
+    doc.getUndoManager().redo()
+    record('previous-native-history-redo', doc.Text.String == source)
+    doc.getUndoManager().redo()
+    record('replacement-redo-after-earlier-history', doc.Text.String == source.replace('Synthetic', replacement))
+    doc.getUndoManager().undo()
+    record('replacement-undo-after-earlier-history', doc.Text.String == source)
+    doc.getUndoManager().redo()
+    tail = doc.Text.createTextCursor()
+    tail.gotoEnd(False)
+    doc.Text.insertString(tail, ' LATER EDIT', False)
+    doc.getUndoManager().undo()
+    record('later-native-edit-undo', doc.Text.String == source.replace('Synthetic', replacement))
+    doc.getUndoManager().undo()
+    record('replacement-undo-after-later-edit', doc.Text.String == source)
+    doc.getUndoManager().redo()
+    doc.getUndoManager().redo()
+    record('later-native-edit-redo', doc.Text.String == source.replace('Synthetic', replacement) + ' LATER EDIT')
+
+
 
     token = capture()
     select(0, 6)
@@ -217,6 +250,35 @@ try:
             and not doc.isSetModifiedEnabled() and doc.Text.String == source)
     finally:
         doc.enableSetModified()
+    hidden = select()
+    hidden.CharHidden = True
+    reads = call('state')['textReads']
+    record('hidden-text-refused-before-read', call('enable', Document=doc)['status'] == 'REJECTED'
+        and call('state')['textReads'] == reads)
+    hidden.CharHidden = False
+    doc.Text.String = 'X' * 4100
+    select(0, 4100)
+    record('large-selection-document-enable', call('enable', Document=doc)['status'] == 'ENABLED')
+    reads = call('state')['textReads']
+    record('large-selection-refused-before-read', call('capture')['status'] == 'REJECTED'
+        and call('state')['textReads'] == reads)
+    token = capture()
+    call('disable')
+    field = doc.createInstance('com.sun.star.text.TextField.DateTime')
+    cursor = doc.Text.createTextCursor()
+    doc.Text.insertTextContent(cursor, field, False)
+    reads = call('state')['textReads']
+    try:
+        record('actual-field-refused-before-read', call('enable', Document=doc)['status'] == 'REJECTED'
+            and call('state')['textReads'] == reads)
+    finally:
+        doc.Text.removeTextContent(field)
+    doc.RecordChanges = True
+    try:
+        record('tracked-change-mode-refused-before-read', call('enable', Document=doc)['status'] == 'REJECTED'
+            and call('state')['textReads'] == reads)
+    finally:
+        doc.RecordChanges = False
     section = doc.createInstance('com.sun.star.text.TextSection')
     section.IsProtected = True
     cursor = doc.Text.createTextCursor()
@@ -233,11 +295,78 @@ try:
     record('real-review-expiry-refused', call('accept', Token=token, Replacement='WRONG')['status'] == 'REJECTED'
         and doc.Text.String == source)
     token = capture()
+    tick_clock = ctypes.windll.kernel32.GetTickCount64
+    tick_clock.restype = ctypes.c_ulonglong
+    reads = call('state')['textReads']
+    record('invalid-native-deadline-refused-before-read', call('capture', DeadlineTicks=0)['status'] == 'REJECTED'
+        and call('state')['textReads'] == reads)
+    hook_args = dict(Action='arm', Mode='tickdelay', Token=token, Document=doc, Service=service, UserText='UNUSED')
+    hooks.execute(tuple(arg('NamedValue', k, v) for k, v in hook_args.items()))
+    float_limit = time.monotonic() + 2.5
+    try:
+        reply = call('accept', Token=token, Replacement='WRONG', Deadline=float_limit, DeadlineTicks=tick_clock()+200)
+        float_remaining = time.monotonic() < float_limit
+    finally:
+        hook = SimpleNamespace(**json.loads(hooks.execute((arg('NamedValue', 'Action', 'disarm'),))))
+    record('original-native-ticks-expire-before-float-budget', hook.fired and float_remaining
+        and reply['status'] == 'REJECTED' and reply['reason'] == 'expired_operation' and doc.Text.String == source)
+    for index in range(32):
+        token = capture()
+        reply = call('accept', Token=token, Replacement=replacement)
+        assert reply['status'] == 'APPLIED' and doc.Text.String == source.replace('Synthetic', replacement), index
+        doc.getUndoManager().undo()
+        assert doc.Text.String == source, index
+        doc.getUndoManager().redo()
+        assert doc.Text.String == source.replace('Synthetic', replacement), index
+        result['enduranceCompleted'] = index + 1
+        out.write_text(json.dumps(result, indent=2), encoding='utf-8')
+    record('repeated-32-apply-undo-redo-exact', True)
+    native_root = Path(r'C:\GrammarPayload\writer-native')
+    if native_root.exists():
+        token = capture()
+        hwnd = int(doc.CurrentController.Frame.ContainerWindow.getWindowHandle((), 1))
+        doc.CurrentController.Frame.activate()
+        foreground = ctypes.windll.user32.SetForegroundWindow
+        foreground.argtypes = [ctypes.c_void_p]
+        foreground.restype = ctypes.c_int
+        get_foreground = ctypes.windll.user32.GetForegroundWindow
+        get_foreground.restype = ctypes.c_void_p
+        foreground(ctypes.c_void_p(hwnd))
+        record('native-peer-owned-writer-foreground', get_foreground() == hwnd)
+        record('native-peer-started', call('start_native_bridge')['status'] == 'STARTED')
+        reads = call('state')['textReads']
+        def native_trial(library):
+            completed = subprocess.run([str(native_root / 'writer-bridge-probe.exe'), str(native_root / library), str(hwnd)],
+                capture_output=True, text=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+            assert completed.returncode == 0, (completed.returncode, completed.stderr)
+            return json.loads(completed.stdout)
+        denied = native_trial('wrong-writer.dll')
+        result['wrongNativePeer'] = denied
+        record('wrong-writer-image-hash-refused-before-read', denied['captured'] == 4 and denied['closed'] == 0
+            and call('state')['textReads'] == reads and doc.Text.String == source)
+        passed = native_trial('target-apply.dll')
+        result['nativePeer'] = passed
+        result['nativeDiagnostic'] = dict(bridge=call('native_bridge_state'), core=call('state'),
+            originalUnchanged=doc.Text.String == source, replacementExact=doc.Text.String == source.replace('Synthetic', replacement))
+        record('authenticated-native-peer-replaces-exact-range', passed['sourceMatched'] and passed['applyCode'] == 0
+            and passed['outcome'] == 3 and passed['closed'] == 0 and doc.Text.String == source.replace('Synthetic', replacement))
+        doc.getUndoManager().undo()
+        record('native-peer-replacement-undo', doc.Text.String == source)
+        until = time.monotonic() + 4
+        while time.monotonic() < until:
+            native_state = call('native_bridge_state')
+            if native_state['finished']:
+                break
+            time.sleep(.01)
+        result['nativeCleanup'] = native_state
+        record('native-peer-cleanup-confirmed', native_state['finished'] and native_state['cleanupComplete'] and native_state['error'] is None)
+    token = capture()
     doc.setModified(False)
     doc.close(True)
     doc = None
     state = call('state')
     record('document-close-clears-review-and-binding', not state['enabled'] and not state['reviewRetained'])
+    record('document-close-disposes-undo-source', state['undoActions'] == 0)
     record('closed-document-accept-refused', call('accept', Token=token, Replacement='WRONG')['status'] == 'REJECTED')
     result['status'] = 'FAIL' if result.get('failures') else 'PASS'
 except Exception as error:

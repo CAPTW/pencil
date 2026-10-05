@@ -3,7 +3,9 @@
 param(
   [Parameter(Mandatory)][string]$ExecutablePath,
   [Parameter(Mandatory)][string]$OutputDirectory,
-  [string]$HostExecutablePath
+  [string]$HostExecutablePath,
+  [string]$WriterExecutablePath,
+  [string]$WriterRuntimePath = ''
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version 3.0
@@ -30,23 +32,40 @@ if($HostExecutablePath){
   if($hostBinary.Name -cne 'grammar-chromium-host.exe'){throw 'Browser client must bind the installed host filename'}
   $hostHash=(Get-FileHash -LiteralPath $hostBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 }
+$writerHash=''
+if($WriterExecutablePath){
+  $writerImage=Get-Item -LiteralPath $WriterExecutablePath
+  if($writerImage.Name -cne 'soffice.bin'){throw 'Writer must bind the actual soffice.bin image'}
+  $writerHash=(Get-FileHash -LiteralPath $writerImage.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  if(-not $WriterRuntimePath){$WriterRuntimePath=$writerImage.FullName}
+  if($WriterRuntimePath -notmatch '^[A-Za-z]:\\' -or $WriterRuntimePath -match '["%!\r\n]'){throw 'Unsupported Writer runtime path'}
+} elseif($WriterRuntimePath){throw 'Writer runtime path requires a verified input image'}
 $header=Join-Path $output 'trusted-build.hpp'
-[IO.File]::WriteAllLines($header,@(('#define GRAMMAR_TRUSTED_APP_SHA256 "'+$hash+'"'),'#define GRAMMAR_TRUSTED_APP_NAME L"codex-pencil.exe"',('#define GRAMMAR_TRUSTED_HOST_SHA256 "'+$hostHash+'"')),[Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllLines($header,@(
+  ('#define GRAMMAR_TRUSTED_APP_SHA256 "'+$hash+'"'),
+  '#define GRAMMAR_TRUSTED_APP_NAME L"codex-pencil.exe"',
+  ('#define GRAMMAR_TRUSTED_HOST_SHA256 "'+$hostHash+'"'),
+  ('#define GRAMMAR_TRUSTED_WRITER_SHA256 "'+$writerHash+'"'),
+  ('#define GRAMMAR_TRUSTED_WRITER_PATH L"'+$WriterRuntimePath.Replace('\','\\')+'"')
+),[Text.UTF8Encoding]::new($false))
 $dll=Join-Path $output 'target-apply.dll'
 $cpp=Join-Path $source 'src-tauri/native/target_apply.cpp'
 $api=Join-Path $source 'src-tauri/native/target_apply_api.cpp'
 $browser=Join-Path $source 'src-tauri/native/browser_bridge_api.cpp'
+$writer=Join-Path $source 'src-tauri/native/writer_bridge_api.cpp'
 $obj=(Join-Path $output 'obj').TrimEnd('\','/')+'\\' # Escape the trailing slash before the CRT closing quote.
-$command='"'+$dev+'" -arch=x64 && cl /nologo /std:c++17 /EHsc /MT /W4 /WX /DUNICODE /D_UNICODE /FI"'+$header+'" /LD "'+$cpp+'" "'+$api+'" "'+$browser+'" /Fe:"'+$dll+'" /Fo:"'+$obj+'" bcrypt.lib advapi32.lib ole32.lib oleaut32.lib uuid.lib user32.lib comctl32.lib imm32.lib /link /WX'
+$command='"'+$dev+'" -arch=x64 && cl /nologo /std:c++17 /EHsc /MT /W4 /WX /DUNICODE /D_UNICODE /FI"'+$header+'" /LD "'+$cpp+'" "'+$api+'" "'+$browser+'" "'+$writer+'" /Fe:"'+$dll+'" /Fo:"'+$obj+'" bcrypt.lib advapi32.lib ole32.lib oleaut32.lib uuid.lib user32.lib comctl32.lib imm32.lib /link /WX'
 & $env:ComSpec /d /s /c $command *> (Join-Path $output 'build.log')
 if($LASTEXITCODE -ne 0){throw 'Target service compile/link failed; inspect build.log'}
 if((Get-FileHash -LiteralPath $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $hash){throw 'Broker changed while building target service'}
 if($HostExecutablePath -and (Get-FileHash -LiteralPath $hostBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $hostHash){throw 'Host changed while building target service'}
+if($WriterExecutablePath -and (Get-FileHash -LiteralPath $writerImage.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $writerHash){throw 'Writer changed during build'}
 $binary=Get-Item -LiteralPath $dll
 [ordered]@{
   classification='TARGET_SERVICE_BOUND_TO_BUILT_BROKER_NOT_ACCEPTANCE'
   brokerSha256=$hash; brokerFileName=$exe.Name; libraryPath=$binary.FullName
   browserClientEnabled=[bool]$hostHash; hostSha256=$hostHash
+  writerClientEnabled=[bool]$writerHash; writerSha256=$writerHash; writerRuntimePath=$WriterRuntimePath
   libraryBytes=$binary.Length; librarySha256=(Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant()
   compilerPolicy='MSVC_X64_CPP17_STATIC_CRT_W4_WX'; exitCode=0
 }
