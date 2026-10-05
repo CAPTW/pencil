@@ -12,6 +12,7 @@
   let selectionReview = null, reviewInput = null, reviewAccept = null, reviewTimer = null;
   let reviewRange = null, reviewOwnsFocus = false;
   let desktopReview = null, desktopReviewTimer = null, desktopReviewObserver = null;
+  let desktopArmPending = false, desktopArmAfter = 0;
   const sensitive = /password|passwd|secret|token|credit|card.?number|ssn|social.?security|medical|health|otp|one.?time|verification|auth|private|sensitive/i;
   function labelText(label) {
     if (!label) return '';
@@ -112,6 +113,7 @@
   }
   function focus(event) {
     if(desktopReview && event.target!==editor)clearDesktopReview();
+    if(event.target===editor)armDesktopLink();
     if (root?.contains(event.target)) {reviewFocusStart(event);return;}
     if(selectionReview && event.target!==editor) revokeReview('Review target changed. Copy or dismiss the draft.');
     if (fieldLike(event.target)) choose(event.target);
@@ -393,6 +395,19 @@
     desktopReview?.grant.cancel();desktopReview=null;
   }
   const reviewToken=value=>typeof value==='string' && /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value);
+  async function armDesktopLink() {
+    // Control-only preparation within field opt-in. No source is captured and
+    // no Provider is called here; the global shortcut initiates capture later.
+    if(desktopArmPending || Date.now()<desktopArmAfter || desktopReview || !epoch || !session?.active ||
+        composing || !document.hasFocus() || document.activeElement!==editor || !supported(editor))return;
+    desktopArmPending=true;desktopArmAfter=Date.now()+1000;
+    const owner=session,activeEpoch=epoch;
+    try {
+      const response=await chrome.runtime.sendMessage({op:'desktop-arm',epoch:activeEpoch});
+      if(session===owner && epoch===activeEpoch && !response?.ok)desktopArmAfter=Date.now()+5000;
+    } catch {if(session===owner && epoch===activeEpoch)desktopArmAfter=Date.now()+5000;}
+    finally {desktopArmPending=false;}
+  }
   function captureDesktopReview(id) {
     // Only the authenticated native-host worker route may call this entry.
     // It does not enable a document/field or infer permission from selection.
@@ -526,6 +541,7 @@
     if (!supported(target)) {status.textContent='Unsupported or sensitive field. No text read.';return;}
     choose(target);
     editor=target;session=new DocumentSession(epoch);status.textContent='Local Instant active';schedule();
+    desktopArmAfter=0;armDesktopLink();
   }
   function enable(newEpoch) {
     disable(); epoch=newEpoch; chosen=fieldLike(document.activeElement) ? document.activeElement : null;
@@ -566,6 +582,7 @@
       catch {if (epoch===activeEpoch) disable();}
       // Bounded reconciliation catches programmatic textarea value changes without key logging.
       if (session && !composing && !document.hidden) {const current=read();if(current===null){wipeField();}else if(current!==session.text){cancelDeepUI();invalidate(false);schedule();}}
+      armDesktopLink();
     },1000);
   }
   chrome.runtime.onMessage.addListener((message,sender,respond)=>{
