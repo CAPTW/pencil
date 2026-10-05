@@ -1,4 +1,19 @@
-> Current uniform-format checkpoint (2026-10-05): app/native0fc8624 plus product
+> Current mixed-surroundings checkpoint (2026-10-06): product OXTa3b231a with
+> explicit saved/uniform/mixed options plus unchanged app/native0fc8624 qualifies
+> a homogeneous selected range within one Standard body paragraph with different
+> supported bold/RGB formats outside the selection. Pinned LibreOffice26.2.4.2,
+> owned profile and synthetic new/local saved DOCX only. Installed widget8/enclosing5
+> and final native39 including16 saved Apply/Undo cycles PASS; exact complete text
+> and per-character format rereads, Undo/Redo, no implicit Save and natural cleanup.
+> Cross-format selections, selected line breaks, multiple formatted paragraphs,
+> inconsistent imported color metadata and complex structures remain refused.
+> Next work: paragraph-aware preservation, then explicitly defined cross-format
+> replacement semantics. General Office/Hancom, IME/profiles/live Provider remain
+> unqualified/NOT_RUN. Mission INCOMPLETE; no main adoption or push. Evidence:
+> grammar-writer-mixed-20261006. Earlier checkpoint notes below retain historical
+> artifact scopes; F06 current qualification_scope is the current union.
+
+> Prior uniform-format checkpoint (2026-10-05): app/native0fc8624 plus product
 > OXT2a16115 with explicit saved/uniform options qualifies one Standard paragraph
 > with homogeneous script weights, opaque non-theme RGB and alignment in owned
 > pinned LibreOffice26.2.4.2. Installed widget8/enclosing5, formatted core32/16 cycles,

@@ -87,3 +87,5 @@ Evidence grammar-writer-uniform-format-20261005. Continue mixed-format range and
 paragraph-aware Undo in the existing authorized global-adapter task. General rich
 Writer, Calc/Impress, Office/Hancom, normal profiles/IME/live Providers incomplete.
 No additional Owner gate, no main adoption/push; mission INCOMPLETE.
+
+2026-10-06: mixed-surroundings OXTa3b231a + app/native0fc8624 installed8/core39 PASS; homogeneous selected range in one Standard paragraph only. Next: paragraph-aware preservation and defined cross-format replacement semantics. General goal INCOMPLETE; see latest HANDOFF and grammar-writer-mixed-20261006.
