@@ -10,12 +10,20 @@ const source = original.replace("import {HOST} from './host-config.js';", "const
 assert.notEqual(source, original, 'mock loader must replace exactly the host config import');
 const deferred = () => { let resolve,reject; const promise = new Promise((r,j) => {resolve=r;reject=j;}); return {promise,resolve,reject}; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
+const reviewTicket='11111111-1111-4111-8111-111111111111';
+const armReview=f=>f.dispatch({op:'desktop-arm',epoch:f.currentEpoch()},f.sender());
+function reviewCommand(port,op,sequence,ticket=null,text=null) {port.onMessage.emit({version:1,op,id:port.posted[0].id,sequence,ticket,text});}
+async function readyReview(f) {
+  await f.command('enable');assert.equal((await armReview(f)).ok,true);
+  const port=f.ports.at(-1);reviewCommand(port,'review-ready',0);return port;
+}
 function event() { const listeners=[];return {addListener(fn){listeners.push(fn);},emit(...args){for(const fn of listeners)fn(...args);}}; }
 function fixture(initial={deniedOrigins:[]}) {
   const sent=[],ports=[],controlPorts=[],timers=new Map();let nextTimer=0,epoch=0,storageGate=null,injectionGate=null,writeGate=null,stored=structuredClone(initial);
   const injectionGates=new Map(),writes=[];let controlAuto=true, enableReplyGate=null;
   const ticket=token=>({installation:'a'.repeat(32),slot:0,generation:1,token});
-  const onMessage=event(),onUpdated=event(),onRemoved=event();
+  const onMessage=event(),onUpdated=event(),onRemoved=event(),onActivated=event(),onFocusChanged=event();
+  let activeTab={id:1,windowId:10},queryGate=null,desktopCancelGate=null;const desktopReplies=[];
   const chrome={
     storage:{local:{async get(){const gate=storageGate;storageGate=null;return gate?gate.promise:structuredClone(stored);},
       async set(value){writes.push(structuredClone(value));const gate=writeGate;writeGate=null;if(gate)await gate.promise;stored={...stored,...structuredClone(value)};}}},
@@ -30,8 +38,9 @@ function fixture(initial={deniedOrigins:[]}) {
               ...(message.op==='cleanup-reserve'?{}:{cleanup_complete:true})}));
           }
         },disconnect(){this.closed++;this.onDisconnect.emit();}};ports.push(port);return port;}},
-    tabs:{onUpdated,onRemoved,async get(tabId){return {url:'https://example.test/document/'+tabId};},
-      async sendMessage(tabId,message,options){sent.push({tabId,message,options});if(message.op==='enable' && enableReplyGate){const gate=enableReplyGate;enableReplyGate=null;return gate.promise;}return {ready:true};}},
+    tabs:{onUpdated,onRemoved,onActivated,async query(){const gate=queryGate;queryGate=null;return gate?gate.promise:[{...activeTab}];},async get(tabId){return {url:'https://example.test/document/'+tabId};},
+      async sendMessage(tabId,message,options){sent.push({tabId,message,options});if(message.op==='enable' && enableReplyGate){const gate=enableReplyGate;enableReplyGate=null;return gate.promise;}if(message.op==='desktop-cancel' && desktopCancelGate){const gate=desktopCancelGate;desktopCancelGate=null;return gate.promise;}if(['desktop-capture','desktop-apply'].includes(message.op))return desktopReplies.shift();return {ready:true};}},
+    windows:{onFocusChanged,WINDOW_ID_NONE:-1},
     scripting:{async executeScript({target}){const gate=injectionGates.get(target.tabId)||injectionGate;injectionGates.delete(target.tabId);injectionGate=null;return gate?gate.promise:[{frameId:0,documentId:'doc-'+target.tabId}];}},
   };
   const context=vm.createContext({chrome,URL,crypto:{randomUUID:()=>`00000000-0000-4000-8000-${String(++epoch).padStart(12,'0')}`},
@@ -47,8 +56,93 @@ function fixture(initial={deniedOrigins:[]}) {
     delayEnableReply(){return enableReplyGate=deferred();},
     delayStorage(){return storageGate=deferred();},delayWrite(){return writeGate=deferred();},
     delayInjection(tabId){if(tabId!==undefined){const gate=deferred();injectionGates.set(tabId,gate);return gate;}return injectionGate=deferred();},
+    activeTab(value){activeTab=value;},delayQuery(){return queryGate=deferred();},delayDesktopCancel(){return desktopCancelGate=deferred();},desktopReply(value){desktopReplies.push(value);},onActivated,onFocusChanged,
     fireTimer(){const [id,fn]=timers.entries().next().value;timers.delete(id);fn();}};
 }
+
+test('desktop port binds exact document and one capture/Apply without Provider payload',async()=>{
+ const f=fixture(),p=await readyReview(f);
+ assert.equal(p.posted[0].op,'review-listen');assert.equal(p.posted[0].text,'');
+ f.desktopReply({status:2,text:'source',ticket:reviewTicket});reviewCommand(p,'review-capture',1);await tick();
+ const capture=f.sent.find(x=>x.message.op==='desktop-capture');assert.equal(capture.tabId,1);assert.equal(capture.options.documentId,'doc-1');assert.equal(capture.message.epoch,f.currentEpoch());
+ assert.equal(p.posted[1].text,'source');assert.equal(p.posted[1].ticket,reviewTicket);
+ f.desktopReply({status:3});reviewCommand(p,'review-apply',2,reviewTicket,'replacement');await tick();
+ const applied=f.sent.find(x=>x.message.op==='desktop-apply');assert.equal(applied.options.documentId,'doc-1');assert.equal(applied.message.text,'replacement');
+ assert.equal(p.posted[2].status,3);assert.equal(p.posted[2].text,'');
+ reviewCommand(p,'review-apply',2,reviewTicket,'replay');await tick();
+ assert.equal(f.sent.filter(x=>x.message.op==='desktop-apply').length,1);assert.equal(p.closed,1);assert.equal(f.writes.length,0);
+ assert.ok(p.posted.every(x=>!Object.hasOwn(x,'provider') && !Object.hasOwn(x,'consent')));
+});
+
+for(const boundary of ['disable','navigate','tab','window','disconnect','timeout'])test(`desktop capture pending ${boundary} revokes and discards late source`,async()=>{
+ const f=fixture(),p=await readyReview(f),gate=deferred();f.desktopReply(gate.promise);
+ reviewCommand(p,'review-capture',1);await tick();
+ if(boundary==='disable')await f.command('disable');
+ if(boundary==='navigate')f.onUpdated.emit(1,{status:'loading'});
+ if(boundary==='tab')f.onActivated.emit({tabId:2,windowId:10});
+ if(boundary==='window')f.onFocusChanged.emit(11);
+ if(boundary==='disconnect')p.onDisconnect.emit();
+ if(boundary==='timeout')f.fireTimer();
+ gate.resolve({status:2,text:'late source',ticket:reviewTicket});await tick();
+ assert.equal(p.posted.length,1);assert.equal(p.closed,1);
+ assert.equal(f.sent.filter(x=>x.message.op==='desktop-cancel').length,1);
+});
+
+test('desktop arm rechecks tab/session after asynchronous query',async()=>{
+ const f=fixture();await f.command('enable');const gate=f.delayQuery(),request=armReview(f);await tick();
+ await f.command('disable');gate.resolve([{id:1,windowId:10}]);assert.equal((await request).error,'desktop_review_not_current');assert.equal(f.ports.length,0);
+});
+
+test('desktop capture rechecks active tab before sending source request',async()=>{
+ const f=fixture(),p=await readyReview(f);f.activeTab({id:2,windowId:10});reviewCommand(p,'review-capture',1);await tick();
+ assert.equal(p.closed,1);assert.equal(f.sent.filter(x=>x.message.op==='desktop-capture').length,0);
+});
+
+test('timed-out document operation retains bounded ownership until actual send settles',async()=>{
+ const f=fixture(),p=await readyReview(f),gate=deferred();f.desktopReply(gate.promise);
+ reviewCommand(p,'review-capture',1);await tick();f.fireTimer();await tick();
+ for(let n=0;n<5;n++)assert.equal((await armReview(f)).error,'desktop_review_busy');
+ assert.equal(f.ports.length,1);assert.equal(p.closed,1);
+ gate.resolve({status:2,text:'late',ticket:reviewTicket});await tick();
+ assert.equal((await armReview(f)).ok,true);assert.equal(f.ports.length,2);assert.equal(p.posted.length,1);
+});
+
+test('queued desktop cancellation blocks new ownership until delivery settles',async()=>{
+ const f=fixture(),p=await readyReview(f);f.desktopReply({status:2,text:'source',ticket:reviewTicket});reviewCommand(p,'review-capture',1);await tick();
+ const gate=f.delayDesktopCancel();p.onDisconnect.emit();await tick();
+ assert.equal((await armReview(f)).error,'desktop_review_busy');assert.equal(f.ports.length,1);
+ gate.resolve({ok:true});await tick();assert.equal((await armReview(f)).ok,true);assert.equal(f.ports.length,2);
+});
+
+test('desktop review permits widget focus loss but not another browser window',async()=>{
+ const f=fixture(),p=await readyReview(f);f.onFocusChanged.emit(-1);assert.equal(p.closed,0);
+ f.onFocusChanged.emit(10);assert.equal(p.closed,0);f.onFocusChanged.emit(11);assert.equal(p.closed,1);
+});
+
+test('desktop commands cannot overlap pending capture or skip ready handshake',async()=>{
+ for(const early of [true,false]){
+  const f=fixture();await f.command('enable');await armReview(f);const p=f.ports.at(-1);
+  if(!early){reviewCommand(p,'review-ready',0);f.desktopReply(deferred().promise);reviewCommand(p,'review-capture',1);await tick();}
+  reviewCommand(p,early?'review-capture':'review-apply',early?1:2,early?null:reviewTicket,early?null:'text');await tick();
+  assert.equal(p.closed,1);assert.equal(f.sent.filter(x=>x.message.op==='desktop-apply').length,0);
+ }
+});
+
+test('desktop malformed capture cannot create Apply authority',async()=>{
+ for(const result of [{status:2,text:'',ticket:reviewTicket},{status:2,text:'x',ticket:'bad'},{status:2,text:'x\0y',ticket:reviewTicket},{status:2,text:'x'.repeat(8193),ticket:reviewTicket},{status:2,text:'x',ticket:reviewTicket,provider:'codex'}]){
+  const f=fixture(),p=await readyReview(f);f.desktopReply(result);reviewCommand(p,'review-capture',1);await tick();
+  assert.equal(p.closed,1);assert.equal(p.posted.length,1);
+ }
+});
+
+test('desktop indeterminate outcome forwarded once; wrong ticket never reaches document',async()=>{
+ for(const wrong of [true,false]){
+  const f=fixture(),p=await readyReview(f);f.desktopReply({status:2,text:'source',ticket:reviewTicket});reviewCommand(p,'review-capture',1);await tick();
+  f.desktopReply({status:4});reviewCommand(p,'review-apply',2,wrong?p.posted[0].id:reviewTicket,'replacement');await tick();
+  if(wrong){assert.equal(p.closed,1);assert.equal(f.sent.filter(x=>x.message.op==='desktop-apply').length,0);}
+  else {assert.equal(p.posted.at(-1).status,4);assert.equal(f.sent.filter(x=>x.message.op==='desktop-apply').length,1);}
+ }
+});
 
 test('revoke during awaited denylist lookup sends zero native messages',async()=>{
   const f=fixture();await f.command('enable');const gate=f.delayStorage();

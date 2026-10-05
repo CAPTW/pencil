@@ -5,7 +5,7 @@ import {mkdtemp,mkdir,cp,readFile,writeFile} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {generateKeyPairSync,createHash} from 'node:crypto';
-import {execFileSync} from 'node:child_process';
+import {execFileSync,spawn} from 'node:child_process';
 const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.GRAMMAR_PLAYWRIGHT || 'C:/Users/USER/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const evidence=resolve(process.env.GRAMMAR_EVIDENCE || 'D:/dev/grammar-evidence/grammar-autonomous-r1');
@@ -21,7 +21,7 @@ if(sourceReceipt){assert.equal(sourceReceipt.classification,'READONLY_MAPPED_SOU
 // extension, replaces its key/ID, adds the fixture origin permission unless
 // GRAMMAR_ACTIVE_TAB=1, rewrites host-config.js and registers its own copy of
 // the host. installed-package.test.mjs covers the unmodified installed package.
-const fixtureBase=sourceReceipt ? 'installed host binary (copied) + hash-bound source extension (copied and modified)' : process.env.GRAMMAR_INSTALLED_EXTENSION && resolve(process.env.GRAMMAR_INSTALLED_EXTENSION)===extensionSource ? 'installed host binary (copied) + installed extension (copied and modified)' : 'source host build + source extension (copied and modified)';
+const fixtureBase=process.env.GRAMMAR_DESKTOP_PROBE ? 'source host and DLL + synthetic desktop peer + hash-bound source extension (copied and modified)' : sourceReceipt ? 'installed host binary (copied) + hash-bound source extension (copied and modified)' : process.env.GRAMMAR_INSTALLED_EXTENSION && resolve(process.env.GRAMMAR_INSTALLED_EXTENSION)===extensionSource ? 'installed host binary (copied) + installed extension (copied and modified)' : 'source host build + source extension (copied and modified)';
 const extensionModifications=['per-run key and extension ID',...(activeTabFixture?[]:['fixture origin host_permissions']),'host-config.js names its own registration','own native host registration of a copied host binary'];
 if(syntheticDeep) {
  assert.equal(resolve(process.env.CODEX_PENCIL_CLAUDE_BIN || ''),resolve(evidence,'runtime/child.exe'),'Deep test requires the owned synthetic executable');
@@ -54,6 +54,10 @@ const pass=name=>{checks.push(name);console.log('PASS',name)};
 try {
  const prep=execFileSync(process.env.GRAMMAR_PWSH || 'pwsh.exe',['-NoProfile','-File',resolve('adapters/chromium/host/Prepare-Host.ps1'),'-Executable',hostExecutable,'-ExtensionId',id,'-OutputDirectory',hostDir,'-Register'],{encoding:'utf8'});
 const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),`export const HOST = ${JSON.stringify(receipt.name)};\n`);
+ if(process.env.GRAMMAR_DESKTOP_PROBE){
+   await cp(process.env.GRAMMAR_DESKTOP_PROBE,join(hostDir,'codex-pencil.exe'));
+   await cp(process.env.GRAMMAR_DESKTOP_DLL,join(hostDir,'target-apply.dll'));
+ }
 
  const launch=()=>chromium.launchPersistentContext(join(run,'profile'),{headless:!(process.env.GRAMMAR_ROUTE_PROBE || process.env.GRAMMAR_HEADED==='1'),chromiumSandbox:true,channel:'chromium',executablePath:process.env.GRAMMAR_CHROMIUM || 'C:/Users/USER/AppData/Local/ms-playwright/chromium-1217/chrome-win64/chrome.exe',args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
  context=await launch();
@@ -86,6 +90,15 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  assert.ok(recoveredLedger.slots.some(slot=>slot.token===recoveryToken));
  await recoveryPopup.close();pass('real worker restart recovers exact reserved cleanup without inference');
  await worker.evaluate(()=>{globalThis.fixtureMetrics={analyses:0,units:[],deep:0};chrome.runtime.onMessage.addListener(m=>{if(m.op==='deep')fixtureMetrics.deep++;if(m.op==='analyze'){fixtureMetrics.lastEpoch=m.epoch;fixtureMetrics.analyses++;fixtureMetrics.units.push(m.text.length)}})});
+ if(process.env.GRAMMAR_DESKTOP_PROBE)await worker.evaluate(()=>{
+   fixtureMetrics.reviewReady=0;fixtureMetrics.reviewClosed=0;
+   const original=chrome.runtime.connectNative.bind(chrome.runtime);
+   chrome.runtime.connectNative=(...args)=>{
+     const port=original(...args);let review=false;
+     port.onMessage.addListener(m=>{if(m.op==='review-ready'){review=true;fixtureMetrics.reviewReady++;}});
+     port.onDisconnect.addListener(()=>{void chrome.runtime.lastError;if(review)fixtureMetrics.reviewClosed++;});return port;
+   };
+ });
  context.setDefaultTimeout(10000);
  const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:18437/');
  if(activeTabFixture) {
@@ -543,10 +556,39 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  assert.equal((await desktopMessage({op:'desktop-capture',id:crypto.randomUUID()})).status,0);
  assert.equal(await page.locator('#secret').inputValue(),'synthetic only');
  pass('desktop capture refuses sensitive focused field instead of using the previous enabled field');
+ if(process.env.GRAMMAR_DESKTOP_PROBE)for(const [selector,change] of [['#writing',false],['#editable',false],['#writing',true]]){
+   // Arm using an actual isolated-world content sender. Only the explicit
+   // Accept peer is synthetic; native actor, worker and document are production.
+   const cancelled=await prepareDesktop(selector);await desktopMessage({op:'desktop-cancel',id:cancelled.id});
+   const prior=await worker.evaluate(()=>({ready:fixtureMetrics.reviewReady,closed:fixtureMetrics.reviewClosed}));
+   const armed=await worker.evaluate(async()=>{
+     const [tab]=await chrome.tabs.query({url:'http://127.0.0.1:18437/*'});
+     return (await chrome.scripting.executeScript({target:{tabId:tab.id},args:[fixtureMetrics.lastEpoch],func:epoch=>chrome.runtime.sendMessage({op:'desktop-arm',epoch})}))[0].result;
+   });assert.equal(armed.ok,true);
+   for(let n=0;n<100 && (await worker.evaluate(()=>fixtureMetrics.reviewReady))===prior.ready;n++)await page.waitForTimeout(20);
+   assert.equal((await worker.evaluate(()=>fixtureMetrics.reviewReady)),prior.ready+1);
+   await page.bringToFront();
+   const child=spawn(join(hostDir,'codex-pencil.exe'),[join(hostDir,'grammar-chromium-host.exe'),change?'0':'3'],{windowsHide:true,stdio:['pipe','pipe','pipe']});
+   let stdout='',stderr='',released=false,callbackError=null,timer;
+   child.stderr.on('data',data=>{stderr+=data;});
+   child.stdout.on('data',data=>{
+     stdout+=data;
+     if(!released && stdout.includes('captured=1')){
+       released=true;
+       (async()=>{if(change)await page.locator(selector).fill('application edit');child.stdin.write('A');})().catch(error=>{callbackError=error;child.stdin.end();});
+     }
+   });
+   const exit=await new Promise((resolve,reject)=>{timer=setTimeout(()=>{child.kill();reject(Error('owned browser peer deadline'));},10000);child.once('error',reject);child.once('exit',resolve);}).finally(()=>clearTimeout(timer));
+   assert.equal(callbackError,null);assert.equal(stderr,'');assert.equal(exit,0,stdout);assert.match(stdout,/outcome_correct=1 replay_refused=1/);
+   assert.equal(await page.locator(selector).evaluate(el=>el.tagName==='TEXTAREA'?el.value:el.textContent),change?'application edit':'앞 😀 | 검토 🙂 | 뒤');
+   for(let n=0;n<100 && (await worker.evaluate(()=>fixtureMetrics.reviewClosed))===prior.closed;n++)await page.waitForTimeout(20);
+   assert.equal((await worker.evaluate(()=>fixtureMetrics.reviewClosed)),prior.closed+1);
+   pass('authenticated desktop peer through actual native host and worker '+selector+(change?' changed source refused':' exact selected replacement'));
+ }
  await prepareReview();
  await page.reload();assert.equal(await page.locator('#grammar-local-assist').count(),0);pass('navigation revokes opt-in');
  assert.deepEqual(errors,[]);
- await writeFile(join(run,'result.json'),JSON.stringify({status:'PASS',classification:selectionOnly?'FOCUSED_SELECTION_REVIEW_MODIFIED_FIXTURE':'MODIFIED_ISOLATED_EXTENSION_FIXTURE',fixtureBase,extensionModifications,checks,browser:context.browser().version(),metrics:await worker.evaluate(()=>fixtureMetrics),productionActiveTabGesture:activeTabFixture?'SYNTHETIC_PROTOCOL_ACTION':'NOT_RUN',providerLive:'NOT_RUN',syntheticDeep,hostBinarySha256:createHash('sha256').update(await readFile(hostExecutable)).digest('hex'),sourceDirty:sourceReceipt?sourceReceipt.dirty:execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim().length>0,sourceHead:sourceReceipt?sourceReceipt.head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),sourceClassification:sourceReceipt?.classification??'LOCAL_GIT_SOURCE',sourceFiles:Object.fromEntries(await Promise.all(['core.js','content.js','worker.js','popup.js','manifest.json','host-config.js'].map(async f=>[f,createHash('sha256').update(await readFile(join(extensionSource,f))).digest('hex')]))),extensionManifestSha256:createHash('sha256').update(await readFile(join(extension,'manifest.json'))).digest('hex')},null,2));
+ await writeFile(join(run,'result.json'),JSON.stringify({status:'PASS',classification:selectionOnly?'FOCUSED_SELECTION_REVIEW_MODIFIED_FIXTURE':'MODIFIED_ISOLATED_EXTENSION_FIXTURE',fixtureBase,extensionModifications,checks,browser:context.browser().version(),metrics:await worker.evaluate(()=>fixtureMetrics),productionActiveTabGesture:activeTabFixture?'SYNTHETIC_PROTOCOL_ACTION':'NOT_RUN',providerLive:'NOT_RUN',syntheticDeep,desktopPeerSha256:process.env.GRAMMAR_DESKTOP_PROBE?createHash('sha256').update(await readFile(join(hostDir,'codex-pencil.exe'))).digest('hex'):null,desktopDllSha256:process.env.GRAMMAR_DESKTOP_PROBE?createHash('sha256').update(await readFile(join(hostDir,'target-apply.dll'))).digest('hex'):null,hostBinarySha256:createHash('sha256').update(await readFile(hostExecutable)).digest('hex'),sourceDirty:sourceReceipt?sourceReceipt.dirty:execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim().length>0,sourceHead:sourceReceipt?sourceReceipt.head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),sourceClassification:sourceReceipt?.classification??'LOCAL_GIT_SOURCE',sourceFiles:Object.fromEntries(await Promise.all(['core.js','content.js','worker.js','popup.js','manifest.json','host-config.js'].map(async f=>[f,createHash('sha256').update(await readFile(join(extensionSource,f))).digest('hex')]))),extensionManifestSha256:createHash('sha256').update(await readFile(join(extension,'manifest.json'))).digest('hex')},null,2));
  console.log(JSON.stringify({status:'PASS',checks,evidence:run}));
 } catch(error) {await writeFile(join(run,'failure.json'),JSON.stringify({checks,error:String(error),errors},null,2));console.error({evidence:run,checks,error});process.exitCode=1;}
 finally {await context?.close();await new Promise(r=>server.close(r));if(existsSync(join(hostDir,'registration.json')))execFileSync(process.env.GRAMMAR_PWSH || 'pwsh.exe',['-NoProfile','-File',resolve('adapters/chromium/host/Remove-Registration.ps1'),'-PackageDirectory',hostDir]);}
