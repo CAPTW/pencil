@@ -39,6 +39,7 @@ public:
 };
 
 class WordTargetIdentity final {
+    friend class WordCorrelationLease;
     std::shared_ptr<WordNativeWindowPort> port_;
     Microsoft::WRL::ComPtr<IDispatch> window_, application_;
     std::unique_ptr<WordSelectionIdentity> selection_;

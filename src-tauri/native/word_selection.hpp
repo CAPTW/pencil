@@ -81,6 +81,7 @@ inline bool matches(const Metadata& a,const Metadata& b) {
 // Keep and destroy on the target STA. No interface/text pointer is exposed to
 // callers; a match is metadata consistency, NOT permission to read/write text.
 class WordSelectionIdentity final {
+    friend class WordCorrelationLease;
     word_selection_detail::Metadata metadata_;
     Microsoft::WRL::ComPtr<IDispatch> app_;
     HWND window_;
