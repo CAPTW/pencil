@@ -34,6 +34,8 @@ GUARDED_FILES = {"package.json", "package-lock.json", "index.html", "tsconfig.js
 SAFETY_TASK = "GRAMMAR-P3A-R1-CURRENT-HEAD-SAFETY-STABILIZATION-CONFIRMED-CANCEL-PROCESS-DRAFT-AND-APPLY-BOUNDARY-DEFECTS-BOUNDED-REPAIR"
 MISSION = "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1"
 DEEP_TASK = "GRAMMAR-P3B-P2-SYNTHETIC-DEEP-AND-EDITOR-QUALIFICATION"
+APPLY_STATUS = "OWNED_RICHEDIT_DIRECT_APPLY_SYNTHETIC_VERIFIED_GENERAL_EDITOR_ACCEPTANCE_INCOMPLETE"
+APPLY_TASK = "GRAMMAR-DESKTOP-APPLY-EDITOR-QUALIFICATION"
 AUDIT_BASE = "9f54ebd4b7586f7a1658245761ccccf8a77500c6"
 
 
@@ -105,12 +107,30 @@ def state_check(state):
             "native_capture_activation": "WITHHELD_PENDING_ISOLATED_POSITIVE_AND_SENSITIVITY_ACCEPTANCE",
             "chromium_deep_activation": "UNCONFIGURED_CANDIDATE_SYNTHETIC_QUALIFICATION_ONLY",
         }
+        # Exact additional candidate profile, backed by installed40a7d26 receipts.
+        # Preserve historical profiles and all global/privacy/adoption boundaries.
+        owned_apply = state["p3a_status"] == APPLY_STATUS
+        if owned_apply:
+            expected.update({
+                "p3a_status": APPLY_STATUS,
+                "active_step": "DESKTOP_APPLY_EDITOR_QUALIFICATION",
+                "exact_next_task": APPLY_TASK,
+                "next_gate": "DESKTOP_APPLY_EDITOR_QUALIFICATION",
+                "native_capture_activation": "STANDARD_EDIT_COPY_PLUS_OWNED_RICHEDIT_TARGET_SIDE_APPLY_INSTALLED_SYNTHETIC_VERIFIED",
+                "chromium_deep_activation": "SOURCE_UNCONFIGURED_PERSONAL_INSTALLER_CONFIGURES_HOST_CONSENT_BOUND_SYNTHETIC_ONLY",
+            })
         for key, value in expected.items():
             fail(state.get(key) == value, f"STATE_SEMANTIC_DRIFT:{key}")
         verdicts = {"F-01": "SYNTHETIC_VERIFIED",
                     "F-02": "REPAIRED_SYNTHETIC_PASS_WITH_LOADED_RUN_TIMEOUT_UNRESOLVED", "F-03": "SYNTHETIC_VERIFIED",
                     "F-04": "SYNTHETIC_VERIFIED", "F-05": "SYNTHETIC_VERIFIED_NATIVE_NOT_QUALIFIED",
                     "F-06": "CONTAINED_COPY_ONLY_NATIVE_NOT_QUALIFIED"}
+        if owned_apply:
+            verdicts.update({
+                "F-02": "REPAIRED_SYNTHETIC_PASS_LOADED_TIMEOUT_REPRODUCED_WITH_BOUNDED_COMPLETE_CLEANUP",
+                "F-05": "SYNTHETIC_VERIFIED_OWNED_DESKTOP_BUILT_APP",
+                "F-06": "OWNED_RICHEDIT_TARGET_SIDE_APPLY_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED",
+            })
         for defect in state["known_defects"]:
             fail(defect["verdict"] == verdicts[defect["id"]], f"VERDICT_DRIFT:{defect['id']}")
             fail(isinstance(defect.get("evidence"), list) and bool(defect["evidence"]), "DEFECT_EVIDENCE_MISSING")

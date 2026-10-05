@@ -2,7 +2,7 @@
 
 # Phase-Step Roadmap — historical phases, active mission continuation
 
-EXACT_NEXT_TASK=GRAMMAR-P3B-P2-SYNTHETIC-DEEP-AND-EDITOR-QUALIFICATION
+EXACT_NEXT_TASK=GRAMMAR-DESKTOP-APPLY-EDITOR-QUALIFICATION
 
 아래 Phase 표는 R0 당시 계획 기록이다. 현재 후보의 실행 결과·미완료 범위는 HANDOFF.md와 control/state.json을 따른다.
 
@@ -109,3 +109,5 @@ FIRST_ADAPTER_DECISION=CHROMIUM_TEXTAREA_CONTENTEDITABLE_MV3
 ## Phase exit과 support 약속
 
 P00는 governance reset의 완료 여부만 판정한다. P01 baseline은 P3-B 완료가 아니다. P03 adapter 읽기, P04 annotation, P05 local suggestion, P06 Deep, P07 mutation은 서로 다른 acceptance다. P09 이전에는 whole-product current acceptance를 선언하지 않는다. P10은 feasibility 완료이며 HWP 지원 완료가 아니다. 비용·browser/API 버전 변경으로 계획이 달라지면 next task packet에서 bounded revision을 승인받고 Source materiality를 갱신한다.
+
+Current2026-10-05: installed40a7d26 restores reviewed Instant direct Apply in owned non-sensitive RichEdit50W. Next is qualification of additional existing desktop editors and review lifetime; no editor is promoted without target-side safety/privacy evidence. Historical phase gates below do not override the active mission contract. Whole mission remains INCOMPLETE; no live Provider or general-profile installation.
