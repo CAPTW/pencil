@@ -38,6 +38,7 @@ APPLY_STATUS = "OWNED_RICHEDIT_DIRECT_APPLY_SYNTHETIC_VERIFIED_GENERAL_EDITOR_AC
 APPLY_TASK = "GRAMMAR-DESKTOP-APPLY-EDITOR-QUALIFICATION"
 GLOBAL_APPLY_STATUS = "OWNED_SINGLELINE_EDIT_AND_RICHEDIT_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_INCOMPLETE"
 GLOBAL_APPLY_TASK = "GRAMMAR-GLOBAL-ACCEPT-MULTILINE-AND-APPLICATION-ADAPTERS"
+EDIT_APPLY_STATUS = "OWNED_QUALIFIED_EDIT_AND_RICHEDIT_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_INCOMPLETE"
 AUDIT_BASE = "9f54ebd4b7586f7a1658245761ccccf8a77500c6"
 
 
@@ -111,7 +112,8 @@ def state_check(state):
         }
         # Exact additional candidate profile, backed by installed40a7d26 receipts.
         # Preserve historical profiles and all global/privacy/adoption boundaries.
-        global_apply = state["p3a_status"] == GLOBAL_APPLY_STATUS
+        edit_apply = state["p3a_status"] == EDIT_APPLY_STATUS
+        global_apply = state["p3a_status"] == GLOBAL_APPLY_STATUS or edit_apply
         owned_apply = state["p3a_status"] == APPLY_STATUS or global_apply
         if owned_apply:
             expected.update({
@@ -130,6 +132,11 @@ def state_check(state):
                 "next_gate": "GLOBAL_ACCEPT_EDITOR_EXPANSION",
                 "native_capture_activation": "OWNED_SCOPE_QUALIFIED_SINGLELINE_EDIT_AND_RICHEDIT_ACCEPT_INSTALLED_SYNTHETIC_VERIFIED",
             })
+        if edit_apply:
+            expected.update({
+                "p3a_status": EDIT_APPLY_STATUS,
+                "native_capture_activation": "OWNED_SINGLELINE_AUTOVSCROLL_MULTILINE_EDIT_AND_RICHEDIT_ACCEPT_INSTALLED_SYNTHETIC_VERIFIED",
+            })
         for key, value in expected.items():
             fail(state.get(key) == value, f"STATE_SEMANTIC_DRIFT:{key}")
         verdicts = {"F-01": "SYNTHETIC_VERIFIED",
@@ -144,6 +151,8 @@ def state_check(state):
             })
         if global_apply:
             verdicts["F-06"] = "OWNED_SINGLELINE_EDIT_AND_RICHEDIT_TARGET_SIDE_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED"
+        if edit_apply:
+            verdicts["F-06"] = "OWNED_QUALIFIED_EDIT_AND_RICHEDIT_TARGET_SIDE_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED"
         for defect in state["known_defects"]:
             fail(defect["verdict"] == verdicts[defect["id"]], f"VERDICT_DRIFT:{defect['id']}")
             fail(isinstance(defect.get("evidence"), list) and bool(defect["evidence"]), "DEFECT_EVIDENCE_MISSING")
