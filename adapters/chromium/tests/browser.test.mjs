@@ -55,7 +55,7 @@ try {
  const prep=execFileSync(process.env.GRAMMAR_PWSH || 'pwsh.exe',['-NoProfile','-File',resolve('adapters/chromium/host/Prepare-Host.ps1'),'-Executable',hostExecutable,'-ExtensionId',id,'-OutputDirectory',hostDir,'-Register'],{encoding:'utf8'});
 const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),`export const HOST = ${JSON.stringify(receipt.name)};\n`);
 
- const launch=()=>chromium.launchPersistentContext(join(run,'profile'),{headless:!process.env.GRAMMAR_ROUTE_PROBE,chromiumSandbox:true,channel:'chromium',executablePath:process.env.GRAMMAR_CHROMIUM || 'C:/Users/USER/AppData/Local/ms-playwright/chromium-1217/chrome-win64/chrome.exe',args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
+ const launch=()=>chromium.launchPersistentContext(join(run,'profile'),{headless:!(process.env.GRAMMAR_ROUTE_PROBE || process.env.GRAMMAR_HEADED==='1'),chromiumSandbox:true,channel:'chromium',executablePath:process.env.GRAMMAR_CHROMIUM || 'C:/Users/USER/AppData/Local/ms-playwright/chromium-1217/chrome-win64/chrome.exe',args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
  context=await launch();
  let worker=context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
  // Exercise a real worker restart after a native reservation reply was lost.
@@ -489,6 +489,60 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  pass('same-text DOM replacement cannot reuse captured contenteditable Range');
  await page.locator('#editable').evaluate(el=>{el.focus();el.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyR',altKey:true,shiftKey:true,bubbles:true}));});
  assert.equal(await reviewDraft.count(),0);pass('script-generated shortcut cannot mint selection review authority');
+ // Synthetic worker messages exercise the production content endpoint. This
+ // qualifies document-side binding, not native authentication/widget wiring.
+ const desktopMessage=message=>worker.evaluate(async message=>{
+   const [tab]=await chrome.tabs.query({url:'http://127.0.0.1:18437/*'});
+   return chrome.tabs.sendMessage(tab.id,{...message,epoch:fixtureMetrics.lastEpoch});
+ },message);
+ const prepareDesktop=async(selector='#writing')=>{
+   await page.bringToFront();await page.locator(selector).fill('앞 😀 | seperate | 뒤');
+   await page.getByRole('button',{name:'Enable this field',exact:true}).click();await suggestion.waitFor();
+   await page.locator(selector).focus();await page.locator(selector).evaluate(el=>{
+     if(el.tagName==='TEXTAREA')el.setSelectionRange(7,15);
+     else{const r=document.createRange();r.setStart(el.firstChild,7);r.setEnd(el.firstChild,15);const s=getSelection();s.removeAllRanges();s.addRange(r);}
+   });
+   const id=crypto.randomUUID(),captured=await desktopMessage({op:'desktop-capture',id});
+   assert.equal(captured.status,2);assert.equal(captured.text,'seperate');
+   return {id,ticket:captured.ticket};
+ };
+ for(const selector of ['#writing','#editable']){
+   const token=await prepareDesktop(selector);
+   assert.equal((await desktopMessage({op:'desktop-apply',...token,text:'검토 🙂'})).status,3);
+   assert.equal(await page.locator(selector).evaluate(el=>el.tagName==='TEXTAREA'?el.value:el.textContent),'앞 😀 | 검토 🙂 | 뒤');
+   assert.equal((await desktopMessage({op:'desktop-apply',...token,text:'replay'})).status,0);
+   pass('desktop content endpoint exact Unicode replacement and replay refusal '+selector);
+ }
+ for(const attack of ['selection','source','beforeinput-aba','beforeinput-expiry','cancel','wrong-ticket','focus']){
+   const token=await prepareDesktop();
+   if(attack==='selection')await page.locator('#writing').evaluate(el=>el.setSelectionRange(0,1));
+   if(attack==='source')await page.locator('#writing').evaluate(el=>{el.value='changed';el.dispatchEvent(new Event('input',{bubbles:true}));el.value='앞 😀 | seperate | 뒤';el.setSelectionRange(7,15);});
+   if(attack==='beforeinput-aba')await page.locator('#writing').evaluate(el=>el.addEventListener('beforeinput',()=>{el.setAttribute('readonly','');el.removeAttribute('readonly');},{once:true}));
+   if(attack==='beforeinput-expiry')await expireDuringBeforeInput(30001);
+   if(attack==='cancel')await desktopMessage({op:'desktop-cancel',id:token.id});
+   if(attack==='wrong-ticket')token.ticket=crypto.randomUUID();
+   if(attack==='focus')await page.locator('#secret').focus();
+   assert.equal((await desktopMessage({op:'desktop-apply',...token,text:'wrong'})).status,0);
+   assert.equal(await page.locator('#writing').inputValue(),'앞 😀 | seperate | 뒤');
+   await desktopMessage({op:'desktop-cancel',id:token.id});
+   pass('desktop content endpoint rejects '+attack+' without replacement');
+ }
+ const ceToken=await prepareDesktop('#editable');
+ await page.locator('#editable').evaluate(el=>el.addEventListener('beforeinput',()=>{el.textContent=el.textContent;const r=document.createRange();r.setStart(el.firstChild,7);r.setEnd(el.firstChild,15);const s=getSelection();s.removeAllRanges();s.addRange(r);},{once:true}));
+ assert.equal((await desktopMessage({op:'desktop-apply',...ceToken,text:'wrong'})).status,0);
+ assert.equal(await page.locator('#editable').textContent(),'앞 😀 | seperate | 뒤');
+ pass('desktop content endpoint rejects same-text node replacement and reselection during beforeinput');
+ const uncertain=await prepareDesktop();
+ await page.locator('#writing').evaluate(el=>el.addEventListener('input',()=>{el.value='application own edit';},{once:true}));
+ assert.equal((await desktopMessage({op:'desktop-apply',...uncertain,text:'accepted'})).status,4);
+ assert.equal(await page.locator('#writing').inputValue(),'application own edit');
+ assert.equal((await desktopMessage({op:'desktop-apply',...uncertain,text:'retry'})).status,0);
+ pass('desktop content endpoint reports post-write application edit as indeterminate without restore or retry');
+ const blocked=await prepareDesktop();await desktopMessage({op:'desktop-cancel',id:blocked.id});
+ await page.locator('#secret').focus();
+ assert.equal((await desktopMessage({op:'desktop-capture',id:crypto.randomUUID()})).status,0);
+ assert.equal(await page.locator('#secret').inputValue(),'synthetic only');
+ pass('desktop capture refuses sensitive focused field instead of using the previous enabled field');
  await prepareReview();
  await page.reload();assert.equal(await page.locator('#grammar-local-assist').count(),0);pass('navigation revokes opt-in');
  assert.deepEqual(errors,[]);
