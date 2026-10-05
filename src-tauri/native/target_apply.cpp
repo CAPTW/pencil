@@ -1,6 +1,6 @@
 // Explicit-capture target bridge. No global/keyboard hook, profile registration,
 // background document monitoring, Provider calls or persisted document content.
-#include "tsf_dispatcher.hpp"
+#include "desktop_dispatcher.hpp"
 #include "apply_peer.hpp"
 #include "target_apply_protocol.hpp"
 #include "target_apply_focus.hpp"
@@ -38,7 +38,7 @@ struct TargetSta {
     std::shared_ptr<void> callbacks = std::make_shared<int>(0);
     ComPtr<ITfThreadMgr> manager;
     TfClientId client = TF_CLIENTID_NULL;
-    std::unique_ptr<TsfTargetDispatcher> dispatcher;
+    std::unique_ptr<DesktopTargetDispatcher> dispatcher;
     bool pending = false, polling = false;
     ChannelCommand operation = ChannelCommand::disable;
     explicit TargetSta(std::shared_ptr<Shared> value) : shared(std::move(value)) { shared->callbacks = callbacks; }
@@ -84,9 +84,12 @@ struct TargetSta {
             bool bound = SUCCEEDED(manager->GetFocus(&document)) && document && SUCCEEDED(document->GetTop(&context)) && context &&
                 SUCCEEDED(context->GetActiveView(&view)) && view && SUCCEEDED(view->GetWnd(&actual)) && actual == shared->field;
             pending = bound && dispatcher->begin_capture(context.Get(), shared->field, true, lease);
+            GRAMMAR_EDIT_DIAG("desktop_capture_admission bound=%d pending=%d\n",bound,pending);
         } else if (operation == ChannelCommand::apply) {
-            pending = dispatcher->can_apply(command.id) && activate_apply_target(shared->field, shared->broker)
-                && dispatcher->begin_apply(command.id, std::move(command.text));
+            const bool can=dispatcher->can_apply(command.id);
+            const bool active=can&&dispatcher->activate(command.id,shared->field,shared->broker);
+            pending=active&&dispatcher->begin_apply(command.id,std::move(command.text));
+            GRAMMAR_EDIT_DIAG("standard_apply_admission can=%d active=%d pending=%d\n",can,active,pending);
         } else if (operation == ChannelCommand::cancel) {
             dispatcher->cancel_capture(command.id); reply(DispatchStatus::rejected); return;
         } else { dispatcher->cancel(); reply(DispatchStatus::rejected); return; }
@@ -240,7 +243,12 @@ bool start(HWND field, DWORD broker, uint64_t nonce) {
     if (!broker || !nonce || broker == GetCurrentProcessId() || GetWindowThreadProcessId(field, &process) != GetCurrentThreadId() ||
         process != GetCurrentProcessId()) return false;
     WCHAR name[64]{};
-    if (!GetClassNameW(field, name, 64) || _wcsicmp(name, L"RICHEDIT50W") != 0 || occupied.exchange(true)) return false;
+    if (!GetClassNameW(field, name, 64)) return false;
+    const bool standard = _wcsicmp(name, L"Edit") == 0;
+    // Multiline standard Edit has an unresolved one-step Undo limitation.
+    // Its prototype remains native-test-only; do not silently enable it here.
+    if ((!standard && _wcsicmp(name, L"RICHEDIT50W") != 0) ||
+        (standard && (GetWindowLongPtrW(field, GWL_STYLE) & ES_MULTILINE)) || occupied.exchange(true)) return false;
     struct ModuleOwner {
         HMODULE module = nullptr; bool transferred = false;
         ~ModuleOwner() { if (!transferred) { if (module) FreeLibrary(module); occupied = false; } }
@@ -255,7 +263,7 @@ bool start(HWND field, DWORD broker, uint64_t nonce) {
     bool activated = SUCCEEDED(CoCreateInstance(CLSID_TF_ThreadMgr, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&state->manager))) &&
         SUCCEEDED(state->manager->Activate(&state->client));
     if (!activated) return false;
-    state->dispatcher = std::make_unique<TsfTargetDispatcher>(state->client, state->callbacks);
+    state->dispatcher = std::make_unique<DesktopTargetDispatcher>(state->client, standard, state->callbacks);
     struct WindowOwner {
         std::shared_ptr<Shared> shared; bool registered = false, transferred = false;
         ~WindowOwner() {

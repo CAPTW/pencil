@@ -28,7 +28,7 @@ $dll=Join-Path $output 'target-apply.dll'
 $cpp=Join-Path $source 'src-tauri/native/target_apply.cpp'
 $api=Join-Path $source 'src-tauri/native/target_apply_api.cpp'
 $obj=(Join-Path $output 'obj').TrimEnd('\','/')+'\\' # Escape the trailing slash before the CRT closing quote.
-$command='"'+$dev+'" -arch=x64 && cl /nologo /std:c++17 /EHsc /MT /W4 /WX /DUNICODE /D_UNICODE /FI"'+$header+'" /LD "'+$cpp+'" "'+$api+'" /Fe:"'+$dll+'" /Fo:"'+$obj+'" bcrypt.lib advapi32.lib ole32.lib oleaut32.lib uuid.lib user32.lib comctl32.lib /link /WX'
+$command='"'+$dev+'" -arch=x64 && cl /nologo /std:c++17 /EHsc /MT /W4 /WX /DUNICODE /D_UNICODE /FI"'+$header+'" /LD "'+$cpp+'" "'+$api+'" /Fe:"'+$dll+'" /Fo:"'+$obj+'" bcrypt.lib advapi32.lib ole32.lib oleaut32.lib uuid.lib user32.lib comctl32.lib imm32.lib /link /WX'
 & $env:ComSpec /d /s /c $command *> (Join-Path $output 'build.log')
 if($LASTEXITCODE -ne 0){throw 'Target service compile/link failed; inspect build.log'}
 if((Get-FileHash -LiteralPath $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $hash){throw 'Broker changed while building target service'}
