@@ -15,7 +15,7 @@ int wmain(int argc,wchar_t** argv) {
         auto library=LoadLibraryExW(L"msctf.dll",nullptr,LOAD_LIBRARY_SEARCH_SYSTEM32);
         using SetScope=HRESULT(WINAPI*)(HWND,InputScope);
         auto setScope=reinterpret_cast<SetScope>(GetProcAddress(library,"SetInputScope"));if(!setScope)return 5;
-        for(int test=0;test<22;++test) {
+        for(int test=0;test<26;++test) {
             HWND top=CreateWindowW(L"STATIC",L"Grammar owned Edit scope",WS_OVERLAPPEDWINDOW|WS_VISIBLE,30,30,600,250,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
             HWND field=CreateWindowW(L"Edit",L"hello world",WS_CHILD|WS_VISIBLE|(autovscroll?ES_MULTILINE|ES_AUTOVSCROLL:0),10,10,550,100,top,nullptr,GetModuleHandleW(nullptr),nullptr);
             ShowWindow(top,SW_SHOW);ShowWindow(top,SW_SHOW);SetForegroundWindow(top);SetFocus(field);
@@ -31,8 +31,8 @@ int wmain(int argc,wchar_t** argv) {
             if(!lease->alive())return 8;
             StandardEditDispatcher dispatcher(client);
             const auto captureDeadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(test==18?-1:test==19?50:5000);
-            bool began=bound&&dispatcher.begin_capture(context.Get(),field,true,lease,captureDeadline);
-            if(test==19)Sleep(100); // Intentionally withhold STA pumping until expired.
+            bool began=bound&&dispatcher.begin_capture(context.Get(),field,true,lease,captureDeadline,test==22?GetTickCount64()-1:test==23?GetTickCount64()+50:MAXULONGLONG);
+            if(test==19||test==23)Sleep(100); // Intentionally withhold STA pumping until expired.
             auto deadline=GetTickCount64()+3000;
             while(began&&dispatcher.capture_status()==DispatchStatus::pending&&GetTickCount64()<deadline){pump();Sleep(5);}
             if(dispatcher.capture_status()==DispatchStatus::pending){printf("pending capture deadline\n");fflush(stdout);ExitProcess(30);}
@@ -62,20 +62,20 @@ int wmain(int argc,wchar_t** argv) {
                 if(test==13||test==17?!activated:(test!=12&&activated))++failures;
             }
             const auto applyDeadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(test==20?-1:test==21?50:5000);
-            bool started=dispatcher.begin_apply(test==9?id+1:id,L"Grammar",applyDeadline);
-            if(test==21)Sleep(100); // Queued write must reject before mutation.
+            bool started=dispatcher.begin_apply(test==9?id+1:id,L"Grammar",applyDeadline,test==24?GetTickCount64()-1:test==25?GetTickCount64()+50:MAXULONGLONG);
+            if(test==21||test==25)Sleep(100); // Queued write must reject before mutation.
             deadline=GetTickCount64()+3000;
             while(started&&dispatcher.apply_status()==DispatchStatus::pending&&GetTickCount64()<deadline){pump();Sleep(5);}
             if(dispatcher.apply_status()==DispatchStatus::pending){printf("pending apply deadline\n");fflush(stdout);ExitProcess(31);}
             auto result=dispatcher.apply_status();
             WCHAR text[128]{};GetWindowTextW(field,text,128);
-            bool pass=(test==1||test==2||test==18||test==19?!captured:captured&&selected==L"world")&&
+            bool pass=(test==1||test==2||test==18||test==19||test==22||test==23?!captured:captured&&selected==L"world")&&
                 (test==0||test==11||test==12||test==13||test==17?result==DispatchStatus::applied&&std::wstring(text)==L"hello Grammar":result==DispatchStatus::rejected&&std::wstring(text)==L"hello world");
             if(test==0||test==11||test==12||test==13||test==17)pass=pass&&!dispatcher.begin_apply(id,L"replay");
-            if(test==18)pass=pass&&!began;
-            if(test==19)pass=pass&&began;
-            if(test==20)pass=pass&&!started;
-            if(test==21)pass=pass&&started;
+            if(test==18||test==22)pass=pass&&!began;
+            if(test==19||test==23)pass=pass&&began;
+            if(test==20||test==24)pass=pass&&!started;
+            if(test==21||test==25)pass=pass&&started;
             dispatcher.retire_completed_apply();dispatcher.cancel();
             printf("dispatcher_case=%d pass=%d bound=%d capture=%d started=%d result=%u\n",test,pass,bound,captured,started,static_cast<unsigned>(result));
             if(!pass)++failures;

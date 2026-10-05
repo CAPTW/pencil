@@ -16,7 +16,7 @@ using namespace grammar;
 namespace {
 std::atomic<bool> occupied{false}; // One connection per target process, including pending cleanup.
 constexpr UINT wake_message = WM_APP + 137;
-struct Command { ChannelCommand kind = ChannelCommand::disable; uint64_t id = 0; std::wstring text; std::chrono::steady_clock::time_point deadline{}; };
+struct Command { ChannelCommand kind = ChannelCommand::disable; uint64_t id = 0; std::wstring text; std::chrono::steady_clock::time_point deadline{}; ULONGLONG deadline_ticks=0; };
 struct Shared {
     std::mutex mutex;
     std::condition_variable changed;
@@ -76,19 +76,19 @@ struct TargetSta {
             command = std::move(shared->command); shared->command = Command{}; shared->queued = false; lease = shared->lease;
         }
         operation = command.kind;
-        if (!lease || !lease->alive() || std::chrono::steady_clock::now()>=command.deadline) { reply(DispatchStatus::rejected); return; }
+        if (!lease || !lease->alive() || std::chrono::steady_clock::now()>=command.deadline || GetTickCount64()>=command.deadline_ticks) { reply(DispatchStatus::rejected); return; }
         if (operation == ChannelCommand::capture) {
             ComPtr<ITfDocumentMgr> document; ComPtr<ITfContext> context; ComPtr<ITfContextView> view; HWND actual = nullptr;
             // No document GetText before an authenticated capture request. The
             // broker checked this field identity in the greeting before sending.
             bool bound = SUCCEEDED(manager->GetFocus(&document)) && document && SUCCEEDED(document->GetTop(&context)) && context &&
                 SUCCEEDED(context->GetActiveView(&view)) && view && SUCCEEDED(view->GetWnd(&actual)) && actual == shared->field;
-            pending = bound && dispatcher->begin_capture(context.Get(), shared->field, true, lease, command.deadline);
+            pending = bound && dispatcher->begin_capture(context.Get(), shared->field, true, lease, command.deadline, command.deadline_ticks);
             GRAMMAR_EDIT_DIAG("desktop_capture_admission bound=%d pending=%d\n",bound,pending);
         } else if (operation == ChannelCommand::apply) {
             const bool can=dispatcher->can_apply(command.id);
-            const bool active=can&&std::chrono::steady_clock::now()<command.deadline&&dispatcher->activate(command.id,shared->field,shared->broker);
-            pending=active&&dispatcher->begin_apply(command.id,std::move(command.text),command.deadline);
+            const bool active=can&&GetTickCount64()<command.deadline_ticks&&std::chrono::steady_clock::now()<command.deadline&&dispatcher->activate(command.id,shared->field,shared->broker);
+            pending=active&&dispatcher->begin_apply(command.id,std::move(command.text),command.deadline,command.deadline_ticks);
             GRAMMAR_EDIT_DIAG("standard_apply_admission can=%d active=%d pending=%d\n",can,active,pending);
         } else if (operation == ChannelCommand::cancel) {
             dispatcher->cancel_capture(command.id); reply(DispatchStatus::rejected); return;
@@ -196,7 +196,7 @@ void exchange(const std::shared_ptr<Shared>& shared) {
             std::lock_guard<std::mutex> lock(shared->mutex);
             if (shared->queued || !shared->selected.empty()) break;
             shared->lease = admission.lease(); shared->replied = false;
-            shared->command.deadline=callbackDeadline;
+            shared->command.deadline=callbackDeadline;shared->command.deadline_ticks=operationDeadline;
             shared->command.kind = request.header.command; shared->command.id = request.header.capture_id;
             for (size_t i = 0; i < request.body.size(); i += 2)
                 shared->command.text.push_back(static_cast<wchar_t>(request.body[i] | request.body[i+1] << 8));
