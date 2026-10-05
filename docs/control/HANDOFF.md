@@ -1356,3 +1356,44 @@ exact native peer/window handshake and32 repeated cycles. Both natural exit0,
 cleanuptrue/processes0. The shared transport's15 actual Windows scenarios also
 PASS in R24. Next clean final build and installed-widget recheck; standalone
 package generation or this core result does not close that gate.
+
+
+### Final installed Writer activation (R27, 2026-10-05)
+Runtime commit 0fc862498206f536adf5156fa7d238792c89efc5 is built from clean
+source and qualified with its paired product OXT. R27 installed-widget6 checks
+PASS: actual shortcut -> Instant -> edited Accept -> exact Korean/emoji Writer
+reread -> Undo; concurrent source edits preserved, Disable prevents mutation,
+and app exits naturally. Office/Python exit0, cleanuptrue, forcedfalse,
+remainingProcesses0; uninstall complete with no install/registration/data residue.
+All owned Sandboxes stopped. This activates the product candidate for the exact
+pinned LibreOffice26.2.4.2 new unsaved default-style plain-body scope only.
+
+R26 core57 checks plus32 repeated transactions and R24 shared transport15 cases
+PASS. Rust all targets365 test executions PASS,39 ignored (includes repeated
+modules across targets), typecheck/build/provider contracts/bridge6/package2 PASS.
+The window-chrome contract initially FAILed because it still forbade any Apply
+branch. Its test and App.tsx were identical at entry bc58b4d and runtime0fc8624.
+The revised AST check preserves visible draft/status after Copy or Apply, explicit
+Dismiss, captured Apply capability and stale-result checks, and rejects success
+wording for uncertain outcomes. No product code changed for this test repair.
+Original failure log remains node-window-0fc8624.log. The later evidence/test
+commit is not the source of the runtime binary; no rebuild is implied.
+
+Evidence root: D:/dev/grammar-evidence/grammar-writer-activation-20261005.
+Runtime receipt final-build/receipt.json; product-package-0fc8624.zip SHA256
+02202cc38d3e3ba600e94f9e009a94740ad6548da5a84552c6d8c579e9c7834e.
+Paired GrammarWriter-installed-0fc8624.oxt and extension-0fc8624.json bind the
+installed DLL path/hash. guest-r27 contains app/UNO/launcher/uninstall receipts.
+App SHA256 45c3d0cf67b5ee005d2207f899c2f6bdf087ef2ad700fd2c365e7a693edeeb76;
+DLL SHA256 61c50bb11ae3243efe29b2cadd74bfbc3c4e944d8dfdb2e4767167002e471376.
+
+Lost/revoked transport still reports Apply outcome unconfirmed and never retries;
+zero changes are established by the fixture reread, not that status alone.
+R8 crash cause and R20 setup-focus variability remain unproven historical limits.
+Review was a separate pass by the same integrator, not independent human review.
+Saved DOCX/rich documents, physical IME, ordinary profiles, live Providers and
+actual Microsoft Office/Hancom are NOT_RUN. Default builds remain Writer-disabled
+unless supplied the explicit pinned Writer image/path; paired OXT activation is
+explicit per document and one review. No normal-profile install/main/push/release.
+Mission INCOMPLETE. Next broader Writer document/format qualification requires
+preserving exact range, formatting, Undo and user edits before expanding admission.
