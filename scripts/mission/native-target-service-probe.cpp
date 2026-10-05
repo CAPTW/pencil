@@ -146,7 +146,14 @@ int wmain(int argc,wchar_t** argv) {
         DWORD owner=0;GetWindowThreadProcessId(GetForegroundWindow(),&owner);
         if(owner==GetCurrentProcessId())AllowSetForegroundWindow(info.dwProcessId);
         DWORD_PTR focused=0;
-        pass=pass&&SendMessageTimeoutW(search.window,WM_APP+45,0,0,SMTO_ABORTIFHUNG,2000,&focused)&&focused==1;
+        const bool ready=pass;
+        const bool focusReply=pass&&SendMessageTimeoutW(search.window,WM_APP+45,0,0,SMTO_ABORTIFHUNG,2000,&focused);
+        pass=focusReply&&focused==1;
+#ifdef GRAMMAR_NATIVE_TEST_DIAGNOSTICS
+        printf("fixture_admission case=%d ready=%d focus_reply=%d focused=%llu foreground_target=%d\n",scenario,ready,focusReply,static_cast<unsigned long long>(focused),GetForegroundWindow()==search.window);fflush(stdout);
+#else
+        (void)ready;
+#endif
         bool captured=false, applied=false, closed=false; uint32_t outcome=99;
         if (scenario>=8) {
             uint64_t cookie=0,blocked=0;
