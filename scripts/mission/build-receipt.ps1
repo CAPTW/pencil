@@ -5,7 +5,9 @@ param(
   [switch]$VerifyOnly,
   [string]$ExecutablePath,
   [string]$HostExecutablePath,
-  [string]$TargetLibraryPath
+  [string]$TargetLibraryPath,
+  [string]$WriterExecutablePath,
+  [string]$WriterRuntimePath = ''
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
@@ -109,7 +111,7 @@ try {
   } finally { Pop-Location }
 } finally { $env:CARGO_TARGET_DIR = $oldTarget; $env:CARGO_ENCODED_RUSTFLAGS = $oldEncodedFlags }
 if ($buildExit -ne 0) { throw "Build failed with exit $buildExit; no receipt emitted" }
-$targetApply = & (Join-Path $PSScriptRoot 'build-target-apply.ps1') -ExecutablePath (Join-Path $target 'release/codex-pencil.exe') -OutputDirectory (Join-Path $target 'target-service')
+$targetApply = & (Join-Path $PSScriptRoot 'build-target-apply.ps1') -ExecutablePath (Join-Path $target 'release/codex-pencil.exe') -OutputDirectory (Join-Path $target 'target-service') -WriterExecutablePath $WriterExecutablePath -WriterRuntimePath $WriterRuntimePath
 $after = Measure-Source
 if (-not (Same-Source $before $after)) { throw 'Source changed during build; no receipt emitted' }
 $exe = Get-Item -LiteralPath (Join-Path $target 'release/codex-pencil.exe')

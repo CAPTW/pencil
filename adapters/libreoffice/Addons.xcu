@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<oor:component-data xmlns:oor="http://openoffice.org/2001/registry" oor:name="Addons" oor:package="org.openoffice.Office">
+ <node oor:name="AddonUI"><node oor:name="AddonMenu">
+  <node oor:name="org.grammar.Writer.review" oor:op="replace">
+   <prop oor:name="Title"><value xml:lang="en-US">Grammar Writer review…</value></prop>
+   <prop oor:name="URL"><value>service:org.grammar.Writer?review</value></prop>
+   <prop oor:name="Context"><value>com.sun.star.text.TextDocument</value></prop>
+  </node>
+ </node></node>
+</oor:component-data>

@@ -56,3 +56,23 @@ production core and native ABI with a synthetic trusted client, not the installe
 Grammar widget. The six bridge boundary tests include the preserved red/green
 terminal-reply regression. Core and application routing are implemented; product
 menu/install/widget qualification remains pending.
+
+
+Product-entry candidate (qualification in progress)
+-------------------------------------------------
+`writer.py` is a separate product-only XJobExecutor. Its menu command only opens
+an initially disabled panel. The Enable button opts into the bound new document
+for one review; Disable, closing the panel/document and connection completion
+revoke access. No public XJob capture/accept method or adversarial hook is shipped.
+`Addons.xcu` adds the Writer-only menu entry. The OXT does not start itself.
+
+Build a paired OXT with `scripts/mission/build-writer-extension.py --library-file
+<verified target-apply.dll> --installed-library <absolute installed DLL path>
+--output <fresh.oxt>`. The generated config binds the installed path and SHA256;
+the panel verifies it while holding a non-write/non-delete-sharing read handle.
+Only use the dedicated disposable profile during qualification. No normal-profile
+installer or generic Writer/DOCX support is claimed. The optional build-receipt
+Writer image/path arguments bind the actual tested soffice.bin, not soffice.exe.
+The default build remains disabled. Actual installed widget qualification uses
+Guest-Writer-Product.ps1, writer-product-probe.py --widget and writer-app-e2e.mjs.
+These fixtures do not invoke private document mutation helpers or live Providers.
