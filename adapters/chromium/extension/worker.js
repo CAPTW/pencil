@@ -119,11 +119,85 @@ let policyChanging = false;
 import {HOST} from './host-config.js';
 const blockedDefault = /(^|\.)(accounts\.google\.com|login\.microsoftonline\.com)$/i;
 const originOf = url => { try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.origin : null; } catch { return null; } };
+// Exactly one desktop review port, distinct from Instant/Deep ports. Document
+// identity is supplied only by an admitted content sender and bound throughout.
+let desktopOwner=null,desktopGeneration=0,desktopDispatchPending=null,desktopCleanupPending=null;
+const exactKeys=(value,keys)=>value && typeof value==='object' && !Array.isArray(value) &&
+  Object.keys(value).length===keys.length && keys.every(key=>Object.hasOwn(value,key));
+function closeDesktop(owner=desktopOwner) {
+  if(!owner || owner.closed)return;
+  owner.closed=true;clearTimeout(owner.timer);
+  if(desktopOwner===owner){desktopOwner=null;desktopGeneration++;}
+  try{owner.port?.disconnect();}catch{}
+  if(owner.dispatched){
+    // Retain one cleanup owner until Chrome settles the actual send. Timing out
+    // a host port does not pretend an already queued document operation stopped.
+    const cleanup=chrome.tabs.sendMessage(owner.tabId,{op:'desktop-cancel',epoch:owner.s.epoch,id:owner.id},{documentId:owner.s.documentId});
+    desktopCleanupPending=cleanup;
+    cleanup.catch(()=>{}).finally(()=>{if(desktopCleanupPending===cleanup)desktopCleanupPending=null;});
+  }
+}
+function desktopCurrent(owner) {return desktopOwner===owner && !owner.closed && !owner.s.closed && sessions.get(owner.tabId)===owner.s;}
+function desktopDeadline(owner,ms) {clearTimeout(owner.timer);owner.timer=setTimeout(()=>closeDesktop(owner),ms);}
+async function armDesktop(s,tabId) {
+  if(!HOST || !chrome.tabs.onActivated || !chrome.windows?.onFocusChanged)return {error:'desktop_review_unavailable'};
+  if(desktopOwner?.s===s && desktopCurrent(desktopOwner))return {ok:true};
+  if(desktopDispatchPending || desktopCleanupPending)return {error:'desktop_review_busy'};
+  const generation=++desktopGeneration;
+  const [tab]=await chrome.tabs.query({active:true,lastFocusedWindow:true});
+  if(generation!==desktopGeneration || sessions.get(tabId)!==s || s.closed || policyChanging || desktopDispatchPending || desktopCleanupPending || tab?.id!==tabId || !Number.isInteger(tab.windowId))return {error:'desktop_review_not_current'};
+  closeDesktop();
+  if(desktopDispatchPending || desktopCleanupPending)return {error:'desktop_review_busy'};
+  const owner={s,tabId,windowId:tab.windowId,id:crypto.randomUUID(),port:null,timer:null,closed:false,phase:'starting',ticket:null};
+  desktopOwner=owner;
+  try {
+    const port=chrome.runtime.connectNative(HOST);owner.port=port;
+    port.onDisconnect.addListener(()=>{void chrome.runtime.lastError;closeDesktop(owner);});
+    port.onMessage.addListener(message=>{
+      // Set phase synchronously before asynchronous target resolution. A second
+      // command cannot overlap or replace an in-flight capture/Apply.
+      if(!desktopCurrent(owner) || !exactKeys(message,['version','op','id','sequence','ticket','text']) || message.version!==1 || message.id!==owner.id){closeDesktop(owner);return;}
+      if(message.op==='review-ready' && owner.phase==='starting' && message.sequence===0 && message.ticket===null && message.text===null){owner.phase='ready';desktopDeadline(owner,300000);return;}
+      const capture=message.op==='review-capture' && owner.phase==='ready' && message.sequence===1 && message.ticket===null && message.text===null;
+      const apply=message.op==='review-apply' && owner.phase==='captured' && message.sequence===2 && message.ticket===owner.ticket && typeof message.text==='string' && message.text.length>0 && message.text.length<=8192 && !message.text.includes('\0');
+      if(!capture && !apply){closeDesktop(owner);return;}
+      owner.phase=capture?'capturing':'applying';desktopDeadline(owner,3000);desktopDispatchPending=owner;
+      (async()=>{
+        if(capture){
+          const [active]=await chrome.tabs.query({active:true,lastFocusedWindow:true});
+          if(active?.id!==owner.tabId || active.windowId!==owner.windowId || !desktopCurrent(owner))throw Error('target_changed');
+        }
+        if(!desktopCurrent(owner))return;
+        owner.dispatched=true;
+        const result=await chrome.tabs.sendMessage(owner.tabId,capture?
+          {op:'desktop-capture',epoch:s.epoch,id:owner.id}:
+          {op:'desktop-apply',epoch:s.epoch,id:owner.id,ticket:owner.ticket,text:message.text},
+          {documentId:s.documentId});
+        if(!desktopCurrent(owner))return;
+        if(capture) {
+          if(!exactKeys(result,['status','text','ticket']) || !(result.status===0 && result.text==='' && result.ticket===null || result.status===2 && typeof result.text==='string' && result.text.length>0 && result.text.length<=8192 && !result.text.includes('\0') && validToken(result.ticket)))throw Error('invalid_capture');
+          owner.ticket=result.ticket;owner.phase=result.status===2?'captured':'terminal';
+        } else {
+          if(!exactKeys(result,['status']) || ![0,3,4].includes(result.status))throw Error('invalid_outcome');
+          owner.phase='terminal';
+        }
+        port.postMessage({version:1,op:'review-result',id:owner.id,sequence:message.sequence,status:result.status,text:capture?result.text:'',ticket:owner.ticket});
+        desktopDeadline(owner,owner.phase==='captured'?30000:5000);
+      })().catch(()=>closeDesktop(owner)).finally(()=>{if(desktopDispatchPending===owner)desktopDispatchPending=null;});
+    });
+    desktopDeadline(owner,5000);
+    port.postMessage({version:1,op:'review-listen',id:owner.id,epoch:'desktop-review',revision:1,text:''});
+    return {ok:true};
+  }catch{closeDesktop(owner);return {error:'desktop_review_unavailable'};}
+}
+chrome.tabs.onActivated?.addListener(info=>{if(desktopOwner && (info.tabId!==desktopOwner.tabId || info.windowId!==desktopOwner.windowId))closeDesktop();});
+chrome.windows?.onFocusChanged?.addListener(id=>{if(desktopOwner && id!==chrome.windows.WINDOW_ID_NONE && id!==desktopOwner.windowId)closeDesktop();});
 async function denied(origin) {
   const { deniedOrigins = [] } = await chrome.storage.local.get('deniedOrigins');
   return !origin || blockedDefault.test(new URL(origin).hostname) || deniedOrigins.includes(origin);
 }
 function close(tabId) {
+  desktopGeneration++;if(desktopOwner?.tabId===tabId)closeDesktop();
   generations.set(tabId, (generations.get(tabId) || 0) + 1);
   const s = sessions.get(tabId); sessions.delete(tabId);
   if (s) {
@@ -257,6 +331,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (sessions.get(sender.tab?.id) !== s) return {error: 'permission_revoked'};
     if (message.op === 'disable') { close(sender.tab.id); return {ok: true}; }
     if (message.op === 'heartbeat') return {ok: true, deepProvider:s.deepProvider};
+    if (message.op === 'desktop-arm') return armDesktop(s,sender.tab.id);
     if (!['analyze','deep'].includes(message.op) || message.version !== 1 || typeof message.text !== 'string' || message.text.length > 8192 ||
         typeof message.id !== 'string' || !message.id || message.id.length > 128 || !Number.isSafeInteger(message.revision) || message.revision < 1) return {error: 'invalid_request'};
     const request={version:1,op:message.op,id:message.id,epoch:s.epoch,revision:message.revision,text:message.text};
