@@ -42,6 +42,26 @@ class Tests(unittest.TestCase):
                 with self.assertRaises(Refused):
                     replace(layout, start, size, new_size)
 
+    def test_paragraph_positions_and_empty_paragraph_are_preserved(self):
+        layout = (((3, ('red',), ()), (1, (), ('paragraph_break',)), (0, ('empty-style',), ()),
+                   (1, (), ('paragraph_break',)), (4, ('blue',), ())),
+                  ('paragraphs', ((0, 'left'), (4, 'center'), (5, 'right'))), ('defaults',))
+        changed = replace(layout, 1, 2, 5)
+        self.assertEqual(changed[1], ('paragraphs', ((0, 'left'), (7, 'center'), (8, 'right'))))
+        self.assertEqual(replace(changed, 1, 5, 2), layout)
+        changed = replace(layout, 5, 4, 2)
+        self.assertEqual(changed[1], layout[1])
+        with self.assertRaises(Refused):
+            replace(layout, 2, 4, 1)
+
+    def test_crlf_width_is_distinct_from_native_cursor_steps(self):
+        layout = (((3, ('red',), ()), (2, (), ('paragraph_break', '\r\n')), (4, ('blue',), ())),
+            ('paragraphs', ((0, 'left'), (5, 'right'))), ())
+        changed = replace(layout, 0, 3, 1)
+        self.assertEqual(changed[1][1], ((0, 'left'), (3, 'right')))
+        self.assertEqual(replace(changed, 0, 1, 3), layout)
+        with self.assertRaises(Refused): replace(layout, 2, 2, 1)
+
 
 if __name__ == '__main__':
     unittest.main()
