@@ -18,14 +18,17 @@ class Hook(unohelper.Base, XUndoManagerListener, XModifyListener):
         if self.args is None:
             return
         mode = self.args['Mode']
-        if self.data['fired'] or (mode == 'postedit' and event_kind != 'leave') or (mode == 'modify' and event_kind != 'modify') or (mode == 'undoedit' and event_kind != 'undo'):
+        if self.data['fired'] or (mode == 'postedit' and event_kind != 'leave') or (mode == 'modify' and event_kind != 'modify') or (mode in ('undoedit','undotouch') and event_kind != 'undo'):
             return
-        if mode not in ('postedit', 'modify', 'undoedit') and event_kind != 'enter':
+        if mode not in ('postedit', 'modify', 'undoedit','undotouch') and event_kind != 'enter':
             return
         self.data.update(fired=True, at=time.monotonic())
         try:
             if mode in ('edit', 'postedit', 'modify', 'undoedit'):
                 self.args['Document'].Text.String = self.args['UserText']
+            elif mode == 'undotouch':
+                self.args['Document'].setModified(False)
+                self.args['Document'].setModified(True)
             elif mode in ('delay', 'tickdelay'):
                 time.sleep(2.7 if mode == 'delay' else .35)
             elif mode == 'format':

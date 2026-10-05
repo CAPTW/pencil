@@ -184,6 +184,8 @@ try:
         focus_owned_document()
         enabled = call('enable', Document=doc)
         assert enabled['status'] == 'ENABLED', enabled
+        # Setup mirrors installed flow: Enable first, then focus Writer before capture.
+        focus_owned_document()
         captured = call('capture')
         assert captured['status'] == 'CAPTURED', captured
         return captured['token']
@@ -253,6 +255,7 @@ try:
         doc.CurrentController.select(cursor)
         focus_owned_document()
         assert call('enable',Document=doc)['status']=='ENABLED'
+        focus_owned_document()
         captured=call('capture')
         assert captured['status']=='CAPTURED',captured
         return captured['token']
@@ -285,7 +288,7 @@ try:
         assert snapshot()==before
 
     exercise_span('new-span')
-    for mode in ('edit','delay','reentry','postedit','revoke','undoedit'):
+    for mode in ('edit','delay','reentry','postedit','revoke','undoedit','undotouch'):
         reset();token=ready_span();preserved=snapshot()
         hook_args=dict(Action='arm',Mode=mode,Token=token,Document=doc,Service=service,UserText='SPAN USER EVENT')
         hooks.execute(tuple(arg('NamedValue',k,v) for k,v in hook_args.items()))
@@ -297,6 +300,10 @@ try:
         if mode in ('edit','postedit','undoedit'):
             record('span-'+mode+'-preserves-user-text',doc.Text.String=='SPAN USER EVENT' and
                 answer['status']==('REJECTED' if mode=='edit' else 'UNKNOWN_CHANGED'))
+        elif mode=='undotouch':
+            actual=snapshot()
+            record('span-revision-event-stops-next-part',answer['status']=='UNKNOWN_CHANGED' and
+                'span_revision_changed' in answer['reason'] and actual[:3]==preserved[:3] and actual[3][0]=='Finalparagraph')
         elif mode=='reentry':
             record('span-nested-accept-busy',event['nested']['status']=='BUSY' and answer['status']=='APPLIED')
         else:

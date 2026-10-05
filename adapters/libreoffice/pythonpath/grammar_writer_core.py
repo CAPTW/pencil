@@ -345,8 +345,10 @@ def apply_paragraph_span(owner, review, replacement, deadline):
         if manager.isLocked(): raise Refused('undo_owned_elsewhere')
         current_body,current_layout=body,review['layout']
         current_hash=document_fingerprint(owner.document,True,owner.allow_mixed_format)
+        expected_revision=(owner.revision,owner.selection_revision)
         for (offset,length,part,fmt,runs),cursor in zip(plans,cursors):
             owner.permission(review['epoch']);owner.deadline(deadline)
+            if (owner.revision,owner.selection_revision)!=expected_revision: raise Refused('span_revision_changed')
             if time.monotonic()>=review['expires']: raise Refused('expired_review')
             selected=owner.selected()
             text=owner.document.Text
@@ -369,6 +371,7 @@ def apply_paragraph_span(owner, review, replacement, deadline):
                 owner.document.disableSetModified()
                 try:
                     owner.permission(review['epoch']);owner.deadline(deadline)
+                    if (owner.revision,owner.selection_revision)!=expected_revision: raise Refused('span_revision_changed')
                     owner.check_document(owner.document,own_notification_batch=True)
                     selected=owner.selected()
                     if time.monotonic()>=review['expires'] or owner.document.Text.compareRegionStarts(selected,review['range']) or owner.document.Text.compareRegionEnds(selected,review['range']):
@@ -383,8 +386,10 @@ def apply_paragraph_span(owner, review, replacement, deadline):
             if document_fingerprint(owner.document,True,owner.allow_mixed_format)!=next_hash:
                 raise Refused('span_postwrite_mismatch')
             action=ReplacementUndo(owner.document,cursor,original,part,steps,count,current_hash,next_hash,fmt,owner.allow_mixed_format,runs)
-            manager.addUndoAction(action)
             current_body,current_layout,current_hash=next_body,next_layout,next_hash
+            expected_revision=(owner.revision,owner.selection_revision)
+            manager.addUndoAction(action)
+            if (owner.revision,owner.selection_revision)!=expected_revision: raise Refused('span_revision_changed')
         owner.document.setModified(True)
         if current_body!=expected_body or current_layout!=expected_layout or document_fingerprint(owner.document,True,owner.allow_mixed_format)!=current_hash:
             raise Refused('span_postwrite_mismatch')
