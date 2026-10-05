@@ -35,6 +35,8 @@ class Tests(unittest.TestCase):
                 for statement in tree.body:
                     values[statement.targets[0].id] = ast.literal_eval(statement.value)
                 self.assertEqual(values['LIBRARY_PATH'], r'C:\GrammarTrial\target-apply.dll')
+                self.assertIs(values['ALLOW_SAVED_DOCX'], False)
+                self.assertIs(receipt['savedDocxEnabled'], False)
                 self.assertEqual(values['LIBRARY_SHA256'], hashlib.sha256(library.read_bytes()).hexdigest())
                 for name in archive.namelist():
                     self.assertEqual(hashlib.sha256(archive.read(name)).hexdigest(), receipt['files'][name])
@@ -52,6 +54,23 @@ class Tests(unittest.TestCase):
                 self.assertNotEqual(completed.returncode, 0)
                 self.assertIn('installed-library', completed.stderr)
                 self.assertFalse(output.exists())
+
+
+    def test_saved_docx_requires_explicit_package_option(self):
+        with tempfile.TemporaryDirectory(prefix='grammar-writer-saved-package-') as root:
+            root = Path(root)
+            library = root / 'target-apply.dll'
+            library.write_bytes(b'synthetic packaging input')
+            output = root / 'saved.oxt'
+            completed = subprocess.run([sys.executable, str(builder), '--library-file', str(library),
+                '--installed-library', r'C:\GrammarTrial\target-apply.dll', '--output', str(output),
+                '--enable-saved-docx'], capture_output=True, text=True)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIs(json.loads(completed.stdout)['savedDocxEnabled'], True)
+            with zipfile.ZipFile(output) as archive:
+                tree = ast.parse(archive.read('pythonpath/grammar_writer_installation.py').decode())
+                values = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body}
+                self.assertIs(values['ALLOW_SAVED_DOCX'], True)
 
 
 if __name__ == '__main__': unittest.main()

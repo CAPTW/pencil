@@ -7,6 +7,7 @@ import ctypes
 import json
 import hashlib
 import math
+import ntpath
 import os
 import secrets
 import threading
@@ -15,7 +16,7 @@ import uno
 import unohelper
 from com.sun.star.lang import XComponent
 from com.sun.star.task import XJob
-from com.sun.star.document import XUndoAction, UndoFailedException
+from com.sun.star.document import XUndoAction, UndoFailedException, XDocumentEventListener
 from com.sun.star.awt import XCallback
 from com.sun.star.util import XModifyListener
 from com.sun.star.view import XSelectionChangeListener
@@ -187,7 +188,7 @@ class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
         self.replace(self.before, self.after, self.before_steps, self.before_hash)
 
 
-class Changes(unohelper.Base, XModifyListener, XSelectionChangeListener):
+class Changes(unohelper.Base, XModifyListener, XSelectionChangeListener, XDocumentEventListener):
     def __init__(self, owner):
         self.owner = owner
 
@@ -199,9 +200,24 @@ class Changes(unohelper.Base, XModifyListener, XSelectionChangeListener):
         if self.owner:
             self.owner.selection_revision += 1
 
+    def documentEventOccured(self, event):
+        # Do not inspect event supplements or other documents. Save/rename/reload
+        # invalidates authority even when the URL and text later return to A.
+        owner = self.owner
+        if owner and event.Source == owner.document and event.EventName in (
+                'OnSave', 'OnSaveDone', 'OnSaveFailed', 'OnSaveAs', 'OnSaveAsDone',
+                'OnSaveAsFailed', 'OnSaveTo', 'OnSaveToDone', 'OnSaveToFailed',
+                'OnPrepareUnload', 'OnUnload', 'OnLoadFinished', 'OnModeChanged'):
+            owner.lifecycle_events += 1
+            owner.epoch += 1
+            owner.revoked = True
+            owner.clear_review()
+
     def disposing(self, event):
         if self.owner:
             self.owner.clear_review()
+            self.owner.document_events = False
+            self.owner.location = None
             self.owner.document = self.owner.controller = self.owner.listener = None
             self.owner = None
 
@@ -235,11 +251,16 @@ class Callback(unohelper.Base, XCallback):
                 document = self.args['Document']
                 owner.check_document(document)
                 owner.document = document
+                owner.location = document.getURL()
                 owner.controller = document.CurrentController
                 owner.window = int(owner.controller.Frame.ContainerWindow.getWindowHandle((), SYSTEM_WIN32))
                 owner.listener = Changes(owner)
                 document.addModifyListener(owner.listener)
                 owner.controller.addSelectionChangeListener(owner.listener)
+                if owner.allow_saved_documents:
+                    document.addDocumentEventListener(owner.listener)
+                    owner.document_events = True
+                    owner.check_document(document)
                 if owner.epoch != self.epoch:
                     raise Refused('permission_revoked')
                 owner.revoked = False
@@ -336,7 +357,7 @@ class Callback(unohelper.Base, XCallback):
 
 
 class WriterCore(unohelper.Base, XJob):
-    def __init__(self, context):
+    def __init__(self, context, *, allow_saved_documents=False):
         self.context = context
         self.desktop = context.ServiceManager.createInstanceWithContext('com.sun.star.frame.Desktop', context)
         self.document = self.controller = self.listener = self.review = self.result = None
@@ -347,6 +368,11 @@ class WriterCore(unohelper.Base, XJob):
         self.epoch = 0
         self.revoked = True
         self.window = 0
+        # Dormant until saved-document product deployment is qualified.
+        self.allow_saved_documents = allow_saved_documents
+        self.location = None
+        self.document_events = False
+        self.lifecycle_events = 0
 
     def deadline(self, expiry):
         ticks = None
@@ -378,6 +404,9 @@ class WriterCore(unohelper.Base, XJob):
         self.revoked = True
         self.clear_review()
         if self.listener:
+            if self.document_events:
+                self.document.removeDocumentEventListener(self.listener)
+                self.document_events = False
             try:
                 self.document.removeModifyListener(self.listener)
                 self.controller.removeSelectionChangeListener(self.listener)
@@ -385,13 +414,31 @@ class WriterCore(unohelper.Base, XJob):
                 self.listener.owner = None
                 self.listener = None
         self.document = self.controller = None
+        self.location = None
 
     def check_document(self, doc, own_notification_batch=False):
         if doc is None:
             raise Refused('disabled')
         # Only new unsaved plain-body fixture documents. Not a policy for arbitrary user files.
-        if not doc.supportsService('com.sun.star.text.TextDocument') or doc.hasLocation() or doc.isReadonly():
+        if not doc.supportsService('com.sun.star.text.TextDocument') or doc.isReadonly():
             raise Refused('unsupported_document')
+        location = doc.getURL()
+        if doc.hasLocation():
+            if not self.allow_saved_documents:
+                raise Refused('unsupported_document')
+            # Local DOCX only; no network documents or implicit filesystem writes.
+            if not location.startswith('file:///') or not location.lower().endswith('.docx'):
+                raise Refused('unsupported_location')
+            drive, tail = ntpath.splitdrive(uno.fileUrlToSystemPath(location))
+            if len(drive) != 2 or drive[1] != ':' or not tail.startswith('\\'):
+                raise Refused('unsupported_location')
+            if any(arg.Name in ('Password', 'EncryptionData', 'ModifyPasswordInfo') for arg in doc.getArgs()):
+                raise Refused('protected_document')
+            filters = [arg.Value for arg in doc.getArgs() if arg.Name == 'FilterName']
+            if filters != ['Office Open XML Text']:
+                raise Refused('unsupported_filter')
+        if self.location is not None and location != self.location:
+            raise Refused('document_location_changed')
         if not own_notification_batch and not doc.isSetModifiedEnabled():
             raise Refused('modification_state_owned_elsewhere')
         plain_metadata(doc)
@@ -459,6 +506,7 @@ class WriterCore(unohelper.Base, XJob):
             return json.dumps(dict(status='STATE', reviewRetained=self.review is not None,
                 resultRetained=self.result is not None, enabled=self.document is not None and not self.revoked,
                 bindingRetained=self.document is not None, revoked=self.revoked,
+                lifecycleEvents=self.lifecycle_events, documentEventsAttached=self.document_events,
                 pending=self.pending, textReads=self.text_reads, undoActions=ReplacementUndo.active))
         if args.get('Action') == 'poll':
             value = self.result

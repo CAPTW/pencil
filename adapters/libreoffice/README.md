@@ -124,3 +124,17 @@ for another review. Only the pinned26.2.4.2 disposable-profile default-style
 plain-body scope is qualified. Saved/rich documents and normal-profile use are
 not qualified. No automatic Provider call is required. Close LibreOffice before
 removing the paired installation.
+
+
+Saved plain DOCX candidate (2026-10-05)
+-------------------------------------
+The core now has explicit saved-document admission, still off in ordinary OXT
+builds. `build-writer-extension.py --enable-saved-docx` records the switch in the
+paired extension configuration; no document or transport request can enable it.
+Only local-drive writable Office Open XML Text documents passing the existing
+plain-body/default-format metadata gates are admitted. No automatic file Save.
+Document identity includes the bound live object/controller/window and URL;
+Save/SaveAs/SaveTo/load/unload/mode events revoke the one-review epoch, including
+A->B->A changes. Disable detaches event observation. Supported formatting has not
+been broadened. Actual saved component and installed-widget qualification are
+recorded separately in HANDOFF; no generic DOCX or rich-document claim.

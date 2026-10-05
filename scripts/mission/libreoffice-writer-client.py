@@ -12,6 +12,7 @@ if os.environ.get('USERNAME') != 'WDAGUtilityAccount':
     raise RuntimeError('Guest only')
 import uno
 from com.sun.star.document.MacroExecMode import NEVER_EXECUTE
+from com.sun.star.lang import DisposedException
 
 out = Path(r'C:\GrammarOutput\uno-result.json')
 result = dict(status='RUNNING', scope='experimental in-process Writer transaction', eventHarness='target_internal', checks=[])
@@ -68,11 +69,29 @@ def capture():
     doc.Text.String = source
     doc.setModified(False)
     select()
+    focus_owned_document()
     enabled = call('enable', Document=doc)
     assert enabled['status'] == 'ENABLED', enabled
     captured = call('capture')
     assert captured['status'] == 'CAPTURED' and captured['source'] == 'Synthetic', captured
     return captured['token']
+
+
+def focus_owned_document():
+    # Setup only, before the operation's deadline. Never infer foreground from
+    # successful window activation; assert the actual exact synthetic HWND.
+    hwnd = int(doc.CurrentController.Frame.ContainerWindow.getWindowHandle((), 1))
+    api = ctypes.windll.user32
+    api.SetForegroundWindow.argtypes = [ctypes.c_void_p]
+    api.GetForegroundWindow.restype = ctypes.c_void_p
+    end = time.monotonic() + 2
+    while time.monotonic() < end:
+        doc.CurrentController.Frame.activate()
+        api.SetForegroundWindow(ctypes.c_void_p(hwnd))
+        if api.GetForegroundWindow() == hwnd:
+            return
+        time.sleep(.02)
+    raise AssertionError('owned Writer foreground setup unavailable')
 
 
 
@@ -418,6 +437,74 @@ try:
     record('reopened-docx-not-silently-admitted', saved_enable['status'] == 'REJECTED'
         and call('state')['textReads'] == reads and doc.Text.String == source
         and hashlib.sha256(saved_path.read_bytes()).hexdigest() == saved_digest)
+    call('disable')
+    service = ctx.ServiceManager.createInstanceWithContext('org.grammar.fixture.SavedWriter', ctx)
+    result['savedFilter'] = [item.Value for item in doc.getArgs() if item.Name == 'FilterName']
+
+    def saved_capture():
+        select()
+        focus_owned_document()
+        enabled = call('enable', Document=doc)
+        assert enabled['status'] == 'ENABLED', enabled
+        captured = call('capture')
+        assert captured['status'] == 'CAPTURED' and captured['source'] == 'Synthetic', captured
+        return captured['token']
+
+    token = saved_capture()
+    record('saved-docx-explicit-fixture-admission', call('state')['documentEventsAttached'])
+    reply = call('accept', Token=token, Replacement=replacement)
+    record('saved-docx-reviewed-apply-exact', reply['status'] == 'APPLIED'
+        and doc.Text.String == source.replace('Synthetic', replacement))
+    record('saved-docx-apply-does-not-save-file', doc.isModified()
+        and hashlib.sha256(saved_path.read_bytes()).hexdigest() == saved_digest)
+    doc.getUndoManager().undo()
+    record('saved-docx-undo-exact', doc.Text.String == source)
+    doc.getUndoManager().redo()
+    record('saved-docx-redo-exact', doc.Text.String == source.replace('Synthetic', replacement))
+    doc.getUndoManager().undo()
+    token = saved_capture()
+    events = call('state')['lifecycleEvents']
+    doc.store()
+    until = time.monotonic() + 2
+    while call('state')['lifecycleEvents'] == events and time.monotonic() < until:
+        time.sleep(.01)
+    state = call('state')
+    reply = call('accept', Token=token, Replacement='WRONG')
+    record('saved-docx-same-url-save-revokes', state['lifecycleEvents'] > events
+        and reply['status'] == 'REJECTED' and doc.Text.String == source)
+    token = saved_capture()
+    second_url = uno.systemPathToFileUrl(r'C:\GrammarOutput\writer-owned-second.docx')
+    options = (arg('PropertyValue', 'FilterName', 'Office Open XML Text'), arg('PropertyValue', 'Overwrite', True))
+    doc.storeAsURL(second_url, options)
+    doc.storeAsURL(saved_url, options)
+    record('saved-docx-save-as-return-does-not-restore-authority',
+        call('accept', Token=token, Replacement='WRONG')['status'] == 'REJECTED' and doc.Text.String == source)
+    token = saved_capture()
+    hook_args = dict(Action='arm', Mode='save', Token=token, Document=doc, Service=service, UserText='UNUSED')
+    hooks.execute(tuple(arg('NamedValue', k, v) for k, v in hook_args.items()))
+    try:
+        reply = call('accept', Token=token, Replacement='WRONG')
+    finally:
+        hook = json.loads(hooks.execute((arg('NamedValue', 'Action', 'disarm'),)))
+    record('saved-docx-save-inside-undo-entry-refuses-mutation', hook['fired'] and not hook.get('hookError')
+        and reply['status'] == 'REJECTED' and doc.Text.String == source)
+    token = saved_capture()
+    doc.Text.String = 'USER CHANGED SAVED DOCUMENT'
+    record('saved-docx-user-edit-preserved', call('accept', Token=token, Replacement='WRONG')['status'] == 'REJECTED'
+        and doc.Text.String == 'USER CHANGED SAVED DOCUMENT')
+    call('disable')
+    record('saved-document-event-subscription-detached', not call('state')['documentEventsAttached'])
+    events = call('state')['lifecycleEvents']
+    doc.store()
+    time.sleep(.1)
+    record('detached-listener-does-not-observe-save', call('state')['lifecycleEvents'] == events)
+    doc.close(True)
+    doc = desktop.loadComponentFromURL(saved_url, '_blank', 0,
+        (arg('PropertyValue', 'Hidden', False), arg('PropertyValue', 'ReadOnly', True),
+         arg('PropertyValue', 'MacroExecutionMode', NEVER_EXECUTE), arg('PropertyValue', 'UpdateDocMode', 0)))
+    reads = call('state')['textReads']
+    record('saved-readonly-refused-before-source-read', doc.isReadonly()
+        and call('enable', Document=doc)['status'] == 'REJECTED' and call('state')['textReads'] == reads)
     result['status'] = 'FAIL' if result.get('failures') else 'PASS'
 except Exception as error:
     result.update(status='FAIL', error=type(error).__name__ + ': ' + str(error))
@@ -427,8 +514,18 @@ finally:
             result['disable'] = call('disable')['status']
         if doc:
             doc.setModified(False)
-            doc.close(True)
-        result['desktopTerminated'] = bool(desktop.terminate()) if desktop else False
+            # Keep the final owned document alive until explicit termination.
+            # Closing the last reopened document can naturally exit soffice and
+            # disconnect URP before the following terminate call is delivered.
+        try:
+            result['desktopTerminated'] = bool(desktop.terminate()) if desktop else False
+        except DisposedException:
+            # The process may close URP before returning terminate's bool. This
+            # is not cleanup completion: the launcher still requires actual
+            # natural Office exit0, zero processes and removed profile/app.
+            result['desktopTerminated'] = None
+            result['terminationTransportClosed'] = True
+            result['cleanupRequiresLauncherReceipt'] = True
     except Exception as error:
         result.update(status='FAIL', cleanupError=str(error))
     out.write_text(json.dumps(result, indent=2), encoding='utf-8')

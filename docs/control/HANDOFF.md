@@ -1445,3 +1445,17 @@ not current authority. Multi-provider architecture plan is absent:7/8 integrated
 1/8 NOT_READ_NOT_INTEGRATED. Exact current12 export retained; no Project deletion,
 product code change or new runtime acceptance. External fresh-chat verification
 still required. Evidence grammar-legacy-source-integration-20261005.
+
+
+## Saved Writer implementation candidate — 2026-10-05
+Added bounded local plain DOCX admission with exact live object/view/URL and
+save/lifecycle event revocation, preserving30s review/original3s request budgets.
+The generated OXT switch is explicit and default-off. Product panel can consume
+that packaged switch; no arbitrary UNO request or document can grant it.
+R2 core69 checks+32 cycles PASS, R3/R4 all73 assertions pass but final terminate
+response disconnect was marked FAIL; actual launcher observes Office0/cleanup.
+R1 foreground setup FAIL preserved. R5 keeps only termination-call DisposedException
+as unconfirmed transport, requiring launcher natural exit0/processes0/cleanup for
+final success. Core and installed-widget qualification are still being completed.
+Existing installed acceptance0fc8624/R27 stays new-unsaved only until new receipts.
+Evidence: D:/dev/grammar-evidence/grammar-writer-saved-apply-20261005.

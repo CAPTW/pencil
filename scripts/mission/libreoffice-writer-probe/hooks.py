@@ -28,6 +28,8 @@ class Hook(unohelper.Base, XUndoManagerListener, XModifyListener):
                 self.args['Document'].Text.String = self.args['UserText']
             elif mode in ('delay', 'tickdelay'):
                 time.sleep(2.7 if mode == 'delay' else .35)
+            elif mode == 'save':
+                self.args['Document'].store()
             else:
                 values = dict(Action='disable' if mode == 'revoke' else 'accept',
                     Token=self.args['Token'], Replacement='NESTED WRONG', Deadline=time.monotonic()+2.5)

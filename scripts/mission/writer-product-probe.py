@@ -1,5 +1,6 @@
 """Owned guest product-entry test. No fixture UNO services or product bypass."""
 import ctypes
+import hashlib
 import json
 import os
 import re
@@ -81,6 +82,21 @@ try:
         (arg('Hidden', False), arg('MacroExecutionMode', NEVER_EXECUTE)))
     wait(lambda: desktop.CurrentComponent == doc)
     doc.Text.String = source
+    saved_path = None
+    if '--saved' in sys.argv:
+        saved_path = Path(r'C:\GrammarOutput\product-owned.docx')
+        assert not saved_path.exists()
+        url = uno.systemPathToFileUrl(str(saved_path))
+        doc.storeAsURL(url, (arg('FilterName', 'Office Open XML Text'), arg('Overwrite', False)))
+        # Keep a synthetic document open across reopen so the UNO process lives.
+        keeper = desktop.loadComponentFromURL('private:factory/swriter', '_blank', 0, (arg('Hidden', False),))
+        doc.close(True)
+        doc = desktop.loadComponentFromURL(url, '_blank', 0,
+            (arg('Hidden', False), arg('MacroExecutionMode', NEVER_EXECUTE), arg('UpdateDocMode', 0)))
+        keeper.close(True)
+        wait(lambda: desktop.CurrentComponent == doc)
+        check('saved-docx-reopened-exact', doc.Text.String == source and doc.hasLocation())
+        saved_digest = hashlib.sha256(saved_path.read_bytes()).hexdigest()
     format_cursor = doc.Text.createTextCursor()
     format_cursor.gotoStart(False)
     format_cursor.gotoEnd(True)
@@ -194,6 +210,8 @@ try:
         wait(lambda: any('disabled' in n for n, _ in accessible_names()))
         denied = native()
         check('explicit-disable-refuses-capture', denied['captured'] == 4 and doc.Text.String == source)
+    if saved_path:
+        check('product-apply-never-auto-saves-docx', hashlib.sha256(saved_path.read_bytes()).hexdigest() == saved_digest)
     result['status'] = 'PASS'
 except Exception as error:
     result.update(status='FAIL', error=type(error).__name__ + ': ' + str(error))
