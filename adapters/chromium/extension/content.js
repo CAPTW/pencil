@@ -1,7 +1,7 @@
 (() => {
   if (globalThis.grammarAdapterInstalled) return;
   globalThis.grammarAdapterInstalled = true;
-  const {DocumentSession, MAX_TEXT} = globalThis.GrammarCore;
+  const {DocumentSession, SelectionReview, MAX_TEXT} = globalThis.GrammarCore;
   let epoch = null, session = null, editor = null, chosen = null, composing = false;
   let root = null, shadow = null, status = null, list = null, card = null;
   let panel = null, panelToggle = null, layoutObserver = null, layoutFrame = null;
@@ -9,6 +9,8 @@
   let selectedIndex = null, editBox = null, sequence = 0;
   let deepProvider = null, deepRequest = null, deepButton = null, draftVersion = 0;
   let enableTarget = null, reanalyzeAll = false, held = false, busyWaits = 0;
+  let selectionReview = null, reviewInput = null, reviewAccept = null, reviewTimer = null;
+  let reviewRange = null, reviewOwnsFocus = false;
   const sensitive = /password|passwd|secret|token|credit|card.?number|ssn|social.?security|medical|health|otp|one.?time|verification|auth|private|sensitive/i;
   function labelText(label) {
     if (!label) return '';
@@ -61,6 +63,7 @@
     if(request) chrome.runtime.sendMessage({op:'cancel-deep',epoch:request.epoch,id:request.id}).catch(()=>{});
   }
   function wipeField() {
+    clearReview();
     cancelDeepUI();
     clearTimeout(timer); clearTimeout(expiry); pending = null; deferredInstant = null; held = false; busyWaits = 0;
     session?.clear(); session = null; editor = null; composing = false;
@@ -79,6 +82,10 @@
     document.removeEventListener('compositionstart', compositionStart, true);
     document.removeEventListener('compositionend', compositionEnd, true);
     document.removeEventListener('keydown', keyboard, true);
+    document.removeEventListener('selectionchange', selectionChanged);
+    document.removeEventListener('select', selectionChanged, true);
+    document.removeEventListener('pointerdown', reviewFocusStart, true);
+    document.removeEventListener('focusout', reviewFocusLeaving, true);
     document.removeEventListener('visibilitychange', visibility);
     window.removeEventListener('pagehide', pagehide);
     root?.remove(); root = shadow = status = list = card = panel = panelToggle = enableTarget = null; reanalyzeAll = false;
@@ -102,11 +109,13 @@
       'Field to enable: ' + describeField(chosen) + (supported(chosen) ? '' : ' (not supported)') : 'Select a text field in the page first.';
   }
   function focus(event) {
-    if (root?.contains(event.target)) return;
+    if (root?.contains(event.target)) {reviewFocusStart(event);return;}
+    if(selectionReview && event.target!==editor) revokeReview('Review target changed. Copy or dismiss the draft.');
     if (fieldLike(event.target)) choose(event.target);
   }
   function invalidate(clear = true) {
     if (!session) return;
+    if(reviewInput?.isConnected) {if(clear)session.cache=[];list.replaceChildren();revokeReview('Review expired or field changed. Copy or dismiss the draft.');return;}
     if(clear) session.cache = []; list.replaceChildren(); card.replaceChildren(); selectedIndex = null;
   }
   function input(event) { if (event.target === editor) { if (event.isTrusted) held = false; cancelDeepUI(); invalidate(false); schedule(); } }
@@ -154,6 +163,9 @@
   function keyboard(event) {
     if (!event.isTrusted) return;
     if (event.altKey && event.shiftKey && event.code === 'KeyG') { event.preventDefault(); disable(true); }
+    else if(event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.isComposing && event.code==='KeyR' && event.target===editor) {
+      event.preventDefault();openSelectionReview();
+    }
     // Keyboard users enable exactly the field they are in.
     else if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.isComposing && event.code === 'KeyE' &&
         !event.composedPath().includes(root) && fieldLike(event.target)) {
@@ -210,6 +222,7 @@
     finally { inflight = false; if (pending) pump(); }
   }
   function render() {
+    if(reviewInput?.isConnected)return; // Never replace a review the user is editing.
     list.replaceChildren(); card.replaceChildren(); selectedIndex = null;
     const now = Date.now();
     session.cache = session.cache.filter(s => now < s.expires);
@@ -259,6 +272,7 @@
       editBox.value!==session?.suggestion(selectedIndex)?.replacement;
   }
   function show(index, chosenByUser = false) {
+    if(reviewInput?.isConnected){announce('Copy or dismiss the selected-text review first.');return;}
     const s = session?.suggestion(index);
     if (!s) return;
     if (selectedIndex === index && editBox) return;
@@ -285,6 +299,7 @@
     if(deepButton) {deepButton.disabled=!deepProvider;deepButton.textContent=deepProvider ? 'Send current field to '+deepProvider+' for Deep review' : 'Deep requires document permission in the popup';}
   }
   async function requestDeep() {
+    if(reviewInput?.isConnected){announce('Copy or dismiss the selected-text review before sending Deep.');return;}
     if(dirtyDraft()) {status.textContent='Apply, copy, or dismiss your edited draft before requesting Deep.';return;}
     if(!deepProvider || !session || deepRequest || inflight) {status.textContent='Deep unavailable or local request still running. Try explicitly when ready.';return;}
     const text=read();if(text===null || !text.trim())return;
@@ -325,13 +340,19 @@
     }
     const current = read(), mutation = current !== null ? session.replacement(index,current,replacement) : null;
     if (!mutation || composing) { resync(current); announce('Changed or unsupported field. Apply rejected.'); return; }
+    commitMutation(current,mutation,()=>session?.cache[index]===expected &&
+      session.replacement(index,current,replacement)!==null);
+  }
+  function commitMutation(current,mutation,valid,consume=()=>{}) {
+    const replacement=mutation.replacement;
     const target = editor, owner = session;
     // beforeinput handlers may modify the page. Revalidate AFTER synchronous page callbacks.
     const before = new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertReplacementText',data:replacement});
-    if (!target.dispatchEvent(before) || session !== owner || editor !== target || read() !== current) {
+    if (!target.dispatchEvent(before) || session !== owner || editor !== target || read() !== current || !valid()) {
       if (session===owner && editor===target) resync(read()); else invalidate();
       announce('Editor rejected replacement or changed. Copy only.'); return;
     }
+    consume(); // One-shot authority is consumed before any DOM write or callback.
     if (target.tagName === 'TEXTAREA') {
       const start=target.selectionStart,end=target.selectionEnd,direction=target.selectionDirection;
       HTMLTextAreaElement.prototype.setRangeText.call(target,replacement,mutation.start,mutation.end,'preserve');
@@ -361,6 +382,90 @@
     announce(actual===mutation.next ? 'Applied; content verified. Native undo is not guaranteed.' : 'Editor changed during Apply. No retry; inspect the field.');
     focusEditor();
   }
+  function clearReview() {
+    clearTimeout(reviewTimer);reviewTimer=null;selectionReview?.cancel();selectionReview=null;
+    reviewInput=reviewAccept=null;
+    reviewRange=null;reviewOwnsFocus=false;
+  }
+  function revokeReview(message) {
+    clearTimeout(reviewTimer);reviewTimer=null;selectionReview?.cancel();
+    if(reviewAccept)reviewAccept.disabled=true;
+    if(reviewInput?.isConnected)announce(message);
+  }
+  function selectedRange() {
+    if(!session?.active || !supported(editor) || composing || document.hidden)return null;
+    if(editor.tagName==='TEXTAREA')return {start:editor.selectionStart,end:editor.selectionEnd};
+    const selection=document.getSelection();if(!selection || selection.rangeCount!==1)return null;
+    return rangeOffsets(selection.getRangeAt(0));
+  }
+  function rangeOffsets(range) {
+    if(!range || !editor?.isConnected)return null;
+    const nodes=[...editor.childNodes];
+    const offset=(node,n)=>{
+      if(!Number.isInteger(n)||n<0)return null;
+      if(node===editor)return n<=nodes.length?nodes.slice(0,n).reduce((a,b)=>a+(b.length||0),0):null;
+      const index=nodes.indexOf(node);return index>=0&&node.nodeType===Node.TEXT_NODE&&n<=node.length ? nodes.slice(0,index).reduce((a,b)=>a+(b.length||0),0)+n:null;
+    };
+    const start=offset(range.startContainer,range.startOffset),end=offset(range.endContainer,range.endOffset);
+    return start===null||end===null?null:{start,end};
+  }
+  function reviewFocusStart(event) {
+    if(!event.isTrusted || !selectionReview?.active || reviewOwnsFocus || !event.composedPath().includes(reviewInput))return;
+    const range=selectedRange();
+    if(range?.start===selectionReview.start && range?.end===selectionReview.end)reviewOwnsFocus=true;
+    else revokeReview('Selection changed before entering review. Select again.');
+  }
+  function reviewFocusLeaving(event) {
+    if(!event.isTrusted || !selectionReview?.active || event.target!==editor || event.relatedTarget!==root)return;
+    const range=selectedRange();
+    if(range?.start===selectionReview.start && range?.end===selectionReview.end)reviewOwnsFocus=true;
+    else revokeReview('Selection changed before leaving the field. Select again.');
+  }
+  function currentReviewRange() {
+    const actual=selectedRange();if(actual)return actual;
+    if(!reviewOwnsFocus || !reviewRange || ![reviewInput,reviewAccept].includes(shadow?.activeElement))return null;
+    // Chromium retargets a shadow textarea selection to the shadow host's
+    // boundary. Only that exact review UI selection may use the captured Range;
+    // a page selection in another node/field is never a focus exemption.
+    const selection=document.getSelection();if(!selection || selection.rangeCount!==1)return null;
+    const ownPoint=(node,offset)=>node===root || node?.getRootNode()===shadow ||
+      (node===root.parentNode && [Array.prototype.indexOf.call(node.childNodes,root),Array.prototype.indexOf.call(node.childNodes,root)+1].includes(offset));
+    if(!ownPoint(selection.anchorNode,selection.anchorOffset)||!ownPoint(selection.focusNode,selection.focusOffset))return null;
+    return rangeOffsets(reviewRange);
+  }
+  function selectionChanged() {
+    if(!selectionReview?.active)return;
+    const range=currentReviewRange();
+    if(!range || range.start!==selectionReview.start || range.end!==selectionReview.end)
+      revokeReview('Selection changed. Copy or dismiss the draft, then select again.');
+  }
+  function openSelectionReview() {
+    if(reviewInput?.isConnected || dirtyDraft()){announce('Copy or dismiss the current draft first.');return;}
+    const current=read(),range=selectedRange();
+    if(current===null || !range){announce('Select text in the enabled field first.');return;}
+    session.update(current);
+    const grant=SelectionReview.capture(session,range.start,range.end);
+    if(!grant){announce('Select a non-empty complete text range first.');return;}
+    cancelDeepUI();draftVersion++;clearReview();selectionReview=grant;selectedIndex=null;editBox=null;
+    if(editor.tagName!=='TEXTAREA')reviewRange=document.getSelection().getRangeAt(0).cloneRange();
+    card.replaceChildren();list.replaceChildren();setPanelVisible(true);
+    const source=document.createElement('pre');source.textContent=current.slice(range.start,range.end);source.setAttribute('aria-label','Selected source');source.style.whiteSpace='pre-wrap';
+    reviewInput=document.createElement('textarea');reviewInput.value=grant.draft;reviewInput.maxLength=MAX_TEXT;reviewInput.setAttribute('aria-label','Reviewed selection replacement');
+    reviewAccept=button('Accept selection',()=>{
+      const text=read(),selected=currentReviewRange(),edited=reviewInput.value;
+      const mutation=text!==null&&selected?grant.replacement(text,selected.start,selected.end,edited):null;
+      if(!mutation){revokeReview('Review changed or expired. No replacement applied.');return;}
+      commitMutation(text,mutation,()=>{
+        const latest=currentReviewRange();return selectionReview===grant&&latest&&!!grant.replacement(read(),latest.start,latest.end,edited);
+      },clearReview);
+    });
+    card.append(source,reviewInput,reviewAccept,button('Copy selection draft',async()=>{
+      try{await navigator.clipboard.writeText(reviewInput.value);announce('Copied');}catch{reviewInput.focus();reviewInput.select();announce('Press Ctrl+C to copy the draft');}
+    }),button('Dismiss selection review',()=>{clearReview();render();focusEditor();}));
+    reviewTimer=setTimeout(()=>revokeReview('Review expired. Copy or dismiss the draft.'),30000);
+    announce('Review selected text, then Accept. Cached local suggestions only; no new Deep request.');
+    reviewInput.focus({preventScroll:true});
+  }
   function enableField(target) {
     wipeField();
     if (!supported(target)) {status.textContent='Unsupported or sensitive field. No text read.';return;}
@@ -380,8 +485,9 @@
     list=document.createElement('div');list.setAttribute('aria-label','Cached suggestions');card=document.createElement('div');
     deepButton=button('Deep requires document permission in the popup',requestDeep);deepButton.disabled=true;
     enableTarget=document.createElement('p');choose(chosen);
+    const selectionHint=document.createElement('p');selectionHint.textContent='Select text in the enabled field and press Alt+Shift+R to review and Accept a replacement.';
     panel.append(status,deepButton,button('Cancel Deep',()=>{cancelDeepUI();status.textContent='Deep cancelled; cleanup receipt pending in host.';}),enableTarget,button('Enable this field',()=>enableField(chosen)),
-      button('Pause field',()=>{wipeField();status.textContent='Paused; cache cleared';}),button('Disable document',()=>disable(true)),list,card);
+      button('Pause field',()=>{wipeField();status.textContent='Paused; cache cleared';}),button('Disable document',()=>disable(true)),selectionHint,list,card);
     shadow.append(style,panelToggle,panel);document.documentElement.append(root);
     layoutObserver=new ResizeObserver(scheduleLayout);layoutObserver.observe(root);
     window.addEventListener('resize',scheduleLayout,{passive:true});
@@ -389,6 +495,9 @@
     document.addEventListener('focusin',focus);document.addEventListener('input',input,true);
     document.addEventListener('compositionstart',compositionStart,true);document.addEventListener('compositionend',compositionEnd,true);
     document.addEventListener('keydown',keyboard,true);document.addEventListener('visibilitychange',visibility);window.addEventListener('pagehide',pagehide);
+    document.addEventListener('selectionchange',selectionChanged);document.addEventListener('select',selectionChanged,true);
+    document.addEventListener('pointerdown',reviewFocusStart,true);
+    document.addEventListener('focusout',reviewFocusLeaving,true);
     observer=new MutationObserver(mutations=>{
       if (!root?.isConnected) {disable(true);return;}
       if (editor && !supported(editor)) {wipeField();status.textContent='Field changed capability. Disabled.';}

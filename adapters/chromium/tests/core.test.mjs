@@ -23,4 +23,24 @@ check(s.update('text')===null);
 const huge=new DocumentSession('huge');check(huge.update('x'.repeat(8193))===null && !huge.active);
 const leadingLine=changedWindow('x\nseperate','\nseperate');check(leadingLine.start===0 && leadingLine.end===0);
 for(let i=0;i<200;i++) { const before='a\n😀seperate\nz';const after=before.slice(0,3)+'q'.repeat(i)+before.slice(3); const w=changedWindow(before,after);check(w.start>=0 && w.end<=after.length && w.text===after.slice(w.start,w.end)); }
+const {SelectionReview}=globalThis.GrammarCore;
+const doc=new DocumentSession('selection-doc');const req=doc.update('😀 | seperate | tail');
+doc.publish(req,[{start:5,end:13,replacement:'separate',rule:'local'}],100);
+const review=SelectionReview.capture(doc,5,13,100);
+check(review.draft==='separate');
+check(review.replacement(doc.text,5,13,'검토 🙂',101).next==='😀 | 검토 🙂 | tail');
+check(review.replacement(doc.text,0,13,'bad',101)===null);
+check(review.replacement(doc.text+'!',5,13,'bad',101)===null);
+check(review.replacement(doc.text,5,13,'bad',30100)===null);
+check(SelectionReview.capture(doc,1,13)===null && SelectionReview.capture(doc,5,5)===null);
+check(review.replacement(doc.text,5,13,'x\0y',101)===null);
+check(review.replacement(doc.text,5,13,'x'.repeat(8192),101)===null);
+review.cancel();check(review.source==='' && review.owner===null && review.replacement(doc.text,5,13,'replay',101)===null);
+const stale=SelectionReview.capture(doc,5,13,100);doc.update('other');doc.update('😀 | seperate | tail');
+check(stale.replacement(doc.text,5,13,'bad',101)===null); // Source ABA still has a new revision.
+const deepDoc=new DocumentSession('deep');const deepReq=deepDoc.update('seperate');
+deepDoc.publish(deepReq,[{start:0,end:8,replacement:'Deep must not enter cached local review',rule:'deep:codex'}],100);
+check(SelectionReview.capture(deepDoc,0,8,100).draft==='seperate');
+const revoked=SelectionReview.capture(deepDoc,0,8,100);deepDoc.clear();
+check(revoked.replacement('seperate',0,8,'bad',101)===null);
 console.log(JSON.stringify({status:'PASS',productionCoreAssertions:count}));
