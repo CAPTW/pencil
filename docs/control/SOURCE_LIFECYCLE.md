@@ -34,3 +34,12 @@ The package includes payload, manifest, checksums, verification record, Owner ha
 Refresh after adopted changes to behavior, decisions, acceptance, known defects or exact next task. Minor wording-only changes require a documented materiality decision. Replace prior versions of the current00-11 set. Owner-retained eight legacy Project files may coexist as historical references; they do not count toward the current authoritative exact12 payload and cannot override it. Existing repository/history evidence is preserved. No automatic successor execution follows an export or a successful fresh-chat check.
 
 Future product changes require a successor generator policy because the R0 product-diff-zero guard deliberately anchors this audit. Do not bypass it by rewriting the historical audit base without an audited new acceptance/state decision.
+
+
+## Legacy integration coverage
+Seven supplied originals are preserved verbatim with input hashes and per-file
+mapping in the appendix below. Their durable requirements are reconciled with
+Source01/03; dated audit/gate/master statements remain historical. One of the
+retained eight, 12_MULTI_PROVIDER_ARCHITECTURE_AND_IMPLEMENTATION_PLAN(1).md,
+was absent from the uploaded ZIP and remains NOT_READ_NOT_INTEGRATED. Retaining
+it is allowed; do not claim complete eight-file coverage or delete it by inference.

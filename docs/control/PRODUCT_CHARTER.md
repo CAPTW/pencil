@@ -38,3 +38,13 @@ screenshot, OCR, screen recording, keylogging, password/secure/sensitive field �
 
 ## Explicit global Accept scope (2026-10-05)
 Owner now requires standard Edit and Text/DOCX/XLSX/HWP/HWPX/PPTX/webpage editor integration through the global select → shortcut → review/edit → explicit Accept → exact source replacement flow. Native format support belongs to the editing application adapter; do not overwrite on-disk archives behind open documents or claim arbitrary editors from a filename. The first-adapter historical decision stays Chromium. This is authorized implementation scope, not a claim of support already delivered. Sensitive/unknown targets remain refused; existing Copy is a fallback, not fulfillment of direct replacement.
+
+
+## Legacy strategy reconciliation (2026-10-05)
+The supplied September6 strategy/scope documents retain the permanent selection
+fallback and reviewed explicit Apply, without inferring formal acceptance from
+build/launch. Their former proactive-monitoring and inline-annotation non-goals
+are superseded by the authorized P3-B mission. No hover inference, automatic
+Apply, persistent document history or assumed HWP support is introduced. The
+seven supplied originals and per-file coverage are in LEGACY_SOURCE_INTEGRATION;
+the separately named multi-provider plan was not supplied and is not integrated.

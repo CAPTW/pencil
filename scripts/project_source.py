@@ -235,7 +235,7 @@ def semantic_check(state, inputs):
 
 def source_inputs(root):
     inputs = {}
-    for filename in set(DOCS.values()) | {"FIRST_ADAPTER_DECISION.md"}:
+    for filename in set(DOCS.values()) | {"FIRST_ADAPTER_DECISION.md", "LEGACY_SOURCE_INTEGRATION.md"}:
         path = root / "docs" / "control" / filename
         fail(path.is_file(), f"DOC_MISSING:{filename}")
         inputs[filename] = path.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
@@ -266,6 +266,7 @@ def render(state, ident, inputs, package_id, preview, candidate=False):
         "아래 identity는 export 시 Git에서 측정했다. product_audit_base는 제품 코드가 감사된 역사 기준이며 "
         "current head와 혼동하지 않는다. source digest는 자기참조를 피하기 위해 payload 밖 manifest에 둔다.\n\n```json\n" +
         encode(resolved).decode("utf-8") + "```\n").encode("utf-8")
+    payload[NAMES[11]] += ("\n\n" + inputs["LEGACY_SOURCE_INTEGRATION.md"]).encode("utf-8")
     payload[NAMES[4]] += ("\n\n" + inputs["FIRST_ADAPTER_DECISION.md"]).encode("utf-8")
     payload[NAMES[8]] = ("# Active task ledger\n\nCurrent fact는 02의 JSON만 사용한다.\n\n"
         f"- completed task: `{state.get('completed_task', '')}`\n"

@@ -40,3 +40,18 @@ P3-A Copy/Apply uses explicit clipboard paths; future browser adapter has no cli
 ## Unresolved design gates
 
 Extension/native-host installation and controlled-editor mutation/undo semantics require separate live prototypes. Isolated worlds do not make DOM trustworthy. Browser version, accessibility, IME, native-host disconnect, allowlist enforcement, teardown race and mutation receipts must be measured. No new adapter, IPC schema or monitoring permission is implemented by this task.
+
+
+## Preserved legacy requirements (2026-10-05 integration)
+Selection/document text is untrusted input, never instructions granting runtime
+or Provider authority. Preserve matched-approved terminology only, no persistent
+selected/generated/document history or plaintext credentials, redacted typed
+Provider diagnostics, process ownership, cancellation and verified cleanup.
+These are requirements; the old blanket "implemented" statement is not evidence.
+Adapters retain explicit opt-in, exact document identity/revision/changed range,
+bounded incremental work and proven rebase or stale refusal. Qualify adapters
+sequentially; a named file format is not an editor mutation capability. Current
+implementation evidence remains Source02/06, not the historical NOT_IMPLEMENTED
+labels quoted in the legacy appendix. Three Providers and the writing contract
+remain existing design requirements; the missing standalone multi-provider plan
+cannot be reconstructed from its filename or the supplied Master summary.

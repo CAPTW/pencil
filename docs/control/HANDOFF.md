@@ -1434,3 +1434,14 @@ authoritative00-11, not total Project inventory. Prompts retain missing/duplicat
 ambiguous-current-version refusal and never treat retained history as authority.
 Regenerate Source02 and fresh-chat expected JSON together. No product changes,
 new runtime tests, main adoption or claimed external SEMANTIC_PASS in this repair.
+
+
+## Supplied legacy ZIP integration
+Read all seven Markdown files in Owner Downloads.zip. Preserved exact originals
+with SHA256 in LEGACY_SOURCE_INTEGRATION and mapped durable requirements into
+Charter/Architecture; Source11 includes the complete mapping/history appendix.
+Historical no-task/no-P3B and R6 main/artifact/account/acceptance statements are
+not current authority. Multi-provider architecture plan is absent:7/8 integrated,
+1/8 NOT_READ_NOT_INTEGRATED. Exact current12 export retained; no Project deletion,
+product code change or new runtime acceptance. External fresh-chat verification
+still required. Evidence grammar-legacy-source-integration-20261005.
