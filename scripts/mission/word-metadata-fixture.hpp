@@ -14,6 +14,7 @@ struct Node final:IDispatch {
     bool allowText=false;
     std::wstring text;
     Node* identity=this;
+    IUnknown* extension=nullptr; // Optional inert test interface provider.
     std::map<std::wstring,Property> values;
     std::map<DISPID,std::wstring> names;
     std::wstring missing,wrong,failed;
@@ -25,7 +26,7 @@ struct Node final:IDispatch {
         if(!out)return E_POINTER;*out=nullptr;
         if(id==IID_IUnknown){*out=static_cast<IUnknown*>(identity);identity->AddRef();return S_OK;}
         if(id==IID_IDispatch){*out=static_cast<IDispatch*>(this);AddRef();return S_OK;}
-        return E_NOINTERFACE;
+        return extension?extension->QueryInterface(id,out):E_NOINTERFACE;
     }
     ULONG STDMETHODCALLTYPE AddRef() override{return InterlockedIncrement(&refs);}
     ULONG STDMETHODCALLTYPE Release() override{return InterlockedDecrement(&refs);}

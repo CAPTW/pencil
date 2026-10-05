@@ -1,7 +1,7 @@
 // Owned isolated RichEdit store, NOT Word/Office or installed-app qualification.
 #include "../../src-tauri/native/tsf_selected_range.hpp"
 #include "../../src-tauri/native/word_dispatcher.hpp"
-#include "word-metadata-fixture.hpp"
+#include "word-events-fixture.hpp"
 #include <richedit.h>
 #include <cstdio>
 using namespace grammar;
@@ -67,18 +67,25 @@ int wmain() {
         SendMessageW(edit,EM_SETEDITSTYLE,SES_USECTF,SES_USECTF);SetForegroundWindow(top);SetFocus(edit);pump(300);
         ComPtr<ITfDocumentMgr> document;ComPtr<ITfContext> context;
         if(FAILED(manager->GetFocus(&document)) || !document || FAILED(document->GetTop(&context)) || !context)return 6;
-        for(unsigned scenario=0;scenario<15;++scenario) {
+        for(unsigned scenario=0;scenario<21;++scenario) {
             std::wstring expected=L"hello world suffix",selected;
             SetWindowTextW(edit,expected.c_str());SendMessageW(edit,EM_SETSEL,6,11);pump(20);
             Fixture f;f.hwnd=top;f.window.number(L"Hwnd",static_cast<LONG>(reinterpret_cast<INT_PTR>(top)));
+            Events events;f.app.extension=static_cast<IConnectionPointContainer*>(&events);
             f.window.object(L"Application",&f.app);f.range.number(L"Start",6);f.range.number(L"End",11);
             f.range.allowText=true;f.range.text=L"world";f.range.values[L"Text"]={VT_BSTR,0,nullptr};
             auto port=std::make_shared<Port>(&f,edit,top);bool authorized=true;
             auto token=std::make_shared<int>(0);std::weak_ptr<void> lifetime=token;
             auto actor=std::make_unique<WordTargetDispatcher>(client,token);token.reset();
-            auto begin=[&]{return actor->begin_capture(context.Get(),edit,top,port,true,[&]{return authorized;},deadline());};
+            std::function<void()> onAuthority;
+            auto begin=[&]{return actor->begin_capture(context.Get(),edit,top,port,true,[&]{if(onAuthority)onAuthority();return authorized;},deadline());};
             bool ok=true;unsigned mutations=0;
-            if(scenario==8) {
+            if(scenario==19) {
+                bool closeRefused=false,restartRefused=false;
+                events.onFind=[&]{closeRefused=!actor->close();restartRefused=!begin();printf("reentrant close_refused=%d restart_refused=%d\n",closeRefused,restartRefused);fflush(stdout);};
+                ok=!begin() && closeRefused && restartRefused && !actor->pending();
+                events.onFind={};
+            } else if(scenario==8) {
                 ok=!actor->begin_capture(context.Get(),edit,top,port,true,[&]{return authorized;},std::chrono::steady_clock::now()-std::chrono::seconds(1)) && !actor->pending();
             } else {
                 ok=begin() && actor->pending();const auto oldId=actor->capture_id();auto id=oldId;
@@ -95,7 +102,18 @@ int wmain() {
                         ok=ok && id>oldId && !actor->begin_accept(oldId,L"stale",deadline()) && actor->selected_text(id,selected);
                     }
                     if(scenario==9)ok=ok && !actor->cancel_capture(id+100);
-                    if(scenario==10) {
+                    if(scenario==15)events.fire();
+                    if(scenario==16)events.fire(99999);
+                    if(scenario==17){events.closeResult=E_FAIL;ok=ok && !actor->close() && !begin();events.closeResult=S_OK;}
+                    if(scenario==18)f.range.onInvoke=[&](const std::wstring& name){if(name==L"Text")events.fire();};
+                    if(scenario==20) {
+                        bool closeRefused=false,restartRefused=false,observing=false;
+                        onAuthority=[&]{if(!observing){observing=true;closeRefused=!actor->close();restartRefused=!begin();}};
+                        ok=ok && !actor->selected_text(id,selected) && selected.empty() && closeRefused && restartRefused && actor->capture_id()==0;
+                        onAuthority={};
+                    } else if(scenario==15 || scenario==16 || scenario==17) {
+                        ok=ok && !actor->begin_accept(id,L"revoked",deadline());
+                    } else if(scenario==10) {
                         bool refused=false;
                         std::thread other([&]{refused=!actor->begin_accept(id,L"wrong thread",deadline());});other.join();ok=ok && refused;
                     } else if(scenario==11) {
@@ -126,7 +144,7 @@ int wmain() {
                 }
             }
             ok=ok && !actor->pending() && readFixture(edit)==expected && actor->close();
-            actor.reset();ok=ok && lifetime.expired() && f.balanced();
+            actor.reset();ok=ok && lifetime.expired() && f.balanced() && events.refs==1 && !events.sink;
             printf("case=%u pass=%d mutations=%u\n",scenario,ok,mutations);fflush(stdout);
             if(!ok)exitCode=1;
         }
