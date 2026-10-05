@@ -19,6 +19,7 @@ class StandardEditDispatcher final {
         bool enabled=true, in_session=false;
         TfEditCookie cookie=TF_INVALID_COOKIE;
         std::chrono::steady_clock::time_point active_deadline{};
+        ULONGLONG active_deadline_ticks=0;
         StandardScopeIdentity scope;
         bool activating=false,scope_pending=false;
         ~State() {
@@ -29,9 +30,9 @@ class StandardEditDispatcher final {
         bool authority() const {
             StandardScopeIdentity current;
             return enabled&&lease&&lease->alive()&&in_session&&!activating&&!scope_pending&&
-                std::chrono::steady_clock::now()<active_deadline&&
+                GetTickCount64()<active_deadline_ticks&&std::chrono::steady_clock::now()<active_deadline&&
                 standard_edit_plain_scope(context.Get(),cookie,field,&current)&&current==scope&&
-                std::chrono::steady_clock::now()<active_deadline;
+                GetTickCount64()<active_deadline_ticks&&std::chrono::steady_clock::now()<active_deadline;
         }
     };
     class Sink final : public ITfTextEditSink {
@@ -85,11 +86,12 @@ class StandardEditDispatcher final {
         std::wstring replacement_;
         bool write_;
         const std::chrono::steady_clock::time_point deadline_;
+        const ULONGLONG deadline_ticks_;
     public:
         bool called=false,completed=false;
         DispatchStatus status=DispatchStatus::pending;
         std::wstring selected;
-        Session(std::shared_ptr<State> state,bool write,std::wstring replacement,std::chrono::steady_clock::time_point deadline):state_(std::move(state)),replacement_(std::move(replacement)),write_(write),deadline_(deadline) {}
+        Session(std::shared_ptr<State> state,bool write,std::wstring replacement,std::chrono::steady_clock::time_point deadline,ULONGLONG deadlineTicks):state_(std::move(state)),replacement_(std::move(replacement)),write_(write),deadline_(deadline),deadline_ticks_(deadlineTicks) {}
         ~Session(){clear_text();if(!replacement_.empty())SecureZeroMemory(replacement_.data(),replacement_.size()*sizeof(wchar_t));}
         void clear_text(){if(!selected.empty())SecureZeroMemory(selected.data(),selected.size()*sizeof(wchar_t));selected.clear();}
         HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id,void** out) override {
@@ -104,8 +106,8 @@ class StandardEditDispatcher final {
             called=true;status=DispatchStatus::rejected;
             struct Complete { Session& self; ~Complete(){self.state_->in_session=false;self.completed=true;} } complete{*this};
             try {
-                if(!state_->enabled||std::chrono::steady_clock::now()>=deadline_)return S_FALSE;
-                state_->in_session=true;state_->cookie=cookie;state_->active_deadline=deadline_;
+                if(!state_->enabled||std::chrono::steady_clock::now()>=deadline_||GetTickCount64()>=deadline_ticks_)return S_FALSE;
+                state_->in_session=true;state_->cookie=cookie;state_->active_deadline=deadline_;state_->active_deadline_ticks=deadline_ticks_;
                 if(!write_&&!standard_edit_plain_scope(state_->context.Get(),cookie,state_->field,&state_->scope))return S_FALSE;
                 if(!state_->authority()){GRAMMAR_EDIT_DIAG("standard_session authority_false write=%d\n",write_);return S_FALSE;}
                 if(!write_) {
@@ -146,8 +148,8 @@ public:
     bool executing()const{return(capture_&&capture_->called&&!capture_->completed)||(apply_&&apply_->called&&!apply_->completed);}
     uint64_t capture_id()const{return consumed_?0:id_;}
     bool begin_capture(ITfContext* context,HWND field,bool explicitOptIn,std::shared_ptr<ApplyConnectionLease> lease,
-        std::chrono::steady_clock::time_point deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5)) {
-        if(!on_thread()||pending()||(state_&&state_->activating)||!explicitOptIn||!lease||!lease->alive()||!context||next_==(std::numeric_limits<uint64_t>::max)()||std::chrono::steady_clock::now()>=deadline)return false;
+        std::chrono::steady_clock::time_point deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5),ULONGLONG deadlineTicks=MAXULONGLONG) {
+        if(!on_thread()||pending()||(state_&&state_->activating)||!explicitOptIn||!lease||!lease->alive()||!context||next_==(std::numeric_limits<uint64_t>::max)()||std::chrono::steady_clock::now()>=deadline||GetTickCount64()>=deadlineTicks)return false;
         cancel();capture_.Reset();apply_.Reset();state_.reset();
         state_=std::make_shared<State>();state_->context=context;state_->field=field;state_->lease=std::move(lease);state_->lifetime=lifetime_;
         std::weak_ptr<State> weak=state_;
@@ -155,7 +157,7 @@ public:
         ComPtr<Sink> sink;sink.Attach(new Sink(weak));
         if(FAILED(context->QueryInterface(IID_PPV_ARGS(&state_->subscription)))||
             FAILED(state_->subscription->AdviseSink(IID_ITfTextEditSink,sink.Get(),&state_->subscription_cookie))){cancel();return false;}
-        capture_.Attach(new Session(state_,false,{},deadline));id_=next_++;consumed_=false;
+        capture_.Attach(new Session(state_,false,{},deadline,deadlineTicks));id_=next_++;consumed_=false;
         if(!request(capture_.Get(),false)){cancel();capture_.Reset();return false;}return true;
     }
     DispatchStatus capture_status(){
@@ -183,9 +185,9 @@ public:
         }
         return can_apply(id);
     }
-    bool begin_apply(uint64_t id,std::wstring replacement,std::chrono::steady_clock::time_point deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5)){
-        if(!can_apply(id)||std::chrono::steady_clock::now()>=deadline)return false;
-        apply_.Attach(new Session(state_,true,std::move(replacement),deadline));consumed_=true;capture_->clear_text();
+    bool begin_apply(uint64_t id,std::wstring replacement,std::chrono::steady_clock::time_point deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5),ULONGLONG deadlineTicks=MAXULONGLONG){
+        if(!can_apply(id)||std::chrono::steady_clock::now()>=deadline||GetTickCount64()>=deadlineTicks)return false;
+        apply_.Attach(new Session(state_,true,std::move(replacement),deadline,deadlineTicks));consumed_=true;capture_->clear_text();
         if(!request(apply_.Get(),true)){cancel();apply_.Reset();return false;}return true;
     }
     DispatchStatus apply_status()const{return on_thread()&&apply_?apply_->status:DispatchStatus::rejected;}

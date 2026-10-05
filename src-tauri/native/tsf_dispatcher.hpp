@@ -50,17 +50,17 @@ public:
     }
     bool begin_capture(ITfContext* trustedContext, HWND trustedWindow,
                        bool explicitOptIn, std::shared_ptr<ApplyConnectionLease> lease,
-                       std::chrono::steady_clock::time_point deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5)) {
+                       std::chrono::steady_clock::time_point deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5), ULONGLONG deadlineTicks=MAXULONGLONG) {
         if (!on_thread() || next_capture_id_ == (std::numeric_limits<uint64_t>::max)() ||
-            !lease || !lease->alive() || pending() || std::chrono::steady_clock::now()>=deadline) return false;
+            !lease || !lease->alive() || pending() || std::chrono::steady_clock::now()>=deadline || GetTickCount64()>=deadlineTicks) return false;
         cancel(); apply_.Reset(); capture_.Reset(); binding_.reset();
         if (!explicitOptIn) return false;
         lease_ = std::move(lease);
         binding_ = std::make_unique<TsfDocumentBinding>(trustedContext, trustedWindow, true);
         if (!binding_->state->enabled) return false;
         std::weak_ptr<ApplyConnectionLease> weak = lease_;
-        capture_.Attach(new TsfCaptureSession(binding_->state, [weak] {
-            auto link = weak.lock(); return link && link->alive();
+        capture_.Attach(new TsfCaptureSession(binding_->state, [weak,deadlineTicks] {
+            auto link = weak.lock(); return link && link->alive() && GetTickCount64()<deadlineTicks;
         }, callback_lifetime_,deadline));
         capture_id_ = next_capture_id_++;
         HRESULT result = E_PENDING;
@@ -88,10 +88,11 @@ public:
         return on_thread() && !pending() && id != 0 && id == capture_id_ && capture_status() == DispatchStatus::captured;
     }
     bool begin_apply(uint64_t id, std::wstring replacement,
-        std::chrono::steady_clock::time_point deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5)) {
-        if (!can_apply(id) || std::chrono::steady_clock::now()>=deadline) return false;
+        std::chrono::steady_clock::time_point deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5), ULONGLONG deadlineTicks=MAXULONGLONG) {
+        if (!can_apply(id) || std::chrono::steady_clock::now()>=deadline || GetTickCount64()>=deadlineTicks) return false;
         auto grant = capture_->grant;
         grant->deadline=(std::min)(grant->deadline,deadline);
+        grant->deadline_ticks=deadlineTicks;
         auto verify = grant->verify_binding;
         std::weak_ptr<ApplyConnectionLease> weak = lease_;
         grant->verify_binding = [verify, weak](ITfContext* context, TfEditCookie cookie) {

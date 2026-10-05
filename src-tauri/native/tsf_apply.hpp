@@ -22,6 +22,7 @@ struct ApplyGrant {
     std::atomic<unsigned long long> revision{0};
     bool field_eligible = false;
     std::chrono::steady_clock::time_point deadline;
+    ULONGLONG deadline_ticks=MAXULONGLONG;
     // Recheck target-side authority inside the lock, including before mutation.
     // Missing binding is never permission to use a caller-supplied context.
     std::function<bool(ITfContext*, TfEditCookie)> verify_binding;
@@ -80,7 +81,7 @@ public:
         called = true; result = ApplyResult::rejected;
         diagnostic_stage = 1;
         if (!grant_ || !grant_->valid.exchange(false) || !grant_->field_eligible ||
-            grant_->revision.load() != revision_ || std::chrono::steady_clock::now() >= grant_->deadline ||
+            grant_->revision.load() != revision_ || (std::chrono::steady_clock::now() >= grant_->deadline || GetTickCount64() >= grant_->deadline_ticks) ||
             !context_ || source_.size() > 65534 || replacement_.empty() || replacement_.size() > 65534 ||
             source_.find(L'\0') != std::wstring::npos || replacement_.find(L'\0') != std::wstring::npos ||
             !grant_->verify_binding || !grant_->verify_binding(context_.Get(), cookie) ||
@@ -110,9 +111,9 @@ public:
         if (FAILED(range.As(&acp)) || FAILED(acp->GetExtent(&start, &length)) ||
             start != start_ || length != end_ - start_) return S_FALSE;
         if (grant_->revision.load() != revision_ || !grant_->field_eligible ||
-            std::chrono::steady_clock::now() >= grant_->deadline ||
+            (std::chrono::steady_clock::now() >= grant_->deadline || GetTickCount64() >= grant_->deadline_ticks) ||
             !grant_->verify_binding(context_.Get(), cookie) ||
-            std::chrono::steady_clock::now() >= grant_->deadline) return S_FALSE;
+            (std::chrono::steady_clock::now() >= grant_->deadline || GetTickCount64() >= grant_->deadline_ticks)) return S_FALSE;
         diagnostic_stage = 7;
         // Everything above runs inside the same TSF write session as SetText.
         ++mutation_calls;
