@@ -163,6 +163,11 @@ public:
         return lease;
     }
     const std::wstring& source() const { return snapshot_->source(); }
+    bool alive() const {
+        auto state = state_.lock();
+        return state && GetCurrentThreadId() == state->thread && guard(*state).current() &&
+            state->authority && state->authority() && grant_ && grant_->valid.load() && !grant_->claimed.load();
+    }
     ApplyResult accept(TfEditCookie cookie, const std::wstring& reviewed, unsigned& reads, unsigned& mutations,
         std::shared_ptr<WordRequestGate> operation = {}) {
         // Caller owns the actual write session and explicit reviewed Accept.
