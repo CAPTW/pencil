@@ -13,7 +13,8 @@ const hashes={};for(const name of ['codex-pencil.exe','target-apply.dll']){
  hashes[name]=createHash('sha256').update(await readFile('C:/GrammarTrial/'+name)).digest('hex');
  assert.equal(hashes[name],manifest.files.find(x=>x.path===name).sha256);
 }
-const report={status:'FAIL',sourceCommit:manifest.sourceCommit,hashes,checks:[],providerLive:'NOT_RUN',classification:'INSTALLED_APP_TARGET_SIDE_APPLY_OWNED_RICHEDIT_ONLY'};
+const editorKind=process.env.GRAMMAR_TEST_EDITOR_KIND??'richedit';assert.ok(['standard','richedit'].includes(editorKind));
+const report={status:'FAIL',sourceCommit:manifest.sourceCommit,hashes,checks:[],providerLive:'NOT_RUN',classification:editorKind==='standard'?'INSTALLED_APP_TARGET_SIDE_ACCEPT_OWNED_SINGLELINE_EDIT_ONLY':'INSTALLED_APP_TARGET_SIDE_APPLY_OWNED_RICHEDIT_ONLY'};
 const pass=name=>{report.checks.push(name);console.log('PASS '+name);};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(name,probe,ms=15000){const end=Date.now()+ms;while(Date.now()<end){const result=await probe();if(result)return result;await sleep(100);}throw new Error('timeout: '+name);}

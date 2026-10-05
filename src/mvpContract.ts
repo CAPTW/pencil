@@ -59,6 +59,10 @@ const RUNTIME_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   settings_previous_stage_failed: "Settings could not be saved. Check that the settings folder is writable and not locked, then retry. Previous settings remain active.",
   cloud_processing_disclosure_required: "Review cloud processing before using Deep.",
   provider_busy: "Another Provider request is still running. Try again in a moment.",
+  native_capture_unavailable: "This field cannot provide a verified selection. Select text in a supported field and try again.",
+  native_apply_unavailable: "Direct replacement is unavailable in this editor.",
+  native_apply_cleanup_pending: "The previous editor connection is still closing. Wait before capturing another selection.",
+  native_capture_cancelled: "Capture was cancelled. Select the text again when you are ready.",
   rewrite_result_ready: "A result is already ready for this capture. Copy it, or capture the selection again to run Deep again.",
   codex_unavailable: "Codex CLI was not found. Instant still works; Deep with Codex needs it, or choose another Provider in Settings.",
 };

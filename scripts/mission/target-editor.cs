@@ -57,14 +57,15 @@ public static class Program {
   if(Environment.GetEnvironmentVariable("USERNAME")!="WDAGUtilityAccount")return 2;
   var identity=System.Security.Principal.WindowsIdentity.GetCurrent();
   if(new System.Security.Principal.WindowsPrincipal(identity).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator))return 3;
-  var start=new System.Diagnostics.ProcessStartInfo(@"C:\GrammarPayload\target-service-probe.exe","--target 0");
+  bool standard=Environment.GetEnvironmentVariable("GRAMMAR_TEST_EDITOR_KIND")=="standard";
+  var start=new System.Diagnostics.ProcessStartInfo(@"C:\GrammarPayload\target-service-probe.exe",standard?"--target 100":"--target 0");
   start.UseShellExecute=false;start.CreateNoWindow=true;start.WindowStyle=System.Diagnostics.ProcessWindowStyle.Hidden;
   var child=System.Diagnostics.Process.Start(start);IntPtr top=IntPtr.Zero;
   try {
    DateTime limit=DateTime.UtcNow.AddSeconds(10);
    do{top=OwnedTarget.Find((uint)child.Id);if(top!=IntPtr.Zero)break;System.Threading.Thread.Sleep(20);}while(DateTime.UtcNow<limit&&!child.HasExited);
    if(top==IntPtr.Zero)throw new Exception("Owned target not ready");
-   IntPtr field=OwnedTarget.FindWindowExW(top,IntPtr.Zero,"RichEdit50W",null);
+   IntPtr field=OwnedTarget.FindWindowExW(top,IntPtr.Zero,standard?"Edit":"RichEdit50W",null);
    if(field==IntPtr.Zero)throw new Exception("Owned field absent");
    Console.WriteLine("READY "+child.Id);string line;
    while((line=Console.ReadLine())!=null){

@@ -331,7 +331,12 @@ impl Api for WindowsApi {
 }
 
 /// Admission reads only window metadata. The target service independently
-/// checks input scope/protection before any TSF text read.
+/// checks input scope/protection before any document text read.
+fn direct_control_candidate(class_name: &str, style: u32) -> bool {
+    class_name.eq_ignore_ascii_case("RichEdit50W")
+        || (class_name.eq_ignore_ascii_case("Edit") && style & 0x0004 == 0)
+}
+
 #[cfg(windows)]
 pub(crate) fn focused_field(
     target: crate::capture_session::WindowTarget,
@@ -344,10 +349,11 @@ pub(crate) fn focused_field(
     let Some(field) = port.focused_control(target.hwnd) else {
         return Ok(None);
     };
+    let style = port.style(field);
     if !port
         .class_name(field)
         .and_then(|name| String::from_utf16(&name).ok())
-        .is_some_and(|name| name.eq_ignore_ascii_case("RichEdit50W"))
+        .is_some_and(|name| direct_control_candidate(&name, style))
     {
         return Ok(None);
     }
@@ -356,7 +362,7 @@ pub(crate) fn focused_field(
         || !port.is_unicode(field)
         || !port.is_visible(field)
         || !port.is_enabled(field)
-        || port.style(field) & (0x20 | 0x800) != 0
+        || style & (0x20 | 0x800) != 0
     {
         return Err("native_sensitive_or_unavailable_editor".into());
     }
@@ -379,6 +385,15 @@ pub(crate) fn focused_field(
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    #[test]
+    fn direct_control_admission_excludes_multiline_edit_and_document_class_guesses() {
+        assert!(direct_control_candidate("Edit", 0));
+        assert!(!direct_control_candidate("Edit", 0x0004));
+        assert!(direct_control_candidate("RichEdit50W", 0x0004));
+        for name in ["_WwG", "EXCEL7", "HwpCtrl", "Chrome_RenderWidgetHostHWND", "DOCX", "Text"] {
+            assert!(!direct_control_candidate(name, 0));
+        }
+    }
     #[derive(Default)]
     struct Fake {
         creates: AtomicU64,

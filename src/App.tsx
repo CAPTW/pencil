@@ -2347,7 +2347,7 @@ export default function App() {
                       ? "Instant local candidate"
                       : result
                         ? `Deep · ${providerDisplayName(result.providerUsed)}`
-                        : "Edit the text before copying it."}
+                        : "Review and edit the replacement before accepting or copying it."}
                   </span>
                 </div>
                 {result ? (
@@ -2490,9 +2490,9 @@ export default function App() {
               <div className="result-actions">
                 {selection?.directApply ? (
                   <button className="primary-button" type="button" data-testid="apply-result"
-                    aria-label="Apply result to captured field" disabled={!canCopy}
+                    aria-label="Accept replacement in captured field" disabled={!canCopy}
                     onClick={() => void copyResult(true)}>
-                    {isCopying ? <Loader2 className="spin" size={16} /> : null} Apply
+                    {isCopying ? <Loader2 className="spin" size={16} /> : null} Accept
                   </button>
                 ) : null}
                 <button
