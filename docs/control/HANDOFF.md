@@ -1511,3 +1511,38 @@ now verifies two paragraphs before refusal. R10 natural Office/Python0, cleanupt
 forcedfalse/processes0. Existing plain regression and installed widget qualification
 are next; no F06 or general Writer acceptance promotion yet.
 Evidence:D:/dev/grammar-evidence/grammar-writer-uniform-format-20261005.
+
+
+## Uniform Writer installed qualification — 2026-10-05
+Product OXT2a16115 (aa1f4df00d357f5e0b2127cd3360c2e9d25c4157f55f4d65e1410a2d6ce509dc)
+with --enable-saved-docx --enable-uniform-format and unchanged app/native0fc8624
+passes guest-product-r1:8 installed widget checks plus5 enclosing checks. Actual
+hotkey/Instant/edited Accept/reread/Undo preserves every portion's script weights,
+RGB and alignment. Source edit and Disable preserve the document. The Disable
+UI reports "Apply outcome unconfirmed"; exact reread separately proves unchanged
+text, not a confirmed protocol rejection. No automatic retry or Save.
+
+Qualification is only pinned LibreOffice26.2.4.2, owned fresh profile, one Standard
+body paragraph with homogeneous supported weights, opaque non-theme RGB and
+alignment, new or local DOCX. No mixed formats, arbitrary interop metadata, theme
+color, hidden fields, multiple formatted paragraphs or complex structures.
+Ordinary product builds still default both capabilities off; previously qualified
+plain mode stays separate. This is not general rich DOCX or normal-profile support.
+
+Plain regression:73 checks/32 cycles PASS. Formatted R10:28 checks/16 cycles PASS.
+Product app/Office/Python natural0, forcedfalse, zero residual processes, complete
+uninstall. Exact original app/DLL hashes and new OXT input hashes are separate
+receipts in D:/dev/grammar-evidence/grammar-writer-uniform-format-20261005.
+Final R11:32 checks/16 cycles PASS, including inherited-style-change refusal,
+explicit Save after Redo and exact text/format after reopening that saved file.
+Natural Office/Python0, cleanuptrue, forcedfalse/processes0; every guest stopped.
+F06 and Source generator now express this bounded union while preserving old
+unsaved-only and saved-plain snapshots. Same-integrator review, no independent
+reviewer. Mission INCOMPLETE, main unchanged, no push or live Provider.
+
+Next product work: mixed-format range preservation and paragraph-aware Undo.
+Keep the uniform capability bounded until independent ranges/styles and structural
+changes have actual installed qualification. Existing app/native0fc8624 remains
+receipt-bound; no full Rust rebuild is claimed in this Python-only expansion.
+Source behavior77, package4, bridge6 and governance/self-test PASS. Source scope
+changes preserve prior saved-plain and unsaved-only snapshots as history.

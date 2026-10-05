@@ -1,4 +1,17 @@
-> Latest saved Writer checkpoint (2026-10-05): F06 now includes local saved/reopened
+> Current uniform-format checkpoint (2026-10-05): app/native0fc8624 plus product
+> OXT2a16115 with explicit saved/uniform options qualifies one Standard paragraph
+> with homogeneous script weights, opaque non-theme RGB and alignment in owned
+> pinned LibreOffice26.2.4.2. Installed widget8/enclosing5, formatted core32/16 cycles,
+> plain core73/32 cycles PASS; explicit synthetic Save/reopen and cleanup confirmed.
+> Plain-mode OXT5a339b8 qualification remains separate. Mixed runs, multiple formatted
+> paragraphs, structures, normal profiles/IME/other apps/live Providers remain
+> unqualified or NOT_RUN. Next work within the authorized global-adapter task is
+> mixed-format range preservation and paragraph-aware Undo, not renewed saved-plain
+> qualification. Mission INCOMPLETE; no main adoption or push.
+> Earlier checkpoint notes below are historical scope statements, superseded by
+> this paragraph and current state F06. Evidence: grammar-writer-uniform-format-20261005.
+
+> Prior saved Writer checkpoint (2026-10-05): F06 now includes local saved/reopened
 > default-style plain DOCX with pinned26.2.4.2, app/native0fc8624 and product
 > OXT5a339b8 built with --enable-saved-docx. Actual installed widget6 plus core73
 > and32 cycles PASS; exact Apply/Undo, save revocation, readonly/user-edit/Disable
