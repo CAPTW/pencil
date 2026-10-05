@@ -109,3 +109,18 @@ window greeting, disposal and cleanup. R26 additionally rejects every writable
 Char property whose actual portion state is non-default, covering unsupported
 appearance attributes beyond the explicit default-style value comparisons.
 The old aggregate cursor state inspection is not used to qualify rich formatting.
+
+
+Final installed candidate (R27)
+------------------------------
+The clean0fc8624 package and paired OXT passed the actual installed widget flow
+with all post-review guards:6 checks, exact replacement/Undo, source-change and
+Disable refusal, natural exit and complete uninstall. Evidence is
+D:/dev/grammar-evidence/grammar-writer-activation-20261005/guest-r27.
+This supersedes the pending statements in earlier checkpoints above. Enable the
+bound new document from the Writer Grammar menu panel, select text and press
+Ctrl+Shift+G, review/edit the Instant draft, then Accept. Re-enable explicitly
+for another review. Only the pinned26.2.4.2 disposable-profile default-style
+plain-body scope is qualified. Saved/rich documents and normal-profile use are
+not qualified. No automatic Provider call is required. Close LibreOffice before
+removing the paired installation.

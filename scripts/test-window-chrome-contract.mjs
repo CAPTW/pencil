@@ -79,20 +79,37 @@ assert.ok(
   "drag handler must call the tested policy with the current Tauri window",
 );
 
-// Copy is the only result action: there is no branch that reports a change
-// inside another application, so nothing hides the widget as if it had applied.
-assert.doesNotMatch(
-  appSource,
-  /outcome\.status === "applied"/,
-  "no Apply success branch may exist; the result is only copied",
-);
-
-const copiedFallbackBranch = appSource.match(
-  /if \(outcome\.status === "copied_fallback"\) \{(?<body>[\s\S]*?)\n\s*\}/,
-);
-assert.ok(copiedFallbackBranch?.groups?.body, "copied branch must exist");
-assert.doesNotMatch(
-  copiedFallbackBranch.groups.body,
-  /dismiss\(/,
-  "after Copy the widget must remain visible so the status and the copied draft cannot be lost",
-);
+// Reviewed Apply is now supported. Preserve the original visibility requirement
+// for both outcomes, and for refusals; inspect the complete function, not a
+// regex ending at the first nested closing brace.
+const appAst = ts.createSourceFile("App.tsx", appSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+let resultAction;
+function findAction(node) {
+  if (ts.isFunctionDeclaration(node) && node.name?.text === "copyResult") resultAction = node;
+  ts.forEachChild(node, findAction);
+}
+findAction(appAst);
+assert.ok(resultAction?.body, "session-bound result action must exist");
+const actionSource = resultAction.body.getText(appAst);
+assert.match(actionSource, /directApply && !selection\?\.directApply/, "Apply requires the captured capability");
+assert.match(actionSource, /sameCaptureToken\(currentTokenRef\.current, token\)/, "stale completions must be rejected");
+assert.match(actionSource, /parseApplyOutcome\(rawOutcome\)/, "backend outcomes must be validated");
+const branches = [];
+function inspectAction(node) {
+  if (ts.isCallExpression(node)) {
+    assert.doesNotMatch(node.expression.getText(appAst), /(?:^|\.)(?:dismiss|hide|close|setDraft)$/, "result handling must preserve the visible draft");
+  }
+  if (ts.isIfStatement(node)) branches.push(node);
+  ts.forEachChild(node, inspectAction);
+}
+inspectAction(resultAction.body);
+const success = branches.find(node => {
+  const condition = node.expression.getText(appAst);
+  return condition.includes('outcome.status === "copied_fallback"') && condition.includes('outcome.status === "applied"');
+});
+assert.ok(success, "confirmed Copy and Apply must share the visible completion path");
+assert.match(success.thenStatement.getText(appAst), /dismissButtonRef\.current\?\.focus\(\)/, "completion must offer explicit Dismiss");
+const refusal = branches.find(node => node.expression.getText(appAst).includes('outcome.status === "indeterminate"'));
+assert.ok(refusal, "uncertain Apply must have its own outcome path");
+assert.doesNotMatch(refusal.thenStatement.getText(appAst), /Applied to the captured field/, "uncertainty cannot be presented as success");
+console.log("Window chrome and reviewed-result visibility contract PASS");
