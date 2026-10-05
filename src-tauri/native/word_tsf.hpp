@@ -6,6 +6,12 @@
 #include "tsf_subscription.hpp"
 
 namespace grammar {
+struct WordRequestGate {
+    std::atomic<bool> valid{true};
+    const std::chrono::steady_clock::time_point deadline;
+    explicit WordRequestGate(std::chrono::steady_clock::time_point until) : deadline(until) {}
+    bool alive() const { return valid.load() && std::chrono::steady_clock::now() < deadline; }
+};
 struct WordTsfState {
     const DWORD thread = GetCurrentThreadId();
     ComPtr<ITfContext> context;
@@ -14,13 +20,14 @@ struct WordTsfState {
     std::atomic<bool> enabled{false};
     std::atomic<uint64_t> revision{0};
     std::weak_ptr<SelectedRangeGrant> outstanding;
+    std::function<bool()> authority;
     void invalidate() {
         ++revision;
         if (auto grant = outstanding.lock()) grant->valid = false;
         outstanding.reset();
     }
     bool topology(ITfContext* current, TfEditCookie cookie) const {
-        if (GetCurrentThreadId() != thread || !enabled || !context ||
+        if (GetCurrentThreadId() != thread || !enabled || !context || !authority || !authority() ||
             !selected_range_detail::same(context.Get(), current)) return false;
         ComPtr<ITfContextView> view; HWND window = nullptr;
         ComPtr<ITfDocumentMgr> document; ComPtr<ITfContext> top;
@@ -29,7 +36,7 @@ struct WordTsfState {
             SUCCEEDED(view->GetWnd(&window)) && window == field &&
             SUCCEEDED(context->GetDocumentMgr(&document)) && document &&
             SUCCEEDED(document->GetTop(&top)) && selected_range_detail::same(context.Get(), top.Get()) &&
-            selected_range_detail::selection(context.Get(), cookie, selected);
+            selected_range_detail::selection(context.Get(), cookie, selected) && authority();
     }
 };
 class WordTsfRevisionSink final : public ITfTextEditSink {
@@ -57,9 +64,11 @@ class WordTsfRevisionBinding final {
 public:
     const std::shared_ptr<WordTsfState> state = std::make_shared<WordTsfState>();
     WordTsfRevisionBinding(ITfContext* context, HWND field, HWND root,
-        std::shared_ptr<WordNativeWindowPort> port, bool explicitOptIn, std::shared_ptr<void> callbackLifetime) {
+        std::shared_ptr<WordNativeWindowPort> port, bool explicitOptIn, std::shared_ptr<void> callbackLifetime,
+        std::function<bool()> authority) {
         state->context = context; state->field = field; state->root = root; state->port = std::move(port);
-        if (!explicitOptIn || !context || !state->port || !callbackLifetime ||
+        state->authority = std::move(authority);
+        if (!explicitOptIn || !context || !state->port || !callbackLifetime || !state->authority ||
             !state->port->eligible(field, root, state->thread)) return;
         ComPtr<WordTsfRevisionSink> sink; sink.Attach(new WordTsfRevisionSink(state, std::move(callbackLifetime)));
         ComPtr<ITfSource> source;
@@ -89,6 +98,7 @@ class WordCorrelationLease final : public std::enable_shared_from_this<WordCorre
     const ULONGLONG deadline_;
     std::unique_ptr<TsfSelectedSnapshot> snapshot_;
     std::shared_ptr<SelectedRangeGrant> grant_;
+    std::shared_ptr<WordRequestGate> operation_;
     WordCorrelationLease(const std::shared_ptr<WordTsfState>& state)
         : state_(state), revision_(state->revision), deadline_(GetTickCount64() + 30000) {}
     WordObservationGuard guard(const WordTsfState& state) const {
@@ -96,8 +106,8 @@ class WordCorrelationLease final : public std::enable_shared_from_this<WordCorre
     }
     bool metadata(ITfContext* current, TfEditCookie cookie) const {
         auto state = state_.lock();
-        return state && guard(*state).current() && state->topology(current, cookie) && target_ &&
-            target_->matches(guard(*state)) && guard(*state).current();
+        return (!operation_ || operation_->alive()) && state && guard(*state).current() && state->topology(current, cookie) && target_ &&
+            target_->matches(guard(*state)) && guard(*state).current() && (!operation_ || operation_->alive());
     }
     // Called ONLY after a real context/cookie/selection and privacy metadata
     // check. This selected Text getter is separate from metadata-only helpers.
@@ -127,11 +137,12 @@ class WordCorrelationLease final : public std::enable_shared_from_this<WordCorre
     }
 public:
     static std::shared_ptr<WordCorrelationLease> capture(const std::shared_ptr<WordTsfState>& state,
-        TfEditCookie cookie, unsigned& reads) {
-        if (!state || GetCurrentThreadId() != state->thread || !state->enabled ||
+        TfEditCookie cookie, unsigned& reads, std::shared_ptr<WordRequestGate> operation = {}) {
+        if ((operation && !operation->alive()) || !state || GetCurrentThreadId() != state->thread || !state->enabled ||
             !state->topology(state->context.Get(), cookie)) return {};
         state->invalidate(); // A newer capture revokes the previous lease.
         auto lease = std::shared_ptr<WordCorrelationLease>(new WordCorrelationLease(state));
+        lease->operation_ = std::move(operation);
         lease->target_ = WordTargetIdentity::capture(state->port, state->field, state->root, lease->guard(*state));
         if (!lease->target_) return {};
         auto grant = std::make_shared<SelectedRangeGrant>();
@@ -148,11 +159,15 @@ public:
         lease->grant_ = grant; state->outstanding = grant;
         lease->snapshot_ = TsfSelectedSnapshot::capture(state->context.Get(), cookie, lease->revision_, grant, reads);
         if (!lease->snapshot_ || !lease->word_source_is(lease->snapshot_->source(), state->context.Get(), cookie)) return {};
+        lease->operation_.reset(); // Capture deadline is not the review lease.
         return lease;
     }
     const std::wstring& source() const { return snapshot_->source(); }
-    ApplyResult accept(TfEditCookie cookie, const std::wstring& reviewed, unsigned& reads, unsigned& mutations) {
+    ApplyResult accept(TfEditCookie cookie, const std::wstring& reviewed, unsigned& reads, unsigned& mutations,
+        std::shared_ptr<WordRequestGate> operation = {}) {
         // Caller owns the actual write session and explicit reviewed Accept.
+        if (operation_ || (operation && !operation->alive())) { cancel(); return ApplyResult::rejected; }
+        operation_ = std::move(operation);
         return snapshot_ ? snapshot_->apply(cookie, reviewed, reads, mutations) : ApplyResult::rejected;
     }
     void cancel() { if (grant_) grant_->valid = false; }
