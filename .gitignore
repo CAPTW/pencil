@@ -21,3 +21,7 @@ src-tauri/gen/
 **/credentials.json
 **/settings.json
 
+
+# Python adapter/test bytecode is not source.
+__pycache__/
+*.py[cod]

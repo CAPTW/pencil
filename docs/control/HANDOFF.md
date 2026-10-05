@@ -1311,3 +1311,20 @@ widget acceptance, saved DOCX qualification, physical IME or live Provider tests
 Next: product-only visible opt-in/disable entrypoint, paired installation,
 authenticated installed hotkey/Instant/reviewed Accept, negative cases and review.
 No main adoption, remote push, normal-profile installation or live Provider use.
+
+
+### Writer product-entry checkpoint (R21)
+Product-only OXT registers only the visible review-panel job/menu, not the fixture
+XJob or hooks. Paired library path/hash config, default-off, explicit per-document
+Enable, Disable/close and one-review completion are implemented. Native builds
+still require explicit Writer image/path input; defaults remain disabled.
+R21 product extension/native client9 checks PASS: actual menu opens disabled,
+accessible Enable, exact native capture/Accept reread/Undo, no silent rearm and
+Disable refusal. Office/Python exit0, natural cleanup and processes0. R16-R18
+failed test accessibility lookup (pinned26.2.4.2 uses peer XAccessible property;
+button names include generated mnemonics). R19 foreground assertion and R20
+setup focus timeout remain FAIL; R21 adds diagnostics and passes, not proof that
+all focus variability is resolved. Installed Grammar widget is still NOT_RUN.
+Package boundary2 and bridge6 tests PASS; syntax/governance PASS. Product widget
+fixture/guest installer is prepared for the next clean source-bound build.
+No normal-profile install, saved-document support, main adoption or publication.
