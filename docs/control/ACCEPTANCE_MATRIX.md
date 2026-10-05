@@ -1,4 +1,17 @@
-> Current paragraph-aware checkpoint (2026-10-06): OXT9443ff2 with explicit
+> Current cross-format checkpoint (2026-10-06): OXT600aa72 with explicit
+> saved/uniform/mixed/paragraph/cross-format options, paired app/native0fc8624.
+> In owned pinned LibreOffice26.2.4.2, select supported mixed bold/RGB runs within
+> ONE Standard paragraph; replacement uses first selected style, Undo restores
+> original runs. Policy is shown before Enable. Surrounding paragraphs and empty
+> typing styles remain preserved. Native47 (8 saved DOCX cycles) and installed
+> widget8/enclosing5 PASS with actual rereads/Undo, source-change and Disable
+> preservation, no automatic Save and natural cleanup/uninstall. Cross-paragraph
+> selections and complex structures remain refused. Next: paragraph-spanning
+> replacement semantics and range Undo. Actual Office/Hancom, IME, normal profiles
+> and live Providers remain unqualified/NOT_RUN. Mission INCOMPLETE, no main/push.
+> Evidence: grammar-writer-cross-format-20261006. Earlier sections are historical.
+
+> Prior paragraph-aware checkpoint (2026-10-06): OXT9443ff2 with explicit
 > saved/uniform/mixed/paragraph options and unchanged app/native0fc8624 qualifies
 > one homogeneous selected range within one Standard paragraph of a bounded
 > multi-paragraph body in owned pinned LibreOffice26.2.4.2. Surrounding paragraph

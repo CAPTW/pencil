@@ -1,6 +1,6 @@
 # LibreOffice Writer adapter (implementation in progress)
 
-Current checkpoint: see "Paragraph-preserving candidate" below. The opted-in
+Current checkpoint: see "Cross-format selection candidate" below. The opted-in
 candidate OXT is installed-widget qualified only in the documented owned synthetic
 scope; general Writer acceptance is incomplete. Earlier sections below are
 chronological implementation/qualification history, not the current scope limit.
@@ -265,3 +265,21 @@ Owned synthetic qualification: native41 checks including8 saved DOCX cycles;
 installed widget8 plus5 enclosing checks. This is not general Writer/Office/Hancom
 or normal-profile acceptance. Physical IME/live Providers remain NOT_RUN.
 Evidence: D:/dev/grammar-evidence/grammar-writer-paragraphs-20261006/RESULT.md.
+
+## Cross-format selection candidate — 2026-10-06
+
+OXT600aa72 with app/native0fc8624, pinned LibreOffice26.2.4.2. Add
+`--enable-cross-format` to the saved/uniform/mixed/paragraph candidate switches.
+Default remains off. The panel shows the policy before Enable: replacement uses
+first selected style; Undo restores original styles. Select supported bold/RGB
+runs within ONE Standard body paragraph. Several surrounding paragraphs are
+allowed. Apply and Undo/Redo reread complete body text/format, preserving all
+unselected paragraphs and empty typing formats. No automatic file Save.
+
+Owned native47 and installed widget8/enclosing5 checks passed, including new and
+saved/reopened DOCX, Unicode, original-style restoration, source-change/Disable
+preservation and complete natural cleanup. Early native Undo failures are kept:
+resetting an inherited color to default produced automatic/transparent color;
+the implementation now restores the measured effective value. No generic theme
+or unsupported metadata admission was added. Cross-paragraph selection and
+complex structures remain unsupported. See grammar-writer-cross-format-20261006.

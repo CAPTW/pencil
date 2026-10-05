@@ -81,6 +81,8 @@ def run(repo):
         record("historical_uniform_writer_scope_preserved", lambda: ps.state_check(uniform_scope))
         mixed_scope = json.loads(ps.git(repo, "show", "6fe9718:control/state.json"))
         record("historical_mixed_writer_scope_preserved", lambda: ps.state_check(mixed_scope))
+        paragraph_scope = json.loads(ps.git(repo, "show", "07ee35d:control/state.json"))
+        record("historical_paragraph_writer_scope_preserved", lambda: ps.state_check(paragraph_scope))
     if state["p3a_status"] in (ps.APPLY_STATUS, ps.GLOBAL_APPLY_STATUS, ps.EDIT_APPLY_STATUS):
         changed = copy.deepcopy(state)
         next(d for d in changed["known_defects"] if d["id"] == "F-06")["verdict"] = "CONTAINED_COPY_ONLY_NATIVE_NOT_QUALIFIED"
