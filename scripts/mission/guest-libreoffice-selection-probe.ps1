@@ -14,12 +14,18 @@ try {
     # Application-only software rendering for this vGPU-disabled guest; no system setting changes.
     $env:SAL_SKIA='raster'
     $probe='C:\GrammarPayload\libreoffice-selection-probe.py'
-    if($env:GRAMMAR_AFFINITY_FIXTURE -eq '1'){
-        $registration=Start-Process "$program\unopkg.com" -ArgumentList @('-env:UserInstallation=file:///C:/GrammarLOProfile','add','--suppress-license','C:\GrammarPayload\GrammarAffinity.oxt') -WindowStyle Hidden -PassThru -RedirectStandardOutput C:\GrammarOutput\registration.log -RedirectStandardError C:\GrammarOutput\registration-error.log
+    if($env:GRAMMAR_AFFINITY_FIXTURE -eq '1' -or $env:GRAMMAR_WRITER_FIXTURE -eq '1'){
+        $component='C:\GrammarPayload\GrammarAffinity.oxt'
+        if($env:GRAMMAR_WRITER_FIXTURE -eq '1'){$component='C:\GrammarPayload\GrammarWriter.oxt'}
+        $registration=Start-Process "$program\unopkg.com" -ArgumentList @('-env:UserInstallation=file:///C:/GrammarLOProfile','add','--suppress-license',$component) -WindowStyle Hidden -PassThru -RedirectStandardOutput C:\GrammarOutput\registration.log -RedirectStandardError C:\GrammarOutput\registration-error.log
         if(-not $registration.WaitForExit(60000)){$registration.Kill($true);throw 'Fixture registration timeout'}
         if($registration.ExitCode -ne 0){throw 'Fixture registration failed'}
         $probe='C:\GrammarPayload\libreoffice-affinity-probe.py'
         $receipt.scope='fixture component UI affinity; no mutation'
+        if($env:GRAMMAR_WRITER_FIXTURE -eq '1'){
+            $probe='C:\GrammarPayload\libreoffice-writer-client.py'
+            $receipt.scope='experimental target-side Writer transaction; synthetic only'
+        }
     }
     $pipe='grammar_fixture_'+[guid]::NewGuid().ToString('N')
     $office=Start-Process "$program\soffice.com" -ArgumentList @('-env:UserInstallation=file:///C:/GrammarLOProfile','--norestore','--nofirststartwizard','--nologo','--nodefault',"--accept=pipe,name=$pipe;urp;StarOffice.ComponentContext") -WindowStyle Hidden -PassThru -RedirectStandardOutput C:\GrammarOutput\office.log -RedirectStandardError C:\GrammarOutput\office-error.log
@@ -27,9 +33,9 @@ try {
     $python=Start-Process "$program\python.exe" -ArgumentList @($probe,$pipe,'direct') -WindowStyle Hidden -PassThru -RedirectStandardOutput C:\GrammarOutput\python.log -RedirectStandardError C:\GrammarOutput\python-error.log
     if(-not $python.WaitForExit(120000)){ $python.Kill($true); $receipt.forced=$true; throw 'Owned Python probe timeout' }
     $receipt.pythonExit=$python.ExitCode
-    if($python.ExitCode -ne 0){throw 'UNO capability probe failed'}
     if(-not $office.WaitForExit(15000)){throw 'Office natural exit timeout'}
     $receipt.officeExit=$office.ExitCode
+    if($python.ExitCode -ne 0){throw 'UNO capability probe failed'}
     if($office.ExitCode -ne 0){throw 'Office exit failed'}
     $receipt.status='PASS'
 } catch { $receipt.status='FAIL'; $receipt.error=$_.Exception.Message }
