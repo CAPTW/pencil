@@ -3,7 +3,8 @@
 #include <cstdio>
 using namespace grammar;
 static void pump() { MSG m; while(PeekMessageW(&m,nullptr,0,0,PM_REMOVE)){TranslateMessage(&m);DispatchMessageW(&m);} }
-int wmain() {
+int wmain(int argc,wchar_t** argv) {
+    const bool autovscroll=argc==2&&std::wstring(argv[1])==L"--autovscroll";
     WCHAR user[128]{};GetEnvironmentVariableW(L"USERNAME",user,128);
     if(std::wstring(user)!=L"WDAGUtilityAccount")return 2;
     if(FAILED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)))return 3;
@@ -16,7 +17,7 @@ int wmain() {
         auto setScope=reinterpret_cast<SetScope>(GetProcAddress(library,"SetInputScope"));if(!setScope)return 5;
         for(int test=0;test<18;++test) {
             HWND top=CreateWindowW(L"STATIC",L"Grammar owned Edit scope",WS_OVERLAPPEDWINDOW|WS_VISIBLE,30,30,600,250,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
-            HWND field=CreateWindowW(L"Edit",L"hello world",WS_CHILD|WS_VISIBLE,10,10,550,100,top,nullptr,GetModuleHandleW(nullptr),nullptr);
+            HWND field=CreateWindowW(L"Edit",L"hello world",WS_CHILD|WS_VISIBLE|(autovscroll?ES_MULTILINE|ES_AUTOVSCROLL:0),10,10,550,100,top,nullptr,GetModuleHandleW(nullptr),nullptr);
             ShowWindow(top,SW_SHOW);ShowWindow(top,SW_SHOW);SetForegroundWindow(top);SetFocus(field);
             if(test!=2&&FAILED(setScope(field,test==1?IS_PASSWORD:IS_TEXT)))return 6;
             SendMessageW(field,EM_SETSEL,6,11);

@@ -245,10 +245,12 @@ bool start(HWND field, DWORD broker, uint64_t nonce) {
     WCHAR name[64]{};
     if (!GetClassNameW(field, name, 64)) return false;
     const bool standard = _wcsicmp(name, L"Edit") == 0;
-    // Multiline standard Edit has an unresolved one-step Undo limitation.
-    // Its prototype remains native-test-only; do not silently enable it here.
+    // Without native auto-vertical scrolling, multiline Edit loses deleted
+    // source from its Undo record. Never change an application's control style.
+    // The no-auto-scroll form remains excluded after its preserved Undo failures.
     if ((!standard && _wcsicmp(name, L"RICHEDIT50W") != 0) ||
-        (standard && (GetWindowLongPtrW(field, GWL_STYLE) & ES_MULTILINE)) || occupied.exchange(true)) return false;
+        (standard && (GetWindowLongPtrW(field, GWL_STYLE) & ES_MULTILINE) &&
+            !(GetWindowLongPtrW(field, GWL_STYLE) & ES_AUTOVSCROLL)) || occupied.exchange(true)) return false;
     struct ModuleOwner {
         HMODULE module = nullptr; bool transferred = false;
         ~ModuleOwner() { if (!transferred) { if (module) FreeLibrary(module); occupied = false; } }

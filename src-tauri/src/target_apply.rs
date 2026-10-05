@@ -334,7 +334,7 @@ impl Api for WindowsApi {
 /// checks input scope/protection before any document text read.
 fn direct_control_candidate(class_name: &str, style: u32) -> bool {
     class_name.eq_ignore_ascii_case("RichEdit50W")
-        || (class_name.eq_ignore_ascii_case("Edit") && style & 0x0004 == 0)
+        || (class_name.eq_ignore_ascii_case("Edit") && (style & 0x0004 == 0 || style & 0x0040 != 0))
 }
 
 #[cfg(windows)]
@@ -386,9 +386,10 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     #[test]
-    fn direct_control_admission_excludes_multiline_edit_and_document_class_guesses() {
+    fn direct_control_admission_requires_multiline_autovscroll_and_rejects_class_guesses() {
         assert!(direct_control_candidate("Edit", 0));
         assert!(!direct_control_candidate("Edit", 0x0004));
+        assert!(direct_control_candidate("Edit", 0x0044));
         assert!(direct_control_candidate("RichEdit50W", 0x0004));
         for name in ["_WwG", "EXCEL7", "HwpCtrl", "Chrome_RenderWidgetHostHWND", "DOCX", "Text"] {
             assert!(!direct_control_candidate(name, 0));

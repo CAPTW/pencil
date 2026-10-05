@@ -13,8 +13,8 @@ const hashes={};for(const name of ['codex-pencil.exe','target-apply.dll']){
  hashes[name]=createHash('sha256').update(await readFile('C:/GrammarTrial/'+name)).digest('hex');
  assert.equal(hashes[name],manifest.files.find(x=>x.path===name).sha256);
 }
-const editorKind=process.env.GRAMMAR_TEST_EDITOR_KIND??'richedit';assert.ok(['standard','richedit'].includes(editorKind));
-const report={status:'FAIL',sourceCommit:manifest.sourceCommit,hashes,checks:[],providerLive:'NOT_RUN',classification:editorKind==='standard'?'INSTALLED_APP_TARGET_SIDE_ACCEPT_OWNED_SINGLELINE_EDIT_ONLY':'INSTALLED_APP_TARGET_SIDE_APPLY_OWNED_RICHEDIT_ONLY'};
+const editorKind=process.env.GRAMMAR_TEST_EDITOR_KIND??'richedit';assert.ok(['standard','multiline','richedit'].includes(editorKind));
+const report={status:'FAIL',sourceCommit:manifest.sourceCommit,hashes,checks:[],providerLive:'NOT_RUN',classification:editorKind==='multiline'?'INSTALLED_APP_TARGET_SIDE_ACCEPT_OWNED_MULTILINE_AUTOVSCROLL_EDIT_ONLY':editorKind==='standard'?'INSTALLED_APP_TARGET_SIDE_ACCEPT_OWNED_SINGLELINE_EDIT_ONLY':'INSTALLED_APP_TARGET_SIDE_APPLY_OWNED_RICHEDIT_ONLY'};
 const pass=name=>{report.checks.push(name);console.log('PASS '+name);};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(name,probe,ms=15000){const end=Date.now()+ms;while(Date.now()<end){const result=await probe();if(result)return result;await sleep(100);}throw new Error('timeout: '+name);}
@@ -62,6 +62,12 @@ try{
  await capture('앞부분 😀 | ',' | 뒤쪽');await draft.fill('검토한 교체 문장 🙂');await apply.click();
  await until('Unicode partial Accept',async()=>await status.textContent()==='Applied to the captured field');
  assert.equal(await text(),'앞부분 😀 | 검토한 교체 문장 🙂 | 뒤쪽');pass('reviewed Korean emoji replacement preserves exact unselected prefix and suffix');
+ if(editorKind==='multiline'){
+  await capture('첫 줄\r\n','\r\n마지막 줄');await draft.fill('검토한 첫 문장\n두 번째 문장 🙂');await apply.click();
+  await until('multiline Accept',async()=>await status.textContent()==='Applied to the captured field');
+  assert.equal(await text(),'첫 줄\r\n검토한 첫 문장\n두 번째 문장 🙂\r\n마지막 줄');pass('multiline reviewed replacement preserves exact surrounding lines');
+  assert.equal(await command('UNDO'),'OK');assert.equal(await text(),'첫 줄\r\nplease seperate this.\r\n마지막 줄');pass('native multiline Undo restores full original source after Accept');
+ }
  await capture();await set('application changed its own text');await apply.click();
  await until('source rejection',async()=>await status.textContent()==='Apply unavailable - Copy is available');
  assert.equal(await text(),'application changed its own text');pass('application source change rejected without restore');

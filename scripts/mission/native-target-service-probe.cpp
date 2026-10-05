@@ -49,8 +49,9 @@ static LRESULT CALLBACK target_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM l
     return DefWindowProcW(hwnd,message,wp,lp);
 }
 static int target(int scenario) {
+    const bool multiline=scenario>=200;
     const bool standard=scenario>=100;
-    if(standard)scenario-=100;
+    if(standard)scenario-=multiline?200:100;
     if (FAILED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED))) return 20;
     ComPtr<ITfThreadMgr> manager; TfClientId client = TF_CLIENTID_NULL;
     if (FAILED(CoCreateInstance(CLSID_TF_ThreadMgr,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&manager))) || FAILED(manager->Activate(&client))) return 21;
@@ -63,7 +64,7 @@ static int target(int scenario) {
     if (!RegisterClassW(&wc)) return 23;
     HWND top = CreateWindowW(wc.lpszClassName,L"Grammar owned target",WS_OVERLAPPEDWINDOW|WS_VISIBLE,
         30,30,600,250,nullptr,nullptr,wc.hInstance,nullptr);
-    HWND edit = CreateWindowW(standard?L"Edit":L"RICHEDIT50W",L"hello world",WS_CHILD|WS_VISIBLE|(standard?0:ES_MULTILINE),
+    HWND edit = CreateWindowW(standard?L"Edit":L"RICHEDIT50W",L"hello world",WS_CHILD|WS_VISIBLE|(multiline?ES_MULTILINE|ES_AUTOVSCROLL:standard?0:ES_MULTILINE),
         10,10,550,150,top,nullptr,wc.hInstance,nullptr);
     if (!top || !edit) return 24;
     ShowWindow(top,SW_SHOW); ShowWindow(top,SW_SHOW);
@@ -85,7 +86,8 @@ int wmain(int argc,wchar_t** argv) {
     if (std::wstring(user)!=L"WDAGUtilityAccount" || !same_local_identity(GetCurrentProcess())) return 2;
     if (argc==3 && std::wstring(argv[1])==L"--target") return target(_wtoi(argv[2]));
     const bool reviewOnly=argc==2 && std::wstring(argv[1])==L"--standard-review";
-    const bool standard=reviewOnly||(argc==2 && std::wstring(argv[1])==L"--standard");
+    const bool multiline=argc==2 && std::wstring(argv[1])==L"--multiline";
+    const bool standard=multiline||reviewOnly||(argc==2 && std::wstring(argv[1])==L"--standard");
     HMODULE module=LoadLibraryExW(L"C:\\GrammarPayload\\target-apply.dll",nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (!module) { printf("dll_error=%lu\n",GetLastError()); return 3; }
     WCHAR executable[32768]{}; GetModuleFileNameW(nullptr,executable,32768);
@@ -111,7 +113,7 @@ int wmain(int argc,wchar_t** argv) {
     ShowWindow(controller,SW_SHOW);ShowWindow(controller,SW_SHOW);SetForegroundWindow(controller);
     int failures=0;
     for (int scenario=reviewOnly?13:0;scenario<14;++scenario) {
-        auto command=L"\""+std::wstring(executable)+L"\" --target "+std::to_wstring(scenario+(standard?100:0));
+        auto command=L"\""+std::wstring(executable)+L"\" --target "+std::to_wstring(scenario+(multiline?200:standard?100:0));
         STARTUPINFOW startup{}; startup.cb=sizeof(startup); startup.dwFlags=STARTF_USESHOWWINDOW; startup.wShowWindow=SW_HIDE;
 #ifdef GRAMMAR_NATIVE_TEST_DIAGNOSTICS
         startup.dwFlags|=STARTF_USESTDHANDLES;

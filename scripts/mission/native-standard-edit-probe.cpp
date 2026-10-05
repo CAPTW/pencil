@@ -24,7 +24,8 @@ static LRESULT CALLBACK parent_proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
 static WNDPROC prior=nullptr;
 static LRESULT CALLBACK custom_proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) { return CallWindowProcW(prior,hwnd,msg,wp,lp); }
 static void pump() { MSG m; while(PeekMessageW(&m,nullptr,0,0,PM_REMOVE)){TranslateMessage(&m);DispatchMessageW(&m);} }
-int wmain() {
+int wmain(int argc,wchar_t** argv) {
+    const bool autovscroll=argc==2&&std::wstring(argv[1])==L"--autovscroll";
     WCHAR user[128]{};GetEnvironmentVariableW(L"USERNAME",user,128);
     if(std::wstring(user)!=L"WDAGUtilityAccount") return 2;
     WNDCLASSW wc{};wc.lpfnWndProc=parent_proc;wc.hInstance=GetModuleHandleW(nullptr);wc.lpszClassName=L"GrammarStandardEditOwned";
@@ -32,7 +33,7 @@ int wmain() {
     int failures=0;
     for(int scenario=0;scenario<28;++scenario) {
         HWND top=CreateWindowW(wc.lpszClassName,L"Grammar standard Edit fixture",WS_OVERLAPPEDWINDOW|WS_VISIBLE,30,30,600,260,nullptr,nullptr,wc.hInstance,nullptr);
-        HWND field=CreateWindowW(L"Edit",L"hello world",WS_CHILD|WS_VISIBLE|((scenario==19||scenario==21)?0:ES_MULTILINE),10,10,550,150,top,reinterpret_cast<HMENU>(1),wc.hInstance,nullptr);
+        HWND field=CreateWindowW(L"Edit",L"hello world",WS_CHILD|WS_VISIBLE|((scenario==19||scenario==21)?0:ES_MULTILINE|(autovscroll?ES_AUTOVSCROLL:0)),10,10,550,150,top,reinterpret_cast<HMENU>(1),wc.hInstance,nullptr);
         HWND other=CreateWindowW(L"Edit",L"untouched",WS_CHILD|WS_VISIBLE,10,170,550,30,top,reinterpret_cast<HMENU>(2),wc.hInstance,nullptr);
         ShowWindow(top,SW_SHOW);ShowWindow(top,SW_SHOW);SetForegroundWindow(top);SetFocus(field);SendMessageW(field,EM_SETSEL,6,11);pump();
         if(scenario==18||scenario==19) {

@@ -57,8 +57,9 @@ public static class Program {
   if(Environment.GetEnvironmentVariable("USERNAME")!="WDAGUtilityAccount")return 2;
   var identity=System.Security.Principal.WindowsIdentity.GetCurrent();
   if(new System.Security.Principal.WindowsPrincipal(identity).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator))return 3;
-  bool standard=Environment.GetEnvironmentVariable("GRAMMAR_TEST_EDITOR_KIND")=="standard";
-  var start=new System.Diagnostics.ProcessStartInfo(@"C:\GrammarPayload\target-service-probe.exe",standard?"--target 100":"--target 0");
+  bool multiline=Environment.GetEnvironmentVariable("GRAMMAR_TEST_EDITOR_KIND")=="multiline";
+  bool standard=multiline||Environment.GetEnvironmentVariable("GRAMMAR_TEST_EDITOR_KIND")=="standard";
+  var start=new System.Diagnostics.ProcessStartInfo(@"C:\GrammarPayload\target-service-probe.exe",multiline?"--target 200":standard?"--target 100":"--target 0");
   start.UseShellExecute=false;start.CreateNoWindow=true;start.WindowStyle=System.Diagnostics.ProcessWindowStyle.Hidden;
   var child=System.Diagnostics.Process.Start(start);IntPtr top=IntPtr.Zero;
   try {
@@ -76,6 +77,7 @@ public static class Program {
       case "SET":OwnedTarget.Set(field,Encoding.UTF8.GetString(Convert.FromBase64String(part[1])));Console.WriteLine("OK");break;
       case "SELECT":OwnedTarget.Send(field,177,int.Parse(part[1]),int.Parse(part[2]));Console.WriteLine("OK");break;
       case "READ":Console.WriteLine("TEXT "+Convert.ToBase64String(Encoding.UTF8.GetBytes(OwnedTarget.Read(field))));break;
+      case "UNDO":OwnedTarget.Send(field,199,0,0);Console.WriteLine("OK");break;
       case "MODULES":
        int count=0;child.Refresh();foreach(System.Diagnostics.ProcessModule module in child.Modules){if(string.Equals(module.ModuleName,"target-apply.dll",StringComparison.OrdinalIgnoreCase))count++;}
        Console.WriteLine("MODULES "+count);break;
