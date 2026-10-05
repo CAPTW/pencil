@@ -38,6 +38,7 @@ class Tests(unittest.TestCase):
                 self.assertIs(values['ALLOW_SAVED_DOCX'], False)
                 self.assertIs(values['ALLOW_UNIFORM_FORMAT'], False)
                 self.assertIs(values['ALLOW_MIXED_FORMAT'], False)
+                self.assertIs(values['ALLOW_PARAGRAPHS'], False)
                 self.assertIs(receipt['mixedSurroundingsEnabled'], False)
                 self.assertIs(receipt['uniformFormatEnabled'], False)
                 self.assertIs(receipt['savedDocxEnabled'], False)
@@ -118,6 +119,24 @@ class Tests(unittest.TestCase):
                 self.assertIs(values['ALLOW_MIXED_FORMAT'], True)
                 self.assertIs(values['ALLOW_UNIFORM_FORMAT'], True)
                 self.assertIs(values['ALLOW_SAVED_DOCX'], False)
+
+
+    def test_paragraph_option_requires_mixed_and_uniform(self):
+        with tempfile.TemporaryDirectory(prefix='grammar-writer-paragraph-package-') as root:
+            root = Path(root)
+            library = root / 'target-apply.dll'
+            library.write_bytes(b'synthetic package input')
+            output = root / 'paragraph.oxt'
+            command = [sys.executable, str(builder), '--library-file', str(library),
+                '--installed-library', r'C:\GrammarTrial\target-apply.dll', '--output', str(output), '--enable-paragraphs']
+            for flags in ([], ['--enable-mixed-surroundings']):
+                failed = subprocess.run(command + flags, capture_output=True, text=True)
+                self.assertNotEqual(failed.returncode, 0)
+                self.assertFalse(output.exists())
+            enabled = subprocess.run(command + ['--enable-mixed-surroundings', '--enable-uniform-format'],
+                capture_output=True, text=True)
+            self.assertEqual(enabled.returncode, 0, enabled.stderr)
+            self.assertTrue(json.loads(enabled.stdout)['paragraphsEnabled'])
 
 
 if __name__ == '__main__': unittest.main()

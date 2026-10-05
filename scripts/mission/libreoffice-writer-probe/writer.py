@@ -59,3 +59,12 @@ class MixedWriter(FormattedWriter):
 
 
 g_ImplementationHelper.addImplementation(MixedWriter, 'org.grammar.fixture.MixedWriter', ('org.grammar.fixture.MixedWriter',))
+
+
+class ParagraphWriter(MixedWriter):
+    def __init__(self, context):
+        super().__init__(context)
+        self.allow_mixed_format = 'paragraphs'
+
+
+g_ImplementationHelper.addImplementation(ParagraphWriter, 'org.grammar.fixture.ParagraphWriter', ('org.grammar.fixture.ParagraphWriter',))

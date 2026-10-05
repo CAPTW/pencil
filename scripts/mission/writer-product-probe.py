@@ -12,6 +12,7 @@ if os.environ.get('USERNAME') != 'WDAGUtilityAccount':
     raise RuntimeError('Guest only')
 import uno
 from com.sun.star.document.MacroExecMode import NEVER_EXECUTE
+from com.sun.star.text.ControlCharacter import PARAGRAPH_BREAK
 
 out = Path(r'C:\GrammarOutput\uno-result.json')
 result = dict(status='RUNNING', scope='product Writer menu/accessibility and authenticated native client; not installed widget', checks=[])
@@ -67,7 +68,37 @@ def button(name):
     assert context.doAccessibleAction(0)
 
 
+def paragraph_list():
+    enum = doc.Text.createEnumeration()
+    items = []
+    while enum.hasMoreElements(): items.append(enum.nextElement())
+    return items
+
+
+def selected_body_start():
+    return paragraph_list()[1].Start if '--paragraphs' in sys.argv else doc.Text.Start
+
+
 def prepare_format():
+    if '--paragraphs' in sys.argv:
+        items = paragraph_list()
+        center = items[1].String if len(items) == 4 else doc.Text.String
+        doc.Text.String = 'First paragraph'
+        for text in (center, '', 'Last paragraph'):
+            doc.Text.insertControlCharacter(doc.Text.End, PARAGRAPH_BREAK, False)
+            doc.Text.insertString(doc.Text.End, text, False)
+        for index, para in enumerate(paragraph_list()):
+            cursor = doc.Text.createTextCursorByRange(para.Start)
+            cursor.gotoRange(para.End, True)
+            cursor.setAllPropertiesToDefault()
+            cursor.ParaAdjust = (0, 3, 0, 1)[index]
+            cursor.CharColor = (0x118822, 0xBB2200, 0x2255AA, 0x442299)[index]
+            cursor.CharWeight = cursor.CharWeightAsian = cursor.CharWeightComplex = 150.0
+        cursor = doc.Text.createTextCursor()
+        cursor.gotoEnd(True)
+        uno.invoke(cursor, 'setPropertyValue', ('CharInteropGrabBag',
+            uno.Any('[]com.sun.star.beans.PropertyValue', ())))
+        return
     if '--formatted' in sys.argv:
         cursor = doc.Text.createTextCursor()
         cursor.gotoEnd(True)
@@ -117,6 +148,21 @@ def prepare_format():
 
 
 def format_ok():
+    if '--paragraphs' in sys.argv:
+        items = paragraph_list()
+        if len(items) != 4 or [items[i].String for i in (0, 2, 3)] != ['First paragraph', '', 'Last paragraph']:
+            return False
+        for index, para in enumerate(items):
+            if para.ParaAdjust != (0, 3, 0, 1)[index]: return False
+            parts = para.createEnumeration()
+            count = 0
+            while parts.hasMoreElements():
+                part = parts.nextElement()
+                count += 1
+                if (part.CharWeight, part.CharWeightAsian, part.CharWeightComplex, part.CharColor) != (
+                        150.0, 150.0, 150.0, (0x118822, 0xBB2200, 0x2255AA, 0x442299)[index]): return False
+            if not count: return False
+        return True
     rows = []
     paragraphs = doc.Text.createEnumeration()
     while paragraphs.hasMoreElements():
@@ -162,7 +208,8 @@ try:
             (arg('Hidden', False), arg('MacroExecutionMode', NEVER_EXECUTE), arg('UpdateDocMode', 0)))
         keeper.close(True)
         wait(lambda: desktop.CurrentComponent == doc)
-        check('saved-docx-reopened-exact', doc.Text.String == source and doc.hasLocation())
+        reopened_text = paragraph_list()[1].String if '--paragraphs' in sys.argv else doc.Text.String
+        check('saved-docx-reopened-exact', reopened_text == source and doc.hasLocation())
         saved_digest = hashlib.sha256(saved_path.read_bytes()).hexdigest()
         if '--formatted' in sys.argv:
             check('saved-docx-reopened-bold-color-alignment', format_ok())
@@ -176,7 +223,7 @@ try:
     format_cursor.setPropertyToDefault('CharWeight')
     prepare_format()
     cursor = doc.Text.createTextCursor()
-    cursor.gotoStart(False)
+    cursor.gotoRange(selected_body_start(), False)
     cursor.goRight(9, False)
     cursor.goRight(9, True)
     doc.CurrentController.select(cursor)
@@ -216,7 +263,7 @@ try:
                     doc.Text.String = 'Before | please seperate this. | After'
                     prepare_format()
                     cursor = doc.Text.createTextCursor()
-                    cursor.gotoStart(False)
+                    cursor.gotoRange(selected_body_start(), False)
                     cursor.goRight(9, False)
                     cursor.goRight(21, True)
                     doc.CurrentController.select(cursor)
@@ -237,7 +284,12 @@ try:
                     for vk in (0x11, 0x10, 0x47): key(vk, 0, 0, 0)
                     time.sleep(.08)
                     for vk in (0x47, 0x10, 0x11): key(vk, 0, 2, 0)
-                elif command == 'read': value = doc.Text.String
+                elif command == 'read':
+                    if '--paragraphs' in sys.argv and len(paragraph_list()) == 4:
+                        assert format_ok(), 'unselected paragraph text or formatting changed'
+                        value = paragraph_list()[1].String
+                    else:
+                        value = doc.Text.String
                 elif command == 'format': value = format_ok()
                 elif command == 'undo': doc.getUndoManager().undo()
                 elif command == 'change': doc.Text.String = 'USER SYNTHETIC CHANGE'

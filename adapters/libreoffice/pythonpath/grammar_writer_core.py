@@ -91,9 +91,12 @@ def plain_metadata(doc, allow_uniform_format=False, allow_mixed_format=False):
     paragraph_format = None
     color_metadata = None
     runs = []
+    paragraph_rows = []
+    paragraph_offset = 0
+    previous_end = None
     while enumeration.hasMoreElements():
         paragraph_count += 1
-        if allow_uniform_format and paragraph_count != 1:
+        if allow_uniform_format and allow_mixed_format != 'paragraphs' and paragraph_count != 1:
             raise Refused('formatted_single_paragraph_only')
         if paragraph_count > 256:
             raise Refused('paragraph_bounds')
@@ -107,6 +110,17 @@ def plain_metadata(doc, allow_uniform_format=False, allow_mixed_format=False):
             if paragraph.getPropertyValue(name) != defaults[name]:
                 raise Refused('unsupported_format_' + name)
         portions = paragraph.createEnumeration()
+        if allow_mixed_format == 'paragraphs':
+            if paragraph_count > 1:
+                gap = doc.Text.createTextCursorByRange(previous_end)
+                gap.gotoRange(paragraph.Start, True)
+                separator = gap.String
+                if separator not in ('\n', '\r', '\r\n'):
+                    raise Refused('unsupported_paragraph_separator')
+                runs.append((len(separator), (), ('paragraph_break', separator)))
+                paragraph_offset += len(separator)
+            paragraph_rows.append((paragraph_offset, paragraph_format))
+            previous_end = paragraph.End
         while portions.hasMoreElements():
             portion_count += 1
             if portion_count > 1024:
@@ -134,11 +148,18 @@ def plain_metadata(doc, allow_uniform_format=False, allow_mixed_format=False):
                     raise Refused('mixed_character_format')
                 uniform = current
                 length = len(portion.String)
+                paragraph_offset += length
                 if length:
                     if runs and runs[-1][1:] == (current, rgb):
                         runs[-1] = (runs[-1][0] + length, current, rgb)
                     else:
                         runs.append((length, current, rgb))
+                elif allow_mixed_format == 'paragraphs':
+                    # Empty paragraphs retain a typing format even without text.
+                    # DOCX may also append a redundant empty portion to a
+                    # nonempty run. Canonicalize it exactly like adjacent text.
+                    if not runs or runs[-1][1:] != (current, rgb):
+                        runs.append((0, current, rgb))
             for name in characters:
                 if allow_uniform_format and name in FORMATTED_CHARACTERS:
                     continue
@@ -153,7 +174,8 @@ def plain_metadata(doc, allow_uniform_format=False, allow_mixed_format=False):
         if allow_mixed_format:
             # Canonicalize equivalent adjacent portions. UNO may split/merge
             # portions on replacement and Undo without changing their format.
-            return (tuple(runs), paragraph_format, effective_defaults)
+            return (tuple(runs), ('paragraphs', tuple(paragraph_rows))
+                if allow_mixed_format == 'paragraphs' else paragraph_format, effective_defaults)
         return (uniform, paragraph_format, effective_defaults, color_metadata)
     return None
 
@@ -168,10 +190,15 @@ def mixed_selection(doc, selected, layout):
     offset = 0
     chosen = None
     covered = 0
+    paragraph_format = layout[1]
+    if layout[1][0] == 'paragraphs':
+        paragraph_format = next(value for offset, value in reversed(layout[1][1]) if offset <= start)
     for size, characters, rgb in layout[0]:
         overlap = max(0, min(offset + size, start + length) - max(offset, start))
         if overlap:
-            current = (characters, layout[1], layout[2], rgb)
+            if not characters:
+                raise Refused('selection_crosses_paragraph_boundary')
+            current = (characters, paragraph_format, layout[2], rgb)
             if chosen is not None and current != chosen:
                 raise Refused('selection_crosses_format_boundary')
             chosen = current
@@ -192,6 +219,8 @@ def replaced_layout(layout, start, length, replacement_length):
         end = offset + size
         overlap = max(0, min(end, start + length) - max(offset, start))
         if overlap:
+            if not characters:
+                raise Refused('selection_crosses_paragraph_boundary')
             if chosen is not None and chosen != (characters, rgb):
                 raise Refused('selection_crosses_format_boundary')
             chosen = (characters, rgb)
@@ -199,15 +228,19 @@ def replaced_layout(layout, start, length, replacement_length):
             size -= overlap
             if covered == length:
                 size += replacement_length
-        if size:
-            if output and output[-1][1:] == (characters, rgb):
+        if size or end == offset:
+            if characters and output and output[-1][1:] == (characters, rgb):
                 output[-1] = (output[-1][0] + size, characters, rgb)
             else:
                 output.append((size, characters, rgb))
         offset = end
     if length <= 0 or covered != length or replacement_length <= 0:
         raise Refused('mixed_range_bounds')
-    return (tuple(output), layout[1], layout[2])
+    paragraph_format = layout[1]
+    if paragraph_format[0] == 'paragraphs':
+        paragraph_format = ('paragraphs', tuple((offset + (replacement_length - length if offset > start else 0), value)
+            for offset, value in paragraph_format[1]))
+    return (tuple(output), paragraph_format, layout[2])
 
 
 def restore_uniform_format(selected, formatting):
@@ -337,7 +370,7 @@ class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
             doc.setModified(True)
         if self.mixed_format:
             expected_hash = self.before_hash if digest == self.after_hash else self.after_hash
-            if document_fingerprint(doc, True, True) != expected_hash:
+            if document_fingerprint(doc, True, self.mixed_format) != expected_hash:
                 raise UndoFailedException('Postwrite result changed', self, None)
         elif selected.String != replacement or (self.formatting is not None
                 and plain_metadata(doc, True) != self.formatting):
@@ -447,7 +480,7 @@ class Callback(unohelper.Base, XCallback):
                 owner.deadline(self.deadline)
                 owner.permission(self.epoch)
                 owner.foreground_document()
-                layout = plain_metadata(owner.document, True, True) if owner.allow_mixed_format else None
+                layout = plain_metadata(owner.document, True, owner.allow_mixed_format) if owner.allow_mixed_format else None
                 mixed_range = mixed_selection(owner.document, selected, layout) if layout is not None else None
                 owner.deadline(self.deadline)
                 owner.permission(self.epoch)
@@ -489,7 +522,7 @@ class Callback(unohelper.Base, XCallback):
                     if review['layout'] is not None:
                         offset, length, _ = review['mixed_range']
                         expected_layout = replaced_layout(review['layout'], offset, length, len(replacement))
-                        body = body_snapshot(owner.document, True, True)
+                        body = body_snapshot(owner.document, True, owner.allow_mixed_format)
                         expected_body = body[:offset] + replacement + body[offset + length:]
                         expected_after_hash = fingerprint(json.dumps((expected_body, expected_layout),
                             ensure_ascii=True, separators=(',', ':')))
@@ -518,7 +551,7 @@ class Callback(unohelper.Base, XCallback):
                 finally:
                     undo.leaveUndoContext()
                 if (owner.read_range(review['range']) != replacement or (owner.allow_mixed_format
-                        and document_fingerprint(owner.document, True, True) != expected_after_hash)
+                        and document_fingerprint(owner.document, True, owner.allow_mixed_format) != expected_after_hash)
                         or (not owner.allow_mixed_format and review['formatting'] is not None
                         and plain_metadata(owner.document, True) != review['formatting'])):
                     value = dict(status='UNKNOWN_CHANGED', reason='postwrite_mismatch')
@@ -544,7 +577,7 @@ class Callback(unohelper.Base, XCallback):
 
 
 class WriterCore(unohelper.Base, XJob):
-    def __init__(self, context, *, allow_saved_documents=False, allow_uniform_format=False, allow_mixed_format=False):
+    def __init__(self, context, *, allow_saved_documents=False, allow_uniform_format=False, allow_mixed_format=False, allow_paragraphs=False):
         self.context = context
         self.desktop = context.ServiceManager.createInstanceWithContext('com.sun.star.frame.Desktop', context)
         self.document = self.controller = self.listener = self.review = self.result = None
@@ -561,6 +594,10 @@ class WriterCore(unohelper.Base, XJob):
         if allow_mixed_format and not allow_uniform_format:
             raise ValueError('mixed format requires formatted mode')
         self.allow_mixed_format = allow_mixed_format
+        if allow_paragraphs:
+            if not allow_mixed_format:
+                raise ValueError('paragraph mode requires mixed formatting')
+            self.allow_mixed_format = 'paragraphs'
         self.location = None
         self.document_events = False
         self.lifecycle_events = 0
@@ -676,7 +713,7 @@ class WriterCore(unohelper.Base, XJob):
         if time.monotonic() >= review['expires']:
             raise Refused('expired_review')
         self.check_document(self.document, own_notification_batch)
-        if review.get('layout') is not None and plain_metadata(self.document, True, True) != review['layout']:
+        if review.get('layout') is not None and plain_metadata(self.document, True, self.allow_mixed_format) != review['layout']:
             raise Refused('format_changed')
         if not self.allow_mixed_format and review['formatting'] is not None and plain_metadata(self.document, True) != review['formatting']:
             raise Refused('format_changed')

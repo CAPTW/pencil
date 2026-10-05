@@ -11,7 +11,7 @@ from com.sun.star.task import XJobExecutor
 from com.sun.star.awt import XActionListener, XTopWindowListener, XCallback
 from grammar_writer_core import WriterCore
 from grammar_writer_bridge import WriterBridge
-from grammar_writer_installation import LIBRARY_PATH, LIBRARY_SHA256, ALLOW_SAVED_DOCX, ALLOW_UNIFORM_FORMAT, ALLOW_MIXED_FORMAT
+from grammar_writer_installation import LIBRARY_PATH, LIBRARY_SHA256, ALLOW_SAVED_DOCX, ALLOW_UNIFORM_FORMAT, ALLOW_MIXED_FORMAT, ALLOW_PARAGRAPHS
 
 _owner = None
 
@@ -25,7 +25,8 @@ class Panel(unohelper.Base, XActionListener, XTopWindowListener):
     def __init__(self, context):
         self.context = context
         self.core = WriterCore(context, allow_saved_documents=ALLOW_SAVED_DOCX is True,
-            allow_uniform_format=ALLOW_UNIFORM_FORMAT is True, allow_mixed_format=ALLOW_MIXED_FORMAT is True)
+            allow_uniform_format=ALLOW_UNIFORM_FORMAT is True, allow_mixed_format=ALLOW_MIXED_FORMAT is True,
+            allow_paragraphs=ALLOW_PARAGRAPHS is True)
         self.bridge = None
         self.starting = False
         self.closed = False
