@@ -9,6 +9,11 @@ using Microsoft::WRL::ComPtr;
 static LRESULT CALLBACK target_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
     // Synthetic fixture setup only: let its owning broker show the review UI.
     if (message == WM_APP+42) return AllowSetForegroundWindow(static_cast<DWORD>(wp));
+    if (message == WM_APP+43) {
+        HWND field=FindWindowExW(hwnd,nullptr,L"RICHEDIT50W",nullptr);
+        if (!field || GetForegroundWindow()!=hwnd) return 0;
+        SetFocus(field); return GetFocus()==field;
+    }
     if (message == WM_DESTROY) { PostQuitMessage(0); return 0; }
     return DefWindowProcW(hwnd,message,wp,lp);
 }
