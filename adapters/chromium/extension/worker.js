@@ -158,12 +158,13 @@ async function armDesktop(s,tabId) {
     port.onMessage.addListener(message=>{
       // Set phase synchronously before asynchronous target resolution. A second
       // command cannot overlap or replace an in-flight capture/Apply.
-      if(!desktopCurrent(owner) || !exactKeys(message,['version','op','id','sequence','ticket','text']) || message.version!==1 || message.id!==owner.id){closeDesktop(owner);return;}
-      if(message.op==='review-ready' && owner.phase==='starting' && message.sequence===0 && message.ticket===null && message.text===null){owner.phase='ready';desktopDeadline(owner,300000);return;}
+      if(!desktopCurrent(owner) || !exactKeys(message,['version','op','id','sequence','ticket','text','deadline']) || message.version!==2 || message.id!==owner.id){closeDesktop(owner);return;}
+      if(message.op==='review-ready' && owner.phase==='starting' && message.sequence===0 && message.ticket===null && message.text===null && message.deadline===null){owner.phase='ready';desktopDeadline(owner,300000);return;}
       const capture=message.op==='review-capture' && owner.phase==='ready' && message.sequence===1 && message.ticket===null && message.text===null;
       const apply=message.op==='review-apply' && owner.phase==='captured' && message.sequence===2 && message.ticket===owner.ticket && typeof message.text==='string' && message.text.length>0 && message.text.length<=8192 && !message.text.includes('\0');
       if(!capture && !apply){closeDesktop(owner);return;}
-      const deadline=performance.timeOrigin+performance.now()+3000;
+      const deadline=message.deadline,remaining=deadline-(performance.timeOrigin+performance.now());
+      if(!Number.isFinite(deadline) || remaining<=0 || remaining>3000){closeDesktop(owner);return;}
       owner.phase=capture?'capturing':'applying';desktopDeadline(owner,3000);desktopDispatchPending=owner;
       (async()=>{
         if(capture){
@@ -185,12 +186,12 @@ async function armDesktop(s,tabId) {
           if(!exactKeys(result,['status']) || ![0,3,4].includes(result.status))throw Error('invalid_outcome');
           owner.phase='terminal';
         }
-        port.postMessage({version:1,op:'review-result',id:owner.id,sequence:message.sequence,status:result.status,text:capture?result.text:'',ticket:owner.ticket});
+        port.postMessage({version:2,op:'review-result',id:owner.id,sequence:message.sequence,status:result.status,text:capture?result.text:'',ticket:owner.ticket});
         desktopDeadline(owner,owner.phase==='captured'?30000:5000);
       })().catch(()=>closeDesktop(owner)).finally(()=>{if(desktopDispatchPending===owner)desktopDispatchPending=null;});
     });
     desktopDeadline(owner,5000);
-    port.postMessage({version:1,op:'review-listen',id:owner.id,epoch:'desktop-review',revision:1,text:''});
+    port.postMessage({version:2,op:'review-listen',id:owner.id,epoch:'desktop-review',revision:1,text:'',clock_anchor:performance.timeOrigin+performance.now()});
     return {ok:true,id:owner.id};
   }catch{closeDesktop(owner);return {error:'desktop_review_unavailable'};}
 }

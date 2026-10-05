@@ -55,6 +55,8 @@ struct Request {
     cleanup_token: Option<String>,
     #[serde(default)]
     cleanup_ticket: Option<cleanup::Ticket>,
+    #[serde(default)]
+    clock_anchor: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -131,7 +133,8 @@ fn write_frame<T: Serialize>(writer: &mut impl Write, response: &T) -> io::Resul
 
 fn parse_request(body: &[u8]) -> Result<Request, &'static str> {
     let request: Request = serde_json::from_slice(body).map_err(|_| "invalid_request")?;
-    if request.version != 1
+    if request.version != (if request.op == "review-listen" { 2 } else { 1 })
+        || (request.op != "review-listen" && request.clock_anchor.is_some())
         || request.id.is_empty()
         || request.id.len() > 128
         || request.epoch.is_empty()
@@ -396,7 +399,7 @@ async fn run_actor<S: DeepService>(
         seen_request = true;
         if request.op == "review-listen" {
             if !first_request || !review::admitted(&request) { break Err(()); }
-            let result = review::run(input, output, &request.id).await;
+            let result = review::run(input, output, &request.id, request.clock_anchor.ok_or(())?).await;
             return if service.shutdown().await { result } else { Err(()) };
         }
         if request.op.starts_with("cleanup-") {

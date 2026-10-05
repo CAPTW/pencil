@@ -8,11 +8,11 @@ use std::{sync::Arc, time::Duration};
 pub(super) enum Poll {
     Idle,
     Closed,
-    Capture,
-    Apply(String),
+    Capture(u64),
+    Apply(String, u64),
 }
 trait Api: Send + Sync {
-    fn create(&self) -> Result<u64, ()>;
+    fn create(&self) -> Result<(u64, u64), ()>;
     fn poll(&self, cookie: u64) -> Result<Poll, ()>;
     fn respond(&self, cookie: u64, status: u32, text: &str) -> Result<(), ()>;
     fn close(&self, cookie: u64) -> Result<(), ()>;
@@ -25,6 +25,7 @@ struct Command<'a> {
     sequence: u64,
     ticket: Option<&'a str>,
     text: Option<&'a str>,
+    deadline: Option<f64>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -41,7 +42,8 @@ fn valid_ticket(value: &str) -> bool {
     uuid::Uuid::parse_str(value).is_ok_and(|id| id.to_string() == value)
 }
 pub(super) fn admitted(request: &Request) -> bool {
-    request.version == 1
+    request.version == 2
+        && request.clock_anchor.is_some_and(|t| t.is_finite() && t > 0.0 && t < 9_007_199_254_000_000.0)
         && request.op == "review-listen"
         && valid_ticket(&request.id)
         && request.epoch == "desktop-review"
@@ -54,7 +56,7 @@ pub(super) fn admitted(request: &Request) -> bool {
 }
 fn reply(body: &[u8], id: &str, sequence: u64, ticket: Option<&str>) -> Result<Reply, ()> {
     let value: Reply = serde_json::from_slice(body).map_err(|_| ())?;
-    if value.version != 1
+    if value.version != 2
         || value.op != "review-result"
         || value.id != id
         || value.sequence != sequence
@@ -81,32 +83,42 @@ fn reply(body: &[u8], id: &str, sequence: u64, ticket: Option<&str>) -> Result<R
     }
     Ok(value)
 }
+// Browser anchor was sent before native receipt: subtracting transit time is conservative.
+fn mapped_deadline(browser_anchor: f64, native_anchor: u64, expiry: u64) -> Result<f64, ()> {
+    let elapsed = expiry.checked_sub(native_anchor).filter(|v| *v <= 360_000).ok_or(())?;
+    let deadline = browser_anchor + elapsed as f64;
+    if !browser_anchor.is_finite() || browser_anchor <= 0.0 || !deadline.is_finite() || deadline >= 9_007_199_254_740_991.0 { return Err(()); }
+    Ok(deadline)
+}
 pub(super) async fn run(
     input: channel::Receiver<io::Result<Vec<u8>>>,
     output: &Output,
     id: &str,
+    browser_anchor: f64,
 ) -> Result<(), ()> {
-    run_with(input, output, id, load()?).await
+    run_with(input, output, id, browser_anchor, load()?).await
 }
 async fn run_with(
     mut input: channel::Receiver<io::Result<Vec<u8>>>,
     output: &Output,
     id: &str,
+    browser_anchor: f64,
     api: Arc<dyn Api>,
 ) -> Result<(), ()> {
     let create = api.clone();
-    let cookie = tokio::task::spawn_blocking(move || create.create())
+    let (cookie, native_anchor) = tokio::task::spawn_blocking(move || create.create())
         .await
         .map_err(|_| ())??;
     let result = async {
         output
             .send(&Command {
-                version: 1,
+                version: 2,
                 op: "review-ready",
                 id,
                 sequence: 0,
                 ticket: None,
                 text: None,
+                deadline: None,
             })
             .await?;
         let mut sequence = 0;
@@ -122,27 +134,28 @@ async fn run_with(
             match event {
                 Poll::Closed => return Ok(()),
                 Poll::Idle => {}
-                Poll::Capture | Poll::Apply(_) => {
+                Poll::Capture(_) | Poll::Apply(_, _) => {
                     if pending {
                         return Err(());
                     }
                     sequence += 1;
                     pending = true;
-                    let (op, text) = match &event {
-                        Poll::Capture if sequence == 1 => ("review-capture", None),
-                        Poll::Apply(text) if sequence == 2 && ticket.is_some() => {
-                            ("review-apply", Some(text.as_str()))
+                    let (op, text, expiry) = match &event {
+                        Poll::Capture(expiry) if sequence == 1 => ("review-capture", None, *expiry),
+                        Poll::Apply(text, expiry) if sequence == 2 && ticket.is_some() => {
+                            ("review-apply", Some(text.as_str()), *expiry)
                         }
                         _ => return Err(()),
                     };
                     output
                         .send(&Command {
-                            version: 1,
+                            version: 2,
                             op,
                             id,
                             sequence,
                             ticket: ticket.as_deref(),
                             text,
+                            deadline: Some(mapped_deadline(browser_anchor, native_anchor, expiry)?),
                         })
                         .await?;
                 }
@@ -192,7 +205,7 @@ fn load() -> Result<Arc<dyn Api>, ()> {
 }
 #[cfg(windows)]
 struct WindowsApi {
-    create: unsafe extern "system" fn(*mut u64) -> u32,
+    create: unsafe extern "system" fn(*mut u64, *mut u64) -> u32,
     poll: unsafe extern "system" fn(
         u64,
         *mut u32,
@@ -201,6 +214,7 @@ struct WindowsApi {
         *mut u16,
         u32,
         *mut u32,
+        *mut u64,
     ) -> u32,
     respond: unsafe extern "system" fn(u64, u32, *const u16, u32) -> u32,
     close: unsafe extern "system" fn(u64) -> u32,
@@ -236,16 +250,16 @@ impl WindowsApi {
             "GrammarBrowserServerVersion",
             unsafe extern "system" fn() -> u32
         );
-        if version() != 1 {
+        if version() != 2 {
             return Err(());
         }
         Ok(Self {
             create: symbol!(
-                "GrammarBrowserServerCreate",
-                unsafe extern "system" fn(*mut u64) -> u32
+                "GrammarBrowserServerCreateV2",
+                unsafe extern "system" fn(*mut u64, *mut u64) -> u32
             ),
             poll: symbol!(
-                "GrammarBrowserServerPoll",
+                "GrammarBrowserServerPollV2",
                 unsafe extern "system" fn(
                     u64,
                     *mut u32,
@@ -254,6 +268,7 @@ impl WindowsApi {
                     *mut u16,
                     u32,
                     *mut u32,
+                    *mut u64,
                 ) -> u32
             ),
             respond: symbol!(
@@ -269,16 +284,17 @@ impl WindowsApi {
 }
 #[cfg(windows)]
 impl Api for WindowsApi {
-    fn create(&self) -> Result<u64, ()> {
-        let mut id = 0;
-        if unsafe { (self.create)(&mut id) } == 0 && id != 0 {
-            Ok(id)
+    fn create(&self) -> Result<(u64, u64), ()> {
+        let (mut id, mut ticks) = (0, 0);
+        if unsafe { (self.create)(&mut id, &mut ticks) } == 0 && id != 0 && ticks != 0 {
+            Ok((id, ticks))
         } else {
             Err(())
         }
     }
     fn poll(&self, cookie: u64) -> Result<Poll, ()> {
         let (mut state, mut command, mut capture, mut units) = (2, 0, 0, 0);
+        let mut expiry = 0;
         let mut buffer = vec![0u16; 8193];
         let code = unsafe {
             (self.poll)(
@@ -289,17 +305,18 @@ impl Api for WindowsApi {
                 buffer.as_mut_ptr(),
                 8193,
                 &mut units,
+                &mut expiry,
             )
         };
         let result = if code != 0 || units > 8192 {
             Err(())
         } else {
             match (state, command, capture, units) {
-                (0, 0, 0, 0) => Ok(Poll::Idle),
-                (2, 0, 0, 0) => Ok(Poll::Closed),
-                (1, 1, 0, 0) => Ok(Poll::Capture),
-                (1, 2, 1, 1..=8192) => String::from_utf16(&buffer[..units as usize])
-                    .map(Poll::Apply)
+                (0, 0, 0, 0) if expiry == 0 => Ok(Poll::Idle),
+                (2, 0, 0, 0) if expiry == 0 => Ok(Poll::Closed),
+                (1, 1, 0, 0) if expiry > 0 => Ok(Poll::Capture(expiry)),
+                (1, 2, 1, 1..=8192) if expiry > 0 => String::from_utf16(&buffer[..units as usize])
+                    .map(|text| Poll::Apply(text, expiry))
                     .map_err(|_| ()),
                 _ => Err(()),
             }
@@ -342,11 +359,11 @@ mod tests {
     const ID: &str = "11111111-1111-4111-8111-111111111111";
     const TICKET: &str = "22222222-2222-4222-8222-222222222222";
     fn value(status: u32, text: &str, ticket: Option<&str>) -> Vec<u8> {
-        serde_json::to_vec(&serde_json::json!({"version":1,"op":"review-result","id":ID,"sequence":1,"status":status,"text":text,"ticket":ticket})).unwrap()
+        serde_json::to_vec(&serde_json::json!({"version":2,"op":"review-result","id":ID,"sequence":1,"status":status,"text":text,"ticket":ticket})).unwrap()
     }
     #[test]
     fn listener_requires_empty_first_protocol_and_no_provider_fields() {
-        let good = serde_json::json!({"version":1,"op":"review-listen","id":ID,"epoch":"desktop-review","revision":1,"text":""});
+        let good = serde_json::json!({"version":2,"clock_anchor":1000000,"op":"review-listen","id":ID,"epoch":"desktop-review","revision":1,"text":""});
         assert!(admitted(&serde_json::from_value(good.clone()).unwrap()));
         for (key, value) in [
             ("text", serde_json::json!("source")),
@@ -360,6 +377,14 @@ mod tests {
             bad[key] = value;
             assert!(!admitted(&serde_json::from_value(bad).unwrap()));
         }
+    }
+    #[test]
+    fn native_to_browser_mapping_preserves_original_expiry() {
+        assert_eq!(mapped_deadline(1_000_000.0, 5000, 8000), Ok(1_003_000.0));
+        assert_eq!(mapped_deadline(1_000_000.0, 5500, 8000), Ok(1_002_500.0));
+        assert!(mapped_deadline(1_000_000.0, 5000, 4999).is_err());
+        assert!(mapped_deadline(f64::NAN, 5000, 8000).is_err());
+        assert!(mapped_deadline(1_000_000.0, 5000, u64::MAX).is_err());
     }
     #[test]
     fn exact_capture_and_outcome_shapes() {

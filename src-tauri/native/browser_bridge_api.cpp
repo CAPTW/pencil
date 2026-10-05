@@ -3,6 +3,7 @@
 #include "browser_bridge.hpp"
 #include "browser_route.hpp"
 #include <mutex>
+#include <chrono>
 #ifndef GRAMMAR_TRUSTED_APP_SHA256
 #error Supply the trusted broker build header.
 #endif
@@ -32,24 +33,31 @@ bool browser_digest(const std::string& text,ApplyImageDigest& hash) {
 }
 // Codes:0 success,1 unknown owner,2 busy/owner retained,3 invalid input,
 //4 unavailable,5 internal failure. Poll states:0 idle,1 command,2 closed.
-extern "C" __declspec(dllexport) uint32_t WINAPI GrammarBrowserServerVersion() noexcept {return 1;}
-extern "C" __declspec(dllexport) uint32_t WINAPI GrammarBrowserServerCreate(uint64_t* cookie) noexcept try {
-    if(!cookie)return 3;*cookie=0;
+extern "C" __declspec(dllexport) uint32_t WINAPI GrammarBrowserServerVersion() noexcept {return 2;}
+extern "C" __declspec(dllexport) uint32_t WINAPI GrammarBrowserServerCreateV2(uint64_t* cookie,uint64_t* clock_ticks) noexcept try {
+    if(!cookie || !clock_ticks)return 3;*cookie=0;*clock_ticks=0;
+    // Cross a native tick boundary after browser receipt, so quantization cannot
+    // place the native anchor before the browser's earlier send timestamp.
+    const auto initial=GetTickCount64();auto tick=initial;
+    const auto limit=std::chrono::steady_clock::now()+std::chrono::milliseconds(100);
+    while(tick==initial){if(std::chrono::steady_clock::now()>=limit)return 4;Sleep(1);tick=GetTickCount64();}
+    *clock_ticks=tick;
     std::unique_lock<std::mutex> lock(browser_mutex,std::try_to_lock);if(!lock.owns_lock() || browser_server)return 2;
     ApplyImageDigest hash{};auto app=browser_sibling(GRAMMAR_TRUSTED_APP_NAME);
     if(app.empty() || !browser_digest(GRAMMAR_TRUSTED_APP_SHA256,hash) || next_browser_cookie==UINT64_MAX)return 4;
     auto server=std::make_unique<BrowserBridgeServer>(app,hash);if(!server->available())return 4;
     browser_cookie=next_browser_cookie++;browser_server=std::move(server);*cookie=browser_cookie;return 0;
 } catch(...){return 5;}
-extern "C" __declspec(dllexport) uint32_t WINAPI GrammarBrowserServerPoll(uint64_t cookie,uint32_t* state,
-    uint32_t* command,uint64_t* capture,WCHAR* text,uint32_t capacity,uint32_t* units) noexcept try {
-    if(!state || !command || !capture || !text || capacity<browser_bridge_units+1 || !units)return 3;
-    *state=2;*command=0;*capture=0;*units=0;text[0]=0;
+extern "C" __declspec(dllexport) uint32_t WINAPI GrammarBrowserServerPollV2(uint64_t cookie,uint32_t* state,
+    uint32_t* command,uint64_t* capture,WCHAR* text,uint32_t capacity,uint32_t* units,uint64_t* deadline_ticks) noexcept try {
+    if(!state || !command || !capture || !text || capacity<browser_bridge_units+1 || !units || !deadline_ticks)return 3;
+    *state=2;*command=0;*capture=0;*units=0;*deadline_ticks=0;text[0]=0;
     std::unique_lock<std::mutex> lock(browser_mutex,std::try_to_lock);if(!lock.owns_lock())return 2;
     if(!browser_server || cookie!=browser_cookie)return 1;
     ChannelRequest request;const auto result=browser_server->poll(request);
     if(result==BrowserPoll::idle){*state=0;return 0;}
     if(result==BrowserPoll::closed)return 0;
+    *deadline_ticks=browser_server->operation_deadline();
     *state=1;*command=static_cast<uint32_t>(request.header.command);*capture=request.header.capture_id;
     *units=static_cast<uint32_t>(request.body.size()/sizeof(wchar_t));
     if(*units)memcpy(text,request.body.data(),request.body.size());text[*units]=0;return 0;

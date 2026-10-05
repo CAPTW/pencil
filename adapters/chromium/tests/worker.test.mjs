@@ -12,7 +12,7 @@ const deferred = () => { let resolve,reject; const promise = new Promise((r,j) =
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const reviewTicket='11111111-1111-4111-8111-111111111111';
 const armReview=f=>f.dispatch({op:'desktop-arm',epoch:f.currentEpoch()},f.sender());
-function reviewCommand(port,op,sequence,ticket=null,text=null) {port.onMessage.emit({version:1,op,id:port.posted[0].id,sequence,ticket,text});}
+function reviewCommand(port,op,sequence,ticket=null,text=null,deadline=sequence?port.posted[0].clock_anchor+3000:null) {port.onMessage.emit({version:2,op,id:port.posted[0].id,sequence,ticket,text,deadline});}
 async function readyReview(f) {
   await f.command('enable');assert.equal((await armReview(f)).ok,true);
   const port=f.ports.at(-1);reviewCommand(port,'review-ready',0);return port;
@@ -60,6 +60,17 @@ function fixture(initial={deniedOrigins:[]}) {
     activeTab(value){activeTab=value;},delayQuery(){return queryGate=deferred();},delayDesktopCancel(){return desktopCancelGate=deferred();},desktopReply(value){desktopReplies.push(value);},onActivated,onFocusChanged,
     fireTimer(){const [id,fn]=timers.entries().next().value;timers.delete(id);fn();}};
 }
+
+test('host commands retain expiry across delayed delivery instead of renewing it',async()=>{
+ const f=fixture(),p=await readyReview(f);f.advanceClock(3001);
+ reviewCommand(p,'review-capture',1);await tick();
+ assert.equal(p.closed,1);assert.equal(f.sent.filter(x=>x.message.op==='desktop-capture').length,0);
+});
+for(const expiry of [undefined,null,0,NaN,Infinity,1003001])test('invalid host expiry rejected '+String(expiry),async()=>{
+ const f=fixture(),p=await readyReview(f);
+ p.onMessage.emit({version:2,op:'review-capture',id:p.posted[0].id,sequence:1,ticket:null,text:null,deadline:expiry});await tick();
+ assert.equal(p.closed,1);assert.equal(f.sent.filter(x=>x.message.op==='desktop-capture').length,0);
+});
 
 test('desktop capture drops expired request after async tab lookup without delivering it',async()=>{
  const f=fixture(),p=await readyReview(f),gate=f.delayQuery();
