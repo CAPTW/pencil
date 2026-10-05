@@ -1,6 +1,8 @@
 //! Consent-bound native messaging actor. Local Instant and explicit selected-Provider Deep; no history.
 #[path = "grammar_chromium/cleanup.rs"]
 mod cleanup;
+#[path = "grammar_chromium/review.rs"]
+mod review;
 use codex_pencil::instant_selection::{
     AnalysisMode, AnalysisOptions, AnalysisRequest, InstantSelectionEngine, SourceIdentity,
     ENGINE_ID, ENGINE_VERSION,
@@ -117,7 +119,7 @@ fn read_frame(reader: &mut impl Read) -> io::Result<Option<Vec<u8>>> {
     Ok(Some(body))
 }
 
-fn write_frame(writer: &mut impl Write, response: &Response) -> io::Result<()> {
+fn write_frame<T: Serialize>(writer: &mut impl Write, response: &T) -> io::Result<()> {
     let body = serde_json::to_vec(response).map_err(io::Error::other)?;
     if body.len() > MAX_RESPONSE {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "response_limit"));
@@ -331,7 +333,7 @@ struct Output {
     budget: Duration,
 }
 impl Output {
-    async fn send(&self, response: &Response) -> Result<(), ()> {
+    async fn send<T: Serialize>(&self, response: &T) -> Result<(), ()> {
         let mut bytes = Vec::new();
         write_frame(&mut bytes, response).map_err(|_| ())?;
         let (done, receipt) = oneshot::channel();
@@ -359,6 +361,7 @@ async fn run_actor<S: DeepService>(
     service: &S,
 ) -> Result<(), ()> {
     let mut active: Option<ActiveDeep> = None;
+    let mut seen_request = false;
     let result = loop {
         enum Event {
             Input(Option<io::Result<Vec<u8>>>),
@@ -389,6 +392,13 @@ async fn run_actor<S: DeepService>(
             Ok(request) => request,
             Err(_) => break Err(()),
         };
+        let first_request = !seen_request;
+        seen_request = true;
+        if request.op == "review-listen" {
+            if !first_request || !review::admitted(&request) { break Err(()); }
+            let result = review::run(input, output, &request.id).await;
+            return if service.shutdown().await { result } else { Err(()) };
+        }
         if request.op.starts_with("cleanup-") {
             if !request.text.is_empty() || request.provider.is_some() || request.consent.is_some() {
                 break Err(());

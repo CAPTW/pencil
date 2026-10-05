@@ -41,8 +41,12 @@ int wmain(int argc,wchar_t** argv) try {
     WCHAR user[128]{};DWORD size=128;
     if(!GetUserNameW(user,&size) || _wcsicmp(user,L"WDAGUtilityAccount"))return 3;
     if(argc==3 && !wcscmp(argv[1],L"--server"))return serve(_wtoi(argv[2]));
-    unsigned failures=0;
+    unsigned failures=0,cases=0;
     for(int scenario=0;scenario<=12;++scenario) {
+#ifdef GRAMMAR_ABI_PROBE
+        if(scenario!=0 && scenario!=8 && scenario!=9 && scenario!=10 && scenario!=11 && scenario!=12)continue;
+#endif
+        ++cases;
         std::wstring command=L"\""+image()+L"\" --server "+std::to_wstring(scenario);
         STARTUPINFOW startup{};startup.cb=sizeof(startup);PROCESS_INFORMATION child{};
         if(!CreateProcessW(image().c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&child))return 4;
@@ -104,5 +108,5 @@ int wmain(int argc,wchar_t** argv) try {
         printf("case=%d pass=%d child_exited=%d child_exit=%lu\n",scenario,pass,exited,code);fflush(stdout);
         if(!pass)++failures;if(!exited)return 8; // No more children after unconfirmed cleanup.
     }
-    printf("cases=13 failures=%u\n",failures);return failures?1:0;
+    printf("cases=%u failures=%u\n",cases,failures);return failures?1:0;
 } catch(...){return 9;}

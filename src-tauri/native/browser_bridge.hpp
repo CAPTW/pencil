@@ -24,6 +24,7 @@ public:
         :pipe_(browser_bridge_name(GetCurrentProcessId())),app_image_(trustedApp),app_hash_(trustedDigest) {
         closed_=pipe_.get()==INVALID_HANDLE_VALUE;
     }
+    bool available() const noexcept {return !closed_;}
     BrowserBridgeServer(const BrowserBridgeServer&)=delete;
     BrowserBridgeServer& operator=(const BrowserBridgeServer&)=delete;
     ~BrowserBridgeServer(){close();}
