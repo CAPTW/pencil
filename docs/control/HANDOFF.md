@@ -1593,3 +1593,65 @@ actual Office/Hancom, physical IME, normal profiles and live Provider remain
 unqualified/NOT_RUN. Next authorized work is paragraph-aware preservation and
 explicit cross-format replacement semantics. No main adoption/push/release;
 mission INCOMPLETE. This supersedes the prior checkpoint's next-work summary.
+
+
+## Writer paragraph-preserving checkpoint — 2026-10-06
+
+Implementation9443ff29018a2fa96a7b71c0f0a7abec6de7eaf6; candidate branch remains
+codex/grammar-local-trial-ba58b7d. Evidence directory:
+D:/dev/grammar-evidence/grammar-writer-paragraphs-20261006.
+This supersedes the mixed checkpoint only for the newly qualified paragraph mode.
+Prior mode acceptance and historical failures remain intact.
+
+New user capability: a new/local saved DOCX Standard body may have multiple
+paragraphs and empty paragraphs. Select one homogeneous range within ONE paragraph,
+explicitly Enable, shortcut, Instant, edit and Accept. Other paragraph text,
+supported character weights/RGB, paragraph alignment and empty typing formats are
+preserved. Cross-paragraph/cross-format selection, unsupported structures and
+inconsistent imported color metadata still refuse. No automatic file Save.
+
+Core reads actual separators (Windows CRLF has two string code points, unlike
+native cursor steps); delimiters never merge. Layout transformations retain
+zero-length empty typing runs and shift later paragraph offsets. Exact text and
+layout digests bind Accept and custom Undo/Redo. No whole-body rollback or replay.
+Options default off; product --enable-paragraphs requires mixed/uniform options.
+
+Evidence: guest-final core41 PASS including8 saved DOCX cycles, mixed styles inside
+middle paragraph and changed empty typing style blocking old Undo. Installed
+product guest-product-r1 widget8 + enclosing5 PASS: actual shortcut, Instant,
+edited Accept, full paragraph text/format rereads, Undo, source edit preservation,
+Disable and no implicit Save. Natural app/Office/Python0, cleanuptrue, forcedfalse,
+remainingProcesses0, uninstall complete. Disable still displays outcome unconfirmed;
+independent reread proves no mutation, not a new claim about that UI status.
+
+Preserved failures: R1/R2 refused mixed_range_bounds before writing because a
+width-one separator assumption disagreed with actual CRLF. Deterministic tests
+also exposed merging adjacent delimiters. R3/R4 failed the saved-reopen format
+snapshot; R4 subsequently wrote then returned UNKNOWN_CHANGED/postwrite_layout_mismatch.
+Detailed per-character comparison refuted actual saved text/format loss: imported
+DOCX added redundant identical zero-length portions on nonempty paragraphs.
+Canonicalization now ignores only those redundant portions; the independent
+oracle checks real empty paragraph typing metadata. R5 PASS37, final PASS41.
+No thresholds increased and no failure receipt replaced.
+
+Product OXT sha256 eda1d4c13225d0436895a90304caca3e84826fd7c46d1231b5d17c00fda55a9d.
+source-input-proof.json binds checkout bytes and Git clean-filter blobs to9443ff2.
+Paired unchanged app/native commit0fc862498206f536adf5156fa7d238792c89efc5:
+app45c3d0cf67b5ee005d2207f899c2f6bdf087ef2ad700fd2c365e7a693edeeb76;
+DLL61c50bb11ae3243efe29b2cadd74bfbc3c4e944d8dfdb2e4767167002e471376.
+Pinned LibreOffice26.2.4.2. Native fixture contains test services; product OXT does
+not. RESULT.md and QUALIFIED_COMBINATION.json contain final checks and receipts.
+
+Review: separate same-integrator pass (REVIEW.md), no independent reviewer claimed.
+Deterministic layout4, package6, bridge6 and Source behavior79 PASS. Full Rust and
+Chromium suites not rerun; their production sources/binaries were unchanged.
+Source/state describe this limited union; no external Project UI application.
+
+Next inside GRAMMAR-GLOBAL-ACCEPT-DESKTOP-BROWSER-AND-APPLICATION-ADAPTERS:
+define and test cross-format/cross-paragraph replacement semantics before enabling
+those ranges, then continue application-specific adapters. Complex Writer,
+Calc/Impress product Apply, actual Office/Hancom, physical IME, normal profiles and
+live Providers remain incomplete/NOT_RUN. Mission INCOMPLETE, candidate only,
+main not adopted, no remote push/release.
+
+Final same-core regressions: mixed39/16 saved cycles, uniform32/16 and plain73/32 PASS; each native launcher confirms natural Office/Python0, cleanuptrue, forcedfalse, processes0. All owned guests stopped (sandbox-final.json). Main remains4e833988ed27086dd6d4acb78d39fc3e9c98c707.

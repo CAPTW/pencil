@@ -62,6 +62,11 @@ F06_SCOPE = {**F06_SCOPE,
     "writer": "LibreOffice26.2.4.2: prior plain OXT5a339b8 and uniform OXT2a16115 scopes retained; OXTa3b231a additionally permits a homogeneous selected range within one Standard paragraph with mixed supported script weights/non-theme opaque RGB and alignment. Paired app/native0fc8624, owned installed synthetic verified; local saved/reopened DOCX and new documents. No automatic file Save.",
     "remaining": "Cross-format selections, multiple formatted paragraphs and complex Writer structures, inconsistent imported color metadata, Calc/Impress product Apply, actual Microsoft Office/Hancom unqualified; physical IME, normal profiles and live Providers NOT_RUN. Mission INCOMPLETE."
 }
+HISTORICAL_MIXED_F06_SCOPE = dict(F06_SCOPE)
+F06_SCOPE = {**F06_SCOPE,
+    "writer": "LibreOffice26.2.4.2: prior plain/uniform/mixed scopes retained; OXT9443ff2 additionally permits one homogeneous selected range within a Standard paragraph of a bounded multi-paragraph body, preserving surrounding mixed supported weights/RGB, paragraph alignment and empty-paragraph typing format. App/native0fc8624 paired; owned installed synthetic new/local saved DOCX verified. No automatic file Save.",
+    "remaining": "Cross-paragraph or cross-format selections and complex Writer structures, inconsistent imported color metadata, Calc/Impress product Apply, actual Microsoft Office/Hancom unqualified; physical IME, normal profiles and live Providers NOT_RUN. Mission INCOMPLETE."
+}
 RETAINED_HISTORY = (
     "12_MULTI_PROVIDER_ARCHITECTURE_AND_IMPLEMENTATION_PLAN(1).md",
     "12_P3_INSTANT_AND_PROACTIVE_ASSIST_PRODUCT_STRATEGY(1).md",
@@ -197,7 +202,7 @@ def state_check(state):
             verdicts["F-06"] = "OWNED_QUALIFIED_EDIT_AND_RICHEDIT_TARGET_SIDE_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED"
         f06 = next(d for d in state["known_defects"] if d["id"] == "F-06")
         if "qualification_scope" in f06:
-            fail(edit_apply and f06["qualification_scope"] in (F06_SCOPE, HISTORICAL_F06_SCOPE, HISTORICAL_SAVED_F06_SCOPE, HISTORICAL_UNIFORM_F06_SCOPE), "F06_SCOPE_DRIFT")
+            fail(edit_apply and f06["qualification_scope"] in (F06_SCOPE, HISTORICAL_F06_SCOPE, HISTORICAL_SAVED_F06_SCOPE, HISTORICAL_UNIFORM_F06_SCOPE, HISTORICAL_MIXED_F06_SCOPE), "F06_SCOPE_DRIFT")
             verdicts["F-06"] = F06_SCOPED_VERDICT
         for defect in state["known_defects"]:
             fail(defect["verdict"] == verdicts[defect["id"]], f"VERDICT_DRIFT:{defect['id']}")

@@ -1,5 +1,12 @@
 # LibreOffice Writer adapter (implementation in progress)
 
+Current checkpoint: see "Paragraph-preserving candidate" below. The opted-in
+candidate OXT is installed-widget qualified only in the documented owned synthetic
+scope; general Writer acceptance is incomplete. Earlier sections below are
+chronological implementation/qualification history, not the current scope limit.
+
+## Historical core and activation development
+
 `pythonpath/grammar_writer_core.py` is the target-resident transaction core.
 It is not independently registered as a UNO service and is not yet included in
 an enabled personal package. The synthetic service wrapper and adversarial hooks
@@ -240,3 +247,21 @@ their original scope. Mission INCOMPLETE; no general-user installation or releas
 
 Evidence: D:/dev/grammar-evidence/grammar-writer-mixed-20261006/RESULT.md.
 Handoff records the preserved failed preparations and exact package/source chain.
+
+## Paragraph-preserving candidate — 2026-10-06
+
+OXT source9443ff2 with unchanged app/native0fc8624, LibreOffice26.2.4.2.
+Add `--enable-paragraphs` to `--enable-uniform-format --enable-mixed-surroundings`
+(and `--enable-saved-docx` for local DOCX). All options default off.
+
+A bounded Standard body may now contain several paragraphs, including empty ones.
+Select a homogeneous range within ONE paragraph, review/edit and explicitly Accept.
+The adapter preserves the other paragraphs, supported bold/RGB runs, paragraph
+alignment and empty-paragraph typing formats. Exact rereads cover the entire body
+and layout; Undo/Redo changes only the selected range. No automatic file Save.
+Cross-paragraph/cross-format selections and complex structures remain refused.
+
+Owned synthetic qualification: native41 checks including8 saved DOCX cycles;
+installed widget8 plus5 enclosing checks. This is not general Writer/Office/Hancom
+or normal-profile acceptance. Physical IME/live Providers remain NOT_RUN.
+Evidence: D:/dev/grammar-evidence/grammar-writer-paragraphs-20261006/RESULT.md.
