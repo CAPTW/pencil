@@ -50,3 +50,10 @@ Provider choices remain codex, antigravity and claude. Chromium Antigravity curr
 Claude argument semantics are documented in the [official CLI reference](https://code.claude.com/docs/en/cli-reference). Synthetic tests can establish that the flags reach the process; they cannot establish a real Provider's retention behavior.
 
 Official implementation references: [Chrome native messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging), [activeTab](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab), [Playwright extension testing](https://playwright.dev/docs/chrome-extensions). Checked2026-09-25; local synthetic results, not documentation, establish the tested behavior.
+
+
+## Desktop global review/Accept candidate (2026-10-05)
+
+Installed84df647 is qualified in the owned Medium Sandbox for this flow: start the desktop app, use the pinned extension keyboard toolbar to Enable this document, explicitly Enable this field, select text, press Ctrl+Shift+G, review/edit the local Instant draft, then Accept. Exact selected textarea/simple-contenteditable text is replaced only after document/epoch/source/range checks and reread; stale/change/privacy refusal does not restore or retry. Copy is separate. Authority expires after30seconds. Focus/heartbeat prepares one control-only host link inside opt-in without capturing source or inference; the shortcut captures.
+
+The personal installer registers the verified root host beside the app and hash-bound DLL; host/ contains registration metadata and source-free runtime sidecars live beside the executable. Standalone Prepare-Host default remains a copied fixture host and is not the installed global widget path. Ten installed global-flow checks pass; no installed extension file was modified for the test. This does not qualify arbitrary pages, rich editors, general profiles, Edge or human IME. Browser Undo remains unguaranteed. See HANDOFF and grammar-browser-installed-20261005/RESULT.json.

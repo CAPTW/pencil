@@ -84,3 +84,6 @@ Product f9d13f2 installed in owned restricted-Medium Sandbox: single-line system
 
 ### Multiline style-specific extension
 Product330ab3b installed Medium Sandbox PASS15 adds pre-existing ES_MULTILINE+ES_AUTOVSCROLL, explicit plain TSF scope, exact multiline/Unicode replacement and full-source native Undo. This supersedes the blanket multiline-disabled statement above only for that subtype. No-auto-scroll multiline remains unqualified with two preserved Undo failures. Generic Text apps, Word/Excel/PowerPoint/Hancom and desktop-global webpage routing are not promoted. Precise source/artifact/fixture receipts are in HANDOFF.
+
+
+Installed84df647: actual desktop-global Chromium review/Accept10 and same-package native multiline15 PASS in restricted-Medium Sandbox. Browser support is only opted-in textarea/simple contenteditable on synthetic localhost documents, unmodified installed extension, pinned keyboard toolbar, fresh sandboxed profile. Exact text rereads and stale/source/range/cancel/privacy refusals verified; complete cleanup. Office/Hancom adapters NOT_IMPLEMENTED, actual licensed app tests NOT_RUN. Human keyboard/IME/normal profiles/Edge remain NOT_RUN. See current HANDOFF and grammar-browser-installed-20261005/RESULT.json.
