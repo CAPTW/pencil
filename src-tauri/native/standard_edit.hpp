@@ -1,5 +1,6 @@
 #pragma once
-// Target-thread standard Edit candidate. Broker admits single-line controls only.
+// Target-thread standard Edit candidate. Broker admits single-line controls and
+// multiline controls with pre-existing ES_AUTOVSCROLL; it never changes styles.
 // No external verify/replace sequence, clipboard paste, readonly lock or rollback.
 #include "tsf_apply.hpp"
 #include <imm.h>
