@@ -90,7 +90,7 @@ try {
   if (-not $SkipBrowserHost) {
     $registration = & (Join-Path $root 'host-tools/Prepare-Host.ps1') `
       -Executable (Join-Path $root 'grammar-chromium-host.exe') `
-      -ExtensionId $manifest.extensionId -OutputDirectory (Join-Path $root 'host') -Register -HostsKey $NativeHostsKey | ConvertFrom-Json
+      -ExtensionId $manifest.extensionId -OutputDirectory (Join-Path $root 'host') -UseInstalledRuntime -Register -HostsKey $NativeHostsKey | ConvertFrom-Json
     # Record the registration before anything else can fail.
     $receipt.nativeHost = [ordered]@{
       name = $registration.name

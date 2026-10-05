@@ -54,7 +54,11 @@ try{
  await shortcut();await until('ungranted capture refusal',()=>widget.evaluate(()=>window.__errors.length===1));
  assert.equal(await widget.evaluate(()=>window.__captures.length),0);assert.equal(await documentPage.locator('#writing').inputValue(),source);pass('global capture without document opt-in refused with source unchanged');
  await hide();await documentPage.bringToFront();
- const gesture=await execAsync('powershell.exe',['-NoProfile','-STA','-File','C:/GrammarPayload/browser-app-source/adapters/chromium/tests/ui-gesture.ps1','-Command','Keyboard','-WindowTitle',title,'-Name',`Extensions|prefix:${ext.name}|Enable this document`,'-TimeoutMs','10000'],{windowsHide:true,timeout:100000});
+ // Run the repository-owned helper as a command, like the existing guest
+ // driver. Do not change machine/user execution policy or interpolate labels
+ // as PowerShell code; pass the synthetic labels through the child environment.
+ const gestureCommand="& ([ScriptBlock]::Create([IO.File]::ReadAllText('C:/GrammarPayload/browser-app-source/adapters/chromium/tests/ui-gesture.ps1'))) -Command Keyboard -WindowTitle $env:GRAMMAR_FIXTURE_TITLE -Name $env:GRAMMAR_FIXTURE_SEQUENCE -TimeoutMs 10000";
+ const gesture=await execAsync('powershell.exe',['-NoProfile','-STA','-Command',gestureCommand],{windowsHide:true,timeout:100000,env:{...process.env,GRAMMAR_FIXTURE_TITLE:title,GRAMMAR_FIXTURE_SEQUENCE:`Extensions|prefix:${ext.name}|Enable this document`}});
  report.toolbar=JSON.parse(gesture.stdout.trim());assert.equal(report.toolbar.status,'clicked');
  await documentPage.bringToFront();await documentPage.locator('#grammar-local-assist').waitFor();pass('unmodified installed extension enabled through keyboard toolbar and popup');
  const draft=widget.getByLabel('Editable rewrite result text',{exact:true}),accept=widget.getByTestId('apply-result'),status=widget.locator('.status-pill');
@@ -95,6 +99,9 @@ try{
  assert.deepEqual(await extensionHashes(),originalExtension);pass('installed extension bytes unchanged and app exited naturally');report.status='PASS';
 }catch(error){report.error=String(error.stack??error);console.error(report.error);}
 finally{
+ report.captureErrors=widget?await widget.evaluate(()=>window.__errors).catch(()=>[]):[];
+ report.captureCount=widget?await widget.evaluate(()=>window.__captures.length).catch(()=>null):null;
+ report.lastStatus=widget?await widget.locator('.status-pill').textContent({timeout:1000}).catch(()=>null):null;
  if(widget&&app?.exitCode===null){await widget.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});await until('cleanup app',()=>app.exitCode!==null,15000).catch(()=>{});}
  if(context)await context.close().catch(()=>{});if(webview)await webview.close().catch(()=>{});
  if(app?.exitCode===null){app.kill();report.forcedApp=true;}
