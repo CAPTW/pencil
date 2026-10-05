@@ -1,4 +1,6 @@
 #Requires -Version 7.0
+param([switch]$SavedDocx,
+ [ValidatePattern('^writer-product-package(?:-[a-f0-9]{7})?$')][string]$PackageDirectoryName='writer-product-package')
 # Offline, task-owned Sandbox only. Payload contains receipt-bound package/OXT.
 $ErrorActionPreference='Stop'
 if($env:USERNAME -ne 'WDAGUtilityAccount' -or $env:COMPUTERNAME -eq (Get-Content C:\GrammarPayload\host-machine.txt -Raw).Trim()){throw 'Guest only'}
@@ -8,10 +10,12 @@ $office=$null;$python=$null
 function Save-Receipt {$report | ConvertTo-Json -Depth 5 | Set-Content C:\GrammarOutput\launcher.json}
 try {
  Save-Receipt
+ $report.writerExtensionSha256=(Get-FileHash C:\GrammarPayload\GrammarWriter-product.oxt -Algorithm SHA256).Hash.ToLowerInvariant()
+ if($SavedDocx){$report.classification='INSTALLED_WRITER_WIDGET_OWNED_SAVED_PLAIN_DOCX'}
  $runtime=Get-ChildItem 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application' -Directory | Where-Object{Test-Path (Join-Path $_.FullName 'msedgewebview2.exe')} | Sort-Object Name | Select-Object -Last 1
  if(-not $runtime){throw 'Guest WebView runtime absent'}
  $env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER=$runtime.FullName
- & C:\GrammarPayload\writer-product-package\Install-Grammar.ps1 -InstallRoot C:\GrammarTrial -SkipBrowserHost
+ & (Join-Path "C:\GrammarPayload\$PackageDirectoryName" 'Install-Grammar.ps1') -InstallRoot C:\GrammarTrial -SkipBrowserHost
  $report.sourceCommit=(Get-Content C:\GrammarTrial\MANIFEST.json -Raw|ConvertFrom-Json).sourceCommit
  $extract=Start-Process C:\GrammarLOTools\7z.exe -ArgumentList @('x','C:\GrammarLOTools\engine.paf.exe','App\libreoffice\*','-oC:\GrammarLibreOffice','-y','-bso0','-bsp0') -WindowStyle Hidden -PassThru
  if(-not $extract.WaitForExit(300000)){$extract.Kill($true);$report.forced=$true;throw 'Extraction timeout'}
@@ -26,7 +30,9 @@ try {
  $pipe='grammar_writer_product_'+[guid]::NewGuid().ToString('N')
  $office=Start-Process "$program\soffice.com" -ArgumentList @('-env:UserInstallation=file:///C:/GrammarLOProfile','--norestore','--nofirststartwizard','--nologo','--nodefault',"--accept=pipe,name=$pipe;urp;StarOffice.ComponentContext") -WindowStyle Hidden -PassThru -RedirectStandardOutput C:\GrammarOutput\office.log -RedirectStandardError C:\GrammarOutput\office-error.log
  $env:PYTHONPATH=$program
- $python=Start-Process "$program\python.exe" -ArgumentList @('C:\GrammarPayload\writer-product-probe.py',$pipe,'--widget') -WindowStyle Hidden -PassThru -RedirectStandardOutput C:\GrammarOutput\python.log -RedirectStandardError C:\GrammarOutput\python-error.log
+ $probeArgs=@('C:\GrammarPayload\writer-product-probe.py',$pipe,'--widget')
+ if($SavedDocx){$probeArgs+='--saved'}
+ $python=Start-Process "$program\python.exe" -ArgumentList $probeArgs -WindowStyle Hidden -PassThru -RedirectStandardOutput C:\GrammarOutput\python.log -RedirectStandardError C:\GrammarOutput\python-error.log
  if(-not $python.WaitForExit(120000)){$python.Kill($true);$report.forced=$true;throw 'Widget fixture timeout'}
  $report.pythonExit=$python.ExitCode
  if(-not $office.WaitForExit(15000)){throw 'Office natural exit timeout'}

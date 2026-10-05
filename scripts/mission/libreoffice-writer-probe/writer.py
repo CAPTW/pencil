@@ -32,3 +32,12 @@ class Writer(WriterCore):
 
 g_ImplementationHelper = unohelper.ImplementationHelper()
 g_ImplementationHelper.addImplementation(Writer, 'org.grammar.fixture.Writer', ('org.grammar.fixture.Writer',))
+
+
+class SavedWriter(Writer):
+    def __init__(self, context):
+        super().__init__(context)
+        self.allow_saved_documents = True
+
+
+g_ImplementationHelper.addImplementation(SavedWriter, 'org.grammar.fixture.SavedWriter', ('org.grammar.fixture.SavedWriter',))
