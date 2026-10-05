@@ -178,15 +178,20 @@ void exchange(const std::shared_ptr<Shared>& shared) {
         ChannelRequest request;
         // One receiver-side budget starts at the first observed request bytes.
         // Receive, STA queue and callback share 5 seconds; reply has at most the
-        // remaining 1.5 seconds. This is not the sender's absolute deadline.
+        // total 6.5-second cap. Both are clamped to the sender expiry.
         const auto receivedAt=GetTickCount64();
         if(receivedAt>=connectionDeadline)break;
-        const auto operationDeadline=(std::min)(connectionDeadline,receivedAt+5000);
-        const auto replyDeadline=(std::min)(connectionDeadline,receivedAt+6500);
+        auto operationDeadline=(std::min)(connectionDeadline,receivedAt+5000);
+        auto replyDeadline=(std::min)(connectionDeadline,receivedAt+6500);
         const auto requestDeadline=(std::min)(operationDeadline,receivedAt+1500);
-        const auto callbackDeadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(operationDeadline-receivedAt);
         if (!receive_apply_request(pipe.get(), admission, request, requestDeadline)) break;
         if (request.header.command == ChannelCommand::disable) break;
+        operationDeadline=(std::min)(operationDeadline,request.header.deadline_ticks);
+        replyDeadline=(std::min)(replyDeadline,request.header.deadline_ticks);
+        const auto callbackNow=std::chrono::steady_clock::now();
+        const auto admittedAt=GetTickCount64();
+        if(admittedAt>=operationDeadline)break;
+        const auto callbackDeadline=callbackNow+std::chrono::milliseconds(operationDeadline-admittedAt);
         {
             std::lock_guard<std::mutex> lock(shared->mutex);
             if (shared->queued || !shared->selected.empty()) break;

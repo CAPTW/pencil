@@ -65,7 +65,7 @@ int wmain(int argc,wchar_t** argv) try {
             do {raw.reset(CreateFileW(browser_bridge_name(child.dwProcessId).c_str(),GENERIC_READ|GENERIC_WRITE,0,nullptr,OPEN_EXISTING,SECURITY_SQOS_PRESENT|SECURITY_IDENTIFICATION,nullptr));if(raw.get()!=INVALID_HANDLE_VALUE)break;Sleep(1);}while(GetTickCount64()<deadline);
             DWORD mode=PIPE_NOWAIT;TargetHello hello;
             bool ready=peer && raw.get()!=INVALID_HANDLE_VALUE && SetNamedPipeHandleState(raw.get(),&mode,nullptr,nullptr) && channel_read_exact(raw.get(),&hello,sizeof(hello),deadline);
-            ChannelHeader bad;bad.capability=hello.capability;
+            ChannelHeader bad;bad.capability=hello.capability;bad.deadline_ticks=GetTickCount64()+2000;
             if(scenario==3)bad.capability[0]^=1;
             if(scenario==4)bad.sequence=2;
             if(scenario==5){bad.command=ChannelCommand::apply;bad.capture_id=1;bad.payload_bytes=2;}

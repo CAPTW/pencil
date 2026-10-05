@@ -27,7 +27,7 @@ static int child(int argc, wchar_t** argv) {
     DWORD mode = PIPE_READMODE_BYTE | PIPE_NOWAIT;
     if (!SetNamedPipeHandleState(pipe.get(), &mode, nullptr, nullptr)) return 33;
     int scenario = _wtoi(argv[5]);
-    ChannelHeader header; header.capability = capability;
+    ChannelHeader header; header.capability = capability; header.deadline_ticks=GetTickCount64()+2000;
     std::vector<unsigned char> body;
     if (scenario == 1 || scenario == 12 || scenario >= 22) {
         header.command = ChannelCommand::apply;
@@ -40,7 +40,7 @@ static int child(int argc, wchar_t** argv) {
         if (scenario == 26) { body[0] = 0x3d; body[1] = 0xd8; body[2] = 0; body[3] = 0xde; }
     }
     if (scenario == 2) header.capability[0] ^= 1;
-    if (scenario == 4) header.version = 3;
+    if (scenario == 4) header.version = 2;
     if (scenario == 5) { header.command = ChannelCommand::apply; header.payload_bytes = channel_max_payload + 2; }
     if (scenario == 6) { header.command = ChannelCommand::apply; header.payload_bytes = 3; }
     if (scenario == 8) header.sequence = 2;
@@ -51,13 +51,19 @@ static int child(int argc, wchar_t** argv) {
     if (scenario == 17) header.reserved = 1;
     if (scenario == 18) header.sequence = (std::numeric_limits<uint64_t>::max)();
     if (header.command == ChannelCommand::apply) header.capture_id = 1; // Admission-only fixture, no document authority.
-    if (scenario >= 28) {
+    if (scenario >= 28 && scenario <= 32) {
         body.clear(); header.payload_bytes = 0;
         header.command = scenario == 28 ? ChannelCommand::capture : scenario == 32 ? ChannelCommand::disable : ChannelCommand::cancel;
         header.capture_id = scenario == 30 ? 0 : 1;
         if (scenario == 29) { header.command = ChannelCommand::apply; header.capture_id = 0; header.payload_bytes = 2; body = {'x', 0}; }
     }
+    if(scenario>=33){header.command=ChannelCommand::capture;header.capture_id=0;header.payload_bytes=0;body.clear();}
+    if(scenario==33)header.deadline_ticks=0;
+    if(scenario==34)header.deadline_ticks=GetTickCount64()-1;
+    if(scenario==35)header.deadline_ticks=UINT64_MAX;
+    if(scenario==36)header.deadline_ticks=GetTickCount64()+50;
     auto deadline = GetTickCount64() + 2000;
+    if(scenario==36)Sleep(100);
     if (scenario == 27) {
         if (!write_bytes(pipe.get(), &header, 8, deadline)) return 34;
         Sleep(100);
@@ -82,7 +88,7 @@ int wmain(int argc, wchar_t** argv) {
     WCHAR executable[32768]{};
     if (!GetModuleFileNameW(nullptr, executable, 32768)) return 3;
     int failures = 0;
-    for (int scenario = 0; scenario < 33; ++scenario) {
+    for (int scenario = 0; scenario < 37; ++scenario) {
         OwnedApplyPipe pipe;
         if (pipe.get() == INVALID_HANDLE_VALUE) { printf("pipe_creation_failed=%lu\n", GetLastError()); return 4; }
         ConnectNamedPipe(pipe.get(), nullptr); // Nonblocking: begin listening.

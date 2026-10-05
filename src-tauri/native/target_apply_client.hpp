@@ -94,7 +94,8 @@ public:
         }
         ChannelHeader header; header.command = kind; header.capture_id = capture; header.sequence = sequence_++;
         header.capability = capability_; header.payload_bytes = static_cast<DWORD>(replacement.size()*sizeof(wchar_t));
-        auto deadline = GetTickCount64()+6500;
+        const auto deadline = GetTickCount64()+6500;
+        header.deadline_ticks=deadline;
         bool written = target_write(pipe_, &header, sizeof(header), deadline, &cancelled_) && target_write(pipe_, replacement.data(), header.payload_bytes, deadline, &cancelled_);
         SecureZeroMemory(header.capability.data(),header.capability.size());
         if (!written || !channel_read_exact(pipe_, &reply, sizeof(reply), deadline, &cancelled_) || reply.status > 4 || reply.status == 1 ||
