@@ -75,6 +75,8 @@ def run(repo):
         record("historical_pre_scope_state_preserved", lambda: ps.state_check(historical))
         unsaved_scope = json.loads(ps.git(repo, "show", "5a238f2:control/state.json"))
         record("historical_unsaved_writer_scope_preserved", lambda: ps.state_check(unsaved_scope))
+        saved_scope = json.loads(ps.git(repo, "show", "82b798d:control/state.json"))
+        record("historical_saved_plain_writer_scope_preserved", lambda: ps.state_check(saved_scope))
     if state["p3a_status"] in (ps.APPLY_STATUS, ps.GLOBAL_APPLY_STATUS, ps.EDIT_APPLY_STATUS):
         changed = copy.deepcopy(state)
         next(d for d in changed["known_defects"] if d["id"] == "F-06")["verdict"] = "CONTAINED_COPY_ONLY_NATIVE_NOT_QUALIFIED"

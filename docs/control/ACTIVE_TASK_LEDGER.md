@@ -78,3 +78,12 @@ Owner2026-10-05 expands current implementation to standard Edit and Text/DOCX/XL
 
 
 Installed84df647 browser global shortcut/real widget/edited Accept10 and native multiline15 PASS, complete cleanup. Installed host runtime colocation defect repaired; prior failures preserved. Source materiality current, candidate preview only. Continue named Office/Hancom adapters, which remain unimplemented/unqualified; whole goal INCOMPLETE. Evidence grammar-browser-installed-20261005/RESULT.json.
+
+
+Current Writer2a16115 extension/app-native0fc8624 combination: owned installed
+uniform-format single-paragraph Accept/Undo PASS8 widget/5 enclosing checks;
+core32/16 and plain73/32 PASS, explicit Save/reopen fidelity and cleanup confirmed.
+Evidence grammar-writer-uniform-format-20261005. Continue mixed-format range and
+paragraph-aware Undo in the existing authorized global-adapter task. General rich
+Writer, Calc/Impress, Office/Hancom, normal profiles/IME/live Providers incomplete.
+No additional Owner gate, no main adoption/push; mission INCOMPLETE.

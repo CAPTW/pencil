@@ -1,4 +1,17 @@
-> Latest saved Writer checkpoint (2026-10-05): F06 now includes local saved/reopened
+> Current uniform-format checkpoint (2026-10-05): app/native0fc8624 plus product
+> OXT2a16115 with explicit saved/uniform options qualifies one Standard paragraph
+> with homogeneous script weights, opaque non-theme RGB and alignment in owned
+> pinned LibreOffice26.2.4.2. Installed widget8/enclosing5, formatted core32/16 cycles,
+> plain core73/32 cycles PASS; explicit synthetic Save/reopen and cleanup confirmed.
+> Plain-mode OXT5a339b8 qualification remains separate. Mixed runs, multiple formatted
+> paragraphs, structures, normal profiles/IME/other apps/live Providers remain
+> unqualified or NOT_RUN. Next work within the authorized global-adapter task is
+> mixed-format range preservation and paragraph-aware Undo, not renewed saved-plain
+> qualification. Mission INCOMPLETE; no main adoption or push.
+> Earlier checkpoint notes below are historical scope statements, superseded by
+> this paragraph and current state F06. Evidence: grammar-writer-uniform-format-20261005.
+
+> Prior saved Writer checkpoint (2026-10-05): F06 now includes local saved/reopened
 > default-style plain DOCX with pinned26.2.4.2, app/native0fc8624 and product
 > OXT5a339b8 built with --enable-saved-docx. Actual installed widget6 plus core73
 > and32 cycles PASS; exact Apply/Undo, save revocation, readonly/user-edit/Disable
@@ -119,3 +132,31 @@ Product330ab3b installed Medium Sandbox PASS15 adds pre-existing ES_MULTILINE+ES
 
 
 Installed84df647: actual desktop-global Chromium review/Accept10 and same-package native multiline15 PASS in restricted-Medium Sandbox. Browser support is only opted-in textarea/simple contenteditable on synthetic localhost documents, unmodified installed extension, pinned keyboard toolbar, fresh sandboxed profile. Exact text rereads and stale/source/range/cancel/privacy refusals verified; complete cleanup. Office/Hancom adapters NOT_IMPLEMENTED, actual licensed app tests NOT_RUN. Human keyboard/IME/normal profiles/Edge remain NOT_RUN. See current HANDOFF and grammar-browser-installed-20261005/RESULT.json.
+
+
+## Uniform Writer installed qualification — 2026-10-05
+Product OXT2a16115 (aa1f4df00d357f5e0b2127cd3360c2e9d25c4157f55f4d65e1410a2d6ce509dc)
+with --enable-saved-docx --enable-uniform-format and unchanged app/native0fc8624
+passes guest-product-r1:8 installed widget checks plus5 enclosing checks. Actual
+hotkey/Instant/edited Accept/reread/Undo preserves every portion's script weights,
+RGB and alignment. Source edit and Disable preserve the document. The Disable
+UI reports "Apply outcome unconfirmed"; exact reread separately proves unchanged
+text, not a confirmed protocol rejection. No automatic retry or Save.
+
+Qualification is only pinned LibreOffice26.2.4.2, owned fresh profile, one Standard
+body paragraph with homogeneous supported weights, opaque non-theme RGB and
+alignment, new or local DOCX. No mixed formats, arbitrary interop metadata, theme
+color, hidden fields, multiple formatted paragraphs or complex structures.
+Ordinary product builds still default both capabilities off; previously qualified
+plain mode stays separate. This is not general rich DOCX or normal-profile support.
+
+Plain regression:73 checks/32 cycles PASS. Formatted R10:28 checks/16 cycles PASS.
+Product app/Office/Python natural0, forcedfalse, zero residual processes, complete
+uninstall. Exact original app/DLL hashes and new OXT input hashes are separate
+receipts in D:/dev/grammar-evidence/grammar-writer-uniform-format-20261005.
+Final R11:32 checks/16 cycles PASS, including inherited-style-change refusal,
+explicit Save after Redo and exact text/format after reopening that saved file.
+Natural Office/Python0, cleanuptrue, forcedfalse/processes0; every guest stopped.
+F06 and Source generator now express this bounded union while preserving old
+unsaved-only and saved-plain snapshots. Same-integrator review, no independent
+reviewer. Mission INCOMPLETE, main unchanged, no push or live Provider.

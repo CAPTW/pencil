@@ -207,6 +207,17 @@ try:
         and doc.Text.String == source and all(row[1] == 0x880022 for row in formatting()))
     reset()
     token = formatted_capture()
+    style = doc.StyleFamilies.getByName('ParagraphStyles').getByName('Standard')
+    height = style.CharHeight
+    try:
+        style.CharHeight = height + 1
+        record('inherited-style-change-rejects-stale-accept',
+            call('accept', Token=token, Replacement='WRONG')['status'] == 'REJECTED'
+            and doc.Text.String == source and style.CharHeight == height + 1)
+    finally:
+        style.CharHeight = height
+    reset()
+    token = formatted_capture()
     values = dict(Action='arm', Mode='format', Token=token, Document=doc, Service=service, UserText='UNUSED')
     hooks.execute(tuple(arg('NamedValue', k, v) for k, v in values.items()))
     try:
@@ -319,6 +330,19 @@ try:
     record('saved-formatted-docx-undo-exact', doc.Text.String == source
         and all(row == (150.0, 0x2255AA, 3, 150.0, 150.0) for row in formatting()))
     record('saved-formatted-docx-not-automatically-saved', hashlib.sha256(file.read_bytes()).hexdigest() == digest)
+    doc.getUndoManager().redo()
+    record('saved-formatted-docx-redo-exact', doc.Text.String == source.replace('Synthetic', replacement)
+        and all(row == (150.0, 0x2255AA, 3, 150.0, 150.0) for row in formatting()))
+    # Explicit synthetic user Save, never a product-triggered store.
+    doc.store()
+    record('explicit-save-updates-synthetic-file', hashlib.sha256(file.read_bytes()).hexdigest() != digest)
+    keeper = desktop.loadComponentFromURL('private:factory/swriter', '_blank', 0, ())
+    doc.close(True)
+    doc = desktop.loadComponentFromURL(url, '_blank', 0,
+        (arg('PropertyValue', 'MacroExecutionMode', NEVER_EXECUTE), arg('PropertyValue', 'UpdateDocMode', 0)))
+    keeper.close(True)
+    record('explicit-save-reopen-preserves-replacement-and-format', doc.Text.String == source.replace('Synthetic', replacement)
+        and all(row == (150.0, 0x2255AA, 3, 150.0, 150.0) for row in formatting()))
     result['status'] = 'FAIL' if result.get('failures') else 'PASS'
 
 except Exception as error:
