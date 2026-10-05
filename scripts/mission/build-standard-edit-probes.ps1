@@ -38,7 +38,7 @@ $hash=(Get-FileHash (Join-Path $output 'target-service-probe.exe') -Algorithm SH
 $header=Join-Path $output 'trusted-build.hpp'
 [IO.File]::WriteAllLines($header,@(('#define GRAMMAR_TRUSTED_APP_SHA256 "'+$hash+'"'),'#define GRAMMAR_TRUSTED_APP_NAME L"target-service-probe.exe"'),[Text.UTF8Encoding]::new($false))
 $obj=Join-Path $output 'dll-obj';New-Item -ItemType Directory $obj | Out-Null
-$command='"'+$dev+'" -arch=x64 && cl /nologo /std:c++17 /EHsc /MT /W4 /WX /DUNICODE /D_UNICODE /FI"'+$header+'" /LD "'+$source+'/src-tauri/native/target_apply.cpp" "'+$source+'/src-tauri/native/target_apply_api.cpp" /Fe:"'+$output+'\target-apply.dll" /Fo:"'+$obj+'\\" '+$libs+' /link /WX'
+$command='"'+$dev+'" -arch=x64 && cl /nologo /std:c++17 /EHsc /MT /W4 /WX /DUNICODE /D_UNICODE /FI"'+$header+'" /LD "'+$source+'/src-tauri/native/target_apply.cpp" "'+$source+'/src-tauri/native/target_apply_api.cpp" "'+$source+'/src-tauri/native/browser_bridge_api.cpp" /Fe:"'+$output+'\target-apply.dll" /Fo:"'+$obj+'\\" '+$libs+' /link /WX'
 $command=$command.Replace(' /DUNICODE ',' /DUNICODE '+$define)
 & $env:ComSpec /d /s /c $command *> (Join-Path $output 'dll-build.log')
 if($LASTEXITCODE -ne 0){throw 'Target service compile failed'}
