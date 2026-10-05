@@ -19,6 +19,7 @@ $sourceCommit=& git -C $source rev-parse HEAD
 function Get-ProbeInputs {
     $files=@(Get-ChildItem -LiteralPath (Join-Path $source 'src-tauri/native') -File | Where-Object Extension -in '.hpp','.cpp')
     $files+=@($names | ForEach-Object {Get-Item (Join-Path $PSScriptRoot "native-$_-probe.cpp")})
+    $files+=Get-Item (Join-Path $PSScriptRoot 'word-metadata-fixture.hpp')
     $files+=Get-Item $PSCommandPath
     @($files | Sort-Object FullName | ForEach-Object {[ordered]@{path=$_.FullName.Substring($source.Length+1);sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
 }
@@ -44,4 +45,3 @@ if(($before|ConvertTo-Json -Compress) -cne ($after|ConvertTo-Json -Compress) -or
     inputs=$before
     outputs=@(Get-ChildItem -LiteralPath $output -File | Where-Object Extension -in '.exe','.dll' | ForEach-Object {@{path=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
 }|ConvertTo-Json -Depth 5|Set-Content (Join-Path $output 'build-receipt.json')
-
