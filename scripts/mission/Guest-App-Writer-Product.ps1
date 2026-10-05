@@ -1,5 +1,5 @@
 #Requires -Version 7.0
-param([switch]$SavedDocx, [switch]$UniformFormat, [switch]$MixedSurroundings, [switch]$Paragraphs,
+param([switch]$SavedDocx, [switch]$UniformFormat, [switch]$MixedSurroundings, [switch]$Paragraphs, [switch]$CrossFormat,
  [ValidatePattern('^writer-product-package(?:-[a-f0-9]{7})?$')][string]$PackageDirectoryName='writer-product-package')
 # Offline, task-owned Sandbox only. Payload contains receipt-bound package/OXT.
 $ErrorActionPreference='Stop'
@@ -15,6 +15,7 @@ try {
  if($UniformFormat){$report.uniformFormat=$true;$report.savedDocx=[bool]$SavedDocx;$report.classification='INSTALLED_WRITER_WIDGET_OWNED_UNIFORM_FORMAT'}
  if($MixedSurroundings){if(-not $UniformFormat){throw 'Mixed requires UniformFormat'};$report.mixedSurroundings=$true;$report.classification='INSTALLED_WRITER_WIDGET_OWNED_MIXED_SURROUNDINGS'}
  if($Paragraphs){if(-not $MixedSurroundings){throw 'Paragraphs requires MixedSurroundings'};$report.paragraphs=$true;$report.classification='INSTALLED_WRITER_WIDGET_OWNED_PARAGRAPHS'}
+ if($CrossFormat){if(-not $Paragraphs){throw 'CrossFormat requires Paragraphs'};$report.crossFormat=$true;$report.classification='INSTALLED_WRITER_WIDGET_OWNED_CROSS_FORMAT'}
  $runtime=Get-ChildItem 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application' -Directory | Where-Object{Test-Path (Join-Path $_.FullName 'msedgewebview2.exe')} | Sort-Object Name | Select-Object -Last 1
  if(-not $runtime){throw 'Guest WebView runtime absent'}
  $env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER=$runtime.FullName
@@ -38,6 +39,7 @@ try {
  if($UniformFormat){$probeArgs+='--formatted'}
  if($MixedSurroundings){$probeArgs+='--mixed'}
  if($Paragraphs){$probeArgs+='--paragraphs'}
+ if($CrossFormat){$probeArgs+='--cross-format'}
  $python=Start-Process "$program\python.exe" -ArgumentList $probeArgs -WindowStyle Hidden -PassThru -RedirectStandardOutput C:\GrammarOutput\python.log -RedirectStandardError C:\GrammarOutput\python-error.log
  if(-not $python.WaitForExit(120000)){$python.Kill($true);$report.forced=$true;throw 'Widget fixture timeout'}
  $report.pythonExit=$python.ExitCode

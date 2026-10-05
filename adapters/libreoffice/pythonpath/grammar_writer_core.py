@@ -180,7 +180,7 @@ def plain_metadata(doc, allow_uniform_format=False, allow_mixed_format=False):
     return None
 
 
-def mixed_selection(doc, selected, layout):
+def mixed_selection(doc, selected, layout, allow_cross=False):
     prefix = doc.Text.createTextCursor()
     prefix.gotoStart(False)
     prefix.gotoRange(selected.Start, True)
@@ -199,9 +199,10 @@ def mixed_selection(doc, selected, layout):
             if not characters:
                 raise Refused('selection_crosses_paragraph_boundary')
             current = (characters, paragraph_format, layout[2], rgb)
-            if chosen is not None and current != chosen:
+            if not allow_cross and chosen is not None and current != chosen:
                 raise Refused('selection_crosses_format_boundary')
-            chosen = current
+            if chosen is None:
+                chosen = current
             covered += overlap
         offset += size
     if covered != length:
@@ -209,38 +210,74 @@ def mixed_selection(doc, selected, layout):
     return start, length, chosen
 
 
-def replaced_layout(layout, start, length, replacement_length):
-    """Expected complete formatting after replacing a single homogeneous range."""
-    output = []
-    offset = 0
-    chosen = None
-    covered = 0
+def selected_layout_runs(layout, start, length):
+    """Bounded original character formats for range-only Undo; never delimiters."""
+    result, offset, covered = [], 0, 0
     for size, characters, rgb in layout[0]:
-        end = offset + size
-        overlap = max(0, min(end, start + length) - max(offset, start))
+        overlap = max(0, min(offset + size, start + length) - max(offset, start))
         if overlap:
             if not characters:
                 raise Refused('selection_crosses_paragraph_boundary')
-            if chosen is not None and chosen != (characters, rgb):
-                raise Refused('selection_crosses_format_boundary')
-            chosen = (characters, rgb)
+            result.append((overlap, characters, rgb))
             covered += overlap
-            size -= overlap
-            if covered == length:
-                size += replacement_length
-        if size or end == offset:
-            if characters and output and output[-1][1:] == (characters, rgb):
-                output[-1] = (output[-1][0] + size, characters, rgb)
-            else:
-                output.append((size, characters, rgb))
-        offset = end
-    if length <= 0 or covered != length or replacement_length <= 0:
+        offset += size
+    if start < 0 or length <= 0 or covered != length:
         raise Refused('mixed_range_bounds')
+    return tuple(result)
+
+
+def replaced_layout(layout, start, length, replacement_length, allow_cross=False):
+    """Replace with first selected style; original range formats retained for Undo."""
+    selected = selected_layout_runs(layout, start, length)
+    chosen = selected[0][1:]
+    if not allow_cross and any(run[1:] != chosen for run in selected):
+        raise Refused('selection_crosses_format_boundary')
+    if replacement_length <= 0:
+        raise Refused('mixed_range_bounds')
+    output, offset, inserted = [], 0, False
+    def append(size, characters, rgb):
+        if characters and output and output[-1][1:] == (characters, rgb):
+            output[-1] = (output[-1][0] + size, characters, rgb)
+        else:
+            output.append((size, characters, rgb))
+    for size, characters, rgb in layout[0]:
+        end = offset + size
+        overlap = max(0, min(end, start + length) - max(offset, start))
+        if not overlap:
+            append(size, characters, rgb)
+        else:
+            if offset < start:
+                append(start - offset, characters, rgb)
+            if not inserted:
+                append(replacement_length, *chosen)
+                inserted = True
+            if end > start + length:
+                append(end - start - length, characters, rgb)
+        offset = end
     paragraph_format = layout[1]
     if paragraph_format[0] == 'paragraphs':
         paragraph_format = ('paragraphs', tuple((offset + (replacement_length - length if offset > start else 0), value)
             for offset, value in paragraph_format[1]))
     return (tuple(output), paragraph_format, layout[2])
+
+
+def restore_selected_runs(doc, selected, runs, formatting):
+    # UNO cursor units differ from Python characters (e.g. astral text).
+    # Measure actual selected strings; never guess a UTF-16 offset.
+    cursor = doc.Text.createTextCursorByRange(selected.Start)
+    for length, characters, rgb in runs:
+        cursor.collapseToEnd()
+        for _ in range(4097):
+            measured = len(cursor.String)
+            if measured == length:
+                break
+            if measured > length or not cursor.goRight(1, True):
+                raise Refused('unrepresentable_format_range')
+        else:
+            raise Refused('format_range_bounds')
+        restore_uniform_format(cursor, (characters, formatting[1], formatting[2], rgb))
+    if doc.Text.compareRegionEnds(cursor, selected.End) != 0:
+        raise Refused('format_range_bounds')
 
 
 def restore_uniform_format(selected, formatting):
@@ -249,10 +286,10 @@ def restore_uniform_format(selected, formatting):
     for name, value, state in formatting[0]:
         if selected.getPropertyValue(name) == value:
             continue
-        if state == 'DEFAULT_VALUE':
-            selected.setPropertyToDefault(name)
-        else:
-            selected.setPropertyValue(name, value)
+        # A portion DEFAULT_VALUE can inherit a run value, not the document
+        # default. After replacement that run may no longer exist. Restore the
+        # measured effective value instead of resetting to a different default.
+        selected.setPropertyValue(name, value)
     if formatting[3]:
         item = uno.createUnoStruct('com.sun.star.beans.PropertyValue')
         item.Name, item.Value = 'CharThemeOriginalColor', formatting[3][0]
@@ -300,9 +337,10 @@ def movement_to(doc, target):
 class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
     active = 0
     """One qualified range replacement, never whole-document restore."""
-    def __init__(self, document, selected, before, after, start, before_steps, before_hash, after_hash, formatting=None, mixed_format=False):
+    def __init__(self, document, selected, before, after, start, before_steps, before_hash, after_hash, formatting=None, mixed_format=False, before_runs=None):
         self.document = document
         self.formatting = formatting
+        self.before_runs = before_runs
         self.mixed_format = mixed_format
         self.before, self.after = before, after
         self.start = start
@@ -320,6 +358,7 @@ class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
         self.disposed = True
         self.document = None
         self.formatting = None
+        self.before_runs = None
         self.before = self.after = None
         self.before_hash = self.after_hash = None
         ReplacementUndo.active -= 1
@@ -364,7 +403,10 @@ class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
                 raise UndoFailedException('Grammar range changed', self, None)
             selected.String = replacement
             if self.formatting is not None:
-                restore_uniform_format(selected, self.formatting)
+                if self.before_runs is not None and digest == self.after_hash:
+                    restore_selected_runs(doc, selected, self.before_runs, self.formatting)
+                else:
+                    restore_uniform_format(selected, self.formatting)
         finally:
             doc.enableSetModified()
             doc.setModified(True)
@@ -481,7 +523,7 @@ class Callback(unohelper.Base, XCallback):
                 owner.permission(self.epoch)
                 owner.foreground_document()
                 layout = plain_metadata(owner.document, True, owner.allow_mixed_format) if owner.allow_mixed_format else None
-                mixed_range = mixed_selection(owner.document, selected, layout) if layout is not None else None
+                mixed_range = mixed_selection(owner.document, selected, layout, owner.allow_cross_format) if layout is not None else None
                 owner.deadline(self.deadline)
                 owner.permission(self.epoch)
                 owner.review = dict(token=secrets.token_hex(24), source=source,
@@ -521,7 +563,7 @@ class Callback(unohelper.Base, XCallback):
                     expected_after_hash = None
                     if review['layout'] is not None:
                         offset, length, _ = review['mixed_range']
-                        expected_layout = replaced_layout(review['layout'], offset, length, len(replacement))
+                        expected_layout = replaced_layout(review['layout'], offset, length, len(replacement), owner.allow_cross_format)
                         body = body_snapshot(owner.document, True, owner.allow_mixed_format)
                         expected_body = body[:offset] + replacement + body[offset + length:]
                         expected_after_hash = fingerprint(json.dumps((expected_body, expected_layout),
@@ -546,7 +588,8 @@ class Callback(unohelper.Base, XCallback):
                     if expected_after_hash is not None and after_hash != expected_after_hash:
                         raise Refused('postwrite_layout_mismatch')
                     undo.addUndoAction(ReplacementUndo(owner.document, review['range'], review['source'], replacement,
-                        start, before_steps, before_hash, after_hash, review['formatting'], owner.allow_mixed_format))
+                        start, before_steps, before_hash, after_hash, review['formatting'], owner.allow_mixed_format,
+                        selected_layout_runs(review['layout'], *review['mixed_range'][:2]) if owner.allow_cross_format else None))
                     owner.document.setModified(True)
                 finally:
                     undo.leaveUndoContext()
@@ -577,7 +620,7 @@ class Callback(unohelper.Base, XCallback):
 
 
 class WriterCore(unohelper.Base, XJob):
-    def __init__(self, context, *, allow_saved_documents=False, allow_uniform_format=False, allow_mixed_format=False, allow_paragraphs=False):
+    def __init__(self, context, *, allow_saved_documents=False, allow_uniform_format=False, allow_mixed_format=False, allow_paragraphs=False, allow_cross_format=False):
         self.context = context
         self.desktop = context.ServiceManager.createInstanceWithContext('com.sun.star.frame.Desktop', context)
         self.document = self.controller = self.listener = self.review = self.result = None
@@ -590,6 +633,9 @@ class WriterCore(unohelper.Base, XJob):
         self.window = 0
         # Deployment capabilities are explicit and default off.
         self.allow_saved_documents = allow_saved_documents
+        if allow_cross_format and not allow_paragraphs:
+            raise ValueError('cross format requires paragraph mode')
+        self.allow_cross_format = allow_cross_format
         self.allow_uniform_format = allow_uniform_format
         if allow_mixed_format and not allow_uniform_format:
             raise ValueError('mixed format requires formatted mode')

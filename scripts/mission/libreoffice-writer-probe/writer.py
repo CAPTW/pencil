@@ -68,3 +68,12 @@ class ParagraphWriter(MixedWriter):
 
 
 g_ImplementationHelper.addImplementation(ParagraphWriter, 'org.grammar.fixture.ParagraphWriter', ('org.grammar.fixture.ParagraphWriter',))
+
+
+class CrossFormatWriter(ParagraphWriter):
+    def __init__(self, context):
+        super().__init__(context)
+        self.allow_cross_format = True
+
+
+g_ImplementationHelper.addImplementation(CrossFormatWriter, 'org.grammar.fixture.CrossFormatWriter', ('org.grammar.fixture.CrossFormatWriter',))
