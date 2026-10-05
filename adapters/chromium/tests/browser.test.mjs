@@ -13,11 +13,15 @@ const hostExecutable=resolve(process.env.GRAMMAR_HOST_EXE || 'src-tauri/target/d
 const extensionSource=resolve(process.env.GRAMMAR_EXTENSION_DIR || 'adapters/chromium/extension');
 const syntheticDeep=process.env.GRAMMAR_SYNTHETIC_DEEP==='1';
 const activeTabFixture=process.env.GRAMMAR_ACTIVE_TAB==='1';
+const selectionOnly=process.env.GRAMMAR_SELECTION_ONLY==='1';
+const sourceReceipt=process.env.GRAMMAR_SOURCE_RECEIPT ? JSON.parse(await readFile(process.env.GRAMMAR_SOURCE_RECEIPT,'utf8')) : null;
+const measuredFiles=Object.fromEntries(await Promise.all(['core.js','content.js','worker.js','popup.js','manifest.json','host-config.js'].map(async f=>[f,createHash('sha256').update(await readFile(join(extensionSource,f))).digest('hex')])));
+if(sourceReceipt){assert.equal(sourceReceipt.classification,'READONLY_MAPPED_SOURCE_FIXTURE');assert.match(sourceReceipt.head,/^[a-f0-9]{40}$/);assert.equal(typeof sourceReceipt.dirty,'boolean');assert.deepEqual(sourceReceipt.files,measuredFiles);}
 // This harness never runs the installed package unmodified: it copies the
 // extension, replaces its key/ID, adds the fixture origin permission unless
 // GRAMMAR_ACTIVE_TAB=1, rewrites host-config.js and registers its own copy of
 // the host. installed-package.test.mjs covers the unmodified installed package.
-const fixtureBase=process.env.GRAMMAR_INSTALLED_EXTENSION && resolve(process.env.GRAMMAR_INSTALLED_EXTENSION)===extensionSource ? 'installed host binary (copied) + installed extension (copied and modified)' : 'source host build + source extension (copied and modified)';
+const fixtureBase=sourceReceipt ? 'installed host binary (copied) + hash-bound source extension (copied and modified)' : process.env.GRAMMAR_INSTALLED_EXTENSION && resolve(process.env.GRAMMAR_INSTALLED_EXTENSION)===extensionSource ? 'installed host binary (copied) + installed extension (copied and modified)' : 'source host build + source extension (copied and modified)';
 const extensionModifications=['per-run key and extension ID',...(activeTabFixture?[]:['fixture origin host_permissions']),'host-config.js names its own registration','own native host registration of a copied host binary'];
 if(syntheticDeep) {
  assert.equal(resolve(process.env.CODEX_PENCIL_CLAUDE_BIN || ''),resolve(evidence,'runtime/child.exe'),'Deep test requires the owned synthetic executable');
@@ -48,10 +52,10 @@ await new Promise(r=>server.listen(18437,'127.0.0.1',r));
 let context;let checks=[];let errors=[];
 const pass=name=>{checks.push(name);console.log('PASS',name)};
 try {
- const prep=execFileSync('pwsh.exe',['-NoProfile','-File',resolve('adapters/chromium/host/Prepare-Host.ps1'),'-Executable',hostExecutable,'-ExtensionId',id,'-OutputDirectory',hostDir,'-Register'],{encoding:'utf8'});
+ const prep=execFileSync(process.env.GRAMMAR_PWSH || 'pwsh.exe',['-NoProfile','-File',resolve('adapters/chromium/host/Prepare-Host.ps1'),'-Executable',hostExecutable,'-ExtensionId',id,'-OutputDirectory',hostDir,'-Register'],{encoding:'utf8'});
 const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),`export const HOST = ${JSON.stringify(receipt.name)};\n`);
 
- const launch=()=>chromium.launchPersistentContext(join(run,'profile'),{headless:true,channel:'chromium',executablePath:process.env.GRAMMAR_CHROMIUM || 'C:/Users/USER/AppData/Local/ms-playwright/chromium-1217/chrome-win64/chrome.exe',args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
+ const launch=()=>chromium.launchPersistentContext(join(run,'profile'),{headless:true,chromiumSandbox:true,channel:'chromium',executablePath:process.env.GRAMMAR_CHROMIUM || 'C:/Users/USER/AppData/Local/ms-playwright/chromium-1217/chrome-win64/chrome.exe',args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
  context=await launch();
  let worker=context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
  // Exercise a real worker restart after a native reservation reply was lost.
@@ -98,8 +102,12 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  await page.bringToFront();
  await page.locator('#grammar-local-assist').waitFor({timeout:10000});pass('explicit document enable');
  assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,0);pass('no read/analysis before field opt-in');
+ await page.locator('#writing').press('Alt+Shift+R');
+ assert.equal(await page.getByRole('textbox',{name:'Reviewed selection replacement',exact:true}).count(),0);
+ assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,0);pass('selection review shortcut cannot grant field opt-in');
  await page.locator('#writing').click();await page.getByRole('button',{name:'Enable this field',exact:true}).click();
  const suggestion=page.getByRole('button',{name:/Suggestion 1:/});await suggestion.waitFor({timeout:10000});pass('native Instant transport produced annotation');
+ if(!selectionOnly){
  await page.locator('#writing').fill('seperate\nseperate');
  await page.getByRole('button',{name:/Suggestion 2:/}).waitFor();
  await page.locator('#writing').fill('seperate\nseperate!');await page.waitForTimeout(700);
@@ -411,10 +419,75 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
    assert.equal(await page.locator('#grammar-local-assist').count(),0);
  }
  pass('four re-enable cycles reject stale disable, require fresh field opt-in and reread explicit Apply');
+ }
+ await page.bringToFront();await popup.getByRole('button',{name:'Enable this document',exact:true}).click();await page.bringToFront();
+ const reviewDraft=page.getByRole('textbox',{name:'Reviewed selection replacement',exact:true});
+ const acceptSelection=page.getByRole('button',{name:'Accept selection',exact:true});
+ const dismissReview=page.getByRole('button',{name:'Dismiss selection review',exact:true});
+ const prepareReview=async(selector='#writing')=>{
+   await page.locator(selector).fill('앞 😀 | seperate | 뒤');
+   await page.getByRole('button',{name:'Enable this field',exact:true}).click();await suggestion.waitFor();
+   await page.locator(selector).focus();
+   await page.locator(selector).evaluate(el=>{
+     if(el.tagName==='TEXTAREA')el.setSelectionRange(7,15);
+     else{const r=document.createRange();r.setStart(el.firstChild,7);r.setEnd(el.firstChild,15);const s=getSelection();s.removeAllRanges();s.addRange(r);}
+   });
+   await page.locator(selector).press('Alt+Shift+R');await reviewDraft.waitFor();
+ };
+ // Advance only the isolated extension world's clock during synchronous
+ // beforeinput dispatch. The microtask restores it after post-callback checks.
+ const expireDuringBeforeInput=async milliseconds=>worker.evaluate(async milliseconds=>{
+   const [tab]=await chrome.tabs.query({url:'http://127.0.0.1:18437/*'});
+   await chrome.scripting.executeScript({target:{tabId:tab.id},args:[milliseconds],func:milliseconds=>{
+     document.querySelector('#writing').addEventListener('beforeinput',()=>{
+       const original=Date.now;Date.now=()=>original()+milliseconds;
+       queueMicrotask(()=>{Date.now=original;});
+     },{once:true});
+   }});
+ },milliseconds);
+ await page.locator('#writing').fill('seperate');
+ await page.getByRole('button',{name:'Enable this field',exact:true}).click();await suggestion.waitFor();
+ await suggestion.click();await expireDuringBeforeInput(60001);
+ await page.getByRole('button',{name:'Accept',exact:true}).click();
+ assert.equal(await page.locator('#writing').inputValue(),'seperate','cached authority expired during beforeinput must not mutate');
+ pass('cached suggestion deadline rechecked after synchronous beforeinput callback (deterministic clock)');
+ await prepareReview();await expireDuringBeforeInput(30001);await acceptSelection.click();
+ assert.equal(await page.locator('#writing').inputValue(),'앞 😀 | seperate | 뒤');await dismissReview.click();
+ pass('selection review deadline rechecked after synchronous beforeinput callback (deterministic clock)');
+ await prepareReview();assert.equal(await reviewDraft.inputValue(),'separate');
+ const reviewedAnalyses=(await worker.evaluate(()=>fixtureMetrics)).analyses;
+ await reviewDraft.fill('검토 🙂');await page.waitForTimeout(400);
+ assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,reviewedAnalyses);
+ await acceptSelection.click();assert.equal(await page.locator('#writing').inputValue(),'앞 😀 | 검토 🙂 | 뒤');
+ assert.equal(await acceptSelection.count(),0);pass('selected textarea review uses cached Instant, edited explicit Accept preserves prefix/suffix and consumes authority');
+ await prepareReview();await page.locator('#writing').evaluate(el=>el.setSelectionRange(0,1));
+ await page.waitForFunction(()=>document.querySelector('#grammar-local-assist').shadowRoot.querySelector('button')!==null);
+ await page.waitForTimeout(50);assert.equal(await acceptSelection.isDisabled(),true);
+ assert.equal(await page.locator('#writing').inputValue(),'앞 😀 | seperate | 뒤');await dismissReview.click();pass('changed selected range revokes review without document mutation');
+ await prepareReview();await page.locator('#writing').evaluate(el=>{el.value='transient';el.dispatchEvent(new Event('input',{bubbles:true}));el.value='앞 😀 | seperate | 뒤';el.setSelectionRange(7,15);el.dispatchEvent(new Event('input',{bubbles:true}));});
+ assert.equal(await acceptSelection.isDisabled(),true);assert.equal(await page.locator('#writing').inputValue(),'앞 😀 | seperate | 뒤');await dismissReview.click();pass('input source ABA revokes selection review even after identical restoration');
+ await prepareReview();await page.locator('#writing').evaluate(el=>el.addEventListener('beforeinput',()=>el.setSelectionRange(0,1),{once:true}));
+ await acceptSelection.click();assert.equal(await page.locator('#writing').inputValue(),'앞 😀 | seperate | 뒤');await dismissReview.click();pass('beforeinput selection reentrancy rejected by second range verification');
+ await prepareReview('#editable');await reviewDraft.fill('검토 🙂');
+ await reviewDraft.press('Tab');await page.keyboard.press('Enter');
+ assert.equal(await page.locator('#editable').textContent(),'앞 😀 | 검토 🙂 | 뒤');pass('simple contenteditable selected review preserves exact unselected text');
+ await prepareReview('#editable');await reviewDraft.fill('kept draft');
+ await page.locator('#writing').evaluate(el=>{const r=document.createRange();r.selectNode(el);const s=getSelection();s.removeAllRanges();s.addRange(r);});
+ await page.waitForTimeout(50);assert.equal(await acceptSelection.isDisabled(),true);assert.equal(await page.locator('#editable').textContent(),'앞 😀 | seperate | 뒤');await dismissReview.click();
+ pass('page selection moved outside contenteditable while reviewing is not a review-focus exemption');
+ await prepareReview('#editable');await page.locator('#editable').evaluate(el=>el.addEventListener('beforeinput',()=>{const r=document.createRange();r.setStart(el.firstChild,0);r.setEnd(el.firstChild,1);const s=getSelection();s.removeAllRanges();s.addRange(r);},{once:true}));
+ await acceptSelection.click();assert.equal(await page.locator('#editable').textContent(),'앞 😀 | seperate | 뒤');await dismissReview.click();
+ pass('contenteditable beforeinput range change rejected after UI focus handover');
+ await prepareReview('#editable');await page.locator('#editable').evaluate(el=>el.addEventListener('beforeinput',()=>{el.textContent=el.textContent;},{once:true}));
+ await acceptSelection.click();assert.equal(await page.locator('#editable').textContent(),'앞 😀 | seperate | 뒤');await dismissReview.click();
+ pass('same-text DOM replacement cannot reuse captured contenteditable Range');
+ await page.locator('#editable').evaluate(el=>{el.focus();el.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyR',altKey:true,shiftKey:true,bubbles:true}));});
+ assert.equal(await reviewDraft.count(),0);pass('script-generated shortcut cannot mint selection review authority');
+ await prepareReview();
  await page.reload();assert.equal(await page.locator('#grammar-local-assist').count(),0);pass('navigation revokes opt-in');
  assert.deepEqual(errors,[]);
- await writeFile(join(run,'result.json'),JSON.stringify({status:'PASS',classification:'MODIFIED_ISOLATED_EXTENSION_FIXTURE',fixtureBase,extensionModifications,checks,browser:context.browser().version(),metrics:await worker.evaluate(()=>fixtureMetrics),productionActiveTabGesture:activeTabFixture?'SYNTHETIC_PROTOCOL_ACTION':'NOT_RUN',providerLive:'NOT_RUN',syntheticDeep,hostBinarySha256:createHash('sha256').update(await readFile(hostExecutable)).digest('hex'),sourceDirty:execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim().length>0,sourceHead:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),sourceFiles:Object.fromEntries(await Promise.all(['core.js','content.js','worker.js','popup.js','manifest.json','host-config.js'].map(async f=>[f,createHash('sha256').update(await readFile(join(extensionSource,f))).digest('hex')]))),extensionManifestSha256:createHash('sha256').update(await readFile(join(extension,'manifest.json'))).digest('hex')},null,2));
+ await writeFile(join(run,'result.json'),JSON.stringify({status:'PASS',classification:selectionOnly?'FOCUSED_SELECTION_REVIEW_MODIFIED_FIXTURE':'MODIFIED_ISOLATED_EXTENSION_FIXTURE',fixtureBase,extensionModifications,checks,browser:context.browser().version(),metrics:await worker.evaluate(()=>fixtureMetrics),productionActiveTabGesture:activeTabFixture?'SYNTHETIC_PROTOCOL_ACTION':'NOT_RUN',providerLive:'NOT_RUN',syntheticDeep,hostBinarySha256:createHash('sha256').update(await readFile(hostExecutable)).digest('hex'),sourceDirty:sourceReceipt?sourceReceipt.dirty:execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim().length>0,sourceHead:sourceReceipt?sourceReceipt.head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),sourceClassification:sourceReceipt?.classification??'LOCAL_GIT_SOURCE',sourceFiles:Object.fromEntries(await Promise.all(['core.js','content.js','worker.js','popup.js','manifest.json','host-config.js'].map(async f=>[f,createHash('sha256').update(await readFile(join(extensionSource,f))).digest('hex')]))),extensionManifestSha256:createHash('sha256').update(await readFile(join(extension,'manifest.json'))).digest('hex')},null,2));
  console.log(JSON.stringify({status:'PASS',checks,evidence:run}));
 } catch(error) {await writeFile(join(run,'failure.json'),JSON.stringify({checks,error:String(error),errors},null,2));console.error({evidence:run,checks,error});process.exitCode=1;}
-finally {await context?.close();await new Promise(r=>server.close(r));if(existsSync(join(hostDir,'registration.json')))execFileSync('pwsh.exe',['-NoProfile','-File',resolve('adapters/chromium/host/Remove-Registration.ps1'),'-PackageDirectory',hostDir]);}
+finally {await context?.close();await new Promise(r=>server.close(r));if(existsSync(join(hostDir,'registration.json')))execFileSync(process.env.GRAMMAR_PWSH || 'pwsh.exe',['-NoProfile','-File',resolve('adapters/chromium/host/Remove-Registration.ps1'),'-PackageDirectory',hostDir]);}
 

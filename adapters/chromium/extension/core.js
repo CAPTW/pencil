@@ -68,5 +68,40 @@
     }
     clear() { this.active = false; this.text = ''; this.cache = []; this.ignored.clear(); this.revision++; }
   }
-  globalThis.GrammarCore = { DocumentSession, changedWindow, boundary, MAX_TEXT, MAX_SUGGESTIONS, TTL };
+  // One explicit selected-range review, independent of mutable suggestion list
+  // indices. The document adapter owns cancellation on input/selection/privacy
+  // changes. Neither construction nor lookup invokes inference or a provider.
+  class SelectionReview {
+    constructor(owner, start, end, now = Date.now()) {
+      this.owner = owner; this.epoch = owner.epoch; this.revision = owner.revision;
+      this.start = start; this.end = end; this.source = owner.text;
+      this.expires = now + 30000; this.active = true;
+      this.draft = this.source.slice(start, end);
+      const suggestions = owner.cache.filter(s => s.start >= start && s.end <= end &&
+        s.start < s.end && !s.rule.startsWith('deep:') && s.epoch === owner.epoch &&
+        s.revision === owner.revision && now < s.expires && this.source.slice(s.start,s.end) === s.source);
+      // Cache publication already excludes overlaps within each request; reject
+      // cross-window overlap instead of guessing an order for a review draft.
+      const sorted = [...suggestions].sort((a,b)=>a.start-b.start);
+      if(sorted.every((s,i)=>!i || sorted[i-1].end<=s.start)) {
+        for(const s of sorted.reverse()) this.draft = this.draft.slice(0,s.start-start)+s.replacement+this.draft.slice(s.end-start);
+      }
+      if(this.draft.length > MAX_TEXT) this.draft = this.source.slice(start,end);
+    }
+    static capture(owner, start, end, now = Date.now()) {
+      if(!owner?.active || !owner.revision || !Number.isInteger(start) || !Number.isInteger(end) ||
+        start<0 || end<=start || end>owner.text.length || !boundary(owner.text,start) || !boundary(owner.text,end)) return null;
+      return new SelectionReview(owner,start,end,now);
+    }
+    replacement(current,start,end,edited,now = Date.now()) {
+      const owner=this.owner;
+      if(!this.active || !owner?.active || owner.epoch!==this.epoch || owner.revision!==this.revision ||
+        now>=this.expires || current!==this.source || owner.text!==this.source || start!==this.start || end!==this.end ||
+        typeof edited!=='string' || edited.length>MAX_TEXT || edited.includes('\0'))return null;
+      const next=current.slice(0,start)+edited+current.slice(end);
+      return next.length<=MAX_TEXT ? {start,end,replacement:edited,next} : null;
+    }
+    cancel(){this.active=false;this.source='';this.draft='';this.owner=null;}
+  }
+  globalThis.GrammarCore = { DocumentSession, SelectionReview, changedWindow, boundary, MAX_TEXT, MAX_SUGGESTIONS, TTL };
 })();
