@@ -1408,3 +1408,17 @@ remain. Installed runtime remains0fc8624/R27; main4e833988 unchanged, mission
 INCOMPLETE. Upload/fresh-chat verification remain Owner work, never claimed here.
 Next development: saved synthetic Writer DOCX admission and exact Apply/Undo
 qualification; retain disabled saved/rich-document admission until verified.
+
+
+### Post-package Writer saved-document prerequisite
+The replacement Source snapshot is frozen at bf3d3f9; do not silently rewrite it
+for this subsequent test-only continuation. Actual restricted-Medium Writer suite
+now61 checks PASS plus32 repeated transactions. Added real Save As DOCX exact-text
+preservation, prior-token refusal before source read, reopen exact text and saved
+admission refusal; disk SHA256 unchanged after denied operations. Production core
+is unchanged and saved/rich Writer admission stays disabled. Python/Office exit0,
+cleanuptrue/forcedfalse/processes0, guest stopped. No installed-widget rerun or
+saved-document Apply support is claimed. Evidence:
+D:/dev/grammar-evidence/grammar-writer-saved-boundary-20261005/guest.
+Next implement saved-document identity/lifecycle and format-preserving transaction
+only after adversarial qualification; no user documents or normal profiles.
