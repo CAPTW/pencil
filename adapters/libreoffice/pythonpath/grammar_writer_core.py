@@ -59,7 +59,7 @@ def rgb_metadata(portion):
     return (bag[0].Value,)
 
 
-def plain_metadata(doc, allow_uniform_format=False):
+def plain_metadata(doc, allow_uniform_format=False, allow_mixed_format=False):
     if (doc.TextSections.Count or doc.TextTables.Count or doc.TextFrames.Count or doc.DrawPage.Count
             or doc.TextFields.createEnumeration().hasMoreElements() or doc.Bookmarks.hasElements()
             or doc.Redlines.Count or doc.RecordChanges):
@@ -90,6 +90,7 @@ def plain_metadata(doc, allow_uniform_format=False):
     uniform = None
     paragraph_format = None
     color_metadata = None
+    runs = []
     while enumeration.hasMoreElements():
         paragraph_count += 1
         if allow_uniform_format and paragraph_count != 1:
@@ -122,16 +123,22 @@ def plain_metadata(doc, allow_uniform_format=False):
                         raise Refused('unsupported_character_format_' + name)
             if allow_uniform_format:
                 rgb = rgb_metadata(portion)
-                if color_metadata is not None and rgb != color_metadata:
+                if not allow_mixed_format and color_metadata is not None and rgb != color_metadata:
                     raise Refused('mixed_color_metadata')
                 color_metadata = rgb
                 current = tuple((name, portion.getPropertyValue(name), portion.getPropertyState(name).value)
                     for name in FORMATTED_CHARACTERS)
                 if any(state not in ('DEFAULT_VALUE', 'DIRECT_VALUE') for _, _, state in current):
                     raise Refused('ambiguous_format')
-                if uniform is not None and current != uniform:
+                if not allow_mixed_format and uniform is not None and current != uniform:
                     raise Refused('mixed_character_format')
                 uniform = current
+                length = len(portion.String)
+                if length:
+                    if runs and runs[-1][1:] == (current, rgb):
+                        runs[-1] = (runs[-1][0] + length, current, rgb)
+                    else:
+                        runs.append((length, current, rgb))
             for name in characters:
                 if allow_uniform_format and name in FORMATTED_CHARACTERS:
                     continue
@@ -143,8 +150,64 @@ def plain_metadata(doc, allow_uniform_format=False):
             raise Refused('empty_format')
         effective_defaults = tuple((name, value if isinstance(value, (str, int, float, bool)) else value.value)
             for name, value in sorted(defaults.items()))
+        if allow_mixed_format:
+            # Canonicalize equivalent adjacent portions. UNO may split/merge
+            # portions on replacement and Undo without changing their format.
+            return (tuple(runs), paragraph_format, effective_defaults)
         return (uniform, paragraph_format, effective_defaults, color_metadata)
     return None
+
+
+def mixed_selection(doc, selected, layout):
+    prefix = doc.Text.createTextCursor()
+    prefix.gotoStart(False)
+    prefix.gotoRange(selected.Start, True)
+    start, length = len(prefix.String), len(selected.String)
+    if not length or sum(run[0] for run in layout[0]) != len(doc.Text.String):
+        raise Refused('mixed_range_bounds')
+    offset = 0
+    chosen = None
+    covered = 0
+    for size, characters, rgb in layout[0]:
+        overlap = max(0, min(offset + size, start + length) - max(offset, start))
+        if overlap:
+            current = (characters, layout[1], layout[2], rgb)
+            if chosen is not None and current != chosen:
+                raise Refused('selection_crosses_format_boundary')
+            chosen = current
+            covered += overlap
+        offset += size
+    if covered != length:
+        raise Refused('mixed_range_bounds')
+    return start, length, chosen
+
+
+def replaced_layout(layout, start, length, replacement_length):
+    """Expected complete formatting after replacing a single homogeneous range."""
+    output = []
+    offset = 0
+    chosen = None
+    covered = 0
+    for size, characters, rgb in layout[0]:
+        end = offset + size
+        overlap = max(0, min(end, start + length) - max(offset, start))
+        if overlap:
+            if chosen is not None and chosen != (characters, rgb):
+                raise Refused('selection_crosses_format_boundary')
+            chosen = (characters, rgb)
+            covered += overlap
+            size -= overlap
+            if covered == length:
+                size += replacement_length
+        if size:
+            if output and output[-1][1:] == (characters, rgb):
+                output[-1] = (output[-1][0] + size, characters, rgb)
+            else:
+                output.append((size, characters, rgb))
+        offset = end
+    if length <= 0 or covered != length or replacement_length <= 0:
+        raise Refused('mixed_range_bounds')
+    return (tuple(output), layout[1], layout[2])
 
 
 def restore_uniform_format(selected, formatting):
@@ -166,8 +229,8 @@ def restore_uniform_format(selected, formatting):
         selected.setPropertyToDefault('CharInteropGrabBag')
 
 
-def body_snapshot(doc, allow_uniform_format=False):
-    plain_metadata(doc, allow_uniform_format)
+def body_snapshot(doc, allow_uniform_format=False, allow_mixed_format=False):
+    plain_metadata(doc, allow_uniform_format, allow_mixed_format)
     cursor = doc.Text.createTextCursor()
     cursor.gotoStart(False)
     cursor.goRight(16385, True)
@@ -179,10 +242,10 @@ def body_snapshot(doc, allow_uniform_format=False):
     return value
 
 
-def document_fingerprint(doc, allow_uniform_format=False):
-    body = body_snapshot(doc, allow_uniform_format)
+def document_fingerprint(doc, allow_uniform_format=False, allow_mixed_format=False):
+    body = body_snapshot(doc, allow_uniform_format, allow_mixed_format)
     if allow_uniform_format:
-        body = json.dumps((body, plain_metadata(doc, True)), ensure_ascii=True, separators=(',', ':'))
+        body = json.dumps((body, plain_metadata(doc, True, allow_mixed_format)), ensure_ascii=True, separators=(',', ':'))
     return fingerprint(body)
 
 
@@ -204,9 +267,10 @@ def movement_to(doc, target):
 class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
     active = 0
     """One qualified range replacement, never whole-document restore."""
-    def __init__(self, document, selected, before, after, start, before_steps, before_hash, after_hash, formatting=None):
+    def __init__(self, document, selected, before, after, start, before_steps, before_hash, after_hash, formatting=None, mixed_format=False):
         self.document = document
         self.formatting = formatting
+        self.mixed_format = mixed_format
         self.before, self.after = before, after
         self.start = start
         self.before_steps = before_steps
@@ -251,7 +315,7 @@ class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
         if self.disposed:
             raise UndoFailedException('Disposed Grammar action', self, None)
         doc = self.document
-        if document_fingerprint(doc, self.formatting is not None) != digest or not doc.isSetModifiedEnabled():
+        if document_fingerprint(doc, self.formatting is not None, self.mixed_format) != digest or not doc.isSetModifiedEnabled():
             raise UndoFailedException('Grammar document changed; no replacement', self, None)
         selected = doc.Text.createTextCursor()
         selected.gotoStart(False)
@@ -271,7 +335,11 @@ class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
         finally:
             doc.enableSetModified()
             doc.setModified(True)
-        if selected.String != replacement or (self.formatting is not None
+        if self.mixed_format:
+            expected_hash = self.before_hash if digest == self.after_hash else self.after_hash
+            if document_fingerprint(doc, True, True) != expected_hash:
+                raise UndoFailedException('Postwrite result changed', self, None)
+        elif selected.String != replacement or (self.formatting is not None
                 and plain_metadata(doc, True) != self.formatting):
             raise UndoFailedException('Postwrite result changed', self, None)
 
@@ -374,14 +442,22 @@ class Callback(unohelper.Base, XCallback):
                 source = owner.read_range(selected)
                 if not source or len(source) > 4096:
                     raise Refused('source_bounds')
+                if owner.allow_uniform_format and any(c in source for c in '\r\n\u2028\u2029'):
+                    raise Refused('formatted_single_paragraph_only')
                 owner.deadline(self.deadline)
                 owner.permission(self.epoch)
                 owner.foreground_document()
+                layout = plain_metadata(owner.document, True, True) if owner.allow_mixed_format else None
+                mixed_range = mixed_selection(owner.document, selected, layout) if layout is not None else None
+                owner.deadline(self.deadline)
+                owner.permission(self.epoch)
                 owner.review = dict(token=secrets.token_hex(24), source=source,
                     range=owner.document.Text.createTextCursorByRange(selected),
                     revision=owner.revision, selection_revision=owner.selection_revision,
                     expires=time.monotonic() + 30, epoch=self.epoch,
-                    formatting=plain_metadata(owner.document, True) if owner.allow_uniform_format else None)
+                    layout=layout, mixed_range=mixed_range,
+                    formatting=mixed_range[2] if mixed_range else
+                        (plain_metadata(owner.document, True) if owner.allow_uniform_format else None))
                 owner.schedule_expiry(owner.review['token'])
                 value = dict(status='CAPTURED', token=owner.review['token'], source=source)
             elif action == 'accept':
@@ -408,7 +484,15 @@ class Callback(unohelper.Base, XCallback):
                         raise Refused('undo_owned_elsewhere')
                     # The bounded local body hash qualifies custom Undo/Redo
                     # after earlier native history rebuilds live range objects.
-                    before_hash = document_fingerprint(owner.document, owner.allow_uniform_format)
+                    before_hash = document_fingerprint(owner.document, owner.allow_uniform_format, owner.allow_mixed_format)
+                    expected_after_hash = None
+                    if review['layout'] is not None:
+                        offset, length, _ = review['mixed_range']
+                        expected_layout = replaced_layout(review['layout'], offset, length, len(replacement))
+                        body = body_snapshot(owner.document, True, True)
+                        expected_body = body[:offset] + replacement + body[offset + length:]
+                        expected_after_hash = fingerprint(json.dumps((expected_body, expected_layout),
+                            ensure_ascii=True, separators=(',', ':')))
                     start = movement_to(owner.document, review['range'].Start)
                     before_steps = movement_to(owner.document, review['range'].End) - start
                     undo.lock()
@@ -425,13 +509,17 @@ class Callback(unohelper.Base, XCallback):
                             owner.document.enableSetModified()
                     finally:
                         undo.unlock()
+                    after_hash = document_fingerprint(owner.document, owner.allow_uniform_format, owner.allow_mixed_format)
+                    if expected_after_hash is not None and after_hash != expected_after_hash:
+                        raise Refused('postwrite_layout_mismatch')
                     undo.addUndoAction(ReplacementUndo(owner.document, review['range'], review['source'], replacement,
-                        start, before_steps, before_hash, document_fingerprint(owner.document, owner.allow_uniform_format),
-                        review['formatting']))
+                        start, before_steps, before_hash, after_hash, review['formatting'], owner.allow_mixed_format))
                     owner.document.setModified(True)
                 finally:
                     undo.leaveUndoContext()
-                if (owner.read_range(review['range']) != replacement or (review['formatting'] is not None
+                if (owner.read_range(review['range']) != replacement or (owner.allow_mixed_format
+                        and document_fingerprint(owner.document, True, True) != expected_after_hash)
+                        or (not owner.allow_mixed_format and review['formatting'] is not None
                         and plain_metadata(owner.document, True) != review['formatting'])):
                     value = dict(status='UNKNOWN_CHANGED', reason='postwrite_mismatch')
                 else:
@@ -456,7 +544,7 @@ class Callback(unohelper.Base, XCallback):
 
 
 class WriterCore(unohelper.Base, XJob):
-    def __init__(self, context, *, allow_saved_documents=False, allow_uniform_format=False):
+    def __init__(self, context, *, allow_saved_documents=False, allow_uniform_format=False, allow_mixed_format=False):
         self.context = context
         self.desktop = context.ServiceManager.createInstanceWithContext('com.sun.star.frame.Desktop', context)
         self.document = self.controller = self.listener = self.review = self.result = None
@@ -470,6 +558,9 @@ class WriterCore(unohelper.Base, XJob):
         # Deployment capabilities are explicit and default off.
         self.allow_saved_documents = allow_saved_documents
         self.allow_uniform_format = allow_uniform_format
+        if allow_mixed_format and not allow_uniform_format:
+            raise ValueError('mixed format requires formatted mode')
+        self.allow_mixed_format = allow_mixed_format
         self.location = None
         self.document_events = False
         self.lifecycle_events = 0
@@ -541,7 +632,7 @@ class WriterCore(unohelper.Base, XJob):
             raise Refused('document_location_changed')
         if not own_notification_batch and not doc.isSetModifiedEnabled():
             raise Refused('modification_state_owned_elsewhere')
-        plain_metadata(doc, self.allow_uniform_format)
+        plain_metadata(doc, self.allow_uniform_format, self.allow_mixed_format)
         if self.desktop.CurrentComponent != doc:
             raise Refused('document_changed')
         controller = doc.CurrentController
@@ -585,7 +676,9 @@ class WriterCore(unohelper.Base, XJob):
         if time.monotonic() >= review['expires']:
             raise Refused('expired_review')
         self.check_document(self.document, own_notification_batch)
-        if review['formatting'] is not None and plain_metadata(self.document, True) != review['formatting']:
+        if review.get('layout') is not None and plain_metadata(self.document, True, True) != review['layout']:
+            raise Refused('format_changed')
+        if not self.allow_mixed_format and review['formatting'] is not None and plain_metadata(self.document, True) != review['formatting']:
             raise Refused('format_changed')
         if self.revision != review['revision'] or self.selection_revision != review['selection_revision']:
             raise Refused('revision_changed')

@@ -37,6 +37,8 @@ class Tests(unittest.TestCase):
                 self.assertEqual(values['LIBRARY_PATH'], r'C:\GrammarTrial\target-apply.dll')
                 self.assertIs(values['ALLOW_SAVED_DOCX'], False)
                 self.assertIs(values['ALLOW_UNIFORM_FORMAT'], False)
+                self.assertIs(values['ALLOW_MIXED_FORMAT'], False)
+                self.assertIs(receipt['mixedSurroundingsEnabled'], False)
                 self.assertIs(receipt['uniformFormatEnabled'], False)
                 self.assertIs(receipt['savedDocxEnabled'], False)
                 self.assertEqual(values['LIBRARY_SHA256'], hashlib.sha256(library.read_bytes()).hexdigest())
@@ -91,6 +93,29 @@ class Tests(unittest.TestCase):
             with zipfile.ZipFile(output) as archive:
                 tree = ast.parse(archive.read('pythonpath/grammar_writer_installation.py').decode())
                 values = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body}
+                self.assertIs(values['ALLOW_UNIFORM_FORMAT'], True)
+                self.assertIs(values['ALLOW_SAVED_DOCX'], False)
+
+
+    def test_mixed_requires_uniform_and_explicit_option(self):
+        with tempfile.TemporaryDirectory(prefix='grammar-writer-mixed-package-') as root:
+            root = Path(root)
+            library = root / 'target-apply.dll'
+            library.write_bytes(b'synthetic packaging input')
+            output = root / 'mixed.oxt'
+            command = [sys.executable, str(builder), '--library-file', str(library),
+                '--installed-library', r'C:\GrammarTrial\target-apply.dll', '--output', str(output),
+                '--enable-mixed-surroundings']
+            rejected = subprocess.run(command, capture_output=True, text=True)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertFalse(output.exists())
+            enabled = subprocess.run(command + ['--enable-uniform-format'], capture_output=True, text=True)
+            self.assertEqual(enabled.returncode, 0, enabled.stderr)
+            self.assertTrue(json.loads(enabled.stdout)['mixedSurroundingsEnabled'])
+            with zipfile.ZipFile(output) as archive:
+                tree = ast.parse(archive.read('pythonpath/grammar_writer_installation.py').decode())
+                values = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body}
+                self.assertIs(values['ALLOW_MIXED_FORMAT'], True)
                 self.assertIs(values['ALLOW_UNIFORM_FORMAT'], True)
                 self.assertIs(values['ALLOW_SAVED_DOCX'], False)
 

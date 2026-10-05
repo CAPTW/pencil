@@ -71,9 +71,46 @@ def prepare_format():
     if '--formatted' in sys.argv:
         cursor = doc.Text.createTextCursor()
         cursor.gotoEnd(True)
+        if '--mixed' in sys.argv:
+            # This fixture recreates the whole owned synthetic paragraph. Imported
+            # DOCX original-color tags must not be carried into its new colors.
+            # The product never clears unknown metadata in a user's document.
+            metadata = []
+            paragraphs = doc.Text.createEnumeration()
+            while paragraphs.hasMoreElements():
+                portions = paragraphs.nextElement().createEnumeration()
+                while portions.hasMoreElements():
+                    part = portions.nextElement()
+                    metadata.append(dict(color=part.CharColor,
+                        original=[str(item.Value) for item in part.CharInteropGrabBag
+                                  if item.Name == 'CharThemeOriginalColor']))
+            result.setdefault('syntheticResetColorMetadata', []).append(metadata)
+            # Reset the entire newly recreated fixture, including inherited
+            # paragraph character aliases; clearing one bag leaves inherited
+            # DOCX RGB tags behind. This is fixture setup, never product Apply.
+            cursor.setAllPropertiesToDefault()
         cursor.CharWeight = cursor.CharWeightAsian = cursor.CharWeightComplex = 150.0
         cursor.CharColor = 0x2255AA
         cursor.ParaAdjust = 3
+        if '--mixed' in sys.argv:
+            cursor.CharWeight = cursor.CharWeightAsian = cursor.CharWeightComplex = 100.0
+            cursor.gotoStart(False)
+            cursor.goRight(9, False)
+            cursor.goRight(len(doc.Text.String) - 9 - len(' | After'), True)
+            cursor.CharWeight = cursor.CharWeightAsian = cursor.CharWeightComplex = 150.0
+            cursor.CharColor = 0xBB2200
+            # Read-only fixture diagnosis from the exact packaged core. This
+            # never invokes enable/capture/accept; UI remains the acceptance path.
+            import zipimport
+            packaged = zipimport.zipimporter(r'C:\GrammarPayload\GrammarWriter-product.oxt\pythonpath')
+            core = packaged.load_module('grammar_writer_core')
+            try:
+                core.plain_metadata(doc, True, True)
+                diagnosis = 'supported'
+            except Exception as error:
+                diagnosis = str(error)
+            result.setdefault('preparedMetadataDiagnosis', []).append(diagnosis)
+            out.write_text(json.dumps(result, indent=2), encoding='utf-8')
 
 
 def format_ok():
@@ -84,7 +121,12 @@ def format_ok():
         parts = para.createEnumeration()
         while parts.hasMoreElements():
             part = parts.nextElement()
-            rows.append((part.CharWeight, part.CharWeightAsian, part.CharWeightComplex, part.CharColor, para.ParaAdjust))
+            row = (part.CharWeight, part.CharWeightAsian, part.CharWeightComplex, part.CharColor, para.ParaAdjust)
+            rows.extend([row] * len(part.String))
+    if '--mixed' in sys.argv:
+        outer = (100.0, 100.0, 100.0, 0x2255AA, 3)
+        inner = (150.0, 150.0, 150.0, 0xBB2200, 3)
+        return rows == [outer] * 9 + [inner] * (len(doc.Text.String) - 9 - len(' | After')) + [outer] * len(' | After')
     return bool(rows) and all(row == (150.0, 150.0, 150.0, 0x2255AA, 3) for row in rows)
 
 

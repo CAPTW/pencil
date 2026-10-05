@@ -50,3 +50,12 @@ class FormattedWriter(SavedWriter):
 
 
 g_ImplementationHelper.addImplementation(FormattedWriter, 'org.grammar.fixture.FormattedWriter', ('org.grammar.fixture.FormattedWriter',))
+
+
+class MixedWriter(FormattedWriter):
+    def __init__(self, context):
+        super().__init__(context)
+        self.allow_mixed_format = True
+
+
+g_ImplementationHelper.addImplementation(MixedWriter, 'org.grammar.fixture.MixedWriter', ('org.grammar.fixture.MixedWriter',))
