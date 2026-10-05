@@ -1,5 +1,6 @@
 """Real Writer transaction fixture client; invoke only through guarded Sandbox launcher."""
 import json
+import hashlib
 import ctypes
 import subprocess
 import os
@@ -387,6 +388,20 @@ try:
         result['nativeCleanup'] = native_state
         record('native-peer-cleanup-confirmed', native_state['finished'] and native_state['cleanupComplete'] and native_state['error'] is None)
     token = capture()
+    # Saved-document expansion prerequisite: never infer authority from matching
+    # text across Save As or reopen. This remains a refusal test of shipped core.
+    saved_path = Path(r'C:\GrammarOutput\writer-owned-synthetic.docx')
+    assert not saved_path.exists(), 'fresh synthetic DOCX required'
+    saved_url = uno.systemPathToFileUrl(str(saved_path))
+    doc.storeAsURL(saved_url, (arg('PropertyValue', 'FilterName', 'Office Open XML Text'),
+        arg('PropertyValue', 'Overwrite', False)))
+    saved_digest = hashlib.sha256(saved_path.read_bytes()).hexdigest()
+    record('save-as-preserves-synthetic-source', doc.hasLocation() and doc.Text.String == source)
+    reads = call('state')['textReads']
+    saved_reply = call('accept', Token=token, Replacement='WRONG')
+    record('save-as-revokes-prior-accept-before-source-read', saved_reply['status'] == 'REJECTED'
+        and call('state')['textReads'] == reads and doc.Text.String == source
+        and hashlib.sha256(saved_path.read_bytes()).hexdigest() == saved_digest)
     doc.setModified(False)
     doc.close(True)
     doc = None
@@ -394,6 +409,15 @@ try:
     record('document-close-clears-review-and-binding', not state['enabled'] and not state['reviewRetained'])
     record('document-close-disposes-undo-source', state['undoActions'] == 0)
     record('closed-document-accept-refused', call('accept', Token=token, Replacement='WRONG')['status'] == 'REJECTED')
+    doc = desktop.loadComponentFromURL(saved_url, '_blank', 0,
+        (arg('PropertyValue', 'Hidden', False), arg('PropertyValue', 'MacroExecutionMode', NEVER_EXECUTE),
+         arg('PropertyValue', 'UpdateDocMode', 0)))
+    record('saved-docx-reopen-exact-synthetic-text', doc.Text.String == source)
+    reads = call('state')['textReads']
+    saved_enable = call('enable', Document=doc)
+    record('reopened-docx-not-silently-admitted', saved_enable['status'] == 'REJECTED'
+        and call('state')['textReads'] == reads and doc.Text.String == source
+        and hashlib.sha256(saved_path.read_bytes()).hexdigest() == saved_digest)
     result['status'] = 'FAIL' if result.get('failures') else 'PASS'
 except Exception as error:
     result.update(status='FAIL', error=type(error).__name__ + ': ' + str(error))
