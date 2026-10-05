@@ -73,6 +73,8 @@ def run(repo):
             record("scoped_f06_" + name + "_refused", lambda changed=changed,token=token: rejected(lambda: ps.state_check(changed), [token]))
         historical = json.loads(ps.git(repo, "show", "167e5f4:control/state.json"))
         record("historical_pre_scope_state_preserved", lambda: ps.state_check(historical))
+        unsaved_scope = json.loads(ps.git(repo, "show", "5a238f2:control/state.json"))
+        record("historical_unsaved_writer_scope_preserved", lambda: ps.state_check(unsaved_scope))
     if state["p3a_status"] in (ps.APPLY_STATUS, ps.GLOBAL_APPLY_STATUS, ps.EDIT_APPLY_STATUS):
         changed = copy.deepcopy(state)
         next(d for d in changed["known_defects"] if d["id"] == "F-06")["verdict"] = "CONTAINED_COPY_ONLY_NATIVE_NOT_QUALIFIED"

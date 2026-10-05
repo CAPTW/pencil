@@ -47,6 +47,11 @@ F06_SCOPE = {
     "writer": "LibreOffice26.2.4.2, new unsaved default-style plain body, pinned runtime0fc8624 and paired OXT; installed R27 synthetic verified.",
     "remaining": "Saved/rich Writer documents, Calc/Impress product Apply, actual Microsoft Office/Hancom unqualified; physical IME, normal profiles and live Providers NOT_RUN. Mission INCOMPLETE."
 }
+HISTORICAL_F06_SCOPE = dict(F06_SCOPE)
+F06_SCOPE = {**F06_SCOPE,
+    "writer": "LibreOffice26.2.4.2 default-style plain body: new unsaved and locally saved/reopened DOCX; app/native0fc8624 paired with saved-enabled product OXT5a339b8, installed synthetic verified. No automatic file Save.",
+    "remaining": "Rich/complex Writer documents, Calc/Impress product Apply, actual Microsoft Office/Hancom unqualified; physical IME, normal profiles and live Providers NOT_RUN. Mission INCOMPLETE."
+}
 RETAINED_HISTORY = (
     "12_MULTI_PROVIDER_ARCHITECTURE_AND_IMPLEMENTATION_PLAN(1).md",
     "12_P3_INSTANT_AND_PROACTIVE_ASSIST_PRODUCT_STRATEGY(1).md",
@@ -182,7 +187,7 @@ def state_check(state):
             verdicts["F-06"] = "OWNED_QUALIFIED_EDIT_AND_RICHEDIT_TARGET_SIDE_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED"
         f06 = next(d for d in state["known_defects"] if d["id"] == "F-06")
         if "qualification_scope" in f06:
-            fail(edit_apply and f06["qualification_scope"] == F06_SCOPE, "F06_SCOPE_DRIFT")
+            fail(edit_apply and f06["qualification_scope"] in (F06_SCOPE, HISTORICAL_F06_SCOPE), "F06_SCOPE_DRIFT")
             verdicts["F-06"] = F06_SCOPED_VERDICT
         for defect in state["known_defects"]:
             fail(defect["verdict"] == verdicts[defect["id"]], f"VERDICT_DRIFT:{defect['id']}")
