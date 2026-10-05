@@ -62,6 +62,16 @@ public:
         if(!owner() || entering_ || retiring_ || !lease_ || !lease_->alive())return false;
         Entry entry(entering_);return actor_.begin_accept(id,std::move(replacement),deadline);
     }
+    bool can_apply(uint64_t id) {
+        return owner() && !entering_ && !retiring_ && !actor_.pending() && id &&
+            id==actor_.capture_id() && capture_status()==WordDispatchStatus::captured;
+    }
+    bool with_activation(uint64_t id,const std::function<bool()>& activate) {
+        if(!can_apply(id) || !activate)return false;
+        Entry entry(entering_);
+        if(!activate() || retiring_ || id!=actor_.capture_id())return false;
+        return actor_.capture_status()==WordDispatchStatus::captured;
+    }
     WordDispatchStatus accept_status() const { return owner()?actor_.accept_status():WordDispatchStatus::rejected; }
     unsigned mutations() const { return owner()?actor_.mutations():0; }
     // Caller must retain this route until checked close succeeds. A dropped
