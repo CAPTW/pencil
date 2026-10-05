@@ -7,7 +7,7 @@ source = Path(__file__).resolve().parents[2] / 'adapters/libreoffice/pythonpath/
 tree = ast.parse(source.read_text(encoding='utf-8'))
 namespace = {}
 selected = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))
-            and node.name in ('Refused', 'replaced_layout')]
+            and node.name in ('Refused', 'selected_layout_runs', 'replaced_layout', 'restore_uniform_format')]
 exec(compile(ast.Module(body=selected, type_ignores=[]), str(source), 'exec'), namespace)
 replace = namespace['replaced_layout']
 Refused = namespace['Refused']
@@ -34,6 +34,30 @@ class Tests(unittest.TestCase):
                         self.assertEqual(actual, expected)
                         self.assertEqual(changed[1:], layout[1:])
                         self.assertEqual(replace(changed, start, new_size, size), layout)
+
+    def test_cross_format_first_style_and_original_run_capture(self):
+        runs = ((3, ('blue',), ()), (5, ('red',), ()), (2, ('green',), ()))
+        layout = (runs, ('center',), ())
+        chars = [style for size, style, _ in runs for _ in range(size)]
+        for start in range(10):
+            for size in range(1, 11-start):
+                original = namespace['selected_layout_runs'](layout, start, size)
+                self.assertEqual([c for n,c,_ in original for _ in range(n)], chars[start:start+size])
+                for count in (1, 4, 12):
+                    actual = replace(layout, start, size, count, True)
+                    self.assertEqual([c for n,c,_ in actual[0] for _ in range(n)],
+                        chars[:start] + [chars[start]]*count + chars[start+size:])
+
+    def test_inherited_effective_color_is_restored_not_reset(self):
+        class Cursor:
+            CharInteropGrabBag = ()
+            value = 0x118822
+            def getPropertyValue(self, name): return self.value
+            def setPropertyValue(self, name, value): self.value = value
+            def setPropertyToDefault(self, name): self.value = -1
+        cursor = Cursor()
+        namespace['restore_uniform_format'](cursor, ((('CharColor', 0xBB2200, 'DEFAULT_VALUE'),), (), (), ()))
+        self.assertEqual(cursor.value, 0xBB2200)
 
     def test_invalid_ranges_fail_closed(self):
         layout = (((4, ('blue',), ()),), (), ())

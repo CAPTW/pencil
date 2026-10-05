@@ -94,6 +94,11 @@ def prepare_format():
             cursor.ParaAdjust = (0, 3, 0, 1)[index]
             cursor.CharColor = (0x118822, 0xBB2200, 0x2255AA, 0x442299)[index]
             cursor.CharWeight = cursor.CharWeightAsian = cursor.CharWeightComplex = 150.0
+        if '--cross-format' in sys.argv:
+            colored = doc.Text.createTextCursorByRange(paragraph_list()[1].Start)
+            colored.goRight(12, False)
+            colored.goRight(6, True)
+            colored.CharColor = 0x2255AA
         cursor = doc.Text.createTextCursor()
         cursor.gotoEnd(True)
         uno.invoke(cursor, 'setPropertyValue', ('CharInteropGrabBag',
@@ -156,11 +161,20 @@ def format_ok():
             if para.ParaAdjust != (0, 3, 0, 1)[index]: return False
             parts = para.createEnumeration()
             count = 0
+            formats = []
             while parts.hasMoreElements():
                 part = parts.nextElement()
                 count += 1
-                if (part.CharWeight, part.CharWeightAsian, part.CharWeightComplex, part.CharColor) != (
-                        150.0, 150.0, 150.0, (0x118822, 0xBB2200, 0x2255AA, 0x442299)[index]): return False
+                value = (part.CharWeight, part.CharWeightAsian, part.CharWeightComplex, part.CharColor)
+                if index == 1 and '--cross-format' in sys.argv:
+                    formats.extend([value] * len(part.String))
+                elif value != (150.0, 150.0, 150.0, (0x118822, 0xBB2200, 0x2255AA, 0x442299)[index]):
+                    return False
+            if index == 1 and '--cross-format' in sys.argv:
+                expected = [(150.0, 150.0, 150.0, 0xBB2200)] * len(para.String)
+                if para.String in (source, 'Before | please seperate this. | After'):
+                    expected[12:18] = [(150.0, 150.0, 150.0, 0x2255AA)] * 6
+                if formats != expected: return False
             if not count: return False
         return True
     rows = []
@@ -270,6 +284,8 @@ try:
                 elif command == 'enable':
                     doc.CurrentController.Frame.activate()
                     dispatcher.executeDispatch(doc.CurrentController.Frame, 'service:org.grammar.Writer?review', '', 0, ())
+                    if '--cross-format' in sys.argv:
+                        wait(lambda: any('Replacement uses first selected style; Undo restores original styles.' in n for n, _ in accessible_names()))
                     button('Enable one review')
                     wait(lambda: any('enabled for one review' in n for n, _ in accessible_names()))
                 elif command == 'focus':
