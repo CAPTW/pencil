@@ -2,7 +2,9 @@
 #include <windows.h>
 #include <richedit.h>
 #include <cstdio>
+#include <thread>
 #include "../../src-tauri/native/tsf_capture.hpp"
+#include "../../src-tauri/native/target_apply_focus.hpp"
 using Microsoft::WRL::ComPtr;
 static void pump(DWORD ms) {
     auto end = GetTickCount64() + ms;
@@ -39,7 +41,8 @@ int wmain() {
         SetForegroundWindow(top); SetFocus(edit); pump(500);
         ComPtr<ITfDocumentMgr> document; ComPtr<ITfContext> context;
         if (FAILED(manager->GetFocus(&document)) || !document || FAILED(document->GetTop(&context)) || !context) return 7;
-        for (int scenario = 0; scenario < 23; ++scenario) {
+        for (int scenario = 0; scenario < 25; ++scenario) {
+            SetForegroundWindow(top); SetFocus(edit);
             SendMessageW(edit, EM_SETREADONLY, FALSE, 0);
             SendMessageW(edit, EM_SETPASSWORDCHAR, 0, 0);
             if (FAILED(setScope(edit, IS_TEXT))) return 8;
@@ -68,6 +71,21 @@ int wmain() {
             printf("capture case=%d pass=%d captured=%d reads=%u notifications=%u\n", scenario, pass, capture->captured, capture->text_reads, binding->state->notifications);
             printf("eligibility_stage=%u scope_type=%u enabled=%d\n", binding->state->eligibility_stage, binding->state->scope_type, binding->state->enabled);
             if (!pass) ++failures;
+            std::atomic<bool> review_ready{false}, review_stop{false}, review_done{false};
+            std::thread review;
+            if (scenario == 23 && capture->captured) {
+                review = std::thread([&] {
+                    HWND widget = CreateWindowW(L"STATIC", L"Owned review", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                        100,100,400,200,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+                    ShowWindow(widget,SW_SHOW); SetForegroundWindow(widget); review_ready=true;
+                    while(!review_stop) pump(10);
+                    DestroyWindow(widget); review_done=true;
+                });
+                for(int i=0;i<100&&!review_ready;++i) pump(10);
+                pump(100);
+                printf("review_focus revision=%llu valid=%d notifications=%u transitions=%u\n",binding->state->revision,
+                    capture->grant->valid.load(),binding->state->notifications,binding->state->eligibility_transitions);
+            }
             if (!denied && capture->captured) {
                 auto revision = capture->grant->revision.load();
                 if (scenario == 1) SetWindowTextW(edit, L"application changed");
@@ -80,6 +98,11 @@ int wmain() {
                 if (scenario == 22) {
                     if (FAILED(setScope(edit, IS_PASSWORD)) || FAILED(setScope(edit, IS_TEXT))) return 11;
                 }
+                if (scenario == 24) {
+                    SetFocus(other);
+                    if(grammar::activate_apply_target(edit,GetCurrentProcessId()) || GetFocus()!=other) ++failures;
+                    SetFocus(edit); // Returning to the same field cannot revive the old grant.
+                }
                 if (scenario == 12) {
                     auto newer = new grammar::TsfCaptureSession(binding->state, [] { return true; });
                     request = context->RequestEditSession(client, newer, TF_ES_ASYNC | TF_ES_READ, &completed);
@@ -88,6 +111,13 @@ int wmain() {
                     newer->Release();
                 }
                 pump(30);
+                if(scenario==23) {
+                    HWND previous=GetForegroundWindow();
+                    if(grammar::activate_apply_target(edit,0) || GetForegroundWindow()!=previous) ++failures;
+                    bool activated=grammar::activate_apply_target(edit,GetCurrentProcessId());
+                    printf("review_reactivate=%d focus_field=%d\n",activated,GetFocus()==edit);
+                    if(!activated) ++failures;
+                }
                 auto apply = new grammar::TsfApplySession(context.Get(), capture->source, capture->start, capture->end,
                     L"Grammar", revision, capture->grant);
                 request = context->RequestEditSession(client, apply, TF_ES_ASYNC | TF_ES_READWRITE, &completed);
@@ -108,7 +138,7 @@ int wmain() {
                     SendMessageW(edit, EM_SETCHARFORMAT, SCF_SELECTION, reinterpret_cast<LPARAM>(&format));
                 }
                 for (int i = 0; i < 100 && !apply->called && SUCCEEDED(request); ++i) pump(10);
-                const bool shouldApply = scenario == 0 || scenario == 11;
+                const bool shouldApply = scenario == 0 || scenario == 11 || scenario == 23;
                 std::wstring expected = shouldApply ? original.substr(0, 6) + L"Grammar" : scenario == 1 ? L"application changed" :
                     scenario == 17 ? L"queued application change" : original;
                 WCHAR actual[128]{}; GetWindowTextW(edit, actual, 128);
@@ -120,7 +150,7 @@ int wmain() {
                     apply->mutation_calls, apply->diagnostic_stage, revision, binding ? binding->state->revision : 0,
                     binding ? binding->state->notifications : 0, binding ? binding->state->eligibility_transitions : 0);
                 if (!pass) ++failures;
-                printf("apply_text_reads=%u\n", apply->text_reads);
+                printf("apply_text_reads=%u eligibility_stage=%u\n", apply->text_reads, binding ? binding->state->eligibility_stage : 0);
                 apply->Release();
                 if (scenario == 11) {
                     auto replay = new grammar::TsfApplySession(context.Get(), capture->source, 6, 11, L"Grammar", revision, capture->grant);
@@ -132,6 +162,7 @@ int wmain() {
                     replay->Release();
                 }
             }
+            if(review.joinable()) { review_stop=true; while(!review_done) pump(10); review.join(); }
             capture->Release();
             if (binding) {
                 std::weak_ptr<grammar::TsfBindingState> lifetime = binding->state;

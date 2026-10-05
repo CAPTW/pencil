@@ -69,3 +69,5 @@ Peer image verifier checkpoint: live pinned process + canonical executable path/
 
 
 Target service8077945: native13 integrated/C-ABI, TSF transaction13/binding40/channel33 PASS. Rust/widget candidate now has explicit qualified Apply plus separate Copy, shared draft/terminology validation and retained cleanup ownership; Rust238 PASS/29 ignored. Receipt schema2 provisions broker-hash-bound DLL; real installed new app acceptance remains pending. Three guests stopped. Continue clean release, isolated install and real widget mutation/stale/privacy/cancellation tests. Standard Edit remains Copy-only, RichEdit scope narrow; no completion/adoption/push. Evidence grammar-target-service-20261005/RESULT.md.
+
+Installed608a173 normal Apply FAILED safely on review focus loss (scope metadata stage9, grant/revision unchanged). Repair candidate explicitly reactivates authenticated exact target and preserves all TSF checks; wrong-ID/field-switch guards added. Installed requalification still pending. Keep evidence grammar-target-app-608a173, including setup failures and focus-guard fixture failure; continue to actual installed acceptance.

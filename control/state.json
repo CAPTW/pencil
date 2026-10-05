@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state_version": "2026-10-05.desktop-apply-widget-candidate",
+  "state_version": "2026-10-05.desktop-apply-focus-repair",
   "repository_branch": "main",
   "product_target": "P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST",
   "p3a_status": "DESKTOP_DIRECT_APPLY_RESTORATION_PRIORITY_COPY_ONLY_TEMPORARY_CONTAINMENT",

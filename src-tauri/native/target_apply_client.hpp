@@ -87,6 +87,11 @@ public:
     bool request(ChannelCommand kind, uint64_t capture, const std::wstring& replacement, TargetReply& reply, std::wstring& text) {
         reply = {}; text.clear();
         if (!connected || cancelled_ || replacement.size() > 65534 || sequence_ == (std::numeric_limits<uint64_t>::max)()) return false;
+        if (kind == ChannelCommand::apply) {
+            DWORD foreground = 0;
+            GetWindowThreadProcessId(GetForegroundWindow(), &foreground);
+            if (foreground == GetCurrentProcessId() && !AllowSetForegroundWindow(GetProcessId(process_.get()))) return false;
+        }
         ChannelHeader header; header.command = kind; header.capture_id = capture; header.sequence = sequence_++;
         header.capability = capability_; header.payload_bytes = static_cast<DWORD>(replacement.size()*sizeof(wchar_t));
         auto deadline = GetTickCount64()+6500;
