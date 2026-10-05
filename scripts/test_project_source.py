@@ -66,6 +66,12 @@ def run(repo):
             next(d for d in mixed["known_defects"] if d["id"] == "F-06")["verdict"] = verdict
             record("global_apply_rejects_" + verdict, lambda mixed=mixed: rejected(lambda: ps.state_check(mixed), ["VERDICT_DRIFT:F-06"]))
     if state["p3a_status"] == ps.EDIT_APPLY_STATUS:
+        prior_task = copy.deepcopy(state)
+        prior_task["exact_next_task"] = ps.GLOBAL_APPLY_TASK
+        record("historical_multiline_task_preserved", lambda: ps.state_check(prior_task))
+        browser_task = copy.deepcopy(state)
+        browser_task["exact_next_task"] = ps.GLOBAL_BROWSER_TASK
+        record("authorized_browser_task_accepted", lambda: ps.state_check(browser_task))
         historical_single = json.loads(ps.git(repo, "show", "adecefdb618640c0dff247228255a74520339ae1:control/state.json"))
         record("historical_singleline_qualification_preserved", lambda: ps.state_check(historical_single))
         unsupported = copy.deepcopy(state)
