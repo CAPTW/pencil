@@ -51,6 +51,13 @@ def run(repo):
     state = ps.read_json(repo / "control/state.json")
     inputs = ps.source_inputs(repo)
     record("current_state_exact_semantics", lambda: ps.state_check(state))
+    if state["p3a_status"] == ps.APPLY_STATUS:
+        changed = copy.deepcopy(state)
+        next(d for d in changed["known_defects"] if d["id"] == "F-06")["verdict"] = "CONTAINED_COPY_ONLY_NATIVE_NOT_QUALIFIED"
+        record("owned_apply_mixed_qualification_refused", lambda: rejected(lambda: ps.state_check(changed), ["VERDICT_DRIFT:F-06"]))
+        changed_scope = copy.deepcopy(state)
+        changed_scope["native_capture_activation"] = "ALL_WINDOWS_EDITORS_QUALIFIED"
+        record("owned_apply_general_editor_overclaim_refused", lambda: rejected(lambda: ps.state_check(changed_scope), ["STATE_SEMANTIC_DRIFT:native_capture_activation"]))
     if ps.mission_state(state):
         for key, bad, token in [
             ("mission_id", "UNAUTHORIZED-MISSION", "MISSION_NOT_AUTHORIZED"),
