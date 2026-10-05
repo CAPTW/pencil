@@ -1655,3 +1655,46 @@ live Providers remain incomplete/NOT_RUN. Mission INCOMPLETE, candidate only,
 main not adopted, no remote push/release.
 
 Final same-core regressions: mixed39/16 saved cycles, uniform32/16 and plain73/32 PASS; each native launcher confirms natural Office/Python0, cleanuptrue, forcedfalse, processes0. All owned guests stopped (sandbox-final.json). Main remains4e833988ed27086dd6d4acb78d39fc3e9c98c707.
+
+
+## Cross-format Writer selection — 2026-10-06
+
+Implementation600aa72, base07ee35d; evidence D:/dev/grammar-evidence/grammar-writer-cross-format-20261006.
+New behavior: explicitly enabled package option permits different supported
+bold/RGB styles inside ONE selected Standard paragraph range. Replacement uses
+first selected style; Undo restores the original run styles. The panel discloses
+this before Enable, observed by the installed test. Existing modes default to
+homogeneous selection; all options remain defaultoff. Cross-paragraph selections
+and break-containing replacement still refuse. No automatic Save or whole-body
+rollback. Same per-document opt-in, identity/revision/source and sensitive guards.
+
+Native R1/R2: first cross-run replacement succeeded, Undo then failed after
+mutation with unsupported_theme_or_transparency. Diagnostic reread showed the
+restored second run became CharColor=-1/CharTransparence=100. A portion's
+DEFAULT_VALUE inherited a run-local red, not the document default; resetting it
+lost that value. Restore now sets measured effective values. No color guard was
+relaxed. R1/R2 failures and natural cleanup are preserved. Initial host cp949 test
+preparation failed before guest connect; explicit UTF8 corrected it.
+
+Final R3:47 checks including8 saved/reopened DOCX Apply/Undo/Redo cycles PASS.
+Two and three style runs, Korean/emoji, exact whole-body text/format snapshots,
+stale outside-format and empty typing style Undo counterexamples retained.
+Installed product-r1:8 widget +5 enclosing PASS, actual shortcut/Instant/edited
+Accept, complete text/format rereads and Undo, changed-source/Disable preservation,
+no automatic Save. Natural app/Office/Python0; complete uninstall/processes0.
+Disable's UI still reports outcome unconfirmed; separate reread proves unchanged.
+
+Product OXTsha256:e0898151d44182cc3e63c41510336fbfaf11595677dd2da53e3461bac1826434.
+source-input-proof.json binds all packaged source bytes/Git blobs to600aa72.
+Unchanged runtime0fc862498206f536adf5156fa7d238792c89efc5 is separately hash-bound
+by installed receipts; native fixture services are absent from product OXT.
+Deterministic layout6, packaging7, bridge6 and Source behavior80 PASS.
+Separate same-integrator review only (REVIEW.md), not independent peer review.
+Full Rust/Chromium and physical IME/live Provider not rerun; those binaries unchanged.
+Final prior-mode regressions/cleanup are in RESULT.md; no claims based on mere launch.
+
+Continue paragraph-spanning replacement with defined paragraph-style/Undo semantics
+before activation. General Writer, Calc/Impress product Apply, actual Office/Hancom
+remain incomplete. Candidate only, mission INCOMPLETE, no main adoption/push/release.
+
+Final prior-mode native regressions: mixed39/16 saved cycles and uniform32/16 PASS on the same core. All final guests naturally exit Office/Python0 with cleanuptrue, forcedfalse/processes0. Sandbox inventory empty. Plain mode was not rerun this round: changed formatting helpers are not reached in plain mode; its prior73/32 remains historical evidence.
