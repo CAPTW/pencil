@@ -22,6 +22,7 @@ public:
     ChannelHandle(const ChannelHandle&) = delete;
     ChannelHandle& operator=(const ChannelHandle&) = delete;
     HANDLE get() const { return value_; }
+    HANDLE release() noexcept { HANDLE value = value_; value_ = nullptr; return value; }
 };
 enum class ChannelCommand : uint32_t { capture = 1, apply = 2, cancel = 3, disable = 4 };
 using ChannelCapability = std::array<unsigned char, 32>;
