@@ -1698,3 +1698,56 @@ before activation. General Writer, Calc/Impress product Apply, actual Office/Han
 remain incomplete. Candidate only, mission INCOMPLETE, no main adoption/push/release.
 
 Final prior-mode native regressions: mixed39/16 saved cycles and uniform32/16 PASS on the same core. All final guests naturally exit Office/Python0 with cleanuptrue, forcedfalse/processes0. Sandbox inventory empty. Plain mode was not rerun this round: changed formatting helpers are not reached in plain mode; its prior73/32 remains historical evidence.
+
+
+## Paragraph-topology preserving Writer transaction — 2026-10-06
+
+Base9a7db79. Initial span implementation6b56f99; installed-focus compatibility
+repair6ba7c9f. Evidence D:/dev/grammar-evidence/grammar-writer-span-20261006.
+Final revision-guard artifact and exact verification are in RESULT.md.
+
+New contract: an explicit defaultoff span option permits selections crossing
+existing Standard paragraphs, limit8; the owned fixture has4 paragraphs including
+one empty and distinct alignments/colors. Draft keeps paragraph count and empty
+parts. Right-to-left nonempty-part replacements leave every paragraph delimiter
+untouched, each using its first selected character style. One native Undo context
+groups range actions; Undo restores original selected runs and Redo reapplies.
+Exact full-body/layout verification remains at each part. No automatic Save.
+Merge/split and insertion/deletion of empty parts remain refused before writing.
+
+Each part checks exact enrolled document/controller/selection/source/layout,
+permission, original deadline and intervening revisions. Native capture requires
+Writer foreground; explicit Accept can occur while the review widget owns it,
+matching the existing single-range contract. Partial failure is UNKNOWN_CHANGED,
+stops later parts, keeps dirty state, preserves user edits, and never rolls back
+the whole body or automatically replays. No user documents, live Provider or normal
+profile used. UI policy is visible before Enable; dialog space increased for it.
+
+Preserved failures: R1-R3 native saved-span writes returned UNKNOWN_CHANGED after
+a postwrite layout mismatch. Actual effective colors/alignment/text matched for
+completed parts, but a whole-paragraph replacement relocated DIRECT run color to
+an equal DIRECT paragraph property, leaving the portion DEFAULT. Canonicalization
+only recognizes that exact direct parent/equal value; real style inheritance or
+unequal/ambiguous properties remain distinct. R4 and first final native run refused
+capture with document_not_foreground; no product gate relaxed. The native fixture
+now focuses Writer after Enable as the installed flow does; failed calls are not
+retried or reclassified. Product-r1 captured/Instant passed but Accept timed out:
+span-only foreground precondition conflicted with widget review.6ba7c9f aligns
+that boundary with single-range Accept. Product-r2 passed8 widget+5 enclosing checks.
+
+Native R5 and final-r2 passed81; those precede the additional same-content revision
+counterexample and are kept as historical receipts. Final records distinguish the
+revision-guard run and actual paired installation, rather than borrowing counts.
+Disabling still has outcome-unconfirmed UI; exact reread separately proves no
+mutation. Same-integrator separate review only (REVIEW.md), no independent reviewer.
+Full Rust/Chromium suites not rerun; their source/binaries unchanged. Physical IME,
+general profile, live Providers, actual Office/Hancom remain NOT_RUN/unqualified.
+
+Continue paragraph merge/split semantics and application-specific adapters within
+GRAMMAR-GLOBAL-ACCEPT-DESKTOP-BROWSER-AND-APPLICATION-ADAPTERS. Mission INCOMPLETE;
+no main adoption, push/release or general-profile installation. Source preview is
+not external Project UI application. Historical failed evidence remains unchanged.
+
+Final revision-guard code cde1097: native guest-revision PASS82, including unchanged-content revision event stopping later writes; installed guest-product-final PASS8 widget/5 enclosing. OXT9dc837a2c308f7d79e045cc0869ca31d4d3cc4e1caa21fd6e00fd768b8bbc709 pairs unchanged runtime0fc8624. Both natural exits0/cleanuptrue/forcedfalse/processes0, installed removal complete. Exact source binding: source-input-proof-qualified.json; fixture/product core bytes equal. Prior-mode final regression and shutdown recorded in RESULT.md.
+
+Final prior uniform-format native regression PASS32/16 saved cycles on the same core; natural cleanup complete. Layout9/package8/bridge6/Source81 and governance/self-test PASS. All owned Sandbox instances stopped. Final exact12 preview is separate from external Project application and product acceptance.

@@ -1,6 +1,6 @@
 # LibreOffice Writer adapter (implementation in progress)
 
-Current checkpoint: see "Cross-format selection candidate" below. The opted-in
+Current checkpoint: see "Paragraph-span candidate" below. The opted-in
 candidate OXT is installed-widget qualified only in the documented owned synthetic
 scope; general Writer acceptance is incomplete. Earlier sections below are
 chronological implementation/qualification history, not the current scope limit.
@@ -283,3 +283,22 @@ resetting an inherited color to default produced automatic/transparent color;
 the implementation now restores the measured effective value. No generic theme
 or unsupported metadata admission was added. Cross-paragraph selection and
 complex structures remain unsupported. See grammar-writer-cross-format-20261006.
+
+## Paragraph-span candidate — 2026-10-06
+
+OXTcde1097 + unchanged app/native0fc8624, pinned LibreOffice26.2.4.2. Add
+`--enable-paragraph-span` to cross-format/paragraph/mixed/uniform options (and
+saved-DOCX option for local files). All default off. Policy appears before Enable.
+
+Select across existing Standard body paragraphs, review/edit the whole selection,
+and Accept. Draft must keep the same paragraph count and empty parts. Each nonempty
+part uses its first selected style. Apply works from right to left without touching
+paragraph delimiters; grouped Undo restores original range text/styles. Exact full
+text/layout checks preserve surrounding text, alignments and empty typing formats.
+No automatic Save. Limit8 paragraphs; installed owned fixture covers4 including an
+empty paragraph and distinct alignments/colors. No normal-profile qualification.
+
+Paragraph merging/splitting, new/deleted empty parts and complex structures remain
+unsupported. Source/permission changes refuse; postwrite uncertainty preserves user
+edits and dirty state without whole-body rollback or automatic replay. See evidence
+D:/dev/grammar-evidence/grammar-writer-span-20261006/RESULT.md for failures and scope.

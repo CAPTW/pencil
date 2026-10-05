@@ -1,4 +1,16 @@
-> Current cross-format checkpoint (2026-10-06): OXT600aa72 with explicit
+> Current paragraph-span checkpoint (2026-10-06): OXTcde1097 paired with
+> unchanged app/native0fc8624. Explicit defaultoff paragraph-span option keeps
+> existing paragraph boundaries and empty parts (bounded to8 paragraphs). Each
+> nonempty part uses its first selected style; grouped Undo restores original
+> runs. Owned four-paragraph new/saved DOCX fixtures in LibreOffice26.2.4.2 verify
+> exact text, paragraph alignment, empty typing format and Undo/Redo. Installed
+> widget8/enclosing5 PASS. No automatic Save. Merge/split or empty-part insertion/
+> deletion and complex structures remain refused. Next: paragraph-topology changes
+> with explicit format/Undo semantics. Actual Office/Hancom, physical IME, normal
+> profiles and live Providers remain unqualified/NOT_RUN. Mission INCOMPLETE,
+> no main/push/release. Evidence: grammar-writer-span-20261006.
+
+> Prior cross-format checkpoint (2026-10-06): OXT600aa72 with explicit
 > saved/uniform/mixed/paragraph/cross-format options, paired app/native0fc8624.
 > In owned pinned LibreOffice26.2.4.2, select supported mixed bold/RGB runs within
 > ONE Standard paragraph; replacement uses first selected style, Undo restores

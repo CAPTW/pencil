@@ -93,3 +93,5 @@ No additional Owner gate, no main adoption/push; mission INCOMPLETE.
 2026-10-06 paragraph checkpoint: OXT9443ff2 + app/native0fc8624 installed8+5/core41 PASS. Multiple Standard paragraphs now permitted; selection remains homogeneous within one paragraph. Empty typing style and all surrounding paragraph text/format preserved. Continue cross-format/cross-paragraph replacement semantics under the same global adapter task; general mission INCOMPLETE. Evidence grammar-writer-paragraphs-20261006.
 
 2026-10-06 cross-format: OXT600aa72 + runtime0fc8624 native47/installed8+5 PASS. One paragraph only, first-selected-style replacement/original-run Undo, defaultoff package option and visible policy. Continue paragraph-spanning semantics under existing global task. Mission INCOMPLETE; evidence grammar-writer-cross-format-20261006.
+
+2026-10-06 paragraph-span: OXTcde1097/runtime0fc8624 native82 + installed8/5 PASS; preserve paragraph count/empty parts, grouped exact range Undo, intervening revision stops subsequent writes. Continue topology changes and named application adapters; mission INCOMPLETE. Evidence grammar-writer-span-20261006. No main/push.
