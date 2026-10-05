@@ -408,10 +408,16 @@
     } catch {if(session===owner && epoch===activeEpoch)desktopArmAfter=Date.now()+5000;}
     finally {desktopArmPending=false;}
   }
-  function captureDesktopReview(id) {
+  // Translate service-worker timestamps using the common monotonic time origin.
+  // The caller must not mint a fresh budget after message delivery.
+  function desktopDeadlineValid(deadline) {
+    const remaining=deadline-(performance.timeOrigin+performance.now());
+    return Number.isFinite(deadline) && remaining>0 && remaining<=3000;
+  }
+  function captureDesktopReview(id,deadline) {
     // Only the authenticated native-host worker route may call this entry.
     // It does not enable a document/field or infer permission from selection.
-    if(!reviewToken(id) || desktopReview || reviewInput?.isConnected || dirtyDraft() ||
+    if(!desktopDeadlineValid(deadline) || !reviewToken(id) || desktopReview || reviewInput?.isConnected || dirtyDraft() ||
         !document.hasFocus() || document.activeElement!==editor)return {status:0,text:'',ticket:null};
     const current=read(),range=selectedRange();
     if(current===null || !range)return {status:0,text:'',ticket:null};
@@ -427,22 +433,23 @@
     desktopReviewObserver=new MutationObserver(clearDesktopReview);
     desktopReviewObserver.observe(editor,{attributes:true,characterData:true,childList:true,subtree:true});
     for(const ancestor of ancestors)desktopReviewObserver.observe(ancestor,{attributes:true,childList:true});
+    if(!desktopDeadlineValid(deadline)){grant.cancel();clearDesktopReview();return {status:0,text:'',ticket:null};}
     const ticket=crypto.randomUUID();desktopReview={id,ticket,grant};
     desktopReviewTimer=setTimeout(clearDesktopReview,30000);
     announce('Selected text captured for desktop review. Replacement requires Accept.');
     return {status:2,text,ticket};
   }
-  function applyDesktopReview(id,ticket,text) {
+  function applyDesktopReview(id,ticket,text,deadline) {
     const heldReview=desktopReview;
     if(!heldReview || heldReview.id!==id || heldReview.ticket!==ticket)return {status:0};
-    if(desktopReviewObserver?.takeRecords().length){clearDesktopReview();return {status:0};}
+    if(!desktopDeadlineValid(deadline) || desktopReviewObserver?.takeRecords().length){clearDesktopReview();return {status:0};}
     const grant=heldReview.grant,current=read(),range=selectedRange();
     const mutation=current!==null && range ? grant.replacement(current,range.start,range.end,text) : null;
     if(!mutation){clearDesktopReview();return {status:0};}
     try {
       const status=commitMutation(current,mutation,()=>{
         const latest=selectedRange();
-        return desktopReview===heldReview && !desktopReviewObserver?.takeRecords().length && latest && !!grant.replacement(read(),latest.start,latest.end,text);
+        return desktopDeadlineValid(deadline) && desktopReview===heldReview && !desktopReviewObserver?.takeRecords().length && latest && !!grant.replacement(read(),latest.start,latest.end,text);
       },clearDesktopReview,false);
       clearDesktopReview();return {status};
     } catch {clearDesktopReview();return {status:4};} // Never retry an uncertain write.
@@ -590,8 +597,8 @@
     if(message.op==='enable'&&typeof message.epoch==='string'){enable(message.epoch);respond({ready:true});}
     else if(message.op==='deep-policy'&&message.epoch===epoch){updateDeepPolicy(message.provider);respond({ok:true});}
     else if(message.op==='disable'&&message.epoch===epoch){disable();respond({ok:true});}
-    else if(message.op==='desktop-capture'&&epoch && message.epoch===epoch){respond(captureDesktopReview(message.id));}
-    else if(message.op==='desktop-apply'&&epoch && message.epoch===epoch){respond(applyDesktopReview(message.id,message.ticket,message.text));}
+    else if(message.op==='desktop-capture'&&epoch && message.epoch===epoch){respond(captureDesktopReview(message.id,message.deadline));}
+    else if(message.op==='desktop-apply'&&epoch && message.epoch===epoch){respond(applyDesktopReview(message.id,message.ticket,message.text,message.deadline));}
     else if(message.op==='desktop-cancel'&&epoch && message.epoch===epoch){
       if(desktopReview?.id===message.id)clearDesktopReview();respond({ok:true});
     }

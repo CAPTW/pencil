@@ -163,6 +163,7 @@ async function armDesktop(s,tabId) {
       const capture=message.op==='review-capture' && owner.phase==='ready' && message.sequence===1 && message.ticket===null && message.text===null;
       const apply=message.op==='review-apply' && owner.phase==='captured' && message.sequence===2 && message.ticket===owner.ticket && typeof message.text==='string' && message.text.length>0 && message.text.length<=8192 && !message.text.includes('\0');
       if(!capture && !apply){closeDesktop(owner);return;}
+      const deadline=performance.timeOrigin+performance.now()+3000;
       owner.phase=capture?'capturing':'applying';desktopDeadline(owner,3000);desktopDispatchPending=owner;
       (async()=>{
         if(capture){
@@ -170,10 +171,11 @@ async function armDesktop(s,tabId) {
           if(active?.id!==owner.tabId || active.windowId!==owner.windowId || !desktopCurrent(owner))throw Error('target_changed');
         }
         if(!desktopCurrent(owner))return;
+        if(performance.timeOrigin+performance.now()>=deadline)throw Error('desktop_request_expired');
         owner.dispatched=true;
         const result=await chrome.tabs.sendMessage(owner.tabId,capture?
-          {op:'desktop-capture',epoch:s.epoch,id:owner.id}:
-          {op:'desktop-apply',epoch:s.epoch,id:owner.id,ticket:owner.ticket,text:message.text},
+          {op:'desktop-capture',epoch:s.epoch,id:owner.id,deadline}:
+          {op:'desktop-apply',epoch:s.epoch,id:owner.id,ticket:owner.ticket,text:message.text,deadline},
           {documentId:s.documentId});
         if(!desktopCurrent(owner))return;
         if(capture) {

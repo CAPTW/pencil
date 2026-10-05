@@ -19,6 +19,7 @@ async function readyReview(f) {
 }
 function event() { const listeners=[];return {addListener(fn){listeners.push(fn);},emit(...args){for(const fn of listeners)fn(...args);}}; }
 function fixture(initial={deniedOrigins:[]}) {
+  let monotonicNow=0;
   const sent=[],ports=[],controlPorts=[],timers=new Map();let nextTimer=0,epoch=0,storageGate=null,injectionGate=null,writeGate=null,stored=structuredClone(initial);
   const injectionGates=new Map(),writes=[];let controlAuto=true, enableReplyGate=null;
   const ticket=token=>({installation:'a'.repeat(32),slot:0,generation:1,token});
@@ -43,7 +44,7 @@ function fixture(initial={deniedOrigins:[]}) {
     windows:{onFocusChanged,WINDOW_ID_NONE:-1},
     scripting:{async executeScript({target}){const gate=injectionGates.get(target.tabId)||injectionGate;injectionGates.delete(target.tabId);injectionGate=null;return gate?gate.promise:[{frameId:0,documentId:'doc-'+target.tabId}];}},
   };
-  const context=vm.createContext({chrome,URL,crypto:{randomUUID:()=>`00000000-0000-4000-8000-${String(++epoch).padStart(12,'0')}`},
+  const context=vm.createContext({chrome,URL,performance:{timeOrigin:1000000,now:()=>monotonicNow},crypto:{randomUUID:()=>`00000000-0000-4000-8000-${String(++epoch).padStart(12,'0')}`},
     setTimeout:fn=>{const id=++nextTimer;timers.set(id,fn);return id;},clearTimeout:id=>timers.delete(id)});
   new vm.Script(source,{filename:'production-worker.js'}).runInContext(context);
   const popup={id:'extension',url:'chrome-extension://extension/popup.html'};
@@ -52,7 +53,7 @@ function fixture(initial={deniedOrigins:[]}) {
   const sender=(tabId=1)=>({id:'extension',url:'https://example.test/document/'+tabId,tab:{id:tabId},frameId:0,documentId:'doc-'+tabId});
   const currentEpoch=(tabId=1)=>sent.filter(x=>x.tabId===tabId&&x.message.op==='enable').at(-1)?.message.epoch;
   const request=(id='r1',tabId=1)=>({version:1,op:'analyze',id,epoch:currentEpoch(tabId),revision:1,text:'seperate'});
-  return {sent,ports,controlPorts,ticket,controlAuto(value){controlAuto=value;},stored(){return structuredClone(stored);},timers,writes,command,dispatch,sender,request,currentEpoch,onUpdated,onRemoved,
+  return {advanceClock(ms){monotonicNow+=ms;},sent,ports,controlPorts,ticket,controlAuto(value){controlAuto=value;},stored(){return structuredClone(stored);},timers,writes,command,dispatch,sender,request,currentEpoch,onUpdated,onRemoved,
     delayEnableReply(){return enableReplyGate=deferred();},
     delayStorage(){return storageGate=deferred();},delayWrite(){return writeGate=deferred();},
     delayInjection(tabId){if(tabId!==undefined){const gate=deferred();injectionGates.set(tabId,gate);return gate;}return injectionGate=deferred();},
@@ -60,14 +61,21 @@ function fixture(initial={deniedOrigins:[]}) {
     fireTimer(){const [id,fn]=timers.entries().next().value;timers.delete(id);fn();}};
 }
 
+test('desktop capture drops expired request after async tab lookup without delivering it',async()=>{
+ const f=fixture(),p=await readyReview(f),gate=f.delayQuery();
+ reviewCommand(p,'review-capture',1);await tick();f.advanceClock(3001);
+ gate.resolve([{id:1,windowId:10}]);await tick();
+ assert.equal(f.sent.filter(x=>x.message.op==='desktop-capture').length,0);assert.equal(p.closed,1);
+});
+
 test('desktop port binds exact document and one capture/Apply without Provider payload',async()=>{
  const f=fixture(),p=await readyReview(f);
  assert.equal(p.posted[0].op,'review-listen');assert.equal(p.posted[0].text,'');
  f.desktopReply({status:2,text:'source',ticket:reviewTicket});reviewCommand(p,'review-capture',1);await tick();
- const capture=f.sent.find(x=>x.message.op==='desktop-capture');assert.equal(capture.tabId,1);assert.equal(capture.options.documentId,'doc-1');assert.equal(capture.message.epoch,f.currentEpoch());
+ const capture=f.sent.find(x=>x.message.op==='desktop-capture');assert.equal(capture.tabId,1);assert.equal(capture.options.documentId,'doc-1');assert.equal(capture.message.epoch,f.currentEpoch());assert.equal(capture.message.deadline,1003000);
  assert.equal(p.posted[1].text,'source');assert.equal(p.posted[1].ticket,reviewTicket);
  f.desktopReply({status:3});reviewCommand(p,'review-apply',2,reviewTicket,'replacement');await tick();
- const applied=f.sent.find(x=>x.message.op==='desktop-apply');assert.equal(applied.options.documentId,'doc-1');assert.equal(applied.message.text,'replacement');
+ const applied=f.sent.find(x=>x.message.op==='desktop-apply');assert.equal(applied.options.documentId,'doc-1');assert.equal(applied.message.text,'replacement');assert.equal(applied.message.deadline,1003000);
  assert.equal(p.posted[2].status,3);assert.equal(p.posted[2].text,'');
  reviewCommand(p,'review-apply',2,reviewTicket,'replay');await tick();
  assert.equal(f.sent.filter(x=>x.message.op==='desktop-apply').length,1);assert.equal(p.closed,1);assert.equal(f.writes.length,0);
