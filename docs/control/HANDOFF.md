@@ -1546,3 +1546,50 @@ changes have actual installed qualification. Existing app/native0fc8624 remains
 receipt-bound; no full Rust rebuild is claimed in this Python-only expansion.
 Source behavior77, package4, bridge6 and governance/self-test PASS. Source scope
 changes preserve prior saved-plain and unsaved-only snapshots as history.
+
+## Mixed surroundings Writer checkpoint — 2026-10-06
+
+Product commit a3b231a; synthetic preparation correction4f6bbb5. Same candidate
+branch; main, credentials, profiles and remote unchanged. Explicit default-off
+`--enable-mixed-surroundings` requires `--enable-uniform-format`; add
+`--enable-saved-docx` for local DOCX. Paired app/native remains0fc8624.
+
+Supports one Standard body paragraph with a homogeneous selected range surrounded
+by other supported bold/RGB runs. Entire text/layout fingerprints include effective
+style defaults, paragraph alignment, actual run lengths/values/states and strict
+RGB metadata. Exact expected postwrite layout is checked; custom range Undo/Redo
+checks whole document hashes and never restores the whole body. Cross-format
+selection and selected/replacement line breaks are refused before writing.
+
+Native final-r2:39 checks (including16 saved/reopened Apply/Undo cycles) PASS;
+inside/full run/prefix/suffix, Undo/Redo, stale outside format, custom Undo refusal,
+multiple paragraphs and selected line break refusal, explicit Save/reopen fidelity.
+Installed product-r5:8 widget +5 enclosing checks PASS; real hotkey/Instant/edited
+Accept/exact text and per-character formats/Undo, changed source and Disable. No
+automatic Save. Disable may report outcome unconfirmed; reread independently
+proves no mutation, and there is no replay. App/Office/Python natural exits0,
+cleanuptrue/forcedfalse/processes0 and complete uninstall.
+
+Product-r1..r4 FAIL preserved. Setup recreated a saved synthetic paragraph but
+left inherited DOCX original-color tags inconsistent with its new RGB. Read-only
+exact packaged core diagnosis identified unsupported_color_interop; resetting to
+DEFAULT and even all properties did not remove inherited tags. Only the synthetic
+setup now writes a typed explicit empty interop sequence. Product admission was
+not relaxed; inconsistent imported color metadata stays unsupported. A final
+fixture startup from the output directory was refused by MediumLaunch (NOT_RUN);
+its guard stayed intact and final-r2 used the approved payload path.
+
+OXT SHA256 971ebfddb77523c6ef021d7e2f98cca68430e77a8f2c516a1ccceb84308b6389.
+Exact checkout input hashes and Git clean-filter blob binding are in
+D:/dev/grammar-evidence/grammar-writer-mixed-20261006/source-input-proof.json.
+Raw Git LF bytes and Windows checkout CRLF bytes differ; do not compare their
+SHA256 as though they were the same representation. Existing binary hashes are
+separately verified, not falsely attributed to the current Python-only commit.
+
+Same-integrator review only. Layout oracle2/package5/bridge6 tests PASS; final
+plain73/32 cycles and uniform32/16 cycles native regressions PASS with natural cleanup; Source78 and governance/self-test PASS. All guests stopped; receipts in RESULT.md.
+Cross-format selections, multiple formatted paragraphs, arbitrary rich structures,
+actual Office/Hancom, physical IME, normal profiles and live Provider remain
+unqualified/NOT_RUN. Next authorized work is paragraph-aware preservation and
+explicit cross-format replacement semantics. No main adoption/push/release;
+mission INCOMPLETE. This supersedes the prior checkpoint's next-work summary.

@@ -218,3 +218,25 @@ Natural Office/Python0, cleanuptrue, forcedfalse/processes0; every guest stopped
 F06 and Source generator now express this bounded union while preserving old
 unsaved-only and saved-plain snapshots. Same-integrator review, no independent
 reviewer. Mission INCOMPLETE, main unchanged, no push or live Provider.
+
+## Mixed surroundings candidate — 2026-10-06
+
+OXT source a3b231a, paired app/native0fc8624, pinned LibreOffice26.2.4.2.
+Build with `--enable-uniform-format --enable-mixed-surroundings`; add
+`--enable-saved-docx` for local DOCX. These options default off.
+
+In one Standard body paragraph, select text with one supported bold/RGB style.
+Other text may use different supported bold/RGB styles. Enable one review, press
+Ctrl+Shift+G, review/edit the local draft, and explicitly Accept. Complete text and
+surrounding formats are rechecked. Undo/Redo restores only the selected range.
+There is no automatic file Save.
+
+Owned installed synthetic widget8 and native39 checks passed, including16 saved
+DOCX Apply/Undo cycles and explicit Save/reopen. Cross-format selections, selected
+line breaks, multiple formatted paragraphs, complex structures and inconsistent
+DOCX color metadata remain unsupported. Normal profiles, physical IME and actual
+Office/Hancom are not qualified. Prior plain/uniform qualifications above retain
+their original scope. Mission INCOMPLETE; no general-user installation or release.
+
+Evidence: D:/dev/grammar-evidence/grammar-writer-mixed-20261006/RESULT.md.
+Handoff records the preserved failed preparations and exact package/source chain.
