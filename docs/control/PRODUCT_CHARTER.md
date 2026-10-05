@@ -35,3 +35,6 @@ FIRST_ADAPTER_DECISION=CHROMIUM_TEXTAREA_CONTENTEDITABLE_MV3
 screenshot, OCR, screen recording, keylogging, password/secure/sensitive field 처리, full-document history 영구 저장, selected/generated text history 영구 저장, plaintext credential 저장, raw Provider stderr 사용자 노출, 전체 terminology store 전송은 금지한다. 명시적 사용자 관리 terminology 저장은 텍스트 history 저장과 구분한다. local-only Instant는 cloud enable과 독립적으로 사용 가능해야 한다.
 
 이번 authority reset은 docs/governance/tooling만 허용한다. P3-B 기능 구현, 다음 개발 task 실행, remote publication은 허용하지 않는다. NEXT_GATE_EXECUTED=false; AUTOMATIC_CONTINUATION=false.
+
+## Explicit global Accept scope (2026-10-05)
+Owner now requires standard Edit and Text/DOCX/XLSX/HWP/HWPX/PPTX/webpage editor integration through the global select → shortcut → review/edit → explicit Accept → exact source replacement flow. Native format support belongs to the editing application adapter; do not overwrite on-disk archives behind open documents or claim arbitrary editors from a filename. The first-adapter historical decision stays Chromium. This is authorized implementation scope, not a claim of support already delivered. Sensitive/unknown targets remain refused; existing Copy is a fallback, not fulfillment of direct replacement.

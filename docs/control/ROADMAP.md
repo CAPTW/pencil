@@ -111,3 +111,14 @@ FIRST_ADAPTER_DECISION=CHROMIUM_TEXTAREA_CONTENTEDITABLE_MV3
 P00는 governance reset의 완료 여부만 판정한다. P01 baseline은 P3-B 완료가 아니다. P03 adapter 읽기, P04 annotation, P05 local suggestion, P06 Deep, P07 mutation은 서로 다른 acceptance다. P09 이전에는 whole-product current acceptance를 선언하지 않는다. P10은 feasibility 완료이며 HWP 지원 완료가 아니다. 비용·browser/API 버전 변경으로 계획이 달라지면 next task packet에서 bounded revision을 승인받고 Source materiality를 갱신한다.
 
 Current2026-10-05: installed40a7d26 restores reviewed Instant direct Apply in owned non-sensitive RichEdit50W. Next is qualification of additional existing desktop editors and review lifetime; no editor is promoted without target-side safety/privacy evidence. Historical phase gates below do not override the active mission contract. Whole mission remains INCOMPLETE; no live Provider or general-profile installation.
+
+## Owner expansion, 2026-10-05: global reviewed replacement
+
+The global review-and-Accept contract amendment now authorizes implementation for standard Edit and the named Text/DOCX/XLSX/HWP/HWPX/PPTX/webpage targets. Historical P10 feasibility-only and HWP-implementation prohibitions above do not gate these named targets anymore. Safety and isolated acceptance remain mandatory.
+
+1. Standard Edit target-thread replacement: preserve the 40a7d26 RichEdit result, qualify source/range/revision/privacy, reentrant app edits, actual review focus and module cleanup. Multiline Undo failure is open and must not be hidden by weakening the existing test.
+2. Connect the qualified control path to the installed desktop review/Accept flow; retain explicit Copy for unsupported controls.
+3. App-aware Word, Excel, PowerPoint and Hancom integrations, then global review routing for existing Chromium support. A file extension is never authority to capture or mutate a document. Do not substitute out-of-process read-then-write, whole-document rollback or injected Ctrl+V for target-side verified replacement.
+4. Qualify each editing application/version on owned synthetic documents in an isolated environment. Office App Paths metadata on the host does not qualify Office and does not authorize using open host documents. An unavailable licensed isolated app blocks only its own live acceptance.
+
+Default app targets pending Owner preference: Microsoft Word/Excel/PowerPoint, Hancom Hangeul, Chrome/Edge. Current Office/Hancom application adapters are NOT_IMPLEMENTED and their isolated functional tests are NOT_RUN. Chromium's existing supported field behavior is not desktop-global routing. No whole-product completion or new general-editor support claim follows from this scope amendment.
