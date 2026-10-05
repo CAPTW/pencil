@@ -55,7 +55,7 @@ try {
  const prep=execFileSync(process.env.GRAMMAR_PWSH || 'pwsh.exe',['-NoProfile','-File',resolve('adapters/chromium/host/Prepare-Host.ps1'),'-Executable',hostExecutable,'-ExtensionId',id,'-OutputDirectory',hostDir,'-Register'],{encoding:'utf8'});
 const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),`export const HOST = ${JSON.stringify(receipt.name)};\n`);
 
- const launch=()=>chromium.launchPersistentContext(join(run,'profile'),{headless:true,chromiumSandbox:true,channel:'chromium',executablePath:process.env.GRAMMAR_CHROMIUM || 'C:/Users/USER/AppData/Local/ms-playwright/chromium-1217/chrome-win64/chrome.exe',args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
+ const launch=()=>chromium.launchPersistentContext(join(run,'profile'),{headless:!process.env.GRAMMAR_ROUTE_PROBE,chromiumSandbox:true,channel:'chromium',executablePath:process.env.GRAMMAR_CHROMIUM || 'C:/Users/USER/AppData/Local/ms-playwright/chromium-1217/chrome-win64/chrome.exe',args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
  context=await launch();
  let worker=context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
  // Exercise a real worker restart after a native reservation reply was lost.
@@ -107,6 +107,12 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  assert.equal((await worker.evaluate(()=>fixtureMetrics)).analyses,0);pass('selection review shortcut cannot grant field opt-in');
  await page.locator('#writing').click();await page.getByRole('button',{name:'Enable this field',exact:true}).click();
  const suggestion=page.getByRole('button',{name:/Suggestion 1:/});await suggestion.waitFor({timeout:10000});pass('native Instant transport produced annotation');
+ if(process.env.GRAMMAR_ROUTE_PROBE) {
+   await page.bringToFront();await page.locator('#writing').click();
+   const routeOutput=execFileSync(process.env.GRAMMAR_ROUTE_PROBE,[join(hostDir,'grammar-chromium-host.exe')],{encoding:'utf8',windowsHide:true,timeout:15000});
+   assert.match(routeOutput,/checks=11 failures=0/);console.log(routeOutput);
+   pass('native process route binds actual foreground Chromium to exact installed-host copy; eleven process routing checks');
+ }
  if(!selectionOnly){
  await page.locator('#writing').fill('seperate\nseperate');
  await page.getByRole('button',{name:/Suggestion 2:/}).waitFor();

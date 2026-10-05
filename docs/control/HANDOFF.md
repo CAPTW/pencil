@@ -914,3 +914,23 @@ Final result.json contains tested extension byte hashes. verified-source/ preser
 Network/clipboard redirection disabled, owned restricted-Medium Sandbox, synthetic docs/profile and synthetic Provider only. No host user input/docs/profiles/accounts/live Provider. Same-integrator review only: checked cancellation, permission gates, one-shot grant, synchronous callback revalidation, focus handover, mutation reread and cleanup. No independent reviewer.
 
 Next: authenticated desktop/native-host/browser review routing using target-side selection authority; app-aware Word/Excel/PowerPoint/Hancom adapters and isolated synthetic app qualification. No all-format support claim, native browser Undo guarantee, physical IME, Edge or installed new-extension acceptance. No main adoption, push or release.
+
+
+## Browser process route component — 2026-10-05
+
+Evidence: D:/dev/grammar-evidence/grammar-browser-route-20261005/RESULT.md and build-shim/build-receipt.json.
+
+Chrome documents that a native host started from a service worker receives --parent-window=0 (https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging). It cannot supply target window identity. The desktop must observe foreground and independently bind its browser process to the installed host.
+
+The first actual headed Chromium test rejected the direct-parent assumption: first/ FAIL. Diagnostic/ FAIL preserved exact metadata: host -> C:\Windows\System32\cmd.exe -> owned Chromium -> test Node. No document, clipboard, command-line arguments or credentials were read. The new route allows a direct child or exactly one canonical Windows system cmd.exe shim, with image path/hash and process handles pinned. Arbitrary ancestors and executable-name-only trust remain forbidden.
+
+## Implementation and verification
+browser_route.hpp reuses VerifiedApplyPeer and same-logon/Medium-integrity admission. Caller must supply a trusted installed host image/hash, not values received from an extension. Snapshot lookup is bounded by an absolute deadline and a65536-entry bound. Process creation ordering rejects reused-parent PID explanations. The route retains browser, exact host and optional launcher lifetime handles; validates exact root window/foreground at capture admission; review focus may leave a still-live process route but is not new capture authority. Window class alone never authorizes capture, provider work or mutation. No new library/dependency or system setting.
+
+MSVC /W4 /WX build PASS. build-shim/build-receipt.json binds native input bytes to browser-route-probe.exe. tested-inputs/SHA256.json records browser harness and guest runner separately. Probe/runners only execute in owned restricted-Medium Sandbox.
+
+shim/ PASS: actual headed Chromium and installed330ab3b host copy;11 native checks including good route, wrong hash/path/zero/expired/self/browser PID, authentic host launched under wrong parent, review-focus separation and unrelated owned window. The test-created wrong-parent host starts suspended, is resumed without a valid origin, exits naturally, and never performs protocol/provider work.18 focused browser checks also PASS with selected-source review and post-beforeinput expiry regressions. Full56 remains prior15e5cab evidence, not rerun here because no existing extension production bytes changed.
+
+medium-result PASS: fixture profile/registration absent, host processes0. Complete uninstall: root/registration/process/user-data residues0 and no problems. All guests stopped. No live Provider, user data/profile, host clipboard/input, account change, main adoption, push or release. This is a modified isolated extension fixture and component qualification, not new installed-product acceptance. Real Chromium used the cmd shim; direct-launch Chromium mode is not separately qualified.
+
+Same-integrator review only: checked trusted input provenance, bounded process scan, pinning/PID lifetime, canonical system image, same identity/integrity, source-free metadata, exact window, complete guest cleanup. No independent reviewer. Next: connect a dedicated authenticated desktop/native-host review channel, worker documentId/epoch routing, one-shot content selection authority and actual desktop widget Accept; qualify before activation.
