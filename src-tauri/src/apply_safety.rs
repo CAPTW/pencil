@@ -2,7 +2,7 @@ use crate::capture_session::{ApplyContext, CaptureSessionStore, SessionError, Se
 use serde::Serialize;
 
 /// Delivers the approved result of the current capture (the desktop Copy
-/// button). Grammar never changes text inside another application's editor: a
+/// button). This clipboard-only path never changes another application's editor: a
 /// standard Edit belongs to that application, which can change its own text
 /// between any two messages Grammar sends, and no message sequence verifies a
 /// range and replaces it atomically (review findings R1/R2). The result is
@@ -22,7 +22,7 @@ pub(crate) enum ApplyFallbackReason {
     TargetSelectionUnverified,
     TargetMissing,
     TargetProcessChanged,
-    /// Grammar never changes text inside another application's native editor.
+    /// The legacy external-message reader has no target-side mutation authority.
     TargetMutationDisabled,
 }
 
@@ -42,6 +42,9 @@ pub(crate) enum ApplyFailureReason {
 pub(crate) enum ApplyOutcome {
     CopiedFallback { reason: ApplyFallbackReason },
     RejectedStale,
+    Applied,
+    RejectedTarget,
+    Indeterminate,
     Failed { reason: ApplyFailureReason },
 }
 
@@ -73,7 +76,7 @@ pub(crate) fn apply_current_session<P: ApplyPlatform>(
     let transition = match outcome {
         ApplyOutcome::CopiedFallback { .. } => store.finish_apply_success(&context.token),
         ApplyOutcome::Failed { .. } => store.finish_apply_failure(&context.token),
-        ApplyOutcome::RejectedStale => Err(SessionError::InvalidState),
+        ApplyOutcome::RejectedStale | ApplyOutcome::Applied | ApplyOutcome::RejectedTarget | ApplyOutcome::Indeterminate => Err(SessionError::InvalidState),
     };
 
     if transition.is_err() {

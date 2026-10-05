@@ -6,11 +6,11 @@ export type CaptureToken = Readonly<{
 export type SelectionCapturedPayload = CaptureToken &
   Readonly<{
     selectedText: string;
+    directApply?: boolean;
   }>;
 
-// The desktop Copy result: the desktop backend never changes text inside
-// another application's editor, so every delivered result is a copy with a
-// reason.
+// Copy and explicitly qualified target-side Apply have distinct outcomes.
+// No uncertain Apply is converted into an automatic clipboard fallback.
 export type ApplyFallbackReason =
   | "target_selection_unverified"
   | "target_missing"
@@ -26,6 +26,9 @@ export type ApplyFailureReason =
 export type ApplyOutcome =
   | Readonly<{ status: "copied_fallback"; reason: ApplyFallbackReason }>
   | Readonly<{ status: "rejected_stale" }>
+  | Readonly<{ status: "applied" }>
+  | Readonly<{ status: "rejected_target" }>
+  | Readonly<{ status: "indeterminate" }>
   | Readonly<{ status: "failed"; reason: ApplyFailureReason }>;
 
 const FALLBACK_REASONS = new Set<ApplyFallbackReason>([
@@ -99,7 +102,8 @@ export function parseCaptureToken(value: unknown): CaptureToken | null {
 }
 
 export function parseSelectionCaptured(value: unknown): SelectionCapturedPayload | null {
-  if (!isRecord(value) || !hasExactKeys(value, ["sessionId", "generation", "selectedText"])) {
+  if (!isRecord(value) || !(hasExactKeys(value, ["sessionId", "generation", "selectedText"]) ||
+    (hasExactKeys(value, ["sessionId", "generation", "selectedText", "directApply"]) && typeof value.directApply === "boolean"))) {
     return null;
   }
   if (
@@ -116,6 +120,7 @@ export function parseSelectionCaptured(value: unknown): SelectionCapturedPayload
     sessionId: value.sessionId,
     generation: value.generation,
     selectedText: value.selectedText,
+    ...(typeof value.directApply === "boolean" ? { directApply: value.directApply } : {}),
   };
 }
 
@@ -134,6 +139,9 @@ export function sameCaptureToken(
 export function parseApplyOutcome(value: unknown): ApplyOutcome | null {
   if (!isRecord(value) || typeof value.status !== "string") {
     return null;
+  }
+  if (value.status === "applied" || value.status === "rejected_target" || value.status === "indeterminate") {
+    return hasExactKeys(value, ["status"]) ? { status: value.status } : null;
   }
   if (value.status === "rejected_stale") {
     return hasExactKeys(value, ["status"]) ? { status: value.status } : null;

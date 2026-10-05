@@ -6,11 +6,13 @@ $ErrorActionPreference='Stop'
 $source=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $receipt=Get-Content -LiteralPath $ReceiptPath -Raw | ConvertFrom-Json
 $verified=& (Join-Path $PSScriptRoot 'build-receipt.ps1') -SourceRoot $source -ReceiptPath $ReceiptPath -VerifyOnly -ExecutablePath $receipt.executablePath -HostExecutablePath $receipt.hostExecutablePath
+if($verified.schemaVersion -ne 2){throw 'This candidate requires a broker-bound target service build receipt'}
 if(Test-Path -LiteralPath $OutputRoot){throw 'OutputRoot must be fresh'}
 $destination=[IO.Path]::GetFullPath($OutputRoot)
 New-Item -ItemType Directory -Path $destination | Out-Null
 Copy-Item -LiteralPath $verified.executablePath -Destination (Join-Path $destination 'codex-pencil.exe')
 Copy-Item -LiteralPath $verified.hostExecutablePath -Destination (Join-Path $destination 'grammar-chromium-host.exe')
+Copy-Item -LiteralPath $verified.targetApply.libraryPath -Destination (Join-Path $destination 'target-apply.dll')
 # Whole folders are copied, so they must hold exactly the files of the commit:
 # no ignored, untracked or hidden extras (build-receipt already refused edits).
 foreach ($folder in @('adapters/chromium/extension', 'adapters/chromium/host')) {
@@ -40,11 +42,11 @@ Copy-Item -LiteralPath (Join-Path $source 'adapters/chromium/host') -Destination
 Copy-Item -LiteralPath (Join-Path $source 'adapters/chromium/README.md') -Destination (Join-Path $destination 'README.md')
 Copy-Item -LiteralPath (Join-Path $source 'docs/control/HANDOFF.md') -Destination (Join-Path $destination 'HANDOFF.md')
 Copy-Item -LiteralPath $ReceiptPath -Destination (Join-Path $destination 'BUILD_RECEIPT.json')
-$null=& (Join-Path $PSScriptRoot 'build-receipt.ps1') -SourceRoot $source -ReceiptPath $ReceiptPath -VerifyOnly -ExecutablePath (Join-Path $destination 'codex-pencil.exe') -HostExecutablePath (Join-Path $destination 'grammar-chromium-host.exe')
+$null=& (Join-Path $PSScriptRoot 'build-receipt.ps1') -SourceRoot $source -ReceiptPath $ReceiptPath -VerifyOnly -ExecutablePath (Join-Path $destination 'codex-pencil.exe') -HostExecutablePath (Join-Path $destination 'grammar-chromium-host.exe') -TargetLibraryPath (Join-Path $destination 'target-apply.dll')
 $files=@(Get-ChildItem -LiteralPath $destination -File -Recurse -Force | Sort-Object FullName | ForEach-Object {
   [ordered]@{path=[IO.Path]::GetRelativePath($destination,$_.FullName).Replace('\','/');sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower();bytes=$_.Length}
 })
-$manifest=[ordered]@{classification='PERSONAL_USE_CANDIDATE_SYNTHETIC_QUALIFIED_SCOPE';sourceCommit=$verified.after.commit;sourceTree=$verified.after.tree;sourcePhysicalDigest=$verified.after.trackedBytesSha256;extensionId=$extensionId;nativeCapture='STANDARD_EDIT_ONLY_SYNTHETIC_QUALIFIED';nativeApply='NONE_DESKTOP_COPY_BUTTON_ONLY_NATIVE_EDITORS_NEVER_MUTATED';chromiumInstant='TEXTAREA_SIMPLE_CONTENTEDITABLE_SYNTHETIC_QUALIFIED';chromiumDeep='CONSENT_BOUND_SYNTHETIC_PROVIDER_ONLY';antigravityDeep='PRIVACY_UNQUALIFIED';claudeOAuth='UNAVAILABLE_WITH_BARE';providerLive='NOT_RUN';physicalKeyboardIme='NOT_RUN';files=$files}
+$manifest=[ordered]@{classification='PERSONAL_USE_CANDIDATE_SYNTHETIC_QUALIFIED_SCOPE';sourceCommit=$verified.after.commit;sourceTree=$verified.after.tree;sourcePhysicalDigest=$verified.after.trackedBytesSha256;extensionId=$extensionId;nativeCapture='STANDARD_EDIT_COPY_AND_QUALIFIED_TSF_RICHEDIT_CANDIDATE';nativeApply='EXPERIMENTAL_TARGET_SIDE_RICHEDIT_EXPLICIT_APPLY_INSTALLED_ACCEPTANCE_PENDING';chromiumInstant='TEXTAREA_SIMPLE_CONTENTEDITABLE_SYNTHETIC_QUALIFIED';chromiumDeep='CONSENT_BOUND_SYNTHETIC_PROVIDER_ONLY';antigravityDeep='PRIVACY_UNQUALIFIED';claudeOAuth='UNAVAILABLE_WITH_BARE';providerLive='NOT_RUN';physicalKeyboardIme='NOT_RUN';files=$files}
 [IO.File]::WriteAllText((Join-Path $destination 'MANIFEST.json'),($manifest|ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false))
 $zip=$destination+'.zip'
 if(Test-Path -LiteralPath $zip){throw 'ZIP already exists'}

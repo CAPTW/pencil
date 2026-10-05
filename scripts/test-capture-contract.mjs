@@ -64,7 +64,7 @@ assert.equal(
   false,
 );
 
-// The desktop Copy button is the only delivery: every result is a copy.
+// The Copy contract remains clipboard-only and distinct from target-side Apply.
 for (const reason of [
   "target_selection_unverified",
   "target_missing",
@@ -95,10 +95,17 @@ assert.equal(
   null,
 );
 
-// Nothing reports a change inside another application: the paste-era and
-// native mutation outcomes are no longer part of the contract (R1/R2, legacy
-// paste removed).
-assert.equal(contract.parseApplyOutcome({ status: "applied" }), null);
+// Qualified target-side Apply reports physical outcomes, never a fabricated
+// safe failure or automatic Copy. Legacy external-message outcomes stay denied.
+for (const status of ["applied", "rejected_target", "indeterminate"]) {
+  assert.deepEqual(contract.parseApplyOutcome({status}), {status});
+  assert.equal(contract.parseApplyOutcome({status, reason: "safe"}), null);
+}
+const capable = {sessionId: "synthetic", generation: 1, selectedText: "selected", directApply: true};
+assert.deepEqual(contract.parseSelectionCaptured(capable), capable);
+assert.equal(contract.parseSelectionCaptured({...capable, directApply: "true"}), null);
+assert.equal(contract.parseSelectionCaptured({...capable, captureId: 12}), null);
+assert.equal(contract.parseSelectionCaptured({...capable, hwnd: 12}), null);
 for (const reason of [
   "target_not_foreground",
   "target_editor_changed",

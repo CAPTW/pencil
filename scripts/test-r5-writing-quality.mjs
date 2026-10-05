@@ -26,8 +26,11 @@ assert.match(rules, /EN_SUBJECT_VERB_THIS_ARE/);
 assert.match(rules, /EN_DEMONSTRATIVE_THESE_VESSEL/);
 assert.match(rules, /EN_DUPLICATE_WORD/);
 assert.match(review, /export function reviewDiff/);
-// One Copy button delivers the result; the separate Apply button was merged into it.
-assert.doesNotMatch(app, /data-testid="apply-result"/);
+// Owner restored direct Apply as a priority. It is gated by the backend's
+// qualified capture, with Copy retained as a separate explicit action.
+assert.match(app, /selection\?\.directApply\s*\?\s*\([\s\S]*?data-testid="apply-result"/);
+assert.match(app, /directApply && !selection\?\.directApply/);
+assert.match(app, /copyResult\(true\)/);
 assert.match(app, /data-testid="copy-result"/);
 assert.match(app, /data-testid="run-deep"/);
 assert.match(app, /data-testid="cancel-rewrite"/);
