@@ -9,8 +9,9 @@ namespace grammar {
 struct WordRequestGate {
     std::atomic<bool> valid{true};
     const std::chrono::steady_clock::time_point deadline;
-    explicit WordRequestGate(std::chrono::steady_clock::time_point until) : deadline(until) {}
-    bool alive() const { return valid.load() && std::chrono::steady_clock::now() < deadline; }
+    const ULONGLONG deadline_ticks;
+    explicit WordRequestGate(std::chrono::steady_clock::time_point until, ULONGLONG ticks=MAXULONGLONG) : deadline(until), deadline_ticks(ticks) {}
+    bool alive() const { return valid.load() && GetTickCount64() < deadline_ticks && std::chrono::steady_clock::now() < deadline; }
 };
 struct WordInvalidationSignal {
     std::atomic<bool> enabled{false};
@@ -112,7 +113,7 @@ class WordCorrelationLease final : public std::enable_shared_from_this<WordCorre
     WordCorrelationLease(const std::shared_ptr<WordTsfState>& state)
         : state_(state), revision_(state->revision), deadline_(GetTickCount64() + 30000) {}
     WordObservationGuard guard(const WordTsfState& state) const {
-        return {state.thread, deadline_, revision_, state.revision, state.enabled};
+        return {state.thread, operation_ ? (std::min)(deadline_, operation_->deadline_ticks) : deadline_, revision_, state.revision, state.enabled};
     }
     bool metadata(ITfContext* current, TfEditCookie cookie) const {
         auto state = state_.lock();
