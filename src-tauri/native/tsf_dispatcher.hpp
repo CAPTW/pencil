@@ -9,6 +9,7 @@ enum class DispatchStatus : uint32_t { rejected, pending, captured, applied, mut
 class TsfTargetDispatcher final {
     const DWORD thread_ = GetCurrentThreadId();
     const TfClientId client_;
+    std::shared_ptr<void> callback_lifetime_;
     std::unique_ptr<TsfDocumentBinding> binding_;
     ComPtr<TsfCaptureSession> capture_;
     ComPtr<TsfApplySession> apply_;
@@ -17,7 +18,7 @@ class TsfTargetDispatcher final {
     uint64_t next_capture_id_ = 1;
     bool consumed_ = true;
     bool on_thread() const { return GetCurrentThreadId() == thread_; }
-    bool pending() const { return (capture_ && !capture_->called) || (apply_ && !apply_->called); }
+    bool pending() const { return (capture_ && !capture_->completed) || (apply_ && !apply_->completed); }
     void clear_text() {
         if (capture_ && !capture_->source.empty()) {
             SecureZeroMemory(capture_->source.data(), capture_->source.size() * sizeof(wchar_t));
@@ -25,10 +26,16 @@ class TsfTargetDispatcher final {
         }
     }
 public:
-    explicit TsfTargetDispatcher(TfClientId client) : client_(client) {}
+    explicit TsfTargetDispatcher(TfClientId client, std::shared_ptr<void> callbackLifetime = {})
+        : client_(client), callback_lifetime_(std::move(callbackLifetime)) {}
     ~TsfTargetDispatcher() { cancel(); clear_text(); }
     TsfTargetDispatcher(const TsfTargetDispatcher&) = delete;
     TsfTargetDispatcher& operator=(const TsfTargetDispatcher&) = delete;
+    bool executing() const { return (capture_ && capture_->called && !capture_->completed) || (apply_ && apply_->called && !apply_->completed); }
+    void retire_completed_apply() {
+        if (!on_thread() || !apply_ || !apply_->completed) return;
+        cancel(); apply_.Reset(); capture_.Reset(); binding_.reset(); lease_.reset();
+    }
     void cancel() {
         if (!on_thread()) return;
         consumed_ = true; capture_id_ = 0;
@@ -38,7 +45,7 @@ public:
         // is admitted while a cancelled callback still owns its context.
     }
     bool cancel_capture(uint64_t id) {
-        if (!on_thread() || !id || id != capture_id_ || (consumed_ && (!apply_ || apply_->called))) return false;
+        if (!on_thread() || !id || id != capture_id_ || (consumed_ && (!apply_ || apply_->completed))) return false;
         cancel(); return true;
     }
     bool begin_capture(ITfContext* trustedContext, HWND trustedWindow,
@@ -53,19 +60,19 @@ public:
         std::weak_ptr<ApplyConnectionLease> weak = lease_;
         capture_.Attach(new TsfCaptureSession(binding_->state, [weak] {
             auto link = weak.lock(); return link && link->alive();
-        }));
+        }, callback_lifetime_));
         capture_id_ = next_capture_id_++;
         HRESULT result = E_PENDING;
         HRESULT request = trustedContext->RequestEditSession(client_, capture_.Get(), TF_ES_ASYNC | TF_ES_READ, &result);
         // A synchronous callback can return a failure after executing. Preserve
         // its observable outcome instead of disguising it as admission failure.
-        if (!capture_->called && (FAILED(request) || result != TF_S_ASYNC)) { cancel(); capture_.Reset(); return false; }
+        if (!capture_->completed && (FAILED(request) || result != TF_S_ASYNC)) { cancel(); capture_.Reset(); return false; }
         consumed_ = false;
         return true;
     }
     DispatchStatus capture_status() {
         if (!on_thread() || consumed_ || !capture_ || !lease_ || !lease_->alive()) { cancel(); return DispatchStatus::rejected; }
-        if (!capture_->called) return DispatchStatus::pending;
+        if (!capture_->completed) return DispatchStatus::pending;
         if (!capture_->captured || !capture_->grant || !capture_->grant->valid.load()) { cancel(); return DispatchStatus::rejected; }
         return DispatchStatus::captured;
     }
@@ -86,16 +93,16 @@ public:
             return link && link->alive() && verify && verify(context, cookie);
         };
         apply_.Attach(new TsfApplySession(binding_->state->context.Get(), capture_->source,
-            capture_->start, capture_->end, std::move(replacement), grant->revision.load(), grant));
+            capture_->start, capture_->end, std::move(replacement), grant->revision.load(), grant, callback_lifetime_));
         consumed_ = true; clear_text(); // Retain ID solely for queued cancellation.
         HRESULT result = E_PENDING;
         HRESULT request = binding_->state->context->RequestEditSession(client_, apply_.Get(), TF_ES_ASYNC | TF_ES_READWRITE, &result);
-        if (!apply_->called && (FAILED(request) || result != TF_S_ASYNC)) { cancel(); apply_.Reset(); return false; }
+        if (!apply_->completed && (FAILED(request) || result != TF_S_ASYNC)) { cancel(); apply_.Reset(); return false; }
         return true;
     }
     DispatchStatus apply_status() const {
         if (!on_thread() || !apply_) return DispatchStatus::rejected;
-        if (!apply_->called) return DispatchStatus::pending;
+        if (!apply_->completed) return DispatchStatus::pending;
         switch (apply_->result) {
         case ApplyResult::applied: return DispatchStatus::applied;
         case ApplyResult::mutation_unconfirmed: return DispatchStatus::mutation_unconfirmed;

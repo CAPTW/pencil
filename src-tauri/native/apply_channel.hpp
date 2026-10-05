@@ -23,6 +23,11 @@ public:
     ChannelHandle& operator=(const ChannelHandle&) = delete;
     HANDLE get() const { return value_; }
     HANDLE release() noexcept { HANDLE value = value_; value_ = nullptr; return value; }
+    void reset(HANDLE value = nullptr) noexcept {
+        if (value_ == value) return;
+        if (value_ && value_ != INVALID_HANDLE_VALUE) CloseHandle(value_);
+        value_ = value;
+    }
 };
 enum class ChannelCommand : uint32_t { capture = 1, apply = 2, cancel = 3, disable = 4 };
 using ChannelCapability = std::array<unsigned char, 32>;
@@ -43,7 +48,7 @@ class OwnedApplyPipe final {
     HANDLE pipe_ = INVALID_HANDLE_VALUE;
 public:
     std::wstring name;
-    OwnedApplyPipe() {
+    explicit OwnedApplyPipe(const std::wstring& requestedName = {}) {
         HANDLE raw = nullptr;
         if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw)) return;
         ChannelHandle token(raw); DWORD size = 0;
@@ -66,6 +71,13 @@ public:
         name = L"\\\\.\\pipe\\Grammar.Apply.";
         constexpr WCHAR digits[] = L"0123456789abcdef";
         for (auto byte : random) { name += digits[byte >> 4]; name += digits[byte & 15]; }
+        if (!requestedName.empty()) {
+            constexpr WCHAR prefix[] = L"\\\\.\\pipe\\Grammar.Apply.";
+            if (requestedName.size() > 160 || requestedName.compare(0, ARRAYSIZE(prefix)-1, prefix) != 0) return;
+            for (size_t i = ARRAYSIZE(prefix)-1; i < requestedName.size(); ++i)
+                if (!(requestedName[i] == L'.' || (requestedName[i] >= L'0' && requestedName[i] <= L'9'))) return;
+            name = requestedName;
+        }
         auto sddl = L"D:P(A;;GA;;;" + logon + L")";
         PSECURITY_DESCRIPTOR descriptor = nullptr;
         if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.c_str(), SDDL_REVISION_1, &descriptor, nullptr)) return;
@@ -191,13 +203,13 @@ public:
 // Nonblocking byte-mode pipe operations. One absolute deadline is passed through
 // header and payload, never restarted per chunk. No pending OVERLAPPED storage,
 // detached reader or unbounded cleanup wait; only call on the transport worker.
-inline bool channel_read_exact(HANDLE pipe, void* output, DWORD bytes, ULONGLONG deadline) {
+inline bool channel_read_exact(HANDLE pipe, void* output, DWORD bytes, ULONGLONG deadline, const std::atomic<bool>* cancelled = nullptr) {
     DWORD mode = 0;
     if ((bytes && !output) || bytes > channel_max_payload || !GetNamedPipeHandleStateW(pipe, &mode, nullptr, nullptr, nullptr, nullptr, 0) ||
         !(mode & PIPE_NOWAIT)) return false;
     auto cursor = static_cast<unsigned char*>(output);
     while (bytes) {
-        if (GetTickCount64() >= deadline) return false;
+        if (GetTickCount64() >= deadline || (cancelled && cancelled->load())) return false;
         DWORD received = 0;
         if (ReadFile(pipe, cursor, bytes, &received, nullptr)) {
             if (!received) return false;

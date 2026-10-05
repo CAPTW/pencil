@@ -176,18 +176,19 @@ public:
 
 class TsfCaptureSession final : public ITfEditSession {
     LONG refs_ = 1;
+    std::shared_ptr<void> callback_lifetime_;
     std::weak_ptr<TsfBindingState> state_;
     const unsigned long long revision_;
     const std::function<bool()> authority_;
     const std::chrono::steady_clock::time_point deadline_ = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 public:
-    bool called = false, captured = false;
+    bool called = false, completed = false, captured = false;
     unsigned text_reads = 0;
     std::wstring source;
     LONG start = -1, end = -1;
     std::shared_ptr<ApplyGrant> grant;
-    explicit TsfCaptureSession(const std::shared_ptr<TsfBindingState>& state, std::function<bool()> authority)
-        : state_(state), revision_(state->revision), authority_(std::move(authority)) {}
+    explicit TsfCaptureSession(const std::shared_ptr<TsfBindingState>& state, std::function<bool()> authority, std::shared_ptr<void> callbackLifetime = {})
+        : callback_lifetime_(std::move(callbackLifetime)), state_(state), revision_(state->revision), authority_(std::move(authority)) {}
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** out) override {
         if (!out) return E_POINTER;
         *out = nullptr;
@@ -198,6 +199,7 @@ public:
     ULONG STDMETHODCALLTYPE Release() override { auto n = InterlockedDecrement(&refs_); if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE DoEditSession(TfEditCookie cookie) override try {
         if (called) return E_UNEXPECTED;
+        struct Completion { bool& value; ~Completion() { value = true; } } completion{completed};
         called = true;
         auto state = state_.lock();
         if (!state || !authority_ || !authority_() || std::chrono::steady_clock::now() >= deadline_ ||

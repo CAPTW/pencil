@@ -29,6 +29,7 @@ struct ApplyGrant {
 
 class TsfApplySession final : public ITfEditSession {
     LONG refs_ = 1;
+    std::shared_ptr<void> callback_lifetime_;
     ComPtr<ITfContext> context_;
     const std::wstring source_, replacement_;
     const LONG start_, end_;
@@ -54,7 +55,7 @@ class TsfApplySession final : public ITfEditSession {
     }
 public:
     ApplyResult result = ApplyResult::pending;
-    bool called = false;
+    bool called = false, completed = false;
     unsigned mutation_calls = 0;
     unsigned text_reads = 0;
     unsigned diagnostic_stage = 0; // Content-free native qualification only.
@@ -62,8 +63,8 @@ public:
     size_t diagnostic_text_units = 0;
     TsfApplySession(ITfContext* context, std::wstring source, LONG start, LONG end,
                    std::wstring replacement, unsigned long long revision,
-                   std::shared_ptr<ApplyGrant> grant)
-        : context_(context), source_(std::move(source)), replacement_(std::move(replacement)),
+                   std::shared_ptr<ApplyGrant> grant, std::shared_ptr<void> callbackLifetime = {})
+        : callback_lifetime_(std::move(callbackLifetime)), context_(context), source_(std::move(source)), replacement_(std::move(replacement)),
           start_(start), end_(end), revision_(revision), grant_(std::move(grant)) {}
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** out) override {
         if (!out) return E_POINTER;
@@ -75,6 +76,7 @@ public:
     ULONG STDMETHODCALLTYPE Release() override { auto n = InterlockedDecrement(&refs_); if (!n) delete this; return n; }
     HRESULT STDMETHODCALLTYPE DoEditSession(TfEditCookie cookie) override try {
         if (called) return E_UNEXPECTED;
+        struct Completion { bool& value; ~Completion() { value = true; } } completion{completed};
         called = true; result = ApplyResult::rejected;
         diagnostic_stage = 1;
         if (!grant_ || !grant_->valid.exchange(false) || !grant_->field_eligible ||
