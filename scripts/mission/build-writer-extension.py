@@ -15,7 +15,10 @@ parser.add_argument('--installed-library', required=True)
 parser.add_argument('--output', required=True, type=Path)
 parser.add_argument('--enable-saved-docx', action='store_true', help='explicit candidate qualification switch; default off')
 parser.add_argument('--enable-uniform-format', action='store_true', help='explicit bounded uniform-format candidate switch; default off')
+parser.add_argument('--enable-mixed-surroundings', action='store_true', help='single homogeneous selection within one mixed-format paragraph; default off')
 args = parser.parse_args()
+if args.enable_mixed_surroundings and not args.enable_uniform_format:
+    parser.error('mixed surroundings requires --enable-uniform-format')
 installed = PureWindowsPath(args.installed_library)
 if not installed.is_absolute() or installed.name != 'target-apply.dll' or installed.drive.startswith('\\\\') or '..' in installed.parts:
     parser.error('installed-library must be an absolute local target-apply.dll path')
@@ -28,7 +31,8 @@ digest = hashlib.sha256(args.library_file.read_bytes()).hexdigest()
 files['pythonpath/grammar_writer_installation.py'] = (
     '# Generated package binding; never supplied by a document or UNO request.\n'
     f'LIBRARY_PATH = {str(installed)!r}\nLIBRARY_SHA256 = {digest!r}\n'
-    f'ALLOW_SAVED_DOCX = {args.enable_saved_docx!r}\nALLOW_UNIFORM_FORMAT = {args.enable_uniform_format!r}\n').encode('utf-8')
+    f'ALLOW_SAVED_DOCX = {args.enable_saved_docx!r}\nALLOW_UNIFORM_FORMAT = {args.enable_uniform_format!r}\n'
+    f'ALLOW_MIXED_FORMAT = {args.enable_mixed_surroundings!r}\n').encode('utf-8')
 for name, data in files.items():
     if name.endswith('.py'):
         ast.parse(data.decode('utf-8'))
@@ -37,6 +41,7 @@ with zipfile.ZipFile(args.output, 'x', zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(name, data)
 print(json.dumps(dict(classification='PRODUCT_WRITER_CANDIDATE_NOT_ACCEPTANCE',
     savedDocxEnabled=args.enable_saved_docx, uniformFormatEnabled=args.enable_uniform_format,
+    mixedSurroundingsEnabled=args.enable_mixed_surroundings,
     installedLibrary=str(installed), librarySha256=digest,
     files={name: hashlib.sha256(data).hexdigest() for name, data in files.items()},
     output=str(args.output.resolve()), sha256=hashlib.sha256(args.output.read_bytes()).hexdigest()), indent=2))
