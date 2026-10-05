@@ -25,6 +25,7 @@ public:
         closed_=pipe_.get()==INVALID_HANDLE_VALUE;
     }
     bool available() const noexcept {return !closed_;}
+    ULONGLONG operation_deadline() const noexcept {return pending_deadline_;}
     BrowserBridgeServer(const BrowserBridgeServer&)=delete;
     BrowserBridgeServer& operator=(const BrowserBridgeServer&)=delete;
     ~BrowserBridgeServer(){close();}
