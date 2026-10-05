@@ -49,9 +49,10 @@ public:
         cancel(); return true;
     }
     bool begin_capture(ITfContext* trustedContext, HWND trustedWindow,
-                       bool explicitOptIn, std::shared_ptr<ApplyConnectionLease> lease) {
+                       bool explicitOptIn, std::shared_ptr<ApplyConnectionLease> lease,
+                       std::chrono::steady_clock::time_point deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5)) {
         if (!on_thread() || next_capture_id_ == (std::numeric_limits<uint64_t>::max)() ||
-            !lease || !lease->alive() || pending()) return false;
+            !lease || !lease->alive() || pending() || std::chrono::steady_clock::now()>=deadline) return false;
         cancel(); apply_.Reset(); capture_.Reset(); binding_.reset();
         if (!explicitOptIn) return false;
         lease_ = std::move(lease);
@@ -60,7 +61,7 @@ public:
         std::weak_ptr<ApplyConnectionLease> weak = lease_;
         capture_.Attach(new TsfCaptureSession(binding_->state, [weak] {
             auto link = weak.lock(); return link && link->alive();
-        }, callback_lifetime_));
+        }, callback_lifetime_,deadline));
         capture_id_ = next_capture_id_++;
         HRESULT result = E_PENDING;
         HRESULT request = trustedContext->RequestEditSession(client_, capture_.Get(), TF_ES_ASYNC | TF_ES_READ, &result);
@@ -86,9 +87,11 @@ public:
     bool can_apply(uint64_t id) {
         return on_thread() && !pending() && id != 0 && id == capture_id_ && capture_status() == DispatchStatus::captured;
     }
-    bool begin_apply(uint64_t id, std::wstring replacement) {
-        if (!can_apply(id)) return false;
+    bool begin_apply(uint64_t id, std::wstring replacement,
+        std::chrono::steady_clock::time_point deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5)) {
+        if (!can_apply(id) || std::chrono::steady_clock::now()>=deadline) return false;
         auto grant = capture_->grant;
+        grant->deadline=(std::min)(grant->deadline,deadline);
         auto verify = grant->verify_binding;
         std::weak_ptr<ApplyConnectionLease> weak = lease_;
         grant->verify_binding = [verify, weak](ITfContext* context, TfEditCookie cookie) {

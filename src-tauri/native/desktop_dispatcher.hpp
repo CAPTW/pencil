@@ -49,13 +49,14 @@ public:
         return standard_?standard_->begin_capture(context,field,optIn,std::move(lease)):rich_->begin_capture(context,field,optIn,std::move(lease));
     }
     bool begin_capture(ITfContext* context,HWND field,bool optIn,std::shared_ptr<ApplyConnectionLease> lease,std::chrono::steady_clock::time_point deadline){
-        if(!word_ || !word_root_ || !word_port_ || GetAncestor(field,GA_ROOT)!=word_root_)return false;
+        if(!word_)return standard_?standard_->begin_capture(context,field,optIn,std::move(lease),deadline):rich_->begin_capture(context,field,optIn,std::move(lease),deadline);
+        if(!word_root_ || !word_port_ || GetAncestor(field,GA_ROOT)!=word_root_)return false;
         const bool admitted=word_->begin_capture(context,field,word_root_,word_port_,optIn,std::move(lease),deadline);
         if(admitted)word_field_=field;
         return admitted;
     }
     bool begin_apply(uint64_t id,std::wstring replacement){if(word_)return false;return standard_?standard_->begin_apply(id,std::move(replacement)):rich_->begin_apply(id,std::move(replacement));}
-    bool begin_apply(uint64_t id,std::wstring replacement,std::chrono::steady_clock::time_point deadline){return word_ && word_->begin_accept(id,std::move(replacement),deadline);}
+    bool begin_apply(uint64_t id,std::wstring replacement,std::chrono::steady_clock::time_point deadline){return word_?word_->begin_accept(id,std::move(replacement),deadline):standard_?standard_->begin_apply(id,std::move(replacement),deadline):rich_->begin_apply(id,std::move(replacement),deadline);}
     void retire_completed_apply(){if(word_){word_->close();}else if(standard_)standard_->retire_completed_apply();else rich_->retire_completed_apply();}
 };
 }

@@ -188,15 +188,16 @@ class TsfCaptureSession final : public ITfEditSession {
     std::weak_ptr<TsfBindingState> state_;
     const unsigned long long revision_;
     const std::function<bool()> authority_;
-    const std::chrono::steady_clock::time_point deadline_ = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    const std::chrono::steady_clock::time_point deadline_;
 public:
     bool called = false, completed = false, captured = false;
     unsigned text_reads = 0;
     std::wstring source;
     LONG start = -1, end = -1;
     std::shared_ptr<ApplyGrant> grant;
-    explicit TsfCaptureSession(const std::shared_ptr<TsfBindingState>& state, std::function<bool()> authority, std::shared_ptr<void> callbackLifetime = {})
-        : callback_lifetime_(std::move(callbackLifetime)), state_(state), revision_(state->revision), authority_(std::move(authority)) {}
+    explicit TsfCaptureSession(const std::shared_ptr<TsfBindingState>& state, std::function<bool()> authority, std::shared_ptr<void> callbackLifetime = {},
+        std::chrono::steady_clock::time_point deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5))
+        : callback_lifetime_(std::move(callbackLifetime)), state_(state), revision_(state->revision), authority_(std::move(authority)),deadline_(deadline) {}
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** out) override {
         if (!out) return E_POINTER;
         *out = nullptr;
@@ -219,10 +220,12 @@ public:
         if (FAILED(selection.As(&acp)) || FAILED(acp->GetExtent(&start, &length)) ||
             start < 0 || length <= 0 || start > 65534 || length > 65534 - start) return S_FALSE;
         end = start + length;
+        if(std::chrono::steady_clock::now()>=deadline_ || !authority_())return S_FALSE;
         ComPtr<ITfRange> range, tail;
         if (FAILED(state->context->GetStart(cookie, &range)) || FAILED(state->context->GetEnd(cookie, &tail)) ||
             FAILED(range->ShiftEndToRange(cookie, tail.Get(), TF_ANCHOR_END))) return S_FALSE;
         std::vector<WCHAR> buffer(65535);
+        if(!authority_() || std::chrono::steady_clock::now()>=deadline_)return S_FALSE;
         ++text_reads;
         if (FAILED(range->GetText(cookie, 0, buffer.data(), static_cast<ULONG>(buffer.size()), &count)) ||
             count >= buffer.size() || static_cast<ULONG>(end) > count) return S_FALSE;
