@@ -12,15 +12,25 @@ struct WordRequestGate {
     explicit WordRequestGate(std::chrono::steady_clock::time_point until) : deadline(until) {}
     bool alive() const { return valid.load() && std::chrono::steady_clock::now() < deadline; }
 };
+struct WordInvalidationSignal {
+    std::atomic<bool> enabled{false};
+    std::atomic<uint64_t> revision{0};
+    void stop() { enabled=false; ++revision; }
+};
 struct WordTsfState {
     const DWORD thread = GetCurrentThreadId();
     ComPtr<ITfContext> context;
     HWND field = nullptr, root = nullptr;
     std::shared_ptr<WordNativeWindowPort> port;
-    std::atomic<bool> enabled{false};
-    std::atomic<uint64_t> revision{0};
+    const std::shared_ptr<WordInvalidationSignal> signal=std::make_shared<WordInvalidationSignal>();
+    std::atomic<bool>& enabled=signal->enabled;
+    std::atomic<uint64_t>& revision=signal->revision;
+    WordTsfState()=default;
+    WordTsfState(const WordTsfState&)=delete;
+    WordTsfState& operator=(const WordTsfState&)=delete;
     std::weak_ptr<SelectedRangeGrant> outstanding;
     std::function<bool()> authority;
+    std::function<bool(IDispatch*)> application_matches;
     void invalidate() {
         ++revision;
         if (auto grant = outstanding.lock()) grant->valid = false;
@@ -107,7 +117,9 @@ class WordCorrelationLease final : public std::enable_shared_from_this<WordCorre
     bool metadata(ITfContext* current, TfEditCookie cookie) const {
         auto state = state_.lock();
         return (!operation_ || operation_->alive()) && state && guard(*state).current() && state->topology(current, cookie) && target_ &&
-            target_->matches(guard(*state)) && guard(*state).current() && (!operation_ || operation_->alive());
+            target_->matches(guard(*state)) &&
+            (!state->application_matches || state->application_matches(target_->application_.Get())) &&
+            guard(*state).current() && (!operation_ || operation_->alive());
     }
     // Called ONLY after a real context/cookie/selection and privacy metadata
     // check. This selected Text getter is separate from metadata-only helpers.
