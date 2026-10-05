@@ -1422,3 +1422,15 @@ saved-document Apply support is claimed. Evidence:
 D:/dev/grammar-evidence/grammar-writer-saved-boundary-20261005/guest.
 Next implement saved-document identity/lifecycle and format-preserving transaction
 only after adversarial qualification; no user documents or normal profiles.
+
+
+## Source semantic repair after Owner verification
+The reported SEMANTIC_FAIL identified a stale F-06 broad OTHER_EDITORS_UNQUALIFIED
+summary despite installed bounded Writer qualification. Current verdict now names
+Edit/RichEdit, Chromium and bounded Writer, with explicit per-adapter scope and
+remaining unqualified cases. Historical verdicts/receipts remain untouched.
+Owner intentionally retains eight old Project Sources: exact12 now means current
+authoritative00-11, not total Project inventory. Prompts retain missing/duplicate/
+ambiguous-current-version refusal and never treat retained history as authority.
+Regenerate Source02 and fresh-chat expected JSON together. No product changes,
+new runtime tests, main adoption or claimed external SEMANTIC_PASS in this repair.

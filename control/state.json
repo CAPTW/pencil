@@ -78,7 +78,7 @@
       ]
     },
     {
-      "verdict": "OWNED_QUALIFIED_EDIT_AND_RICHEDIT_TARGET_SIDE_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED",
+      "verdict": "EDIT_RICHEDIT_CHROMIUM_AND_BOUNDED_WRITER_ACCEPT_SYNTHETIC_VERIFIED_GENERAL_EDITOR_ACCEPTANCE_INCOMPLETE",
       "id": "F-06",
       "historical_verdict": "CONFIRMED_CURRENT_DEFECT",
       "historical_evidence": [
@@ -87,7 +87,13 @@
       ],
       "evidence": [
         "docs/control/HANDOFF.md"
-      ]
+      ],
+      "qualification_scope": {
+        "native_controls": "Owned qualified Windows Edit/RichEdit styles only; no generic native editor admission.",
+        "chromium": "Opted-in textarea and supported simple contenteditable; installed synthetic scope only.",
+        "writer": "LibreOffice26.2.4.2, new unsaved default-style plain body, pinned runtime0fc8624 and paired OXT; installed R27 synthetic verified.",
+        "remaining": "Saved/rich Writer documents, Calc/Impress product Apply, actual Microsoft Office/Hancom unqualified; physical IME, normal profiles and live Providers NOT_RUN. Mission INCOMPLETE."
+      }
     }
   ],
   "d020_verdict": "D020_DOCUMENTATION_OVERCLAIM",

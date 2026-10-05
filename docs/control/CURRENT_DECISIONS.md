@@ -1,3 +1,11 @@
+> Source semantic correction (2026-10-05): F-06 is an overall scoped summary.
+> Its current verdict explicitly includes qualified Edit/RichEdit, Chromium and
+> bounded Writer synthetic Accept. `qualification_scope` states each boundary;
+> it does not qualify saved/rich Writer documents or arbitrary editors. The old
+> OTHER_EDITORS_UNQUALIFIED summary was stale, not evidence invalidation.
+> Retained legacy8 Project Sources are historical only. Current00-11 remain the
+> authoritative exact12 set, regardless of total Project inventory.
+
 > Current Source replacement decision (2026-10-05)
 >
 > Owner requests replacement from the local candidate, not main integration.
