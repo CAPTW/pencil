@@ -1,7 +1,7 @@
 """Writer transaction core. Not a registered UNO service or an enabled adapter.
 
 A deployment entry point must supply authenticated transport and explicit document
-opt-in. Current qualification is owned unsaved, bounded, plain-body fixtures only.
+opt-in. Formatting expansion is opt-in and disabled in product deployments until qualified.
 """
 import ctypes
 import json
@@ -28,7 +28,38 @@ class Refused(Exception):
     pass
 
 
-def plain_metadata(doc):
+FORMATTED_CHARACTERS = ('CharWeight', 'CharWeightAsian', 'CharWeightComplex', 'CharColor')
+
+# DOCX RGB imports materialize these color aliases. Only non-theme, opaque RGB
+# and the matching original-RGB roundtrip property are accepted, never a generic
+# interop bag or an arbitrary complex/theme color.
+RGB_ALIASES = ('CharColorTheme', 'CharColorTintOrShade', 'CharComplexColor',
+    'CharInteropGrabBag', 'CharTransparence')
+
+
+def rgb_metadata(portion):
+    color = portion.CharColor
+    if (portion.CharColorTheme != -1 or portion.CharColorTintOrShade != 0
+            or portion.CharTransparence != 0):
+        raise Refused('unsupported_theme_or_transparency')
+    complex_color = portion.CharComplexColor
+    # Pinned26.2.4.2 model::ColorType:0=Unused,1=RGB. An unused wrapper
+    # does not represent CharColor; never resolve it as if it were RGB.
+    if complex_color is not None and (complex_color.getType() not in (0, 1)
+            or complex_color.getThemeColorType() != -1
+            or (complex_color.getType() == 1 and complex_color.resolveColor(None) != color)):
+        raise Refused('unsupported_complex_color')
+    bag = portion.CharInteropGrabBag
+    if not bag:
+        return ()
+    if (len(bag) != 1 or bag[0].Name != 'CharThemeOriginalColor'
+            or not isinstance(bag[0].Value, str) or not 0 <= color <= 0xFFFFFF
+            or bag[0].Value.upper() != format(color, '06X')):
+        raise Refused('unsupported_color_interop')
+    return (bag[0].Value,)
+
+
+def plain_metadata(doc, allow_uniform_format=False):
     if (doc.TextSections.Count or doc.TextTables.Count or doc.TextFrames.Count or doc.DrawPage.Count
             or doc.TextFields.createEnumeration().hasMoreElements() or doc.Bookmarks.hasElements()
             or doc.Redlines.Count or doc.RecordChanges):
@@ -56,14 +87,22 @@ def plain_metadata(doc):
     defaults = {name: style.getPropertyValue(name) for name in characters + paragraphs}
     enumeration = doc.Text.createEnumeration()
     paragraph_count = portion_count = 0
+    uniform = None
+    paragraph_format = None
+    color_metadata = None
     while enumeration.hasMoreElements():
         paragraph_count += 1
+        if allow_uniform_format and paragraph_count != 1:
+            raise Refused('formatted_single_paragraph_only')
         if paragraph_count > 256:
             raise Refused('paragraph_bounds')
         paragraph = enumeration.nextElement()
         if paragraph.ParaStyleName != 'Standard' or paragraph.NumberingStyleName:
             raise Refused('unsupported_paragraph_style')
         for name in paragraphs:
+            if allow_uniform_format and name == 'ParaAdjust':
+                paragraph_format = (paragraph.getPropertyValue(name), paragraph.getPropertyState(name).value)
+                continue
             if paragraph.getPropertyValue(name) != defaults[name]:
                 raise Refused('unsupported_format_' + name)
         portions = paragraph.createEnumeration()
@@ -77,15 +116,58 @@ def plain_metadata(doc):
             for property_info in portion.getPropertySetInfo().getProperties():
                 name = property_info.Name
                 if name.startswith('Char') and not (property_info.Attributes & READONLY):
+                    if allow_uniform_format and name in FORMATTED_CHARACTERS + RGB_ALIASES:
+                        continue
                     if portion.getPropertyState(name).value != 'DEFAULT_VALUE':
-                        raise Refused('unsupported_character_format')
+                        raise Refused('unsupported_character_format_' + name)
+            if allow_uniform_format:
+                rgb = rgb_metadata(portion)
+                if color_metadata is not None and rgb != color_metadata:
+                    raise Refused('mixed_color_metadata')
+                color_metadata = rgb
+                current = tuple((name, portion.getPropertyValue(name), portion.getPropertyState(name).value)
+                    for name in FORMATTED_CHARACTERS)
+                if any(state not in ('DEFAULT_VALUE', 'DIRECT_VALUE') for _, _, state in current):
+                    raise Refused('ambiguous_format')
+                if uniform is not None and current != uniform:
+                    raise Refused('mixed_character_format')
+                uniform = current
             for name in characters:
+                if allow_uniform_format and name in FORMATTED_CHARACTERS:
+                    continue
                 if portion.getPropertyValue(name) != defaults[name]:
                     raise Refused('unsupported_format_' + name)
 
+    if allow_uniform_format:
+        if uniform is None or paragraph_format is None:
+            raise Refused('empty_format')
+        effective_defaults = tuple((name, value if isinstance(value, (str, int, float, bool)) else value.value)
+            for name, value in sorted(defaults.items()))
+        return (uniform, paragraph_format, effective_defaults, color_metadata)
+    return None
 
-def body_snapshot(doc):
-    plain_metadata(doc)
+
+def restore_uniform_format(selected, formatting):
+    # Only homogeneous character properties admitted by metadata are restored.
+    # Paragraph topology is unchanged: formatted replacements cannot contain breaks.
+    for name, value, state in formatting[0]:
+        if selected.getPropertyValue(name) == value:
+            continue
+        if state == 'DEFAULT_VALUE':
+            selected.setPropertyToDefault(name)
+        else:
+            selected.setPropertyValue(name, value)
+    if formatting[3]:
+        item = uno.createUnoStruct('com.sun.star.beans.PropertyValue')
+        item.Name, item.Value = 'CharThemeOriginalColor', formatting[3][0]
+        uno.invoke(selected, 'setPropertyValue', ('CharInteropGrabBag',
+            uno.Any('[]com.sun.star.beans.PropertyValue', (item,))))
+    elif selected.CharInteropGrabBag:
+        selected.setPropertyToDefault('CharInteropGrabBag')
+
+
+def body_snapshot(doc, allow_uniform_format=False):
+    plain_metadata(doc, allow_uniform_format)
     cursor = doc.Text.createTextCursor()
     cursor.gotoStart(False)
     cursor.goRight(16385, True)
@@ -95,6 +177,13 @@ def body_snapshot(doc):
     if len(value) > 16384:
         raise Refused('body_bounds')
     return value
+
+
+def document_fingerprint(doc, allow_uniform_format=False):
+    body = body_snapshot(doc, allow_uniform_format)
+    if allow_uniform_format:
+        body = json.dumps((body, plain_metadata(doc, True)), ensure_ascii=True, separators=(',', ':'))
+    return fingerprint(body)
 
 
 def fingerprint(value):
@@ -114,9 +203,10 @@ def movement_to(doc, target):
 
 class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
     active = 0
-    """Plain-body experiment: one range replacement, never whole-document restore."""
-    def __init__(self, document, selected, before, after, start, before_steps, before_hash, after_hash):
+    """One qualified range replacement, never whole-document restore."""
+    def __init__(self, document, selected, before, after, start, before_steps, before_hash, after_hash, formatting=None):
         self.document = document
+        self.formatting = formatting
         self.before, self.after = before, after
         self.start = start
         self.before_steps = before_steps
@@ -132,6 +222,7 @@ class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
             return
         self.disposed = True
         self.document = None
+        self.formatting = None
         self.before = self.after = None
         self.before_hash = self.after_hash = None
         ReplacementUndo.active -= 1
@@ -160,7 +251,7 @@ class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
         if self.disposed:
             raise UndoFailedException('Disposed Grammar action', self, None)
         doc = self.document
-        if fingerprint(body_snapshot(doc)) != digest or not doc.isSetModifiedEnabled():
+        if document_fingerprint(doc, self.formatting is not None) != digest or not doc.isSetModifiedEnabled():
             raise UndoFailedException('Grammar document changed; no replacement', self, None)
         selected = doc.Text.createTextCursor()
         selected.gotoStart(False)
@@ -175,10 +266,13 @@ class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
             if selected.String != expected:
                 raise UndoFailedException('Grammar range changed', self, None)
             selected.String = replacement
+            if self.formatting is not None:
+                restore_uniform_format(selected, self.formatting)
         finally:
             doc.enableSetModified()
             doc.setModified(True)
-        if selected.String != replacement:
+        if selected.String != replacement or (self.formatting is not None
+                and plain_metadata(doc, True) != self.formatting):
             raise UndoFailedException('Postwrite result changed', self, None)
 
     def undo(self):
@@ -286,7 +380,8 @@ class Callback(unohelper.Base, XCallback):
                 owner.review = dict(token=secrets.token_hex(24), source=source,
                     range=owner.document.Text.createTextCursorByRange(selected),
                     revision=owner.revision, selection_revision=owner.selection_revision,
-                    expires=time.monotonic() + 30, epoch=self.epoch)
+                    expires=time.monotonic() + 30, epoch=self.epoch,
+                    formatting=plain_metadata(owner.document, True) if owner.allow_uniform_format else None)
                 owner.schedule_expiry(owner.review['token'])
                 value = dict(status='CAPTURED', token=owner.review['token'], source=source)
             elif action == 'accept':
@@ -298,6 +393,8 @@ class Callback(unohelper.Base, XCallback):
                 replacement = self.args.get('Replacement')
                 if not isinstance(replacement, str) or not replacement or len(replacement) > 4096:
                     raise Refused('replacement_bounds')
+                if review['formatting'] is not None and any(c in replacement for c in '\r\n\u2028\u2029'):
+                    raise Refused('formatted_single_paragraph_only')
                 owner.validate(review, self.deadline)
                 undo = owner.document.getUndoManager()
                 undo.enterUndoContext('Grammar experimental reviewed replacement')
@@ -311,11 +408,9 @@ class Callback(unohelper.Base, XCallback):
                         raise Refused('undo_owned_elsewhere')
                     # The bounded local body hash qualifies custom Undo/Redo
                     # after earlier native history rebuilds live range objects.
-                    before_body = body_snapshot(owner.document)
+                    before_hash = document_fingerprint(owner.document, owner.allow_uniform_format)
                     start = movement_to(owner.document, review['range'].Start)
                     before_steps = movement_to(owner.document, review['range'].End) - start
-                    before_hash = fingerprint(before_body)
-                    before_body = None
                     undo.lock()
                     try:
                         owner.validate(review, self.deadline)
@@ -324,16 +419,20 @@ class Callback(unohelper.Base, XCallback):
                             owner.validate(review, self.deadline, own_notification_batch=True)
                             wrote = True
                             review['range'].String = replacement
+                            if review['formatting'] is not None:
+                                restore_uniform_format(review['range'], review['formatting'])
                         finally:
                             owner.document.enableSetModified()
                     finally:
                         undo.unlock()
                     undo.addUndoAction(ReplacementUndo(owner.document, review['range'], review['source'], replacement,
-                        start, before_steps, before_hash, fingerprint(body_snapshot(owner.document))))
+                        start, before_steps, before_hash, document_fingerprint(owner.document, owner.allow_uniform_format),
+                        review['formatting']))
                     owner.document.setModified(True)
                 finally:
                     undo.leaveUndoContext()
-                if owner.read_range(review['range']) != replacement:
+                if (owner.read_range(review['range']) != replacement or (review['formatting'] is not None
+                        and plain_metadata(owner.document, True) != review['formatting'])):
                     value = dict(status='UNKNOWN_CHANGED', reason='postwrite_mismatch')
                 else:
                     value = dict(status='APPLIED', undo=bool(undo.isUndoPossible()))
@@ -357,7 +456,7 @@ class Callback(unohelper.Base, XCallback):
 
 
 class WriterCore(unohelper.Base, XJob):
-    def __init__(self, context, *, allow_saved_documents=False):
+    def __init__(self, context, *, allow_saved_documents=False, allow_uniform_format=False):
         self.context = context
         self.desktop = context.ServiceManager.createInstanceWithContext('com.sun.star.frame.Desktop', context)
         self.document = self.controller = self.listener = self.review = self.result = None
@@ -368,8 +467,9 @@ class WriterCore(unohelper.Base, XJob):
         self.epoch = 0
         self.revoked = True
         self.window = 0
-        # Dormant until saved-document product deployment is qualified.
+        # Deployment capabilities are explicit and default off.
         self.allow_saved_documents = allow_saved_documents
+        self.allow_uniform_format = allow_uniform_format
         self.location = None
         self.document_events = False
         self.lifecycle_events = 0
@@ -419,7 +519,7 @@ class WriterCore(unohelper.Base, XJob):
     def check_document(self, doc, own_notification_batch=False):
         if doc is None:
             raise Refused('disabled')
-        # Only new unsaved plain-body fixture documents. Not a policy for arbitrary user files.
+        # An explicit paired deployment scopes admission; never trust file suffix alone.
         if not doc.supportsService('com.sun.star.text.TextDocument') or doc.isReadonly():
             raise Refused('unsupported_document')
         location = doc.getURL()
@@ -441,7 +541,7 @@ class WriterCore(unohelper.Base, XJob):
             raise Refused('document_location_changed')
         if not own_notification_batch and not doc.isSetModifiedEnabled():
             raise Refused('modification_state_owned_elsewhere')
-        plain_metadata(doc)
+        plain_metadata(doc, self.allow_uniform_format)
         if self.desktop.CurrentComponent != doc:
             raise Refused('document_changed')
         controller = doc.CurrentController
@@ -485,6 +585,8 @@ class WriterCore(unohelper.Base, XJob):
         if time.monotonic() >= review['expires']:
             raise Refused('expired_review')
         self.check_document(self.document, own_notification_batch)
+        if review['formatting'] is not None and plain_metadata(self.document, True) != review['formatting']:
+            raise Refused('format_changed')
         if self.revision != review['revision'] or self.selection_revision != review['selection_revision']:
             raise Refused('revision_changed')
         selected = self.selected()

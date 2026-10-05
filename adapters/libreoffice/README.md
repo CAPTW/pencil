@@ -170,3 +170,23 @@ by the widget fixture; OXT receipt binds every Python/config input. Next: preser
 rich formatting through reviewed mutation and Undo, and qualify additional DOCX
 structures before expanding admission. Actual Office/Hancom, physical IME, normal
 profiles and live Providers remain NOT_RUN. Mission INCOMPLETE; no main/push.
+
+
+## Uniform Writer formatting candidate — 2026-10-05
+The next bounded capability preserves homogeneous Western/Asian/complex weight,
+opaque non-theme RGB and paragraph alignment in one Standard body paragraph.
+Defaults remain off; the paired OXT exposes --enable-uniform-format explicitly.
+Unknown interop metadata, theme/transparency, mixed runs, hidden text and multiple
+paragraphs stay refused. Formatting plus effective style defaults participate in
+capture validation and custom Undo fingerprints. RGB DOCX roundtrip metadata is
+strictly matched, not a generic permission to copy arbitrary metadata. Product
+entry/fixture additions are isolated; no change to app/native binary0fc8624.
+
+Owned Sandbox R10:28 native checks and16 formatted Apply/Undo cycles PASS, including
+saved/reopened DOCX and unchanged file hash. R1/R2/R7 postwrite failures, R3/R4/R5
+saved-format limitations, R6 unused-complex-color assumption, R8 UNO array typing
+and R9 incorrect newline fixture are preserved. Actual paragraph break fixture
+now verifies two paragraphs before refusal. R10 natural Office/Python0, cleanuptrue,
+forcedfalse/processes0. Existing plain regression and installed widget qualification
+are next; no F06 or general Writer acceptance promotion yet.
+Evidence:D:/dev/grammar-evidence/grammar-writer-uniform-format-20261005.

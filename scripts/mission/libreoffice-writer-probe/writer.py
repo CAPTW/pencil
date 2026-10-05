@@ -41,3 +41,12 @@ class SavedWriter(Writer):
 
 
 g_ImplementationHelper.addImplementation(SavedWriter, 'org.grammar.fixture.SavedWriter', ('org.grammar.fixture.SavedWriter',))
+
+
+class FormattedWriter(SavedWriter):
+    def __init__(self, context):
+        super().__init__(context)
+        self.allow_uniform_format = True
+
+
+g_ImplementationHelper.addImplementation(FormattedWriter, 'org.grammar.fixture.FormattedWriter', ('org.grammar.fixture.FormattedWriter',))

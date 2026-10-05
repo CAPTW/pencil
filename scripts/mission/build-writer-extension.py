@@ -14,6 +14,7 @@ parser.add_argument('--library-file', required=True, type=Path)
 parser.add_argument('--installed-library', required=True)
 parser.add_argument('--output', required=True, type=Path)
 parser.add_argument('--enable-saved-docx', action='store_true', help='explicit candidate qualification switch; default off')
+parser.add_argument('--enable-uniform-format', action='store_true', help='explicit bounded uniform-format candidate switch; default off')
 args = parser.parse_args()
 installed = PureWindowsPath(args.installed_library)
 if not installed.is_absolute() or installed.name != 'target-apply.dll' or installed.drive.startswith('\\\\') or '..' in installed.parts:
@@ -27,7 +28,7 @@ digest = hashlib.sha256(args.library_file.read_bytes()).hexdigest()
 files['pythonpath/grammar_writer_installation.py'] = (
     '# Generated package binding; never supplied by a document or UNO request.\n'
     f'LIBRARY_PATH = {str(installed)!r}\nLIBRARY_SHA256 = {digest!r}\n'
-    f'ALLOW_SAVED_DOCX = {args.enable_saved_docx!r}\n').encode('utf-8')
+    f'ALLOW_SAVED_DOCX = {args.enable_saved_docx!r}\nALLOW_UNIFORM_FORMAT = {args.enable_uniform_format!r}\n').encode('utf-8')
 for name, data in files.items():
     if name.endswith('.py'):
         ast.parse(data.decode('utf-8'))
@@ -35,7 +36,7 @@ with zipfile.ZipFile(args.output, 'x', zipfile.ZIP_DEFLATED) as archive:
     for name, data in files.items():
         archive.writestr(name, data)
 print(json.dumps(dict(classification='PRODUCT_WRITER_CANDIDATE_NOT_ACCEPTANCE',
-    savedDocxEnabled=args.enable_saved_docx,
+    savedDocxEnabled=args.enable_saved_docx, uniformFormatEnabled=args.enable_uniform_format,
     installedLibrary=str(installed), librarySha256=digest,
     files={name: hashlib.sha256(data).hexdigest() for name, data in files.items()},
     output=str(args.output.resolve()), sha256=hashlib.sha256(args.output.read_bytes()).hexdigest()), indent=2))

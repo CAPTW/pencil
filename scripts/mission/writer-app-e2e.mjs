@@ -55,8 +55,11 @@ try{
  await until('Accept result',async()=>await status.textContent()==='Applied to the captured field');
  assert.equal(await command('read'),'Before | 검토한 교체 문장 🙂 | After');
  pass('actual hotkey Instant edited draft Accept exact Writer reread');
+ if(process.argv.includes('--formatted')){assert.equal(await command('format'),true);pass('all Writer portions preserve bold color and alignment after Accept');}
  await command('undo');assert.equal(await command('read'),'Before | please seperate this. | After');
- pass('Writer Undo restores original and surrounding text');await command('settled');
+ pass('Writer Undo restores original and surrounding text');
+ if(process.argv.includes('--formatted')){assert.equal(await command('format'),true);pass('all Writer portions preserve bold color and alignment after Undo');}
+ await command('settled');
  await capture();await command('change');await apply.click();
  await until('changed source refused',async()=>await status.textContent()==='Apply unavailable - Copy is available');
  assert.equal(await command('read'),'USER SYNTHETIC CHANGE');pass('concurrent source edit is preserved without rollback');await command('settled');
