@@ -52,7 +52,11 @@ impl TargetApplyRuntime {
         self.capture_with(field, epoch, load_api()?)
     }
     pub fn capture_browser(&self, window: isize, epoch: u64) -> Result<TargetCapture, &'static str> {
-        self.capture_with(window, epoch, load_browser_api()?)
+        let api=load_browser_api().map_err(|_| "browser_review_unavailable")?;
+        self.capture_with(window, epoch, api).map_err(|error| match error {
+            "native_capture_unavailable" | "native_apply_unavailable" => "browser_review_unavailable",
+            other => other,
+        })
     }
     fn capture_with(
         &self,

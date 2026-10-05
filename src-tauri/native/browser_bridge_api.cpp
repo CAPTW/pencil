@@ -90,6 +90,10 @@ std::shared_ptr<BrowserClientSlot> browser_client_lookup(uint64_t cookie) {
 }
 std::unique_ptr<BrowserProcessRoute> browser_find_route(const BrowserClientSlot& slot,
     const std::wstring& path,const ApplyImageDigest& hash,ULONGLONG deadline) {
+    // A just-closed prior review may be rearmed by the opted-in field heartbeat.
+    // Wait only inside the original capture budget, never start a new budget.
+    while(!slot.cancelled && GetTickCount64()<deadline) {
+    if(GetForegroundWindow()!=slot.window)return {};
     ChannelHandle snapshot(CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0));
     PROCESSENTRY32W entry{};entry.dwSize=sizeof(entry);
     if(snapshot.get()==INVALID_HANDLE_VALUE || !Process32FirstW(snapshot.get(),&entry))return {};
@@ -101,7 +105,10 @@ std::unique_ptr<BrowserProcessRoute> browser_find_route(const BrowserClientSlot&
         auto candidate=verify_browser_route(entry.th32ProcessID,slot.window,path,hash,deadline);
         if(candidate){if(route)return {};route=std::move(candidate);}
     }while(Process32NextW(snapshot.get(),&entry));
-    return route;
+    if(route)return route;
+    Sleep(20);
+    }
+    return {};
 }
 }
 extern "C" __declspec(dllexport) uint32_t WINAPI GrammarBrowserClientCreate(HWND window,uint64_t* cookie) noexcept try {

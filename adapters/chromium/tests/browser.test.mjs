@@ -91,12 +91,12 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  await recoveryPopup.close();pass('real worker restart recovers exact reserved cleanup without inference');
  await worker.evaluate(()=>{globalThis.fixtureMetrics={analyses:0,units:[],deep:0};chrome.runtime.onMessage.addListener(m=>{if(m.op==='deep')fixtureMetrics.deep++;if(m.op==='analyze'){fixtureMetrics.lastEpoch=m.epoch;fixtureMetrics.analyses++;fixtureMetrics.units.push(m.text.length)}})});
  if(process.env.GRAMMAR_DESKTOP_PROBE)await worker.evaluate(()=>{
-   fixtureMetrics.reviewReady=0;fixtureMetrics.reviewClosed=0;
+   fixtureMetrics.reviewReady=0;fixtureMetrics.reviewClosed=0;fixtureMetrics.reviewId=null;
    const original=chrome.runtime.connectNative.bind(chrome.runtime);
    chrome.runtime.connectNative=(...args)=>{
-     const port=original(...args);let review=false;
-     port.onMessage.addListener(m=>{if(m.op==='review-ready'){review=true;fixtureMetrics.reviewReady++;}});
-     port.onDisconnect.addListener(()=>{void chrome.runtime.lastError;if(review)fixtureMetrics.reviewClosed++;});return port;
+     const port=original(...args);let review=null;
+     port.onMessage.addListener(m=>{if(m.op==='review-ready'){review=m.id;fixtureMetrics.reviewId=m.id;fixtureMetrics.reviewReady++;}});
+     port.onDisconnect.addListener(()=>{void chrome.runtime.lastError;if(review){fixtureMetrics.reviewClosed++;if(fixtureMetrics.reviewId===review)fixtureMetrics.reviewId=null;}});return port;
    };
  });
  context.setDefaultTimeout(10000);
@@ -557,16 +557,12 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  assert.equal(await page.locator('#secret').inputValue(),'synthetic only');
  pass('desktop capture refuses sensitive focused field instead of using the previous enabled field');
  if(process.env.GRAMMAR_DESKTOP_PROBE)for(const [selector,change] of [['#writing',false],['#editable',false],['#writing',true]]){
-   // Arm using an actual isolated-world content sender. Only the explicit
-   // Accept peer is synthetic; native actor, worker and document are production.
+   // Field opt-in/focus/heartbeat arms the production connection automatically.
+   // No test-injected desktop-arm request is used. Only Accept peer is synthetic.
    const cancelled=await prepareDesktop(selector);await desktopMessage({op:'desktop-cancel',id:cancelled.id});
    const prior=await worker.evaluate(()=>({ready:fixtureMetrics.reviewReady,closed:fixtureMetrics.reviewClosed}));
-   const armed=await worker.evaluate(async()=>{
-     const [tab]=await chrome.tabs.query({url:'http://127.0.0.1:18437/*'});
-     return (await chrome.scripting.executeScript({target:{tabId:tab.id},args:[fixtureMetrics.lastEpoch],func:epoch=>chrome.runtime.sendMessage({op:'desktop-arm',epoch})}))[0].result;
-   });assert.equal(armed.ok,true);
-   for(let n=0;n<100 && (await worker.evaluate(()=>fixtureMetrics.reviewReady))===prior.ready;n++)await page.waitForTimeout(20);
-   assert.equal((await worker.evaluate(()=>fixtureMetrics.reviewReady)),prior.ready+1);
+   for(let n=0;n<100 && !(await worker.evaluate(()=>fixtureMetrics.reviewId));n++)await page.waitForTimeout(20);
+   assert.match(await worker.evaluate(()=>fixtureMetrics.reviewId),/^[a-f0-9-]{36}$/);
    await page.bringToFront();
    const child=spawn(join(hostDir,'codex-pencil.exe'),[join(hostDir,'grammar-chromium-host.exe'),change?'0':'3'],{windowsHide:true,stdio:['pipe','pipe','pipe']});
    let stdout='',stderr='',released=false,callbackError=null,timer;

@@ -122,6 +122,7 @@ const originOf = url => { try { const u = new URL(url); return /^https?:$/.test(
 // Exactly one desktop review port, distinct from Instant/Deep ports. Document
 // identity is supplied only by an admitted content sender and bound throughout.
 let desktopOwner=null,desktopGeneration=0,desktopDispatchPending=null,desktopCleanupPending=null;
+let desktopUnavailableUntil=0;
 const exactKeys=(value,keys)=>value && typeof value==='object' && !Array.isArray(value) &&
   Object.keys(value).length===keys.length && keys.every(key=>Object.hasOwn(value,key));
 function closeDesktop(owner=desktopOwner) {
@@ -141,7 +142,8 @@ function desktopCurrent(owner) {return desktopOwner===owner && !owner.closed && 
 function desktopDeadline(owner,ms) {clearTimeout(owner.timer);owner.timer=setTimeout(()=>closeDesktop(owner),ms);}
 async function armDesktop(s,tabId) {
   if(!HOST || !chrome.tabs.onActivated || !chrome.windows?.onFocusChanged)return {error:'desktop_review_unavailable'};
-  if(desktopOwner?.s===s && desktopCurrent(desktopOwner))return {ok:true};
+  if(desktopOwner?.s===s && desktopCurrent(desktopOwner))return {ok:true,id:desktopOwner.id};
+  if(Date.now()<desktopUnavailableUntil)return {error:'desktop_review_unavailable'};
   if(desktopDispatchPending || desktopCleanupPending)return {error:'desktop_review_busy'};
   const generation=++desktopGeneration;
   const [tab]=await chrome.tabs.query({active:true,lastFocusedWindow:true});
@@ -152,7 +154,7 @@ async function armDesktop(s,tabId) {
   desktopOwner=owner;
   try {
     const port=chrome.runtime.connectNative(HOST);owner.port=port;
-    port.onDisconnect.addListener(()=>{void chrome.runtime.lastError;closeDesktop(owner);});
+    port.onDisconnect.addListener(()=>{void chrome.runtime.lastError;if(owner.phase==='starting')desktopUnavailableUntil=Date.now()+5000;closeDesktop(owner);});
     port.onMessage.addListener(message=>{
       // Set phase synchronously before asynchronous target resolution. A second
       // command cannot overlap or replace an in-flight capture/Apply.
@@ -187,7 +189,7 @@ async function armDesktop(s,tabId) {
     });
     desktopDeadline(owner,5000);
     port.postMessage({version:1,op:'review-listen',id:owner.id,epoch:'desktop-review',revision:1,text:''});
-    return {ok:true};
+    return {ok:true,id:owner.id};
   }catch{closeDesktop(owner);return {error:'desktop_review_unavailable'};}
 }
 chrome.tabs.onActivated?.addListener(info=>{if(desktopOwner && (info.tabId!==desktopOwner.tabId || info.windowId!==desktopOwner.windowId))closeDesktop();});
