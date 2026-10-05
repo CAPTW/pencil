@@ -10,6 +10,9 @@ struct Node final:IDispatch {
     struct Property {VARTYPE type;LONG number;Node* object;};
     LONG refs=1;
     unsigned invokes=0,forbidden=0;
+    unsigned textReads=0;
+    bool allowText=false;
+    std::wstring text;
     Node* identity=this;
     std::map<std::wstring,Property> values;
     std::map<DISPID,std::wstring> names;
@@ -31,7 +34,7 @@ struct Node final:IDispatch {
     HRESULT STDMETHODCALLTYPE GetIDsOfNames(REFIID,LPOLESTR* requested,UINT count,LCID,DISPID* result) override {
         if(count!=1)return E_INVALIDARG;
         const std::wstring name=requested[0];
-        if(name==L"Text" || name==L"Content" || name==L"Password" || name==L"WritePassword" || name==L"FullName")++forbidden;
+        if((name==L"Text" && !allowText) || name==L"Content" || name==L"Password" || name==L"WritePassword" || name==L"FullName")++forbidden;
         if(name==missing || !values.count(name))return DISP_E_UNKNOWNNAME;
         *result=static_cast<DISPID>(names.size()+1);names[*result]=name;return S_OK;
     }
@@ -43,6 +46,7 @@ struct Node final:IDispatch {
         if(name==failed)return DISP_E_EXCEPTION;
         const auto value=values.at(name);
         if(name==wrong){out->vt=VT_EMPTY;return S_OK;}
+        if(name==L"Text" && allowText){++textReads;out->vt=VT_BSTR;out->bstrVal=SysAllocStringLen(text.data(),static_cast<UINT>(text.size()));return out->bstrVal?S_OK:E_OUTOFMEMORY;}
         out->vt=value.type;
         if(value.type==VT_DISPATCH){out->pdispVal=value.object;if(value.object)value.object->AddRef();}
         else if(value.type==VT_BOOL)out->boolVal=static_cast<VARIANT_BOOL>(value.number);
