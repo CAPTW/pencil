@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
-  "state_version": "2026-10-05.global-accept-standard-edit-candidate",
+  "state_version": "2026-10-05.global-accept-singleline-installed",
   "repository_branch": "main",
   "product_target": "P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST",
-  "p3a_status": "OWNED_RICHEDIT_DIRECT_APPLY_SYNTHETIC_VERIFIED_GENERAL_EDITOR_ACCEPTANCE_INCOMPLETE",
+  "p3a_status": "OWNED_SINGLELINE_EDIT_AND_RICHEDIT_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_INCOMPLETE",
   "p3b_status": "CONSENT_BOUND_DEEP_CANDIDATE_NO_LIVE_ACCEPTANCE",
   "first_adapter_decision": "CHROMIUM_TEXTAREA_CONTENTEDITABLE_MV3",
   "active_phase": "MISSION_IMPLEMENTATION",
-  "active_step": "GLOBAL_ACCEPT_STANDARD_EDIT_IMPLEMENTATION",
+  "active_step": "GLOBAL_ACCEPT_EDITOR_EXPANSION",
   "active_task": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
   "completed_task": "GRAMMAR-P3B-R0-CURRENT-LOCAL-REPOSITORY-REAUDIT-PRODUCT-TARGET-RESET-MULTI-AGENT-DEVELOPMENT-CONTRACT-PHASE-STEP-ROADMAP-AND-MINIMAL-PROJECT-SOURCE-SUCCESSOR-R1",
-  "exact_next_task": "GRAMMAR-GLOBAL-ACCEPT-STANDARD-EDIT-QUALIFICATION",
+  "exact_next_task": "GRAMMAR-GLOBAL-ACCEPT-MULTILINE-AND-APPLICATION-ADAPTERS",
   "next_task_status": "AUTHORIZED_WITHIN_MISSION",
   "acceptance_boundary": "CANDIDATE_SYNTHETIC_ONLY_NO_WHOLE_PRODUCT_ACCEPTANCE",
   "provider_kinds": [
@@ -78,7 +78,7 @@
       ]
     },
     {
-      "verdict": "OWNED_RICHEDIT_TARGET_SIDE_APPLY_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED",
+      "verdict": "OWNED_SINGLELINE_EDIT_AND_RICHEDIT_TARGET_SIDE_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED",
       "id": "F-06",
       "historical_verdict": "CONFIRMED_CURRENT_DEFECT",
       "historical_evidence": [
@@ -93,7 +93,7 @@
   "d020_verdict": "D020_DOCUMENTATION_OVERCLAIM",
   "automatic_continuation": false,
   "next_gate_executed": false,
-  "next_gate": "DESKTOP_APPLY_EDITOR_QUALIFICATION",
+  "next_gate": "GLOBAL_ACCEPT_EDITOR_EXPANSION",
   "product_audit_base": "9f54ebd4b7586f7a1658245761ccccf8a77500c6",
   "git_identity_policy": "MEASURE_CANONICAL_MAIN_AT_EXPORT",
   "source_digest_policy": "COMPUTE_SORTED_PAYLOAD_PATH_SHA256_IN_MANIFEST_EXCLUDING_SELF_REFERENCE",
@@ -136,7 +136,7 @@
     "Local window Quit product f90f3d5: explicit confirmation, existing managed shutdown; fresh Medium installed app35 PASS, natural exit0 with synthetic child and runtime session removed (434ms single observation, not budget); editor records64 with zero state changes. App Rust231 PASS/26 ignored; typecheck/contracts/governance/build/package PASS. Uninstall complete, all owned guests stopped. Tray registration restricted-Medium false versus ExistingLogin true is diagnostic only; tray route remains unqualified. Browser unchanged and not rerun. Evidence: D:/dev/grammar-evidence/grammar-window-exit-20261004/RESULT.md",
     "Product26b3045 repairs installed CLI filesystem cleanup retry: failed workspaces retain ownership, pending work blocks admission, explicit shutdown retry verifies removal; process/reap failures remain terminal. Old-package red FAIL and first green precondition FAIL preserved. Final app36/modified Chromium synthetic Deep44/unmodified installed keyboard11 PASS; Rust app233 (26 ignored)/host16, contracts/governance/build/package PASS. All five uninstalls complete and guests stopped. Test846bbf5 moves lock setup before finite Deep without extending lifetime or weakening assertions. Mission incomplete; no main/push/Source application. Evidence: D:/dev/grammar-evidence/grammar-shutdown-retry-20261004/RESULT.md"
   ],
-  "native_capture_activation": "STANDARD_EDIT_COPY_PLUS_OWNED_RICHEDIT_TARGET_SIDE_APPLY_INSTALLED_SYNTHETIC_VERIFIED",
+  "native_capture_activation": "OWNED_SCOPE_QUALIFIED_SINGLELINE_EDIT_AND_RICHEDIT_ACCEPT_INSTALLED_SYNTHETIC_VERIFIED",
   "chromium_deep_activation": "SOURCE_UNCONFIGURED_PERSONAL_INSTALLER_CONFIGURES_HOST_CONSENT_BOUND_SYNTHETIC_ONLY",
   "mission_completion": "INCOMPLETE",
   "main_adoption": "NOT_ADOPTED_CANDIDATE_ONLY",

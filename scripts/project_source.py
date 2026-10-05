@@ -36,6 +36,8 @@ MISSION = "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1"
 DEEP_TASK = "GRAMMAR-P3B-P2-SYNTHETIC-DEEP-AND-EDITOR-QUALIFICATION"
 APPLY_STATUS = "OWNED_RICHEDIT_DIRECT_APPLY_SYNTHETIC_VERIFIED_GENERAL_EDITOR_ACCEPTANCE_INCOMPLETE"
 APPLY_TASK = "GRAMMAR-DESKTOP-APPLY-EDITOR-QUALIFICATION"
+GLOBAL_APPLY_STATUS = "OWNED_SINGLELINE_EDIT_AND_RICHEDIT_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_INCOMPLETE"
+GLOBAL_APPLY_TASK = "GRAMMAR-GLOBAL-ACCEPT-MULTILINE-AND-APPLICATION-ADAPTERS"
 AUDIT_BASE = "9f54ebd4b7586f7a1658245761ccccf8a77500c6"
 
 
@@ -109,7 +111,8 @@ def state_check(state):
         }
         # Exact additional candidate profile, backed by installed40a7d26 receipts.
         # Preserve historical profiles and all global/privacy/adoption boundaries.
-        owned_apply = state["p3a_status"] == APPLY_STATUS
+        global_apply = state["p3a_status"] == GLOBAL_APPLY_STATUS
+        owned_apply = state["p3a_status"] == APPLY_STATUS or global_apply
         if owned_apply:
             expected.update({
                 "p3a_status": APPLY_STATUS,
@@ -118,6 +121,14 @@ def state_check(state):
                 "next_gate": "DESKTOP_APPLY_EDITOR_QUALIFICATION",
                 "native_capture_activation": "STANDARD_EDIT_COPY_PLUS_OWNED_RICHEDIT_TARGET_SIDE_APPLY_INSTALLED_SYNTHETIC_VERIFIED",
                 "chromium_deep_activation": "SOURCE_UNCONFIGURED_PERSONAL_INSTALLER_CONFIGURES_HOST_CONSENT_BOUND_SYNTHETIC_ONLY",
+            })
+        if global_apply:
+            expected.update({
+                "p3a_status": GLOBAL_APPLY_STATUS,
+                "active_step": "GLOBAL_ACCEPT_EDITOR_EXPANSION",
+                "exact_next_task": GLOBAL_APPLY_TASK,
+                "next_gate": "GLOBAL_ACCEPT_EDITOR_EXPANSION",
+                "native_capture_activation": "OWNED_SCOPE_QUALIFIED_SINGLELINE_EDIT_AND_RICHEDIT_ACCEPT_INSTALLED_SYNTHETIC_VERIFIED",
             })
         for key, value in expected.items():
             fail(state.get(key) == value, f"STATE_SEMANTIC_DRIFT:{key}")
@@ -131,6 +142,8 @@ def state_check(state):
                 "F-05": "SYNTHETIC_VERIFIED_OWNED_DESKTOP_BUILT_APP",
                 "F-06": "OWNED_RICHEDIT_TARGET_SIDE_APPLY_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED",
             })
+        if global_apply:
+            verdicts["F-06"] = "OWNED_SINGLELINE_EDIT_AND_RICHEDIT_TARGET_SIDE_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED"
         for defect in state["known_defects"]:
             fail(defect["verdict"] == verdicts[defect["id"]], f"VERDICT_DRIFT:{defect['id']}")
             fail(isinstance(defect.get("evidence"), list) and bool(defect["evidence"]), "DEFECT_EVIDENCE_MISSING")

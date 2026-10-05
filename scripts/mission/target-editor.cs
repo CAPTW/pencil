@@ -35,7 +35,7 @@ public static class OwnedTarget {
    EnumWindows((w,d)=>{uint pid;GetWindowThreadProcessId(w,out pid);if(pid==wanted&&GetPropW(w,"GrammarReady")!=IntPtr.Zero){found=w;return false;}return true;},IntPtr.Zero);
    return found;
  }
- public static void Send(IntPtr field,uint msg,int wp,int lp) {IntPtr result;if(SendMessageTimeoutW(field,msg,new IntPtr(wp),new IntPtr(lp),3,2000,out result)==IntPtr.Zero)throw new Exception("owned send timeout");}
+ public static IntPtr Send(IntPtr field,uint msg,int wp,int lp) {IntPtr result;if(SendMessageTimeoutW(field,msg,new IntPtr(wp),new IntPtr(lp),3,2000,out result)==IntPtr.Zero)throw new Exception("owned send timeout");return result;}
  public static void Set(IntPtr field,string text) {IntPtr result;if(SendText(field,12,IntPtr.Zero,text,3,2000,out result)==IntPtr.Zero)throw new Exception("owned set timeout");}
  public static string Read(IntPtr field) {IntPtr result;var b=new StringBuilder(4096);if(ReadText(field,13,new IntPtr(b.Capacity),b,3,2000,out result)==IntPtr.Zero)throw new Exception("owned read timeout");return b.ToString();}
  public static bool Focus(IntPtr top,uint app,uint target) {
@@ -80,7 +80,9 @@ public static class Program {
        int count=0;child.Refresh();foreach(System.Diagnostics.ProcessModule module in child.Modules){if(string.Equals(module.ModuleName,"target-apply.dll",StringComparison.OrdinalIgnoreCase))count++;}
        Console.WriteLine("MODULES "+count);break;
       case "CLIPBOARD":Console.WriteLine("TEXT "+Convert.ToBase64String(Encoding.UTF8.GetBytes(OwnedTarget.Clipboard())));break;
-      case "PASSWORD":OwnedTarget.Send(field,204,int.Parse(part[1]),0);Console.WriteLine("OK");break;
+      // App-owned privacy changes must run inside the synthetic editor. Windows
+      // may refuse messages clearing a password flag from another process.
+      case "PASSWORD":if(OwnedTarget.Send(top,0x8000+46,int.Parse(part[1]),0)!=new IntPtr(1))throw new Exception("Owned privacy change not verified");Console.WriteLine("OK");break;
       case "FOCUS":Console.WriteLine("FOCUS "+OwnedTarget.Focus(top,uint.Parse(Environment.GetEnvironmentVariable("GRAMMAR_EXPECTED_APP_PID")),(uint)child.Id));break;
       case "HOTKEY":Console.WriteLine("SENT "+OwnedTarget.Hotkey(top));break;
       case "EXIT":OwnedTarget.PostMessageW(top,16,IntPtr.Zero,IntPtr.Zero);if(!child.WaitForExit(10000))throw new Exception("Owned target exit pending");Console.WriteLine("EXIT "+child.ExitCode);return child.ExitCode;

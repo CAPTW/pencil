@@ -38,6 +38,13 @@ static LRESULT CALLBACK target_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM l
         SetForegroundWindow(hwnd);SetFocus(field);
         return GetForegroundWindow()==hwnd&&GetFocus()==field;
     }
+    if(message==WM_APP+46) {
+        HWND field=FindWindowExW(hwnd,nullptr,L"RICHEDIT50W",nullptr);
+        if(!field)field=FindWindowExW(hwnd,nullptr,L"Edit",nullptr);
+        if(!field||wp>0xffff)return 0;
+        SendMessageW(field,EM_SETPASSWORDCHAR,wp,0);
+        return SendMessageW(field,EM_GETPASSWORDCHAR,0,0)==static_cast<LRESULT>(wp);
+    }
     if (message == WM_DESTROY) { PostQuitMessage(0); return 0; }
     return DefWindowProcW(hwnd,message,wp,lp);
 }

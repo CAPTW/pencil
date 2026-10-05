@@ -2,7 +2,7 @@
 
 # Phase-Step Roadmap — historical phases, active mission continuation
 
-EXACT_NEXT_TASK=GRAMMAR-DESKTOP-APPLY-EDITOR-QUALIFICATION
+EXACT_NEXT_TASK=GRAMMAR-GLOBAL-ACCEPT-MULTILINE-AND-APPLICATION-ADAPTERS
 
 아래 Phase 표는 R0 당시 계획 기록이다. 현재 후보의 실행 결과·미완료 범위는 HANDOFF.md와 control/state.json을 따른다.
 
