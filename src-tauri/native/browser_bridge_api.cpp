@@ -34,7 +34,7 @@ bool browser_digest(const std::string& text,ApplyImageDigest& hash) {
 // Codes:0 success,1 unknown owner,2 busy/owner retained,3 invalid input,
 //4 unavailable,5 internal failure. Poll states:0 idle,1 command,2 closed.
 extern "C" __declspec(dllexport) uint32_t WINAPI GrammarBrowserServerVersion() noexcept {return 2;}
-extern "C" __declspec(dllexport) uint32_t WINAPI GrammarBrowserServerCreateV2(uint64_t* cookie,uint64_t* clock_ticks) noexcept try {
+static uint32_t create_browser_server(HWND window,uint64_t* cookie,uint64_t* clock_ticks) noexcept try {
     if(!cookie || !clock_ticks)return 3;*cookie=0;*clock_ticks=0;
     // Cross a native tick boundary after browser receipt, so quantization cannot
     // place the native anchor before the browser's earlier send timestamp.
@@ -45,9 +45,18 @@ extern "C" __declspec(dllexport) uint32_t WINAPI GrammarBrowserServerCreateV2(ui
     std::unique_lock<std::mutex> lock(browser_mutex,std::try_to_lock);if(!lock.owns_lock() || browser_server)return 2;
     ApplyImageDigest hash{};auto app=browser_sibling(GRAMMAR_TRUSTED_APP_NAME);
     if(app.empty() || !browser_digest(GRAMMAR_TRUSTED_APP_SHA256,hash) || next_browser_cookie==UINT64_MAX)return 4;
-    auto server=std::make_unique<BrowserBridgeServer>(app,hash);if(!server->available())return 4;
+    auto server=std::make_unique<BrowserBridgeServer>(app,hash,window);if(!server->available())return 4;
     browser_cookie=next_browser_cookie++;browser_server=std::move(server);*cookie=browser_cookie;return 0;
 } catch(...){return 5;}
+extern "C" __declspec(dllexport) uint32_t WINAPI GrammarBrowserServerCreateV2(uint64_t* cookie,uint64_t* clock_ticks) noexcept {
+    return create_browser_server(nullptr,cookie,clock_ticks);
+}
+extern "C" __declspec(dllexport) uint32_t WINAPI GrammarWriterServerCreateV2(HWND window,uint64_t* cookie,uint64_t* clock_ticks) noexcept {
+    DWORD pid=0;WCHAR name[32]{};
+    if(!window || !GetWindowThreadProcessId(window,&pid) || pid!=GetCurrentProcessId() ||
+        GetAncestor(window,GA_ROOT)!=window || !GetClassNameW(window,name,32) || wcscmp(name,L"SALFRAME"))return 4;
+    return create_browser_server(window,cookie,clock_ticks);
+}
 extern "C" __declspec(dllexport) uint32_t WINAPI GrammarBrowserServerPollV2(uint64_t cookie,uint32_t* state,
     uint32_t* command,uint64_t* capture,WCHAR* text,uint32_t capacity,uint32_t* units,uint64_t* deadline_ticks) noexcept try {
     if(!state || !command || !capture || !text || capacity<browser_bridge_units+1 || !units || !deadline_ticks)return 3;

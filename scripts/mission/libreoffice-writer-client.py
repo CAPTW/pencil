@@ -289,6 +289,32 @@ try:
     record('protected-section-refused-before-text-read', denied['status'] == 'REJECTED'
         and call('state')['textReads'] == reads and not call('state')['enabled'] and doc.Text.String == original)
     doc.Text.removeTextContent(section)
+    base_source = source
+    source = 'Before | Synthetic 한국어 😀\nAfter'
+    token = capture()
+    multiline = 'Reviewed first line\nsecond line 🙂'
+    accepted = call('accept', Token=token, Replacement=multiline)
+    record('plain-multiline-replacement-exact', accepted['status'] == 'APPLIED'
+        and doc.Text.String == source.replace('Synthetic', multiline))
+    doc.getUndoManager().undo()
+    record('plain-multiline-undo-exact', doc.Text.String == source)
+    doc.getUndoManager().redo()
+    record('plain-multiline-redo-exact', doc.Text.String == source.replace('Synthetic', multiline))
+    source = base_source
+    token = capture()
+    formatted = select()
+    formatted.setPropertyValue('CharWeight', 150.0)
+    paragraph = doc.Text.createEnumeration().nextElement()
+    portions = paragraph.createEnumeration()
+    weights = []
+    while portions.hasMoreElements():
+        weights.append(portions.nextElement().getPropertyValue('CharWeight'))
+    record('bold-fixture-is-actually-formatted', 150.0 in weights)
+    reads = call('state')['textReads']
+    refused = call('enable', Document=doc)
+    record('direct-format-refused-before-source-read', refused['status'] == 'REJECTED'
+        and call('state')['textReads'] == reads)
+    formatted.setPropertyToDefault('CharWeight')
     token = capture()
     time.sleep(30.1)
     record('expired-review-cache-cleared', not call('state')['reviewRetained'] and not call('state')['resultRetained'])

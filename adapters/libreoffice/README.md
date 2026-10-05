@@ -74,5 +74,38 @@ Only use the dedicated disposable profile during qualification. No normal-profil
 installer or generic Writer/DOCX support is claimed. The optional build-receipt
 Writer image/path arguments bind the actual tested soffice.bin, not soffice.exe.
 The default build remains disabled. Actual installed widget qualification uses
-Guest-Writer-Product.ps1, writer-product-probe.py --widget and writer-app-e2e.mjs.
+Guest-App-Writer-Product.ps1, writer-product-probe.py --widget and writer-app-e2e.mjs.
 These fixtures do not invoke private document mutation helpers or live Providers.
+
+
+Activation boundary after installed R23 and safety R24
+-----------------------------------------------------
+R23 installed10737e9 + paired OXT passed actual shortcut -> Instant -> edited
+Accept -> exact Writer reread -> Undo, changed-source preservation, Disable and
+natural app/Office exit with complete removal. Disable can yield the honest
+"Apply outcome unconfirmed" when it closes the channel; no automatic retry occurs.
+The synthetic document reread proves unchanged content in that test, not a generic
+promise that every lost response means no mutation.
+
+Follow-up review strengthened the one-review greeting with the exact Writer
+window handle and liveness, keeping the Chromium zero-window contract unchanged.
+The core checks actual document foreground before and after capture reads. Current
+supported text is bounded default-style plain body: named character/paragraph
+styles, direct font/appearance differences, hyperlinks and non-text portions are
+refused through actual paragraph/portion metadata before reading selected text.
+Aggregate cursor PropertyState is not sufficient evidence of absence of formatting.
+R24 passed54 core/real-native checks and32 repeated cycles; the shared Windows
+channel probe passed15 scenarios, including zero-window mismatch and exact bound
+window acceptance. The final installed-widget recheck of these guards is pending.
+
+Close the Writer panel before enabling another document. Close LibreOffice before
+uninstalling/updating Grammar because it owns the loaded native DLL. Do not install
+this candidate in a normal profile yet; current deployment qualification is the
+owned offline Sandbox with exact26.2.4.2 engine/path and disposable profiles.
+
+R25/R26 pass57 actual Writer checks including multiline replacement/Undo/Redo,
+32 repeated transactions, formatting and original-deadline refusals, exact native
+window greeting, disposal and cleanup. R26 additionally rejects every writable
+Char property whose actual portion state is non-default, covering unsupported
+appearance attributes beyond the explicit default-style value comparisons.
+The old aggregate cursor state inspection is not used to qualify rich formatting.

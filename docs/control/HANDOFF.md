@@ -1328,3 +1328,31 @@ all focus variability is resolved. Installed Grammar widget is still NOT_RUN.
 Package boundary2 and bridge6 tests PASS; syntax/governance PASS. Product widget
 fixture/guest installer is prepared for the next clean source-bound build.
 No normal-profile install, saved-document support, main adoption or publication.
+
+
+### Installed Writer flow and post-review boundaries (R23/R24)
+Clean10737e9 build receipt, package and paired product OXT are preserved in
+D:/dev/grammar-evidence/grammar-writer-activation-20261005. R22 stopped at the
+Medium launcher naming guard before install; renamed the guest script to satisfy
+the existing guard. R23 installed widget6 checks PASS: actual hotkey/Instant,
+edited Accept exact Korean/emoji surrounding-text reread, Undo, changed-source
+preservation, Disable refusal and natural exit. Install/removal/Office cleanup
+complete, processes0. Revoked channel honestly shows outcome unconfirmed; fixture
+accepts that documented transport outcome and still requires zero text changes.
+
+Post-review changes bind the greeting to the exact live Writer window, require
+foreground document for capture, and reject non-default formatting through actual
+text portions before source reads. R24 actual GUI/core/native54 checks +32 cycles
+PASS; shared browser/Writer Windows transport15 cases PASS, processes0. Aggregate
+cursor property states can remain DEFAULT_VALUE after direct formatting; the new
+negative fixture proves actual bold text150 and refusal before source read. These
+are safety improvements after the installed10737e9 baseline, not a claim that the
+older artifact already contains them. Multiline and final installed recheck next.
+No provider/accounts/user docs/profiles/main/push/release. Mission INCOMPLETE.
+
+R25/R26 post-review core57 checks PASS, including multiline replacement/Undo/Redo,
+all prior user-edit races, non-default character format refusal before source read,
+exact native peer/window handshake and32 repeated cycles. Both natural exit0,
+cleanuptrue/processes0. The shared transport's15 actual Windows scenarios also
+PASS in R24. Next clean final build and installed-widget recheck; standalone
+package generation or this core result does not close that gate.

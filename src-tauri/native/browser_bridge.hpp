@@ -19,10 +19,19 @@ class BrowserBridgeServer final {
     ULONGLONG lifetime_=0,pending_deadline_=0;
     bool connected_=false,closed_=false;
     uint64_t capture_=0;
+    HWND bound_window_=nullptr;
+    DWORD bound_thread_=0;
+    bool window_alive() const {
+        if(!bound_window_)return true;
+        DWORD pid=0;
+        return IsWindow(bound_window_) && GetWindowThreadProcessId(bound_window_,&pid)==bound_thread_ && pid==GetCurrentProcessId();
+    }
 public:
-    BrowserBridgeServer(const std::wstring& trustedApp,const ApplyImageDigest& trustedDigest)
-        :pipe_(browser_bridge_name(GetCurrentProcessId())),app_image_(trustedApp),app_hash_(trustedDigest) {
-        closed_=pipe_.get()==INVALID_HANDLE_VALUE;
+    BrowserBridgeServer(const std::wstring& trustedApp,const ApplyImageDigest& trustedDigest,HWND boundWindow=nullptr)
+        :pipe_(browser_bridge_name(GetCurrentProcessId())),app_image_(trustedApp),app_hash_(trustedDigest),bound_window_(boundWindow) {
+        DWORD pid=0;
+        if(bound_window_)bound_thread_=GetWindowThreadProcessId(bound_window_,&pid);
+        closed_=pipe_.get()==INVALID_HANDLE_VALUE || !window_alive();
     }
     bool available() const noexcept {return !closed_;}
     ULONGLONG operation_deadline() const noexcept {return pending_deadline_;}
@@ -38,7 +47,7 @@ public:
     // Call from the single transport owner. No detached worker or pending
     // overlapped storage exists. Idle polling does not inspect document data.
     BrowserPoll poll(ChannelRequest& request) {
-        request.clear();if(closed_)return BrowserPoll::closed;
+        request.clear();if(closed_ || !window_alive()){close();return BrowserPoll::closed;}
         if(!connected_) {
             if(!ConnectNamedPipe(pipe_.get(),nullptr) && GetLastError()!=ERROR_PIPE_CONNECTED) {
                 if(GetLastError()==ERROR_PIPE_LISTENING)return BrowserPoll::idle;
@@ -51,6 +60,7 @@ public:
             if(!peer_) {close();return BrowserPoll::closed;}
             admission_=std::make_unique<ApplyChannelAdmission>(peer_->process());
             TargetHello hello;hello.magic=browser_bridge_magic;hello.server_pid=GetCurrentProcessId();
+            hello.window=reinterpret_cast<uint64_t>(bound_window_);
             hello.capability=admission_->bootstrap_capability();
             bool sent=admission_->peer_matches(pipe_.get()) && target_write(pipe_.get(),&hello,sizeof(hello),deadline);
             SecureZeroMemory(hello.capability.data(),hello.capability.size());
@@ -82,7 +92,7 @@ public:
     // status:0 rejected,2 captured,3 applied,4 indeterminate. Applied can only
     // come from the exact target's actual reread; never synthesize it on timeout.
     bool respond(uint32_t status,const std::wstring& source=L"") {
-        if(closed_ || !pending_deadline_ || !admission_->peer_matches(pipe_.get()) ||
+        if(closed_ || !window_alive() || !pending_deadline_ || !admission_->peer_matches(pipe_.get()) ||
             GetTickCount64()>=pending_deadline_) {close();return false;}
         bool captured=phase_==Phase::capturing && status==2 && !source.empty() && source.size()<=browser_bridge_units;
         bool terminal=(phase_==Phase::capturing && status==0) ||
@@ -117,7 +127,7 @@ public:
     ~BrowserBridgeClient(){disconnect();}
     void cancel() noexcept {cancelled_=true;} // Other threads set only this flag.
     void disconnect() noexcept {connected_=false;capture_=0;pipe_.reset();host_.reset();SecureZeroMemory(capability_.data(),capability_.size());}
-    bool connect(std::unique_ptr<VerifiedApplyPeer> trustedHost,ULONGLONG deadline) {
+    bool connect(std::unique_ptr<VerifiedApplyPeer> trustedHost,ULONGLONG deadline,HWND expectedWindow=nullptr) {
         if(host_ || captured_ || cancelled_ || !trustedHost || !trustedHost->alive() || GetTickCount64()>=deadline)return false;
         host_=std::move(trustedHost);lifetime_=GetTickCount64()+35000;
         const auto name=browser_bridge_name(GetProcessId(host_->process()));
@@ -134,7 +144,7 @@ public:
             SetNamedPipeHandleState(pipe_.get(),&mode,nullptr,nullptr) &&
             channel_read_exact(pipe_.get(),&hello,sizeof(hello),deadline,&cancelled_) &&
             hello.magic==browser_bridge_magic && hello.version==1 && hello.server_pid==pid &&
-            !hello.window && !hello.window_thread && !hello.worker_thread;
+            hello.window==reinterpret_cast<uint64_t>(expectedWindow) && !hello.window_thread && !hello.worker_thread;
         if(ok){capability_=hello.capability;connected_=true;}
         SecureZeroMemory(hello.capability.data(),hello.capability.size());
         if(!ok)disconnect();return ok;

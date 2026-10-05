@@ -22,6 +22,7 @@ class Fn:
 class Core:
     def __init__(self):
         self.document, self.revoked, self.pending = object(), False, False
+        self.window = 123
         self.result, self.calls = None, []
     def execute(self, args):
         import json
@@ -46,11 +47,13 @@ class Native:
         self.replies, self.closes = [], 0
         self.malformed, self.close_code = malformed, close_code
         self.GrammarBrowserServerVersion = Fn(lambda: 2)
-        self.GrammarBrowserServerCreateV2 = Fn(self.create)
+        self.created_windows = []
+        self.GrammarWriterServerCreateV2 = Fn(self.create)
         self.GrammarBrowserServerPollV2 = Fn(self.poll)
         self.GrammarBrowserServerRespond = Fn(self.respond)
         self.GrammarBrowserServerClose = Fn(self.close)
-    def create(self, cookie, anchor):
+    def create(self, window, cookie, anchor):
+        self.created_windows.append(window)
         cookie._obj.value, anchor._obj.value = 9, 1000
         return 0
     def poll(self, cookie, state, command, capture, buffer, capacity, units, ticks):
@@ -74,7 +77,7 @@ class Native:
 
 def owner(native):
     # Replace only the foreign-library boundary. Buffer operations remain real.
-    api = {name: getattr(ctypes, name) for name in ('c_ulonglong', 'c_uint32', 'POINTER', 'c_wchar_p',
+    api = {name: getattr(ctypes, name) for name in ('c_ulonglong', 'c_uint32', 'c_void_p', 'POINTER', 'c_wchar_p',
         'create_unicode_buffer', 'byref', 'memset', 'sizeof', 'addressof', 'string_at')}
     api.update(WinDLL=lambda *a, **k: native,
         windll=SimpleNamespace(kernel32=SimpleNamespace(GetTickCount64=Fn(lambda: 1000))))
@@ -88,6 +91,7 @@ class Tests(unittest.TestCase):
         actual = owner(native)
         before = time.monotonic()
         actual.run()
+        self.assertEqual(native.created_windows, [123])
         self.assertEqual([v[0] for v in native.replies], [2, 3])
         self.assertEqual(native.replies[0][2], len('Owned 😀'.encode('utf-16-le')) // 2)
         accepts = [v for v in actual.core.calls if v['Action'] == 'accept']
