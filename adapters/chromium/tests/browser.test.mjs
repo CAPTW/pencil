@@ -506,7 +506,8 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
  // qualifies document-side binding, not native authentication/widget wiring.
  const desktopMessage=message=>worker.evaluate(async message=>{
    const [tab]=await chrome.tabs.query({url:'http://127.0.0.1:18437/*'});
-   return chrome.tabs.sendMessage(tab.id,{...message,epoch:fixtureMetrics.lastEpoch});
+   const deadline=['desktop-capture','desktop-apply'].includes(message.op)?{deadline:performance.timeOrigin+performance.now()+3000}:{};
+   return chrome.tabs.sendMessage(tab.id,{...deadline,...message,epoch:fixtureMetrics.lastEpoch});
  },message);
  const prepareDesktop=async(selector='#writing')=>{
    await page.bringToFront();await page.locator(selector).fill('앞 😀 | seperate | 뒤');
@@ -526,6 +527,35 @@ const receipt=JSON.parse(prep);await writeFile(join(extension,'host-config.js'),
    assert.equal((await desktopMessage({op:'desktop-apply',...token,text:'replay'})).status,0);
    pass('desktop content endpoint exact Unicode replacement and replay refusal '+selector);
  }
+ for(const selector of ['#writing','#editable']){
+   const token=await prepareDesktop(selector);
+   const deadline=await worker.evaluate(()=>performance.timeOrigin+performance.now()+3000);
+   await page.waitForTimeout(3100); // Deliver after request expiry but before review's30s lifetime.
+   assert.equal((await desktopMessage({op:'desktop-apply',...token,text:'late replacement',deadline})).status,0);
+   assert.equal(await page.locator(selector).evaluate(el=>el.tagName==='TEXTAREA'?el.value:el.textContent),'앞 😀 | seperate | 뒤');
+   await desktopMessage({op:'desktop-cancel',id:token.id});
+   pass('expired desktop request cannot mutate after delayed delivery '+selector);
+ }
+ for(const deadline of [null,undefined,0,'invalid',Number.MAX_VALUE]){
+   const token=await prepareDesktop();
+   assert.equal((await desktopMessage({op:'desktop-apply',...token,text:'wrong',deadline})).status,0);
+   assert.equal(await page.locator('#writing').inputValue(),'앞 😀 | seperate | 뒤');
+   pass('desktop content endpoint refuses malformed or unbounded request deadline '+String(deadline));
+ }
+ const duringInput=await prepareDesktop();
+ await worker.evaluate(async()=>{
+   const [tab]=await chrome.tabs.query({url:'http://127.0.0.1:18437/*'});
+   await chrome.scripting.executeScript({target:{tabId:tab.id},func:()=>{
+     document.querySelector('#writing').addEventListener('beforeinput',()=>{
+       const own=Object.getOwnPropertyDescriptor(performance,'now'),original=performance.now.bind(performance);
+       Object.defineProperty(performance,'now',{configurable:true,value:()=>original()+4000});
+       queueMicrotask(()=>{if(own)Object.defineProperty(performance,'now',own);else delete performance.now;});
+     },{once:true});
+   }});
+ });
+ assert.equal((await desktopMessage({op:'desktop-apply',...duringInput,text:'too late'})).status,0);
+ assert.equal(await page.locator('#writing').inputValue(),'앞 😀 | seperate | 뒤');
+ pass('desktop request expiry during beforeinput prevents mutation without expiring review grant');
  for(const attack of ['selection','source','beforeinput-aba','beforeinput-expiry','cancel','wrong-ticket','focus']){
    const token=await prepareDesktop();
    if(attack==='selection')await page.locator('#writing').evaluate(el=>el.setSelectionRange(0,1));
