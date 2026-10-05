@@ -1,6 +1,6 @@
 #Requires -Version 7.0
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$OutputDirectory)
+param([Parameter(Mandatory)][string]$OutputDirectory,[switch]$ClientApi)
 $ErrorActionPreference='Stop'
 $source=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $output=[IO.Path]::GetFullPath($OutputDirectory)
@@ -13,7 +13,7 @@ $dev=Join-Path $vs 'Common7/Tools/VsDevCmd.bat'
 foreach($path in @($source,$output,$dev)){if($path -match '["%!\r\n]'){throw 'Unsupported shell metacharacter in path'}}
 New-Item -ItemType Directory $output | Out-Null
 $libs='user32.lib imm32.lib ole32.lib oleaut32.lib uuid.lib advapi32.lib bcrypt.lib comctl32.lib'
-$define=' '
+$define=if($ClientApi){' /DGRAMMAR_BROWSER_CLIENT_ABI '}else{' '}
 $names=@('browser-document')
 $sourceCommit=& git -C $source rev-parse HEAD
 function Get-ProbeInputs {

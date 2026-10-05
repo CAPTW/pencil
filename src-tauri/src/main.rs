@@ -2158,12 +2158,20 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
                 clipboard::wait_for_capture_modifiers_released().await?;
                 let state = app.state::<AppState>();
                 if state.shutdown_started.load(Ordering::SeqCst) { return Err("app_shutting_down".into()); }
-                let native = if let Some(field) = target_apply::focused_field(target)? {
+                let browser = target_apply::is_browser_window(target)?;
+                let field = if browser { None } else { target_apply::focused_field(target)? };
+                let native = if browser || field.is_some() {
                     let runtime = state.target_apply.clone();
                     let epoch = runtime.epoch().map_err(str::to_string)?;
-                    let captured = tokio::task::spawn_blocking(move || runtime.capture(field, epoch)).await
+                    // A browser target can only use its opted-in extension. A
+                    // failed browser capture must never fall through to a native
+                    // editor/clipboard path (including sensitive browser fields).
+                    let captured = tokio::task::spawn_blocking(move || if browser {
+                        runtime.capture_browser(target.hwnd, epoch)
+                    } else { runtime.capture(field.expect("qualified native field"), epoch) }).await
                         .map_err(|_| "native_capture_worker_failed".to_string())?.map_err(str::to_string)?;
-                    if target_apply::focused_field(target)? != Some(field) {
+                    if (browser && !target_apply::is_browser_window(target)?) ||
+                        (!browser && target_apply::focused_field(target)? != field) {
                         state.target_apply.cancel();
                         return Err("capture_target_changed".into());
                     }
