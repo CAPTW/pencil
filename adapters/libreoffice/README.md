@@ -1,0 +1,58 @@
+# LibreOffice Writer adapter (implementation in progress)
+
+`pythonpath/grammar_writer_core.py` is the target-resident transaction core.
+It is not independently registered as a UNO service and is not yet included in
+an enabled personal package. The synthetic service wrapper and adversarial hooks
+remain under scripts/mission/libreoffice-writer-probe; never ship those hooks.
+
+The goal is the existing Grammar selection -> shortcut -> Instant -> reviewed
+Accept experience in Writer. Activation still requires a deployment-bound,
+authenticated native connection, visible per-document opt-in/disable and actual
+installed-widget qualification. The core's XJob implementation is an internal
+adapter interface, not an authorization boundary for arbitrary UNO callers.
+
+Current scope is a new unsaved plain-body Writer document, one exact selected
+range, selected source up to4096 cursor steps/4096 Python characters, bounded local
+body snapshot up to16384 Python characters, original operation <=3s and separate
+30s review authority. Hidden text, sections, tables, frames/draw objects, fields,
+bookmarks and tracked changes are refused. The local body snapshot is used for
+an in-memory Undo digest and discarded; only selected before/after strings belong
+to the document's in-memory Undo action. No network or persistent text history.
+These checks do not constitute full eligibility/formatting qualification for user
+or saved documents.
+
+Writer's native setString emits Undo events between deletion and insertion.
+The core suppresses recording of these suboperations while retaining existing
+Undo history, then registers one XUndoAction. Modified-state notifications are
+batched over the actual replacement and the dirty flag restored. User edits from
+postwrite callbacks are retained and reported UNKNOWN_CHANGED, never rolled back.
+Undo/Redo validates a bounded whole-body digest and reconstructs only the exact
+selected range using measured cursor steps. It never restores the whole body.
+The XComponent disposal path releases retained selected strings and document.
+Undo actions retain numeric steps and digests, not long-lived mutable cursors.
+
+Native trial evidence lives at
+D:/dev/grammar-evidence/grammar-writer-activation-20261005.
+R7 passed41 actual GUI Writer checks, including the previous failing undo callback
+and earlier/later native history plus disposal. R8 after module separation had a
+soffice.bin crash (Application1000) and is FAIL. Removing the no-longer-needed
+retained Undo cursor is a lifetime simplification, not a proven crash root cause.
+No product activation or general Writer/DOCX support is claimed by these results.
+
+Build the guarded test OXT with:
+`python scripts/mission/build-libreoffice-writer-probe.py --output <new-path.oxt>`.
+The build uses the actual core and emits per-input and archive SHA256 values.
+The offline restricted-Medium Sandbox launcher must supply the documented
+GRAMMAR_WRITER_FIXTURE guard and disposable profile; do not install in a normal
+LibreOffice profile.
+
+R11 passed46 checks and32 repeated Apply/Undo/Redo cycles. R13/R14 exposed a
+native-channel defect: the exact replacement happened but closing the server
+immediately discarded the unread success reply. R15 keeps the native terminal
+poll/deadline until the peer disconnects; capture/Apply/Undo, wrong-image refusal
+and actual cleanup pass. All52 GUI checks pass; launcher cleanup=true,
+forced=false, both process exit codes0 and remainingProcesses0. This uses the
+production core and native ABI with a synthetic trusted client, not the installed
+Grammar widget. The six bridge boundary tests include the preserved red/green
+terminal-reply regression. Core and application routing are implemented; product
+menu/install/widget qualification remains pending.

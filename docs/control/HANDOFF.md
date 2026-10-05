@@ -1285,3 +1285,29 @@ Same-integrator separate review only. Syntax/OXT byte matching and governance
 checks are distinct from native result; source preview is candidate package-only.
 Latest qualified installed Grammar package remains f15d456; main4e833988
 unchanged, no push/release, mission INCOMPLETE.
+
+
+## Writer activation continuation — 2026-10-05 (core/native checkpoint)
+
+Owner explicitly requests continued work through product Writer activation.
+The bc58b4d prototype's callback corruption is addressed with bounded custom Undo
+recording, post-callback validation, no whole-document rollback, exact range
+Undo/Redo and disposal of volatile selected text. Core moved into
+adapters/libreoffice/pythonpath; guarded test entrypoints remain in mission tools.
+The optional Writer native client pins exact soffice.bin path/hash and trusted
+broker, and the app routes SALFRAME capture through it with no unsafe fallback.
+Default native builds keep Writer disabled. No installed product acceptance yet.
+
+Evidence: D:/dev/grammar-evidence/grammar-writer-activation-20261005.
+R8 soffice crash remains unresolved, not silently reclassified. R9-R11 pass after
+removing an unnecessary retained cursor; causality is unproven. R14 documents
+exact successful mutation with lost native response; early pipe disconnect was
+reproduced by a failing bridge test. R15 preserves terminal reply lifetime and
+passes the actual GUI/native tests,32 repeated Undo/Redo cycles, wrong-image
+refusal, exact reread, natural exit and cleanup. Bridge6 tests, Rust target Apply6,
+typecheck/cargo-check and MSVC W4/WX compile checks pass. These are not installed
+widget acceptance, saved DOCX qualification, physical IME or live Provider tests.
+
+Next: product-only visible opt-in/disable entrypoint, paired installation,
+authenticated installed hotkey/Instant/reviewed Accept, negative cases and review.
+No main adoption, remote push, normal-profile installation or live Provider use.

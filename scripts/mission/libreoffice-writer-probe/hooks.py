@@ -26,8 +26,8 @@ class Hook(unohelper.Base, XUndoManagerListener, XModifyListener):
         try:
             if mode in ('edit', 'postedit', 'modify', 'undoedit'):
                 self.args['Document'].Text.String = self.args['UserText']
-            elif mode == 'delay':
-                time.sleep(2.7)
+            elif mode in ('delay', 'tickdelay'):
+                time.sleep(2.7 if mode == 'delay' else .35)
             else:
                 values = dict(Action='disable' if mode == 'revoke' else 'accept',
                     Token=self.args['Token'], Replacement='NESTED WRONG', Deadline=time.monotonic()+2.5)

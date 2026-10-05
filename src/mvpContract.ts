@@ -62,6 +62,7 @@ const RUNTIME_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   native_capture_unavailable: "This field cannot provide a verified selection. Select text in a supported field and try again.",
   native_apply_unavailable: "Direct replacement is unavailable in this editor.",
   browser_review_unavailable: "Enable this document and field in Grammar's Chromium extension, then select text and try again.",
+  writer_review_unavailable: "Writer direct Apply is unavailable. Enable a qualified Grammar Writer adapter for this document and try again.",
   native_apply_cleanup_pending: "The previous editor connection is still closing. Wait before capturing another selection.",
   native_capture_cancelled: "Capture was cancelled. Select the text again when you are ready.",
   rewrite_result_ready: "A result is already ready for this capture. Copy it, or capture the selection again to run Deep again.",
