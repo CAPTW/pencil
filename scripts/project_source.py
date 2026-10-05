@@ -38,6 +38,7 @@ APPLY_STATUS = "OWNED_RICHEDIT_DIRECT_APPLY_SYNTHETIC_VERIFIED_GENERAL_EDITOR_AC
 APPLY_TASK = "GRAMMAR-DESKTOP-APPLY-EDITOR-QUALIFICATION"
 GLOBAL_APPLY_STATUS = "OWNED_SINGLELINE_EDIT_AND_RICHEDIT_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_INCOMPLETE"
 GLOBAL_APPLY_TASK = "GRAMMAR-GLOBAL-ACCEPT-MULTILINE-AND-APPLICATION-ADAPTERS"
+GLOBAL_BROWSER_TASK = "GRAMMAR-GLOBAL-ACCEPT-DESKTOP-BROWSER-AND-APPLICATION-ADAPTERS"
 EDIT_APPLY_STATUS = "OWNED_QUALIFIED_EDIT_AND_RICHEDIT_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_INCOMPLETE"
 AUDIT_BASE = "9f54ebd4b7586f7a1658245761ccccf8a77500c6"
 
@@ -137,6 +138,11 @@ def state_check(state):
                 "p3a_status": EDIT_APPLY_STATUS,
                 "native_capture_activation": "OWNED_SINGLELINE_AUTOVSCROLL_MULTILINE_EDIT_AND_RICHEDIT_ACCEPT_INSTALLED_SYNTHETIC_VERIFIED",
             })
+            # Authorized internal progression after multiline qualification.
+            # Keep the historical multiline task valid, without admitting
+            # arbitrary task strings or changing any acceptance boundary.
+            if state["exact_next_task"] == GLOBAL_BROWSER_TASK:
+                expected["exact_next_task"] = GLOBAL_BROWSER_TASK
         for key, value in expected.items():
             fail(state.get(key) == value, f"STATE_SEMANTIC_DRIFT:{key}")
         verdicts = {"F-01": "SYNTHETIC_VERIFIED",

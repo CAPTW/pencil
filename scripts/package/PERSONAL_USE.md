@@ -4,7 +4,7 @@
 
 ## 현재 실험 후보의 검증 상태
 
-현재 검증된 제품 커밋은 **84df647**입니다. 격리된 Windows Sandbox에서 표준 한 줄 Edit·명시적 자동 스크롤 다중행 Edit·RichEdit의 검토 후 Accept를 확인했고, 이 패키지의 다중행 Edit 회귀 15개와 Chromium 전역 위젯 흐름 10개가 통과했습니다. 원문 교체 후 내용을 실제로 다시 읽어 확인합니다. 검증은 합성 문서와 정확한 지원 컨트롤에 한정됩니다. Word·Excel·PowerPoint·한컴 앱 adapter는 아직 구현·검증되지 않았습니다. 
+현재 검증된 제품 커밋은 **84df647**입니다. 격리된 Windows Sandbox에서 표준 한 줄 Edit·명시적 자동 스크롤 다중행 Edit·RichEdit의 검토 후 Accept를 확인했고, 이 패키지의 다중행 Edit 회귀 15개와 Chromium 전역 위젯 흐름 10개가 통과했습니다. 원문 교체 후 내용을 실제로 다시 읽어 확인합니다. 검증은 합성 문서와 정확한 지원 컨트롤에 한정됩니다. Word·Excel·PowerPoint·한컴 앱 adapter는 아직 구현·검증되지 않았습니다.
 
 ## 지원 범위
 
