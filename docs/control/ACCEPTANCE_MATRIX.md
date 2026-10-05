@@ -1,4 +1,17 @@
-> Current mixed-surroundings checkpoint (2026-10-06): product OXTa3b231a with
+> Current paragraph-aware checkpoint (2026-10-06): OXT9443ff2 with explicit
+> saved/uniform/mixed/paragraph options and unchanged app/native0fc8624 qualifies
+> one homogeneous selected range within one Standard paragraph of a bounded
+> multi-paragraph body in owned pinned LibreOffice26.2.4.2. Surrounding paragraph
+> text/alignment, supported script weights/RGB and empty-paragraph typing format
+> are preserved. Installed widget8/enclosing5 and native41 including8 saved DOCX
+> Apply/Undo/Redo cycles PASS. No automatic Save; natural cleanup/uninstall complete.
+> Cross-paragraph/cross-format selections, complex structures, normal profiles/IME,
+> actual Office/Hancom and live Provider remain unqualified/NOT_RUN. Mission
+> INCOMPLETE. Next: define and implement cross-format/cross-paragraph replacement
+> semantics and range Undo. Prior paragraphs below describe historical artifacts;
+> current F06 scope is authoritative. Evidence: grammar-writer-paragraphs-20261006.
+
+> Prior mixed-surroundings checkpoint (2026-10-06): product OXTa3b231a with
 > explicit saved/uniform/mixed options plus unchanged app/native0fc8624 qualifies
 > a homogeneous selected range within one Standard body paragraph with different
 > supported bold/RGB formats outside the selection. Pinned LibreOffice26.2.4.2,
