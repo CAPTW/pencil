@@ -111,7 +111,8 @@ public:
             start != start_ || length != end_ - start_) return S_FALSE;
         if (grant_->revision.load() != revision_ || !grant_->field_eligible ||
             std::chrono::steady_clock::now() >= grant_->deadline ||
-            !grant_->verify_binding(context_.Get(), cookie)) return S_FALSE;
+            !grant_->verify_binding(context_.Get(), cookie) ||
+            std::chrono::steady_clock::now() >= grant_->deadline) return S_FALSE;
         diagnostic_stage = 7;
         // Everything above runs inside the same TSF write session as SetText.
         ++mutation_calls;
