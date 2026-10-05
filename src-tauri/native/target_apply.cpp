@@ -3,6 +3,7 @@
 #include "tsf_dispatcher.hpp"
 #include "apply_peer.hpp"
 #include "target_apply_protocol.hpp"
+#include "target_apply_focus.hpp"
 #include <mutex>
 #include <condition_variable>
 #ifndef GRAMMAR_TRUSTED_APP_SHA256
@@ -84,7 +85,8 @@ struct TargetSta {
                 SUCCEEDED(context->GetActiveView(&view)) && view && SUCCEEDED(view->GetWnd(&actual)) && actual == shared->field;
             pending = bound && dispatcher->begin_capture(context.Get(), shared->field, true, lease);
         } else if (operation == ChannelCommand::apply) {
-            pending = dispatcher->begin_apply(command.id, std::move(command.text));
+            pending = dispatcher->can_apply(command.id) && activate_apply_target(shared->field, shared->broker)
+                && dispatcher->begin_apply(command.id, std::move(command.text));
         } else if (operation == ChannelCommand::cancel) {
             dispatcher->cancel_capture(command.id); reply(DispatchStatus::rejected); return;
         } else { dispatcher->cancel(); reply(DispatchStatus::rejected); return; }

@@ -1,5 +1,5 @@
 #pragma once
-// Experimental target-thread capture. No registration or cross-process bridge.
+// Target-thread capture used by the authenticated desktop target service.
 #include "tsf_apply.hpp"
 #include <inputscope.h>
 #include <richedit.h>
@@ -141,6 +141,14 @@ class TsfDocumentBinding final {
             message == EM_SETCHARFORMAT || message == WM_STYLECHANGING || message == WM_NCDESTROY) {
             ++state->eligibility_transitions;
             state->invalidate();
+        }
+        if (message == WM_KILLFOCUS && wparam) {
+            DWORD nextProcess=0;
+            GetWindowThreadProcessId(reinterpret_cast<HWND>(wparam), &nextProcess);
+            // Moving to another field/control in this document process revokes
+            // the capture, even if its text/selection later look unchanged.
+            // Losing activation to the separate review widget is not a write.
+            if (nextProcess==GetCurrentProcessId()) state->invalidate();
         }
         if (message == WM_NCDESTROY) {
             state->enabled = false;

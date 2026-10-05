@@ -1,5 +1,5 @@
 #pragma once
-// Target-thread component. Not yet registered or reachable from the desktop UI.
+// Target-thread write transaction used by the authenticated desktop service.
 // An adapter must bind the real context, revision sink, field eligibility and
 // explicit user action before issuing a single-use grant. No cross-process
 // verify/replace messages, clipboard, focus changes, retries or rollback.

@@ -83,8 +83,11 @@ public:
         return true; // Full source remains inside the target process.
     }
     uint64_t capture_id() const { return consumed_ ? 0 : capture_id_; }
+    bool can_apply(uint64_t id) {
+        return on_thread() && !pending() && id != 0 && id == capture_id_ && capture_status() == DispatchStatus::captured;
+    }
     bool begin_apply(uint64_t id, std::wstring replacement) {
-        if (!on_thread() || pending() || id != capture_id_ || capture_status() != DispatchStatus::captured) return false;
+        if (!can_apply(id)) return false;
         auto grant = capture_->grant;
         auto verify = grant->verify_binding;
         std::weak_ptr<ApplyConnectionLease> weak = lease_;

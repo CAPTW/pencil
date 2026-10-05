@@ -7,6 +7,8 @@
 using namespace grammar;
 using Microsoft::WRL::ComPtr;
 static LRESULT CALLBACK target_proc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp) {
+    // Synthetic fixture setup only: let its owning broker show the review UI.
+    if (message == WM_APP+42) return AllowSetForegroundWindow(static_cast<DWORD>(wp));
     if (message == WM_DESTROY) { PostQuitMessage(0); return 0; }
     return DefWindowProcW(hwnd,message,wp,lp);
 }
@@ -59,7 +61,7 @@ int wmain(int argc,wchar_t** argv) {
     auto close=reinterpret_cast<Close>(GetProcAddress(module,"GrammarTargetClose"));
     if (!create||!capture||!apply||!cancel||!close) return 5;
     int failures=0;
-    for (int scenario=0;scenario<13;++scenario) {
+    for (int scenario=0;scenario<14;++scenario) {
         auto command=L"\""+std::wstring(executable)+L"\" --target "+std::to_wstring(scenario);
         STARTUPINFOW startup{}; startup.cb=sizeof(startup); startup.dwFlags=STARTF_USESHOWWINDOW; startup.wShowWindow=SW_HIDE;
         PROCESS_INFORMATION info{};
@@ -91,6 +93,17 @@ int wmain(int argc,wchar_t** argv) {
             auto result=capture(cookie,selected.data(),static_cast<uint32_t>(selected.size()),&units);
             selected.resize(units); captured=result==0&&selected==L"world";
             pass=pass&&(scenario==11?result==4:captured);
+            HWND review=nullptr;
+            if (scenario==13 && captured) {
+                pass=send(search.window,WM_APP+42,GetCurrentProcessId(),0)&&pass;
+                review=CreateWindowW(L"STATIC",L"Owned review window",WS_OVERLAPPEDWINDOW|WS_VISIBLE,
+                    100,100,400,200,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+                const bool activated=review && SetForegroundWindow(review);
+                const bool foreground=review && GetForegroundWindow()==review;
+                printf("review case=%d activation_return=%d actual_foreground=%d prior_pass=%d\n",scenario,activated,foreground,pass);
+                pass=pass&&foreground;
+                Sleep(100);
+            }
             if (scenario!=11 && captured) {
                 if (scenario==9) pass=send(field,WM_SETTEXT,0,reinterpret_cast<LPARAM>(L"application edit"))&&pass;
                 if (scenario==10) pass=pass&&cancel(cookie)==0;
@@ -98,9 +111,10 @@ int wmain(int argc,wchar_t** argv) {
                 pass=pass&&apply(cookie+100,L"Grammar",7,&ignored)==1;
                 result=apply(cookie,L"Grammar",7,&outcome);
                 applied=result==0&&outcome==3;
-                pass=pass&&(scenario==8||scenario==12?applied:scenario==9?(result==0&&outcome==0):(result==4&&outcome==4));
+                pass=pass&&(scenario==8||scenario==12||scenario==13?applied:scenario==9?(result==0&&outcome==0):(result==4&&outcome==4));
                 pass=pass&&apply(cookie,L"Grammar",7,&ignored)==0&&ignored==0;
             }
+            if(review) DestroyWindow(review);
             closed=close(cookie,5000)==0;
             pass=pass&&closed&&close(cookie,0)==1;
             // A closed slot must be reusable, including cancellation before I/O.
@@ -114,12 +128,21 @@ int wmain(int argc,wchar_t** argv) {
             bool denied=scenario==3||scenario==4;
             pass=pass&&response&&(denied?(reply.status==0&&selected.empty()):captured);
             if (!denied && scenario!=5 && captured) {
+                HWND review=nullptr;
+                if (scenario==7) {
+                    pass=send(search.window,WM_APP+42,GetCurrentProcessId(),0)&&pass;
+                    review=CreateWindowW(L"STATIC",L"Owned wrong-token review",WS_OVERLAPPEDWINDOW|WS_VISIBLE,
+                        100,100,400,200,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+                    if(review) SetForegroundWindow(review);
+                    pass=pass&&review&&GetForegroundWindow()==review;
+                }
                 if (scenario==1) pass=send(field,WM_SETTEXT,0,reinterpret_cast<LPARAM>(L"application edit"))&&pass;
                 if (scenario==2) pass=send(field,EM_SETSEL,0,5)&&pass;
                 response=client.request(ChannelCommand::apply,scenario==7?999:id,L"Grammar",reply,selected);
                 outcome=reply.status; applied=response&&reply.status==3;
                 bool normal=scenario==0||scenario==6;
                 pass=pass&&response&&(normal?applied:reply.status==0);
+                if(review) { pass=pass&&GetForegroundWindow()==review; DestroyWindow(review); }
                 if (scenario==6) {
                     bool replay=client.request(ChannelCommand::apply,id,L"Grammar",reply,selected);
                     pass=pass&&replay&&reply.status==0;
@@ -129,7 +152,7 @@ int wmain(int argc,wchar_t** argv) {
         }
         WCHAR actual[128]{};
         bool reread=send(field,WM_GETTEXT,ARRAYSIZE(actual),reinterpret_cast<LPARAM>(actual));
-        auto expected=scenario==0||scenario==6||scenario==8||scenario==12?L"hello Grammar":scenario==1||scenario==9?L"application edit":L"hello world";
+        auto expected=scenario==0||scenario==6||scenario==8||scenario==12||scenario==13?L"hello Grammar":scenario==1||scenario==9?L"application edit":L"hello world";
         pass=pass&&reread&&std::wstring(actual)==expected;
         if (search.window) PostMessageW(search.window,WM_CLOSE,0,0);
         bool exited=WaitForSingleObject(process.get(),5000)==WAIT_OBJECT_0;
