@@ -1240,3 +1240,48 @@ Pinned upstream source inspection identifies per-call SolarMutex in setString an
 Separate guest-affinity4 PASS: own temporary org.grammar.fixture.Affinity component loads in LibreOffice rather than the external Python driver; AsyncCallback runs in actual Writer window PID8096/thread8100, exactly matches native GetWindowThreadProcessId, reads the synthetic selected string with document unchanged, rejects replay. Natural Python/Office exit0, owned profile/app removed, all five guests stopped. This component has no mutation method. Random local UNO pipe is fixture plumbing, not qualified authenticated product IPC. Source/package hashes and exact guest configs are in external evidence; no general user-profile deployment.
 
 Next: reuse this proven target-thread execution boundary for a Writer review transaction with original operation deadline, exact document/controller/range/source/revision, opt-in, privacy refusal and authenticated transport. Test edits queued before Accept, equal text at another range, source changes, reentrant events, deadline expiry and Undo against actual Writer. Affinity alone does not prove continuous lock ownership/non-reentrancy/atomic mutation. Impress Undo remains unresolved; Microsoft Office/Hancom/HWP/HWPX, physical IME and complete Grammar shortcut/Instant/Accept in LibreOffice remain NOT_RUN. Qualified installed Grammar stays f15d456; mission INCOMPLETE, no main/push/release.
+
+## Writer target-side transaction experiment — 2026-10-05
+
+Entry a1bcae7, same mission worktree. Added synthetic-only in-process UNO Writer
+review component/client and adversarial in-process hooks. New unsaved plain-body
+Writer only: actual PID/UI-thread affinity, selected range/source/revisions,
+one-shot token, original <=3s operation and separate30s review/cache expiry,
+explicit enable/disable, exact rereads and native Undo. No installed Grammar UI
+integration, authenticated product IPC, general privacy qualification, saved DOCX,
+Calc/Impress/Hancom support or product activation is implied.
+
+Evidence D:/dev/grammar-evidence/grammar-libreoffice-writer-20261005 preserves
+all seven runs. Basic14 and external-listener18 checks passed; later external
+listener run lost its URP bridge (FAIL, not acceptance). Target-internal red-local
+reproduced two defects: pending disable returned BUSY and outer APPLIED with a
+write; modification callback user edit was followed by an incorrect appended
+replacement yet APPLIED. Immediate epoch revocation plus UI-thread detachment
+and scoped modified-state notification batching fixed those specific cases.
+Green27 PASS includes exact Undo/dirty flag restoration, permission revocation,
+source/selection changes, expired reads, protected section, real30s cache expiry
+and document disposal. Budgets/assertions unchanged. Launcher now waits its
+existing15s natural-exit budget even after a failed Python test, rather than
+prematurely killing the Office wrapper.
+
+Final expanded guest-undo remains FAIL:27 checks PASS, undo-callback-user-edit-
+preserved FAIL. Actual target undoActionAdded edits the document during setString;
+final body is USER INSIDE UNDO CALLBACK plus Grammar replacement, reported
+APPLIED. Thus batching modification notifications is insufficient for atomic
+replacement. Do not ship this prototype. The failing assertion remains strict.
+Both latest guests exited Office0 without force, cleanuptrue/processes0, and were
+stopped. Earlier red-local forced cleanup failure is preserved, not relabeled.
+
+Pinned LibreOffice26.2.4.2 source shows SwXTextCursor::DeleteAndInsert performs
+DeleteAndJoin then insertion. insertString(absorb=true) calls the same operation,
+so changing that API name is not a repair. XUndoManager.lock disables Undo
+recording; it was not used to erase required Undo behavior. See external upstream
+source snapshots and REVIEW.md. Next: investigate a native single replacement
+operation or safely deferred Undo notifications with preserved native Undo;
+re-run the same target-internal failure before any product IPC/UI connection.
+Full-document rollback, generic paste and weakened assertions remain excluded.
+
+Same-integrator separate review only. Syntax/OXT byte matching and governance
+checks are distinct from native result; source preview is candidate package-only.
+Latest qualified installed Grammar package remains f15d456; main4e833988
+unchanged, no push/release, mission INCOMPLETE.

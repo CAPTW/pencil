@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest:manifest xmlns:manifest="http://openoffice.org/2001/manifest">
+ <manifest:file-entry manifest:full-path="writer.py" manifest:media-type="application/vnd.sun.star.uno-component;type=Python"/>
+ <manifest:file-entry manifest:full-path="hooks.py" manifest:media-type="application/vnd.sun.star.uno-component;type=Python"/>
+</manifest:manifest>
