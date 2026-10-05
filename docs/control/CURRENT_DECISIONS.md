@@ -1,3 +1,12 @@
+> Latest saved Writer checkpoint (2026-10-05): F06 now includes local saved/reopened
+> default-style plain DOCX with pinned26.2.4.2, app/native0fc8624 and product
+> OXT5a339b8 built with --enable-saved-docx. Actual installed widget6 plus core73
+> and32 cycles PASS; exact Apply/Undo, save revocation, readonly/user-edit/Disable
+> boundaries, no automatic disk Save and complete cleanup. Older unsaved-only
+> statements below are historical. Complex/rich formatting, other applications,
+> physical IME/general profiles/live Providers remain unqualified or NOT_RUN.
+> Mission INCOMPLETE. Evidence: grammar-writer-saved-apply-20261005.
+
 > Source semantic correction (2026-10-05): F-06 is an overall scoped summary.
 > Its current verdict explicitly includes qualified Edit/RichEdit, Chromium and
 > bounded Writer synthetic Accept. `qualification_scope` states each boundary;

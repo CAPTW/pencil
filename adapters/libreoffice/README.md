@@ -138,3 +138,35 @@ Save/SaveAs/SaveTo/load/unload/mode events revoke the one-review epoch, includin
 A->B->A changes. Disable detaches event observation. Supported formatting has not
 been broadened. Actual saved component and installed-widget qualification are
 recorded separately in HANDOFF; no generic DOCX or rich-document claim.
+
+
+## Saved plain DOCX installed qualification — 2026-10-05
+Product extension source5a339b8 with explicit --enable-saved-docx is now qualified
+in the owned offline pinned26.2.4.2 Sandbox with installed app/native0fc8624.
+These are two separately bound artifacts, not a claim that the old app commit
+contains the new Python adapter. OXT SHA256:
+997ed14943ad2e8d6cce0a1dc9e583dabcbd359af8c5433c5156725f69c3551b.
+The paired DLL hash remains61c50bb11ae3243efe29b2cadd74bfbc3c4e944d8dfdb2e4767167002e471376.
+
+Core R5:73 checks +32 Apply/Undo/Redo cycles PASS, actual saved/reopened DOCX,
+Save and SaveAs A-B-A revocation, Save inside Undo entry, user edits, readonly
+refusal and event detach. R1 foreground failure and R3/R4 termination reply
+FAIL preserved. R5 does not equate a disconnected terminate response to cleanup:
+launcher independently requires actual Office exit0/processes0/profile removal.
+
+Installed product guest-product-r1:6 widget checks PASS plus actual DOCX reopen
+and unchanged disk hash (no automatic file Save). Real hotkey/Instant/edited
+Accept/exact reread/Undo, source edit preservation, Disable and natural app exit.
+Office/Python0, cleanuptrue/forcedfalse/processes0; uninstall complete. Guest
+stopped. Default OXT builds remain saved-disabled; qualified candidate uses the
+explicit packaged option and visible per-document one-review opt-in. No automatic
+Save or new rich formatting support. Current F06 scope includes this bounded saved
+case while preserving the previous unsaved-only scope as historical export data.
+
+Evidence: D:/dev/grammar-evidence/grammar-writer-saved-apply-20261005.
+Package3/bridge6 checks and governance PASS; no Rust changes, no full Rust rebuild
+claimed. Same-integrator review only. Installed original app/native hashes checked
+by the widget fixture; OXT receipt binds every Python/config input. Next: preserve
+rich formatting through reviewed mutation and Undo, and qualify additional DOCX
+structures before expanding admission. Actual Office/Hancom, physical IME, normal
+profiles and live Providers remain NOT_RUN. Mission INCOMPLETE; no main/push.
