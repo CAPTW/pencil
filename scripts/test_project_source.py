@@ -51,13 +51,20 @@ def run(repo):
     state = ps.read_json(repo / "control/state.json")
     inputs = ps.source_inputs(repo)
     record("current_state_exact_semantics", lambda: ps.state_check(state))
-    if state["p3a_status"] == ps.APPLY_STATUS:
+    if state["p3a_status"] in (ps.APPLY_STATUS, ps.GLOBAL_APPLY_STATUS):
         changed = copy.deepcopy(state)
         next(d for d in changed["known_defects"] if d["id"] == "F-06")["verdict"] = "CONTAINED_COPY_ONLY_NATIVE_NOT_QUALIFIED"
         record("owned_apply_mixed_qualification_refused", lambda: rejected(lambda: ps.state_check(changed), ["VERDICT_DRIFT:F-06"]))
         changed_scope = copy.deepcopy(state)
         changed_scope["native_capture_activation"] = "ALL_WINDOWS_EDITORS_QUALIFIED"
         record("owned_apply_general_editor_overclaim_refused", lambda: rejected(lambda: ps.state_check(changed_scope), ["STATE_SEMANTIC_DRIFT:native_capture_activation"]))
+    if state["p3a_status"] == ps.GLOBAL_APPLY_STATUS:
+        historical_apply = json.loads(ps.git(repo, "show", "07541cb2aac7ee85a4749decfc7e0d55cd8591b5:control/state.json"))
+        record("historical_richedit_qualification_preserved", lambda: ps.state_check(historical_apply))
+        for verdict in ("ALL_EDITORS_QUALIFIED", "OWNED_RICHEDIT_TARGET_SIDE_APPLY_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED"):
+            mixed = copy.deepcopy(state)
+            next(d for d in mixed["known_defects"] if d["id"] == "F-06")["verdict"] = verdict
+            record("global_apply_rejects_" + verdict, lambda mixed=mixed: rejected(lambda: ps.state_check(mixed), ["VERDICT_DRIFT:F-06"]))
     if ps.mission_state(state):
         for key, bad, token in [
             ("mission_id", "UNAUTHORIZED-MISSION", "MISSION_NOT_AUTHORIZED"),

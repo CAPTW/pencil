@@ -43,8 +43,8 @@ try{
  const visible=()=>page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('plugin:window|is_visible',{label:'main'}));
  const hide=async()=>{if(await visible()){await page.getByRole('button',{name:'Close',exact:true}).click();await until('widget hidden',async()=>!(await visible()));}};
  const draft=page.getByLabel('Editable rewrite result text',{exact:true});const apply=page.getByTestId('apply-result');const status=page.locator('.status-pill');
- async function capture(){
-  await hide();await command('PASSWORD 0');await set('please seperate this.');await command('SELECT 0 21');
+ async function capture(prefix='',suffix=''){
+  await hide();await command('PASSWORD 0');await set(prefix+'please seperate this.'+suffix);await command(`SELECT ${prefix.length} ${prefix.length+21}`);
   await until('owned target foreground',async()=>await command('FOCUS')==='FOCUS True');
   const count=await page.evaluate(()=>window.__captures.length);
   assert.equal(await command('HOTKEY'),'SENT 6');
@@ -59,6 +59,9 @@ try{
  assert.equal(await text(),'Please separate these items.');pass('actual widget edited Instant Apply reread matches');
  const stale=await page.evaluate(token=>window.__TAURI_INTERNALS__.invoke('apply_replacement',{...token,replacement:'must not replace',mode:'grammar',targetLanguage:null,autoReferenceLanguage:null,instantDraft:null,directApply:true}),{sessionId:first.sessionId,generation:first.generation});
  assert.notEqual(stale.status,'applied');assert.equal(await text(),'Please separate these items.');pass('consumed token cannot replay mutation');
+ await capture('앞부분 😀 | ',' | 뒤쪽');await draft.fill('검토한 교체 문장 🙂');await apply.click();
+ await until('Unicode partial Accept',async()=>await status.textContent()==='Applied to the captured field');
+ assert.equal(await text(),'앞부분 😀 | 검토한 교체 문장 🙂 | 뒤쪽');pass('reviewed Korean emoji replacement preserves exact unselected prefix and suffix');
  await capture();await set('application changed its own text');await apply.click();
  await until('source rejection',async()=>await status.textContent()==='Apply unavailable - Copy is available');
  assert.equal(await text(),'application changed its own text');pass('application source change rejected without restore');
