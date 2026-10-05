@@ -99,8 +99,8 @@ struct TargetSta {
 void finish(HWND window, TargetSta* state) {
     auto shared = state->shared;
     if (state->polling) return;
-    if (state->dispatcher && state->dispatcher->executing()) { state->dispatcher->cancel(); return; }
-    if (state->dispatcher) { state->dispatcher->cancel(); state->dispatcher.reset(); }
+    if (state->dispatcher && !state->dispatcher->close()) return;
+    if (state->dispatcher) state->dispatcher.reset();
     state->callbacks.reset();
     if (state->manager && state->client != TF_CLIENTID_NULL) {
         state->manager->Deactivate(); state->client = TF_CLIENTID_NULL; state->manager.Reset();
