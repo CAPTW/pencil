@@ -12,6 +12,7 @@
 #include <sddl.h>
 #include <atomic>
 #include <memory>
+#include <algorithm>
 
 namespace grammar {
 class ChannelHandle {
@@ -32,15 +33,16 @@ public:
 enum class ChannelCommand : uint32_t { capture = 1, apply = 2, cancel = 3, disable = 4 };
 using ChannelCapability = std::array<unsigned char, 32>;
 struct ChannelHeader {
-    uint32_t version = 2;
+    uint32_t version = 3;
     ChannelCommand command = ChannelCommand::capture;
     uint64_t sequence = 1;
     uint64_t capture_id = 0; // Target-issued ID, never a caller-supplied HWND/range.
     uint32_t payload_bytes = 0;
     uint32_t reserved = 0;
     ChannelCapability capability{};
+    uint64_t deadline_ticks = 0; // Absolute GetTickCount64 expiry, same local machine.
 };
-static_assert(sizeof(ChannelHeader) == 64, "Windows little-endian wire header must be exact");
+static_assert(sizeof(ChannelHeader) == 72, "Windows little-endian wire header must be exact");
 static_assert(sizeof(wchar_t) == 2, "Wire text is UTF-16LE");
 inline constexpr DWORD channel_max_payload = 65534 * sizeof(wchar_t);
 
@@ -188,7 +190,9 @@ public:
             header.payload_bytes == 0;
         const bool reference = header.command == ChannelCommand::apply || header.command == ChannelCommand::cancel ?
             header.capture_id != 0 : header.capture_id == 0;
-        if (!peer_matches(serverPipe) || difference || header.version != 2 || header.reserved || !reference ||
+        const auto now=GetTickCount64();
+        const bool timely=header.deadline_ticks>now && header.deadline_ticks-now<=6500;
+        if (!timely || !peer_matches(serverPipe) || difference || header.version != 3 || header.reserved || !reference ||
             !known || !body || header.sequence != next_ || next_ == (std::numeric_limits<uint64_t>::max)()) {
             revoke(); return false;
         }
@@ -255,6 +259,7 @@ inline bool receive_apply_request(HANDLE pipe, ApplyChannelAdmission& admission,
     if (!admission.peer_matches(pipe) || !channel_read_exact(pipe, &request.header, sizeof(request.header), deadline) ||
         !admission.admit(pipe, request.header)) { admission.revoke(); request.clear(); return false; }
     SecureZeroMemory(request.header.capability.data(), request.header.capability.size());
+    deadline=(std::min)(deadline,request.header.deadline_ticks);
     request.body.resize(request.header.payload_bytes);
     if (!channel_read_exact(pipe, request.body.data(), request.header.payload_bytes, deadline)) {
         admission.revoke(); request.clear(); return false;

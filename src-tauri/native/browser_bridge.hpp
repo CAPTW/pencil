@@ -68,6 +68,7 @@ public:
             request.header.payload_bytes>browser_bridge_units*sizeof(wchar_t)) {
             close();request.clear();return BrowserPoll::closed;
         }
+        pending_deadline_=(std::min)(pending_deadline_,request.header.deadline_ticks);
         const auto kind=request.header.command;
         if(kind==ChannelCommand::capture && phase_==Phase::fresh)phase_=Phase::capturing;
         else if(kind==ChannelCommand::apply && phase_==Phase::ready && request.header.capture_id==capture_) {
@@ -150,6 +151,7 @@ public:
         header.capability=capability_;header.payload_bytes=static_cast<uint32_t>(replacement.size()*sizeof(wchar_t));
         if(command==ChannelCommand::apply)capture_=0;
         const auto deadline=(std::min)((std::min)(lifetime_,GetTickCount64()+3000),outerDeadline?outerDeadline:UINT64_MAX);
+        header.deadline_ticks=deadline;
         TargetReply received;
         bool ok=target_write(pipe_.get(),&header,sizeof(header),deadline,&cancelled_) &&
             target_write(pipe_.get(),replacement.data(),header.payload_bytes,deadline,&cancelled_) &&
