@@ -34,9 +34,9 @@ public:
     }
     bool begin_capture(ITfContext* context,HWND field,HWND root,
         std::shared_ptr<WordNativeWindowPort> port,bool optIn,
-        std::shared_ptr<ApplyConnectionLease> lease,std::chrono::steady_clock::time_point deadline) {
+        std::shared_ptr<ApplyConnectionLease> lease,std::chrono::steady_clock::time_point deadline,ULONGLONG deadlineTicks=MAXULONGLONG) {
         if(!owner() || entering_ || actor_.pending() || !lease || !lease->alive() || !optIn ||
-            std::chrono::steady_clock::now()>=deadline)return false;
+            GetTickCount64()>=deadlineTicks || std::chrono::steady_clock::now()>=deadline)return false;
         // An unresolved event subscription retains the old lease and actor;
         // callers cannot start another channel while that ownership is live.
         if(!close())return false;
@@ -45,7 +45,7 @@ public:
         std::weak_ptr<ApplyConnectionLease> weak=lease_;
         const bool admitted=actor_.begin_capture(context,field,root,std::move(port),true,[weak]{
             auto connection=weak.lock();return connection && connection->alive();
-        },deadline);
+        },deadline,deadlineTicks);
         if(retiring_){actor_.cancel();return false;}
         return admitted;
     }
@@ -58,9 +58,9 @@ public:
         text.clear();if(!owner() || entering_ || retiring_)return false;
         Entry entry(entering_);return actor_.selected_text(id,text);
     }
-    bool begin_accept(uint64_t id,std::wstring replacement,std::chrono::steady_clock::time_point deadline) {
+    bool begin_accept(uint64_t id,std::wstring replacement,std::chrono::steady_clock::time_point deadline,ULONGLONG deadlineTicks=MAXULONGLONG) {
         if(!owner() || entering_ || retiring_ || !lease_ || !lease_->alive())return false;
-        Entry entry(entering_);return actor_.begin_accept(id,std::move(replacement),deadline);
+        Entry entry(entering_);return actor_.begin_accept(id,std::move(replacement),deadline,deadlineTicks);
     }
     bool can_apply(uint64_t id) {
         return owner() && !entering_ && !retiring_ && !actor_.pending() && id &&

@@ -74,9 +74,9 @@ public:
         return true;
     }
     bool begin_capture(ITfContext* context, HWND field, HWND root, std::shared_ptr<WordNativeWindowPort> port,
-        bool explicitOptIn, std::function<bool()> authority, std::chrono::steady_clock::time_point deadline) {
+        bool explicitOptIn, std::function<bool()> authority, std::chrono::steady_clock::time_point deadline, ULONGLONG deadlineTicks=MAXULONGLONG) {
         if (!owner() || !lifetime_ || !context || !port || !explicitOptIn || !authority ||
-            std::chrono::steady_clock::now() >= deadline || next_ == (std::numeric_limits<uint64_t>::max)() || pending()) return false;
+            GetTickCount64() >= deadlineTicks || std::chrono::steady_clock::now() >= deadline || next_ == (std::numeric_limits<uint64_t>::max)() || pending()) return false;
         if (!close()) return false;
         Transition transition(transitioning_);
         const auto epoch=revoked_;
@@ -87,7 +87,7 @@ public:
         const auto remaining=std::chrono::duration_cast<std::chrono::milliseconds>(deadline-std::chrono::steady_clock::now()).count();
         if(remaining<=0)return false;
         auto& state=*binding_->state;
-        WordObservationGuard observation{state.thread,GetTickCount64()+static_cast<ULONGLONG>((std::min)(remaining,30000LL)),state.revision.load(),state.revision,state.enabled};
+        WordObservationGuard observation{state.thread,(std::min)(deadlineTicks,GetTickCount64()+static_cast<ULONGLONG>((std::min)(remaining,30000LL))),state.revision.load(),state.revision,state.enabled};
         auto target=WordTargetIdentity::capture(state.port,field,root,observation);
         if(!target)return false;
         events_=std::make_shared<WordEventBinding>();
@@ -95,7 +95,7 @@ public:
         if(epoch!=revoked_){binding_->disable();return false;}
         std::weak_ptr<WordEventBinding> weakEvents=events_;
         state.application_matches=[weakEvents](IDispatch* app){auto events=weakEvents.lock();return events && events->matches(app);};
-        capture_.Attach(new WordEditSession(binding_->state, lifetime_, deadline));
+        capture_.Attach(new WordEditSession(binding_->state, lifetime_, deadline, deadlineTicks));
         id_ = next_++; consumed_ = false;
         if (!request(capture_.Get(), TF_ES_READ)) { cancel(); capture_.Reset(); return false; }
         return true;
@@ -113,14 +113,14 @@ public:
         if (observe_capture() != WordDispatchStatus::captured || id != id_) return false;
         text = capture_->captured->source(); return true;
     }
-    bool begin_accept(uint64_t id, std::wstring reviewed, std::chrono::steady_clock::time_point deadline) {
+    bool begin_accept(uint64_t id, std::wstring reviewed, std::chrono::steady_clock::time_point deadline, ULONGLONG deadlineTicks=MAXULONGLONG) {
         if (!owner() || pending() || !id || id != id_ ||
-            std::chrono::steady_clock::now() >= deadline) return false;
+            GetTickCount64() >= deadlineTicks || std::chrono::steady_clock::now() >= deadline) return false;
         Transition transition(transitioning_);
         const auto epoch=revoked_;
         if(observe_capture()!=WordDispatchStatus::captured || epoch!=revoked_ || id!=id_)return false;
         consumed_ = true;
-        apply_.Attach(new WordEditSession(capture_->captured, std::move(reviewed), lifetime_, deadline));
+        apply_.Attach(new WordEditSession(capture_->captured, std::move(reviewed), lifetime_, deadline, deadlineTicks));
         if (!request(apply_.Get(), TF_ES_READWRITE)) { cancel(); apply_.Reset(); return false; }
         return true;
     }

@@ -19,12 +19,12 @@ public:
     unsigned text_reads = 0, mutations = 0;
     std::shared_ptr<WordCorrelationLease> captured;
     WordEditSession(const std::shared_ptr<WordTsfState>& state, std::shared_ptr<void> lifetime,
-        std::chrono::steady_clock::time_point deadline)
-        : callback_lifetime_(std::move(lifetime)), state_(state), applying_(false), gate_(std::make_shared<WordRequestGate>(deadline)) {}
+        std::chrono::steady_clock::time_point deadline, ULONGLONG deadlineTicks=MAXULONGLONG)
+        : callback_lifetime_(std::move(lifetime)), state_(state), applying_(false), gate_(std::make_shared<WordRequestGate>(deadline, deadlineTicks)) {}
     WordEditSession(std::shared_ptr<WordCorrelationLease> input, std::wstring replacement,
-        std::shared_ptr<void> lifetime, std::chrono::steady_clock::time_point deadline)
+        std::shared_ptr<void> lifetime, std::chrono::steady_clock::time_point deadline, ULONGLONG deadlineTicks=MAXULONGLONG)
         : callback_lifetime_(std::move(lifetime)), input_(std::move(input)), applying_(true),
-          replacement_(std::move(replacement)), gate_(std::make_shared<WordRequestGate>(deadline)) {}
+          replacement_(std::move(replacement)), gate_(std::make_shared<WordRequestGate>(deadline, deadlineTicks)) {}
     void cancel() {
         gate_->valid = false;
         if (GetCurrentThreadId() == thread_) {

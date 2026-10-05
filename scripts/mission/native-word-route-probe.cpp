@@ -41,7 +41,7 @@ int wmain() {
         SendMessageW(edit,EM_SETEDITSTYLE,SES_USECTF,SES_USECTF);SetForegroundWindow(top);SetFocus(edit);pump(300);
         ComPtr<ITfDocumentMgr> document;ComPtr<ITfContext> context;
         if(FAILED(manager->GetFocus(&document)) || !document || FAILED(document->GetTop(&context)) || !context)return 6;
-        for(unsigned scenario=0;scenario<15;++scenario) {
+        for(unsigned scenario=0;scenario<21;++scenario) {
             std::wstring expected=L"hello world suffix",selected;
             SetWindowTextW(edit,expected.c_str());SendMessageW(edit,EM_SETSEL,6,11);pump(20);
             const auto name=L"\\\\.\\pipe\\Grammar.WordConnection."+std::to_wstring(GetCurrentProcessId())+L"."+std::to_wstring(scenario);
@@ -56,17 +56,21 @@ int wmain() {
             f.range.number(L"Start",6);f.range.number(L"End",11);f.range.allowText=true;f.range.text=L"world";f.range.values[L"Text"]={VT_BSTR,0,nullptr};
             auto port=std::make_shared<Port>(&f,edit,top);auto token=std::make_shared<int>(0);std::weak_ptr<void> weakToken=token;
             auto actor=std::make_unique<DesktopTargetDispatcher>(client,top,port,token);token.reset();
-            auto begin=[&]{return actor->begin_capture(context.Get(),edit,true,lease,deadline());};
+            const auto captureTicks=GetTickCount64()+((scenario==16 || scenario==20)?1000:3000);
+            auto begin=[&]{return actor->begin_capture(context.Get(),edit,true,lease,deadline(),captureTicks);};
             bool ok=true;
-            if(scenario==7)ok=!actor->begin_capture(context.Get(),edit,true,{},deadline());
+            if(scenario==15)ok=!actor->begin_capture(context.Get(),edit,true,lease,deadline(),GetTickCount64()) && !actor->executing();
+            else if(scenario==7)ok=!actor->begin_capture(context.Get(),edit,true,{},deadline());
             else if(scenario==8)ok=!actor->begin_capture(context.Get(),edit,false,lease,deadline());
             else if(scenario==9)ok=!actor->begin_capture(context.Get(),edit,true,lease,std::chrono::steady_clock::now());
             else if(scenario==13){bool refused=false;events.onFind=[&]{refused=!actor->close();};ok=!begin() && refused;events.onFind={};}
             else {
                 ok=begin();auto id=actor->capture_id();ok=ok && id && !begin();
                 if(scenario==1)lease->revoke();
+                if(scenario==16){ok=ok && actor->executing();while(GetTickCount64()<=captureTicks)Sleep(2);}
                 drain(*actor);
-                if(scenario==1)ok=ok && !actor->selected_text(id,selected) && !actor->begin_apply(id,L"changed",deadline());
+                if(scenario==16)ok=ok && f.range.textReads==0;
+                if(scenario==1 || scenario==16)ok=ok && !actor->selected_text(id,selected) && !actor->begin_apply(id,L"changed",deadline());
                 else {
                     const bool read=actor->selected_text(id,selected),can=actor->can_apply(id);
                     const bool wrong=actor->activate(id,top,GetCurrentProcessId()),active=actor->activate(id,edit,GetCurrentProcessId());
@@ -76,7 +80,8 @@ int wmain() {
                     if(scenario==2)lease->revoke();
                     if(scenario==3)peer.reset();
                     if(scenario==10)events.fire();
-                    if(scenario==6 || scenario==14) {
+                    if(scenario==17){ok=ok && !actor->begin_apply(id,L"expired",deadline(),GetTickCount64()) && !actor->executing();}
+                    else if(scenario==6 || scenario==14) {
                         events.closeResult=E_FAIL;ok=ok && !actor->close() && !begin();
                         lease.reset();ok=ok && !weakLease.expired();events.closeResult=S_OK;
                         ok=ok && actor->close() && weakLease.expired();
@@ -84,10 +89,16 @@ int wmain() {
                     else {
                         if(scenario==11)ok=ok && !actor->begin_apply(id+1,L"wrong",deadline());
                         if(scenario==12){ok=ok && begin();auto newer=actor->capture_id();drain(*actor);ok=ok && newer>id && !actor->begin_apply(id,L"stale",deadline());id=newer;}
-                        ok=ok && actor->begin_apply(id,L"reviewed",deadline());
+                        if(scenario==20)while(GetTickCount64()<=captureTicks)Sleep(2); // Capture expiry is not review expiry.
+                        const auto readsBeforeApply=f.range.textReads;
+                        const auto applyTicks=GetTickCount64()+((scenario==18 || scenario==19)?1000:3000);
+                        if(scenario==19)f.range.onInvoke=[&](const std::wstring& name){if(name==L"Text")while(GetTickCount64()<=applyTicks)Sleep(2);};
+                        ok=ok && actor->begin_apply(id,L"reviewed",deadline(),applyTicks);
+                        if(scenario==18){ok=ok && actor->executing();while(GetTickCount64()<=applyTicks)Sleep(2);}
                         if(scenario==4)lease->revoke();
                         if(scenario==5)ok=ok && actor->cancel_capture(id) && !actor->close();
-                        drain(*actor);const bool positive=scenario==0 || scenario==11 || scenario==12;
+                        drain(*actor);if(scenario==18)ok=ok && f.range.textReads==readsBeforeApply;
+                        const bool positive=scenario==0 || scenario==11 || scenario==12 || scenario==20;
                         if(positive)expected=L"hello reviewed suffix";
                         ok=ok && actor->apply_status()==(positive?DispatchStatus::applied:DispatchStatus::rejected);
                         ok=ok && !actor->begin_apply(id,L"replay",deadline());
@@ -96,7 +107,7 @@ int wmain() {
             }
             ok=ok && readFixture(edit)==expected && actor->close();actor.reset();lease.reset();
             ok=ok && weakLease.expired() && weakToken.expired() && f.balanced() && events.refs==1 && !events.sink;
-            printf("case=%u pass=%d\n",scenario,ok);fflush(stdout);if(!ok)++failed;
+            printf("case=%u pass=%d word_text_reads=%u\n",scenario,ok,f.range.textReads);fflush(stdout);if(!ok)++failed;
         }
         context.Reset();document.Reset();DestroyWindow(top);manager->Deactivate();manager.Reset();FreeLibrary(library);
     }

@@ -50,14 +50,13 @@ public:
     }
     bool begin_capture(ITfContext* context,HWND field,bool optIn,std::shared_ptr<ApplyConnectionLease> lease,std::chrono::steady_clock::time_point deadline,ULONGLONG deadlineTicks=MAXULONGLONG){
         if(!word_)return standard_?standard_->begin_capture(context,field,optIn,std::move(lease),deadline,deadlineTicks):rich_->begin_capture(context,field,optIn,std::move(lease),deadline,deadlineTicks);
-        if(deadlineTicks!=MAXULONGLONG)return false; // Dormant Word route has not adopted wire expiry.
         if(!word_root_ || !word_port_ || GetAncestor(field,GA_ROOT)!=word_root_)return false;
-        const bool admitted=word_->begin_capture(context,field,word_root_,word_port_,optIn,std::move(lease),deadline);
+        const bool admitted=word_->begin_capture(context,field,word_root_,word_port_,optIn,std::move(lease),deadline,deadlineTicks);
         if(admitted)word_field_=field;
         return admitted;
     }
     bool begin_apply(uint64_t id,std::wstring replacement){if(word_)return false;return standard_?standard_->begin_apply(id,std::move(replacement)):rich_->begin_apply(id,std::move(replacement));}
-    bool begin_apply(uint64_t id,std::wstring replacement,std::chrono::steady_clock::time_point deadline,ULONGLONG deadlineTicks=MAXULONGLONG){if(word_&&deadlineTicks!=MAXULONGLONG)return false;return word_?word_->begin_accept(id,std::move(replacement),deadline):standard_?standard_->begin_apply(id,std::move(replacement),deadline,deadlineTicks):rich_->begin_apply(id,std::move(replacement),deadline,deadlineTicks);}
+    bool begin_apply(uint64_t id,std::wstring replacement,std::chrono::steady_clock::time_point deadline,ULONGLONG deadlineTicks=MAXULONGLONG){return word_?word_->begin_accept(id,std::move(replacement),deadline,deadlineTicks):standard_?standard_->begin_apply(id,std::move(replacement),deadline,deadlineTicks):rich_->begin_apply(id,std::move(replacement),deadline,deadlineTicks);}
     void retire_completed_apply(){if(word_){word_->close();}else if(standard_)standard_->retire_completed_apply();else rich_->retire_completed_apply();}
 };
 }
