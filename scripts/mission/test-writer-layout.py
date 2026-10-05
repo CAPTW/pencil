@@ -5,9 +5,9 @@ import unittest
 
 source = Path(__file__).resolve().parents[2] / 'adapters/libreoffice/pythonpath/grammar_writer_core.py'
 tree = ast.parse(source.read_text(encoding='utf-8'))
-namespace = {}
+namespace = {'FORMATTED_CHARACTERS': ('CharColor',)}
 selected = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))
-            and node.name in ('Refused', 'selected_layout_runs', 'replaced_layout', 'restore_uniform_format')]
+            and node.name in ('Refused', 'selected_layout_runs', 'replaced_layout', 'restore_uniform_format', 'paragraph_span_plan', 'effective_character_format')]
 exec(compile(ast.Module(body=selected, type_ignores=[]), str(source), 'exec'), namespace)
 replace = namespace['replaced_layout']
 Refused = namespace['Refused']
@@ -58,6 +58,52 @@ class Tests(unittest.TestCase):
         cursor = Cursor()
         namespace['restore_uniform_format'](cursor, ((('CharColor', 0xBB2200, 'DEFAULT_VALUE'),), (), (), ()))
         self.assertEqual(cursor.value, 0xBB2200)
+
+    def test_span_plan_preserves_separators_empty_style_and_alignments(self):
+        body = 'abcd\r\n\r\nxyz'
+        layout = (((4, ('red',), ()),(2, (), ('paragraph_break','\r\n')),
+            (0, ('empty',),()),(2,(),('paragraph_break','\r\n')),(3,('blue',),())),
+            ('paragraphs',((0,'left'),(6,'center'),(8,'right'))),())
+        plan, text, changed = namespace['paragraph_span_plan'](body, layout, 2, 8, 'LONG\n\nQ')
+        self.assertEqual(text, 'abLONG\r\n\r\nQz')
+        self.assertEqual(changed[1], ('paragraphs',((0,'left'),(8,'center'),(10,'right'))))
+        self.assertIn((0,('empty',),()),changed[0])
+        self.assertEqual([(a,n,v) for a,n,v,_,_ in plan],[(8,2,'Q'),(2,2,'LONG')])
+        for replacement in ('one','a\nb','a\nx\nb','a\n\n','a\u2028b'):
+            with self.assertRaises(Refused):
+                namespace['paragraph_span_plan'](body,layout,2,8,replacement)
+        with self.assertRaises(Refused):
+            namespace['paragraph_span_plan'](body,layout,5,5,'x\ny')
+
+    def test_span_plan_all_partial_endpoints_independent_oracle(self):
+        body='abcde\r\nfghij\r\nklmn'
+        layout=(((5,('red',),()),(2,(),('paragraph_break','\r\n')),
+            (5,('green',),()),(2,(),('paragraph_break','\r\n')),(4,('blue',),())),
+            ('paragraphs',((0,'left'),(7,'center'),(14,'right'))),())
+        for start in range(5):
+            for end in range(1,5):
+                for count in (1,3,8):
+                    values=['X'*count,'Y'*(count+1),'Z'*(count+2)]
+                    _,text,result=namespace['paragraph_span_plan'](body,layout,start,14+end-start,'\n'.join(values))
+                    expected=[body[:start]+values[0],values[1],values[2]+body[14+end:]]
+                    self.assertEqual(text,'\r\n'.join(expected))
+                    self.assertEqual(result[1],('paragraphs',((0,'left'),(len(expected[0])+2,'center'),
+                        (len(expected[0])+len(expected[1])+4,'right'))))
+                    actual=[style for n,style,_ in result[0] for _ in range(n)]
+                    oracle=[('red',)]*len(expected[0])+[()]*2+[('green',)]*len(expected[1])+[()]*2+[('blue',)]*len(expected[2])
+                    self.assertEqual(actual,oracle)
+
+    def test_direct_paragraph_character_property_is_not_style_inheritance(self):
+        from types import SimpleNamespace
+        class Props:
+            def __init__(self,value,state):self.value,self.state=value,state
+            def getPropertyValue(self,name):return self.value
+            def getPropertyState(self,name):return SimpleNamespace(value=self.state)
+        normal=namespace['effective_character_format']
+        local=Props(17,'DEFAULT_VALUE')
+        self.assertEqual(normal(local,Props(17,'DIRECT_VALUE')),(('CharColor',17,'DIRECT_VALUE'),))
+        self.assertEqual(normal(local,Props(17,'DEFAULT_VALUE')),(('CharColor',17,'DEFAULT_VALUE'),))
+        self.assertEqual(normal(local,Props(18,'DIRECT_VALUE')),(('CharColor',17,'DEFAULT_VALUE'),))
 
     def test_invalid_ranges_fail_closed(self):
         layout = (((4, ('blue',), ()),), (), ())

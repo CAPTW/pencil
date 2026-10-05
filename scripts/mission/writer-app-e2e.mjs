@@ -17,6 +17,11 @@ async function command(action){assert.ok(reply==null);return new Promise((resolv
  reply=value=>{clearTimeout(timer);value.error?reject(Error(value.error)):resolve(value.value);};
  process.stdout.write(JSON.stringify({action})+'\n');
 });}
+const span=process.argv.includes('--span');
+const normalized=value=>value.replace(/\r\n/g,'\n');
+const initial=span?'First paragraph\nBefore | please seperate this. | After\n\nLast paragraph':'Before | please seperate this. | After';
+const edited=span?'Reviewed\nMiddle 한국어 😀\n\nFinal':'검토한 교체 문장 🙂';
+const finalText=span?'First Reviewed\nMiddle 한국어 😀\n\nFinal paragraph':'Before | 검토한 교체 문장 🙂 | After';
 let app,browser,page;
 const result={status:'FAIL',classification:'INSTALLED_WRITER_WIDGET_SYNTHETIC',checks:[],providerLive:'NOT_RUN'};
 const pass=name=>result.checks.push(name);
@@ -47,16 +52,16 @@ try{
   await command('prepare');await command('enable');await command('focus');
   const count=await page.evaluate(()=>window.__captures.length);await command('hotkey');
   const token=await until('Writer captured',()=>page.evaluate(i=>window.__captures[i],count));
-  assert.equal(token.selectedText,'please seperate this.');assert.equal(token.directApply,true);
-  await until('Instant',async()=>await draft.inputValue().catch(()=>null)==='please separate this.');await until('Accept enabled',()=>apply.isEnabled());
+  assert.equal(normalized(token.selectedText),span?'paragraph\nBefore | please seperate this. | After\n\nLast':'please seperate this.');assert.equal(token.directApply,true);
+  await until('Instant',async()=>normalized(await draft.inputValue().catch(()=>''))===(span?'paragraph\nBefore | please separate this. | After\n\nLast':'please separate this.'));await until('Accept enabled',()=>apply.isEnabled());
   return token;
  }
- await capture();await draft.fill('검토한 교체 문장 🙂');await apply.click();
+ await capture();await draft.fill(edited);await apply.click();
  await until('Accept result',async()=>await status.textContent()==='Applied to the captured field');
- assert.equal(await command('read'),'Before | 검토한 교체 문장 🙂 | After');
+ assert.equal(normalized(await command('read')),finalText);
  pass('actual hotkey Instant edited draft Accept exact Writer reread');
  if(process.argv.includes('--formatted')){assert.equal(await command('format'),true);pass('all Writer portions preserve bold color and alignment after Accept');}
- await command('undo');assert.equal(await command('read'),'Before | please seperate this. | After');
+ await command('undo');assert.equal(normalized(await command('read')),initial);
  pass('Writer Undo restores original and surrounding text');
  if(process.argv.includes('--formatted')){assert.equal(await command('format'),true);pass('all Writer portions preserve bold color and alignment after Undo');}
  await command('settled');
@@ -66,7 +71,7 @@ try{
  await capture();await command('disable');await apply.click();
  await until('revoked permission refused',async()=>['Apply unavailable - Copy is available','Apply outcome unconfirmed'].includes(await status.textContent()));
  result.revokedStatus=await status.textContent();
- assert.equal(await command('read'),'Before | please seperate this. | After');pass('Disable after capture prevents mutation');
+ assert.equal(normalized(await command('read')),initial);pass('Disable after capture prevents mutation');
  await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app'));
  await until('app natural exit',()=>app.exitCode!==null);assert.equal(app.exitCode,0);pass('app exits naturally');result.status='PASS';
 }catch(error){result.error=String(error.stack??error);}

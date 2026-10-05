@@ -77,3 +77,12 @@ class CrossFormatWriter(ParagraphWriter):
 
 
 g_ImplementationHelper.addImplementation(CrossFormatWriter, 'org.grammar.fixture.CrossFormatWriter', ('org.grammar.fixture.CrossFormatWriter',))
+
+
+class SpanWriter(CrossFormatWriter):
+    def __init__(self, context):
+        super().__init__(context)
+        self.allow_span = True
+
+
+g_ImplementationHelper.addImplementation(SpanWriter, 'org.grammar.fixture.SpanWriter', ('org.grammar.fixture.SpanWriter',))

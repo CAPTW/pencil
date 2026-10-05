@@ -94,7 +94,7 @@ def prepare_format():
             cursor.ParaAdjust = (0, 3, 0, 1)[index]
             cursor.CharColor = (0x118822, 0xBB2200, 0x2255AA, 0x442299)[index]
             cursor.CharWeight = cursor.CharWeightAsian = cursor.CharWeightComplex = 150.0
-        if '--cross-format' in sys.argv:
+        if '--cross-format' in sys.argv and '--span' not in sys.argv:
             colored = doc.Text.createTextCursorByRange(paragraph_list()[1].Start)
             colored.goRight(12, False)
             colored.goRight(6, True)
@@ -155,7 +155,7 @@ def prepare_format():
 def format_ok():
     if '--paragraphs' in sys.argv:
         items = paragraph_list()
-        if len(items) != 4 or [items[i].String for i in (0, 2, 3)] != ['First paragraph', '', 'Last paragraph']:
+        if len(items) != 4 or [items[i].String for i in (0, 2, 3)] not in ([['First paragraph', '', 'Last paragraph'], ['First Reviewed', '', 'Final paragraph']] if '--span' in sys.argv else [['First paragraph', '', 'Last paragraph']]):
             return False
         for index, para in enumerate(items):
             if para.ParaAdjust != (0, 3, 0, 1)[index]: return False
@@ -166,11 +166,11 @@ def format_ok():
                 part = parts.nextElement()
                 count += 1
                 value = (part.CharWeight, part.CharWeightAsian, part.CharWeightComplex, part.CharColor)
-                if index == 1 and '--cross-format' in sys.argv:
+                if index == 1 and '--cross-format' in sys.argv and '--span' not in sys.argv:
                     formats.extend([value] * len(part.String))
                 elif value != (150.0, 150.0, 150.0, (0x118822, 0xBB2200, 0x2255AA, 0x442299)[index]):
                     return False
-            if index == 1 and '--cross-format' in sys.argv:
+            if index == 1 and '--cross-format' in sys.argv and '--span' not in sys.argv:
                 expected = [(150.0, 150.0, 150.0, 0xBB2200)] * len(para.String)
                 if para.String in (source, 'Before | please seperate this. | After'):
                     expected[12:18] = [(150.0, 150.0, 150.0, 0x2255AA)] * 6
@@ -265,7 +265,7 @@ try:
     if '--widget' in sys.argv:
         result['scope'] = 'installed Grammar widget through product Writer entry'
         log = open(r'C:\GrammarOutput\widget-driver-error.log', 'w', encoding='utf-8')
-        node = subprocess.Popen([r'C:\GrammarPayload\node.exe', r'C:\GrammarPayload\writer-app-e2e.mjs'] + (['--formatted'] if '--formatted' in sys.argv else []),
+        node = subprocess.Popen([r'C:\GrammarPayload\node.exe', r'C:\GrammarPayload\writer-app-e2e.mjs'] + (['--formatted'] if '--formatted' in sys.argv else []) + (['--span'] if '--span' in sys.argv else []),
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, text=True, encoding='utf-8',
             creationflags=subprocess.CREATE_NO_WINDOW)
         dispatcher = ctx.ServiceManager.createInstanceWithContext('com.sun.star.frame.DispatchHelper', ctx)
@@ -280,12 +280,20 @@ try:
                     cursor.gotoRange(selected_body_start(), False)
                     cursor.goRight(9, False)
                     cursor.goRight(21, True)
+                    if '--span' in sys.argv:
+                        cursor=doc.Text.createTextCursorByRange(paragraph_list()[0].Start)
+                        cursor.goRight(6,False)
+                        end=doc.Text.createTextCursorByRange(paragraph_list()[3].Start)
+                        end.goRight(4,False)
+                        cursor.gotoRange(end,True)
                     doc.CurrentController.select(cursor)
                 elif command == 'enable':
                     doc.CurrentController.Frame.activate()
                     dispatcher.executeDispatch(doc.CurrentController.Frame, 'service:org.grammar.Writer?review', '', 0, ())
-                    if '--cross-format' in sys.argv:
+                    if '--cross-format' in sys.argv and '--span' not in sys.argv:
                         wait(lambda: any('Replacement uses first selected style; Undo restores original styles.' in n for n, _ in accessible_names()))
+                    if '--span' in sys.argv:
+                        wait(lambda: any('Keep paragraph count and empty paragraphs.' in n for n,_ in accessible_names()))
                     button('Enable one review')
                     wait(lambda: any('enabled for one review' in n for n, _ in accessible_names()))
                 elif command == 'focus':
@@ -303,7 +311,7 @@ try:
                 elif command == 'read':
                     if '--paragraphs' in sys.argv and len(paragraph_list()) == 4:
                         assert format_ok(), 'unselected paragraph text or formatting changed'
-                        value = paragraph_list()[1].String
+                        value = doc.Text.String if '--span' in sys.argv else paragraph_list()[1].String
                     else:
                         value = doc.Text.String
                 elif command == 'format': value = format_ok()
