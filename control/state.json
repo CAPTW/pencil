@@ -97,7 +97,7 @@
   "product_audit_base": "9f54ebd4b7586f7a1658245761ccccf8a77500c6",
   "git_identity_policy": "MEASURE_CANONICAL_MAIN_AT_EXPORT",
   "source_digest_policy": "COMPUTE_SORTED_PAYLOAD_PATH_SHA256_IN_MANIFEST_EXCLUDING_SELF_REFERENCE",
-  "source_package_policy": "EXACT_12_MARKDOWN_REPLACEMENT_CANONICAL_MAIN_ONLY",
+  "source_package_policy": "EXACT_12_OWNER_REQUESTED_CANDIDATE_OR_CANONICAL_SNAPSHOT",
   "source_application_state_policy": "OUTSIDE_PAYLOAD_OWNER_HANDOFF_ONLY",
   "mission_id": "GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1",
   "internal_continuation": true,

@@ -1,3 +1,18 @@
+> Current candidate checkpoint for Source replacement (2026-10-05)
+>
+> Historical rows below are not the current acceptance verdict. Runtime0fc8624
+> installed R27 proves Writer shortcut -> Instant -> edited Accept -> exact reread
+> -> Undo, source-change preservation and Disable in pinned LibreOffice26.2.4.2,
+> new unsaved default-style plain body only.6 installed checks, R26 core57 plus32
+> cycles, R24 transport15 PASS; cleanup/uninstall complete. Rust365 target test
+> executions PASS/39 ignored. See state mission history for supported Edit/RichEdit
+> and Chromium installed scopes. No whole-product acceptance or main adoption.
+> Saved/rich Writer documents, Calc/Impress product Apply, actual Microsoft
+> Office/Hancom, physical IME, general profiles and live Providers remain incomplete
+> or NOT_RUN. R8 Writer crash cause and R20 focus variability remain unresolved;
+> later passes do not prove their causes. Review was by the same integrator.
+> Evidence: D:/dev/grammar-evidence/grammar-writer-activation-20261005/RESULT.md.
+
 > Active mission: see MULTI_AGENT_CONTRACT.md v1.1.0 override and control/state.json. Historical no-execution/one-step approval restrictions below are superseded only inside this mission; acceptance claims are not promoted.
 
 # Acceptance and test matrix

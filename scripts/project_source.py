@@ -217,18 +217,20 @@ def source_inputs(root):
     return inputs
 
 
-def render(state, ident, inputs, package_id, preview):
+def render(state, ident, inputs, package_id, preview, candidate=False):
     # Git identity is measured, never committed as a self-referential current HEAD.
     resolved = copy.deepcopy(state)
     resolved.update(ident)
+    resolved["repository_branch"] = ident["branch"]
     resolved["package_id"] = package_id
-    resolved["qualification"] = "PREVIEW_NOT_QUALIFIED" if preview else "CANONICAL_MAIN_SNAPSHOT"
+    resolved["qualification"] = "PREVIEW_NOT_QUALIFIED" if preview else ("OWNER_REQUESTED_CANDIDATE_SNAPSHOT" if candidate else "CANONICAL_MAIN_SNAPSHOT")
     resolved["source_content_digest_location"] = "PROJECT_SOURCE_MANIFEST.json/resolved_state/source_content_digest"
     payload = {name: inputs[doc].encode("utf-8") for name, doc in DOCS.items()}
     continuation = ("이번 mission 내부 후속 개발은 이미 승인되었다. 범위 확장·외부 행동은 승인되지 않았고 제품 수용은 별도다. "
                     "Source UI 적용은 Owner 작업이며 내부 개발의 선행조건이 아니다.\n" if mission_state(state) else
                     "다음 작업은 02에 명시된 정확히 하나이며 자동 실행하지 않는다.\n")
-    payload[NAMES[0]] = ("# Grammar Project Source — 읽기 순서\n\n"
+    payload[NAMES[0]] = ("# Grammar Project Source — 읽기 순서\n\n" +
+        ("후보 작업트리의 Owner 요청 교체용 snapshot이다. main 채택·제품 완료·UI 적용 성공을 뜻하지 않는다.\n\n" if candidate else "") +
         "이 exact 12-file 세트는 기존 active Source 전체를 대체한다. 현재 사실은 02의 단일 machine-readable snapshot에 있다. "
         "Repository Git/current bytes > 실제 현재 실행 > 코드 > Repository 결정 > 이 Source > 과거 대화 순서로 확인한다.\n\n"
         "00 → 02 → 04 → 08 → 선택 작업 관련 Source 순서로 읽는다. P3-B 방향 승인과 구현 승인은 다르다. "
@@ -269,7 +271,16 @@ def canonical_check(root):
     fail(identity(root)["branch"] == "main", "CANONICAL_MAIN_REQUIRED")
 
 
-def make(root, out, preview=False):
+def candidate_check(state, ident):
+    fail(mission_state(state) and state.get("source_package_policy") ==
+         "EXACT_12_OWNER_REQUESTED_CANDIDATE_OR_CANONICAL_SNAPSHOT", "CANDIDATE_SOURCE_NOT_AUTHORIZED")
+    fail(ident["branch"] == "codex/grammar-local-trial-ba58b7d", "CANDIDATE_BRANCH_NOT_AUTHORIZED")
+    fail(state.get("main_adoption") == "NOT_ADOPTED_CANDIDATE_ONLY" and
+         state.get("mission_completion") == "INCOMPLETE", "CANDIDATE_ACCEPTANCE_OVERCLAIM")
+
+
+def make(root, out, preview=False, candidate=False):
+    fail(not (preview and candidate), "EXPORT_MODE_CONFLICT")
     fail(not out.exists(), "OUTPUT_ALREADY_EXISTS")
     fail(not out.is_relative_to(root), "OUTPUT_INSIDE_REPOSITORY")
     state = read_json(root / "control/state.json")
@@ -277,7 +288,10 @@ def make(root, out, preview=False):
     ident = identity(root)
     if mission_state(state):
         ident["product_changes_since_historical_audit"] = product_diff(root, state["product_audit_base"])
-    if not preview:
+    if candidate:
+        candidate_check(state, ident)
+        fail(not git(root, "status", "--porcelain"), "CANDIDATE_DIRTY")
+    if not preview and not candidate:
         fail(ident["branch"] == "main", "CANONICAL_MAIN_REQUIRED")
         canonical_check(root)
         fail(not git(root, "diff", "--name-only") and not git(root, "diff", "--cached", "--name-only"), "TRACKED_DIRTY")
@@ -288,25 +302,25 @@ def make(root, out, preview=False):
     semantic = sha(encode(state) + encode(inputs))
     prefix = "GRAMMAR-AUTONOMOUS-R1" if mission_state(state) else "GRAMMAR-P3B-R0"
     package_id = f"{prefix}-{ident['head'][:12]}-{semantic[:12]}"
-    payload, resolved = render(state, ident, inputs, package_id, preview)
+    payload, resolved = render(state, ident, inputs, package_id, preview, candidate)
     digest = digest_files(payload)
     resolved["source_content_digest"] = digest
     manifest = {"schema_version": 1, "package_id": package_id,
-        "qualification": "PREVIEW_NOT_QUALIFIED" if preview else "CANONICAL_MAIN_SNAPSHOT",
+        "qualification": "PREVIEW_NOT_QUALIFIED" if preview else ("OWNER_REQUESTED_CANDIDATE_SNAPSHOT" if candidate else "CANONICAL_MAIN_SNAPSHOT"),
         "logical_source_count": 12, "logical_source_names": list(NAMES),
         "resolved_state": resolved, "semantic_input_digest": semantic,
         "payload": {name: {"sha256": sha(data), "bytes": len(data)} for name, data in payload.items()},
         "source_documents": {k: sha(v.encode()) for k, v in inputs.items()},
         "digest_algorithm": "SHA256(sorted filename + TAB + SHA256(bytes), LF joined, no trailing LF)",
         "ui_application_state": "OUTSIDE_PAYLOAD_NOT_CURRENT_TRUTH"}
-    handoff = ("# Owner handoff\n\n" + ("**PREVIEW — NOT QUALIFIED. 이 패키지는 적용하지 않는다.**\n\n" if preview else "") +
+    handoff = ("# Owner handoff\n\n" + ("**PREVIEW — NOT QUALIFIED. 이 패키지는 적용하지 않는다.**\n\n" if preview else ("**Owner 요청 후보 snapshot — main 미채택, 제품 미완료.**\n\n" if candidate else "")) +
         "1. 현재 Grammar Project의 기존 active Sources를 전부 제거한다.\n"
         "2. payload/의 아래 exact 12 markdown만 업로드한다.\n"
         "3. ZIP은 업로드하지 않는다.\n4. manifest/checksums/verification record/handoff는 업로드하지 않는다.\n"
         "5. 중복 이름 Source를 만들지 않는다.\n6. genuinely fresh top-level chat에서 access diagnostic을 실행한다.\n"
         "7. access PASS 후 같은 fresh chat에서 semantic verification을 실행한다.\n"
         "8. 아래 expected values를 사용한다.\n9. 접근 누락은 해당 payload 파일만 재적용하고 중복은 제거한다. "
-        "semantic mismatch는 수동 문장 패치 대신 canonical Repository에서 다시 생성한다.\n" +
+        "semantic mismatch는 수동 문장 패치 대신 manifest에 표시된 동일 Repository branch에서 다시 생성한다.\n" +
         ("10. 이번 mission 내부 개발은 기존 위임으로 계속할 수 있다. UI 적용 성공은 제품 acceptance나 외부 행동 승인이 아니다.\n\n" if mission_state(state) else
          "10. 성공 뒤에도 next task를 자동 실행하지 않는다. 별도 Owner 실행 권한을 부여한다.\n\n") +
         "\n".join(f"- {name}" for name in NAMES) + "\n\nExpected values:\n```json\n" +
@@ -355,12 +369,12 @@ def make(root, out, preview=False):
 
 def check_core(out, root, allow_preview):
     m = read_json(out / "PROJECT_SOURCE_MANIFEST.json")
-    fail(m["qualification"] in {"PREVIEW_NOT_QUALIFIED", "CANONICAL_MAIN_SNAPSHOT"}, "QUALIFICATION_INVALID")
+    fail(m["qualification"] in {"PREVIEW_NOT_QUALIFIED", "CANONICAL_MAIN_SNAPSHOT", "OWNER_REQUESTED_CANDIDATE_SNAPSHOT"}, "QUALIFICATION_INVALID")
     fail(m["logical_source_count"] == 12 and m["logical_source_names"] == list(NAMES), "LOGICAL_INVENTORY")
     names = sorted(p.name for p in (out / "payload").iterdir())
     fail(names == sorted(NAMES), "PAYLOAD_EXACT_SET")
     fail(not any(p.is_symlink() or not p.is_file() for p in (out / "payload").iterdir()), "PAYLOAD_NOT_PLAIN_FILES")
-    fail(allow_preview or m["qualification"] == "CANONICAL_MAIN_SNAPSHOT", "PREVIEW_REFUSED")
+    fail(allow_preview or m["qualification"] != "PREVIEW_NOT_QUALIFIED", "PREVIEW_REFUSED")
     payload = {n: (out / "payload" / n).read_bytes() for n in NAMES}
     fail(set(m["payload"]) == set(NAMES), "MANIFEST_PAYLOAD_SET")
     for n, data in payload.items():
@@ -368,6 +382,8 @@ def check_core(out, root, allow_preview):
     resolved = m["resolved_state"]
     fail(resolved["qualification"] == m["qualification"] and resolved["package_id"] == m["package_id"], "MANIFEST_IDENTITY_CONFLICT")
     state_check(resolved)
+    if m["qualification"] == "OWNER_REQUESTED_CANDIDATE_SNAPSHOT":
+        candidate_check(resolved, resolved)
     fail(resolved["source_content_digest"] == digest_files(payload), "PAYLOAD_DIGEST")
     snapshot = payload[NAMES[2]].decode("utf-8").split("```json\n", 1)[1].split("```", 1)[0]
     snapshot = json.loads(snapshot)
@@ -385,9 +401,13 @@ def check_core(out, root, allow_preview):
         inputs = source_inputs(root)
         semantic_check(state, inputs)
         fail(sha(encode(state) + encode(inputs)) == m["semantic_input_digest"], "INPUT_SEMANTICS_STALE")
-        expected, _ = render(state, current, inputs, m["package_id"], m["qualification"] == "PREVIEW_NOT_QUALIFIED")
+        expected, _ = render(state, current, inputs, m["package_id"], m["qualification"] == "PREVIEW_NOT_QUALIFIED",
+                             m["qualification"] == "OWNER_REQUESTED_CANDIDATE_SNAPSHOT")
         fail(expected == payload, "RENDER_CONTRADICTION")
         fail(m["source_documents"] == {k: sha(v.encode()) for k, v in inputs.items()}, "DOC_DIGEST_DRIFT")
+        if m["qualification"] == "OWNER_REQUESTED_CANDIDATE_SNAPSHOT":
+            candidate_check(state, current)
+            fail(not git(root, "status", "--porcelain"), "CANDIDATE_DIRTY")
         if m["qualification"] == "CANONICAL_MAIN_SNAPSHOT":
             fail(current["branch"] == "main", "CANONICAL_MAIN_REQUIRED")
             canonical_check(root)
@@ -441,7 +461,9 @@ def main():
     gen = sub.add_parser("generate")
     gen.add_argument("--repo", type=pathlib.Path, required=True)
     gen.add_argument("--output", type=pathlib.Path, required=True)
-    gen.add_argument("--preview", action="store_true")
+    modes = gen.add_mutually_exclusive_group()
+    modes.add_argument("--preview", action="store_true")
+    modes.add_argument("--candidate-snapshot", action="store_true")
     val = sub.add_parser("verify")
     val.add_argument("--package", type=pathlib.Path, required=True)
     val.add_argument("--repo", type=pathlib.Path)
@@ -450,7 +472,7 @@ def main():
     args = parser.parse_args()
     try:
         root = args.repo.resolve() if args.repo else None
-        result = make(root, args.output.resolve(), args.preview) if args.command == "generate" else verify(args.package.resolve(), root, args.allow_preview, args.extract)
+        result = make(root, args.output.resolve(), args.preview, args.candidate_snapshot) if args.command == "generate" else verify(args.package.resolve(), root, args.allow_preview, args.extract)
         print(json.dumps(result, ensure_ascii=False, indent=2))
     except (ValueError, KeyError, OSError, subprocess.SubprocessError, zipfile.BadZipFile) as exc:
         print(json.dumps({"status": "FAIL", "error": str(exc)}, ensure_ascii=False))

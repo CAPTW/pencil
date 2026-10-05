@@ -1397,3 +1397,14 @@ unless supplied the explicit pinned Writer image/path; paired OXT activation is
 explicit per document and one review. No normal-profile install/main/push/release.
 Mission INCOMPLETE. Next broader Writer document/format qualification requires
 preserving exact range, formatting, Undo and user edits before expanding admission.
+
+
+## Candidate Source replacement checkpoint — 2026-10-05
+Owner requested a replacement package from the current local candidate. Generator
+adds an explicitly authorized candidate snapshot mode, preserving default main-only
+and non-applicable preview modes. Source02 reports the measured candidate branch,
+not the historical repository_branch=main field. Exact12 and integrity checks
+remain. Installed runtime remains0fc8624/R27; main4e833988 unchanged, mission
+INCOMPLETE. Upload/fresh-chat verification remain Owner work, never claimed here.
+Next development: saved synthetic Writer DOCX admission and exact Apply/Undo
+qualification; retain disabled saved/rich-document admission until verified.
