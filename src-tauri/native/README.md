@@ -141,3 +141,10 @@ hostile-process compromise are not established by these same-token fixtures.
 
 API basis: [kernel client PID](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeclientprocessid)
 and [named-pipe access control](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights).
+
+
+## Browser desktop review components (2026-10-05)
+
+`browser_route.hpp` binds foreground/root-window process metadata to a pinned installed native host, directly or via one exact canonical system cmd.exe. It is not document authority. `browser_bridge.hpp` adds a one-review local duplex transport with pinned peers, capability/sequence admission,8192-unit application limit,3-second per-operation and35-second connection budgets. Capture/Apply replies use the existing target response layout with a distinct browser greeting. Lost Apply replies are indeterminate and never retried. The target selection's shorter lease remains authoritative.
+
+These browser components are not yet connected to the packaged DLL exports, native host, MV3 or desktop widget. They must additionally enforce exact documentId/epoch/selection grant before activation. `scripts/mission/build-browser-bridge-probe.ps1` builds the actual component test with source-byte receipts; run its output only in restricted-Medium owned Sandbox.13 separate-process cases pass, including actual lifetime expiry, deterministic cancellation and natural cleanup. This does not qualify installed browser/Tauri integration. See HANDOFF and external grammar-browser-bridge-20261005/RESULT.md for limits and preserved launch NOT_RUN.
