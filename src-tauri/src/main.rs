@@ -13,6 +13,7 @@ mod content_limits;
 mod device_login;
 mod diagnostics;
 mod native_edit;
+mod target_apply;
 mod p3_03_runtime;
 mod prerequisites;
 mod provider;
@@ -136,6 +137,7 @@ mod runtime_mission;
 struct AppState {
     codex: CodexClientCache,
     capture: Mutex<CaptureSessionStore>,
+    target_apply: Arc<target_apply::TargetApplyRuntime>,
     configuration: StdMutex<ConfigurationState>,
     pending_device_login: StdMutex<Option<PendingDeviceLogin>>,
     terminology: StdMutex<TerminologyRuntime>,
@@ -153,6 +155,7 @@ impl Default for AppState {
         Self {
             codex: CodexClientCache::default(),
             capture: Mutex::new(CaptureSessionStore::default()),
+            target_apply: Arc::new(target_apply::TargetApplyRuntime::default()),
             configuration: StdMutex::new(ConfigurationState::default()),
             pending_device_login: StdMutex::new(None),
             terminology: StdMutex::new(TerminologyRuntime::default()),
@@ -180,6 +183,7 @@ struct SelectionCapturedEvent {
     session_id: String,
     generation: u64,
     selected_text: String,
+    direct_apply: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -203,6 +207,7 @@ async fn end_capture_and_notify(app: &AppHandle, reason: &'static str) {
     let (ended, active_turn) = {
         let mut capture = state.capture.lock().await;
         let ended = capture.active_token();
+        state.target_apply.cancel();
         (ended, capture.cancel_active_with_turn())
     };
     interrupt_active_turn(state.inner(), active_turn).await;
@@ -726,6 +731,25 @@ fn terminology_environment_matches(
         .unwrap_or(!bound.terminology().enabled))
 }
 
+fn delivery_intent_is_current(
+    capture: &CaptureSessionStore,
+    token: &SessionToken,
+    bound: &BoundRewriteIntent,
+    rewrite: RewriteIntent,
+    settings: &TerminologySettings,
+    current_store_revision: Option<u64>,
+) -> bool {
+    !(capture.validate_ready_bound_intent(token, bound).is_err()
+        || bound.rewrite() != rewrite
+        || bound.terminology().enabled != settings.enabled
+        || bound.terminology().use_approved_terminology != settings.use_approved_terminology
+        || bound.terminology().suggest_terminology != settings.suggest_terminology
+        || bound.terminology().active_profile_id != settings.active_profile_id
+        || current_store_revision
+            .map(|revision| revision != bound.terminology().store_revision)
+            .unwrap_or(bound.terminology().enabled || bound.terminology().store_revision != 0))
+}
+
 pub(crate) fn apply_current_terminology_bound<P: ApplyPlatform>(
     capture: &mut CaptureSessionStore,
     token: &SessionToken,
@@ -736,16 +760,14 @@ pub(crate) fn apply_current_terminology_bound<P: ApplyPlatform>(
     replacement: &str,
     platform: &mut P,
 ) -> ApplyOutcome {
-    if capture.validate_ready_bound_intent(token, bound).is_err()
-        || bound.rewrite() != rewrite
-        || bound.terminology().enabled != settings.enabled
-        || bound.terminology().use_approved_terminology != settings.use_approved_terminology
-        || bound.terminology().suggest_terminology != settings.suggest_terminology
-        || bound.terminology().active_profile_id != settings.active_profile_id
-        || current_store_revision
-            .map(|revision| revision != bound.terminology().store_revision)
-            .unwrap_or(bound.terminology().enabled || bound.terminology().store_revision != 0)
-    {
+    if !delivery_intent_is_current(
+        capture,
+        token,
+        bound,
+        rewrite,
+        settings,
+        current_store_revision,
+    ) {
         return ApplyOutcome::RejectedStale;
     }
     apply_current_session(capture, token, replacement, platform)
@@ -760,6 +782,7 @@ async fn apply_replacement(
     target_language: Option<TranslationTargetLanguage>,
     auto_reference_language: Option<TranslationTargetLanguage>,
     instant_draft: Option<capture_session::InstantDraftProof>,
+    direct_apply: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<ApplyOutcome, String> {
     validate_text_limit(ContentLimitKind::FinalApply, &replacement)
@@ -771,83 +794,146 @@ async fn apply_replacement(
     let intent =
         RewriteIntent::new_with_auto_reference(mode, target_language, auto_reference_language)
             .map_err(str::to_string)?;
-    let mut capture = state.capture.lock().await;
-    let bound_intent = match capture.ready_bound_intent_for(&token, intent) {
-        Ok(bound) => bound,
-        Err(error) => match promote_instant_candidate(&state, &mut capture, &token, intent, &replacement, instant_draft.as_ref())
-        {
+    let (bound_intent, final_replacement) = {
+        let mut capture = state.capture.lock().await;
+        let bound_intent = match capture.ready_bound_intent_for(&token, intent) {
             Ok(bound) => bound,
-            Err(_) => {
-                return Ok(match error {
-                    SessionError::StaleSession | SessionError::StaleIntent => {
-                        ApplyOutcome::RejectedStale
-                    }
-                    // The capture is still waiting for a result: only its
-                    // Instant draft is outdated, not the capture.
-                    SessionError::InvalidState if capture.is_captured(&token) => {
-                        ApplyOutcome::Failed {
-                            reason: ApplyFailureReason::DraftOutdated,
+            Err(error) => match promote_instant_candidate(
+                &state,
+                &mut capture,
+                &token,
+                intent,
+                &replacement,
+                instant_draft.as_ref(),
+            ) {
+                Ok(bound) => bound,
+                Err(_) => {
+                    return Ok(match error {
+                        SessionError::StaleSession | SessionError::StaleIntent => {
+                            ApplyOutcome::RejectedStale
                         }
-                    }
-                    SessionError::InvalidState | SessionError::GenerationExhausted => {
-                        ApplyOutcome::Failed {
-                            reason: ApplyFailureReason::InvalidSessionState,
+                        // The capture is still waiting for a result: only its
+                        // Instant draft is outdated, not the capture.
+                        SessionError::InvalidState if capture.is_captured(&token) => {
+                            ApplyOutcome::Failed {
+                                reason: ApplyFailureReason::DraftOutdated,
+                            }
                         }
-                    }
-                })
+                        SessionError::InvalidState | SessionError::GenerationExhausted => {
+                            ApplyOutcome::Failed {
+                                reason: ApplyFailureReason::InvalidSessionState,
+                            }
+                        }
+                    });
+                }
+            },
+        };
+        let configuration = state
+            .configuration
+            .lock()
+            .map_err(|_| "configuration_unavailable".to_string())?;
+        let current_intent = configuration
+            .settings
+            .rewrite_intent()
+            .map_err(str::to_string)?;
+        let apply_format = configuration.settings.translation.apply_format;
+        let mut terminology = state
+            .terminology
+            .lock()
+            .map_err(|_| "terminology_store_unavailable".to_string())?;
+        let current_store_revision = terminology.store().ok().map(|store| store.revision);
+        let final_replacement = if intent.is_translation() {
+            let source = capture
+                .ready_source_for(&token, intent)
+                .map_err(|error| error.code().to_string())?;
+            match format_translation(&source, &replacement, apply_format) {
+                Ok(formatted) => formatted,
+                Err("empty_translation") => {
+                    return Ok(ApplyOutcome::Failed {
+                        reason: ApplyFailureReason::EmptyReplacement,
+                    })
+                }
+                Err(_) => {
+                    return Ok(ApplyOutcome::Failed {
+                        reason: ApplyFailureReason::InvalidSessionState,
+                    })
+                }
             }
-        },
-    };
-    let configuration = state
-        .configuration
-        .lock()
-        .map_err(|_| "configuration_unavailable".to_string())?;
-    let current_intent = configuration
-        .settings
-        .rewrite_intent()
-        .map_err(str::to_string)?;
-    let apply_format = configuration.settings.translation.apply_format;
-    let mut terminology = state
-        .terminology
-        .lock()
-        .map_err(|_| "terminology_store_unavailable".to_string())?;
-    let current_store_revision = terminology.store().ok().map(|store| store.revision);
-    let final_replacement = if intent.is_translation() {
-        let source = capture
-            .ready_source_for(&token, intent)
-            .map_err(|error| error.code().to_string())?;
-        match format_translation(&source, &replacement, apply_format) {
-            Ok(formatted) => formatted,
-            Err("empty_translation") => {
+        } else {
+            replacement
+        };
+        validate_text_limit(ContentLimitKind::FinalApply, &final_replacement)
+            .map_err(|error| error.to_string())?;
+        if direct_apply.unwrap_or(false) {
+            if !delivery_intent_is_current(
+                &capture,
+                &token,
+                &bound_intent,
+                current_intent,
+                &configuration.settings.terminology,
+                current_store_revision,
+            ) {
+                return Ok(ApplyOutcome::RejectedStale);
+            }
+            if !state.target_apply.supports(&token) {
+                return Ok(ApplyOutcome::RejectedTarget);
+            }
+            if final_replacement.is_empty() {
                 return Ok(ApplyOutcome::Failed {
                     reason: ApplyFailureReason::EmptyReplacement,
-                })
+                });
             }
-            Err(_) => {
-                return Ok(ApplyOutcome::Failed {
-                    reason: ApplyFailureReason::InvalidSessionState,
-                })
+            capture
+                .begin_apply(&token)
+                .map_err(|error| error.code().to_string())?;
+            (bound_intent, final_replacement)
+        } else {
+            let mut platform = WindowsApplyPlatform::new();
+            let outcome = apply_current_terminology_bound(
+                &mut capture,
+                &token,
+                &bound_intent,
+                current_intent,
+                &configuration.settings.terminology,
+                current_store_revision,
+                &final_replacement,
+                &mut platform,
+            );
+            if matches!(outcome, ApplyOutcome::CopiedFallback { .. }) {
+                state.target_apply.cancel();
+                let _ = terminology
+                    .increment_usage(&bound_intent.terminology().matched_entry_ids, now_ms());
+                if let Ok(mut instant) = state.instant.lock() {
+                    p3_03_runtime::invalidate_cache(
+                        instant.cache_mut(),
+                        p3_03_runtime::InstantInvalidationReason::SuccessfulApply,
+                    );
+                }
             }
+            return Ok(outcome);
         }
-    } else {
-        replacement
-    };
-    validate_text_limit(ContentLimitKind::FinalApply, &final_replacement)
-        .map_err(|error| error.to_string())?;
-    let mut platform = WindowsApplyPlatform::new();
-    let outcome = apply_current_terminology_bound(
-        &mut capture,
-        &token,
-        &bound_intent,
-        current_intent,
-        &configuration.settings.terminology,
-        current_store_revision,
-        &final_replacement,
-        &mut platform,
-    );
-    if matches!(outcome, ApplyOutcome::CopiedFallback { .. }) {
-        let _ =
-            terminology.increment_usage(&bound_intent.terminology().matched_entry_ids, now_ms());
+    }; // No capture/configuration/terminology locks across target I/O.
+    let runtime = state.target_apply.clone();
+    let apply_token = token.clone();
+    let outcome =
+        tokio::task::spawn_blocking(move || runtime.apply(&apply_token, &final_replacement))
+            .await
+            .unwrap_or(target_apply::DirectOutcome::Indeterminate);
+    {
+        let mut capture = state.capture.lock().await;
+        if outcome == target_apply::DirectOutcome::Applied {
+            let _ = capture.finish_apply_success(&token);
+        } else {
+            // The target capability was consumed. Copy remains an explicit,
+            // separately validated action; there is never automatic fallback.
+            let _ = capture.finish_apply_failure(&token);
+        }
+    }
+    if outcome == target_apply::DirectOutcome::Applied {
+        if let Ok(mut terminology) = state.terminology.lock() {
+            let _ = terminology
+                .increment_usage(&bound_intent.terminology().matched_entry_ids, now_ms());
+        }
         if let Ok(mut instant) = state.instant.lock() {
             p3_03_runtime::invalidate_cache(
                 instant.cache_mut(),
@@ -855,7 +941,12 @@ async fn apply_replacement(
             );
         }
     }
-    Ok(outcome)
+    // Report the physical result even if Dismiss/recapture ended this UI token.
+    Ok(match outcome {
+        target_apply::DirectOutcome::Applied => ApplyOutcome::Applied,
+        target_apply::DirectOutcome::Rejected => ApplyOutcome::RejectedTarget,
+        target_apply::DirectOutcome::Indeterminate => ApplyOutcome::Indeterminate,
+    })
 }
 
 #[tauri::command]
@@ -1285,7 +1376,7 @@ async fn dismiss_window(
 ) -> Result<(), String> {
     let active_turn = {
         let mut capture = state.capture.lock().await;
-        match (session_id, generation) {
+        let active_turn = match (session_id, generation) {
             (Some(session_id), Some(generation)) => match capture.cancel_with_active_turn(
                 &SessionToken {
                     session_id,
@@ -1300,7 +1391,9 @@ async fn dismiss_window(
             },
             (None, None) if !capture.has_active() => None,
             _ => return Err("session_token_required".to_string()),
-        }
+        };
+        state.target_apply.cancel();
+        active_turn
     };
     interrupt_active_turn(&state, active_turn).await;
     if let Ok(mut instant) = state.instant.lock() {
@@ -1522,6 +1615,9 @@ async fn shutdown_providers(state: &AppState) -> Result<(), &'static str> {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(8);
     // Only work retained before this explicit request is a retry. A new failure
     // must be reported first; do not silently renew its cleanup budget.
+    state.target_apply.cancel();
+    let native_runtime = state.target_apply.clone();
+    let native_cleanup = tokio::task::spawn_blocking(move || native_runtime.cleanup());
     let retry_workspace = provider::cli::pending_workspace_cleanup();
     state.codex.close_admission();
     let operation = state.providers.lock().await.begin_shutdown();
@@ -1537,7 +1633,8 @@ async fn shutdown_providers(state: &AppState) -> Result<(), &'static str> {
                 .map_err(|_| "provider_shutdown_cleanup_failed")?;
         }
         provider::cli::cleanup_status().map_err(|_| "provider_shutdown_cleanup_failed")?;
-        cleanup.map_err(|_| "provider_shutdown_cleanup_failed")
+        cleanup.map_err(|_| "provider_shutdown_cleanup_failed")?;
+        native_cleanup.await.map_err(|_| "native_apply_cleanup_pending")?
     }).await.map_err(|_| "provider_shutdown_timeout")?
 }
 
@@ -1668,7 +1765,11 @@ fn main() {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let state = app.state::<AppState>();
-                    let active_turn = state.capture.lock().await.cancel_active_with_turn();
+                    let active_turn = {
+                        let mut capture = state.capture.lock().await;
+                        state.target_apply.cancel();
+                        capture.cancel_active_with_turn()
+                    };
                     let _ = active_turn;
                     cancel_cli_operation(state.inner()).await;
                     if let Ok(mut instant) = state.instant.lock() {
@@ -1740,7 +1841,11 @@ fn handle_tray_menu_action(app: &AppHandle, action: &str) {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
-                let active_turn = state.capture.lock().await.cancel_active_with_turn();
+                let active_turn = {
+                    let mut capture = state.capture.lock().await;
+                    state.target_apply.cancel();
+                    capture.cancel_active_with_turn()
+                };
                 interrupt_active_turn(state.inner(), active_turn).await;
                 app.exit(0);
             });
@@ -2012,11 +2117,16 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
         token: SessionToken,
         selected_text: String,
         cursor: CursorPoint,
+        direct_apply: bool,
     }
 
     {
         let state = app.state::<AppState>();
-        let active_turn = state.capture.lock().await.cancel_active_with_turn();
+        let active_turn = {
+            let mut capture = state.capture.lock().await;
+            state.target_apply.cancel();
+            capture.cancel_active_with_turn()
+        };
         cancel_cli_operation(state.inner()).await;
         if active_turn.is_some() {
             let app = app.clone();
@@ -2045,11 +2155,30 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
         move |target| {
             let app = prepare_app.clone();
             async move {
-                let capture = clipboard::capture_selected_text_for(target).await?;
+                clipboard::wait_for_capture_modifiers_released().await?;
+                let state = app.state::<AppState>();
+                if state.shutdown_started.load(Ordering::SeqCst) { return Err("app_shutting_down".into()); }
+                let native = if let Some(field) = target_apply::focused_field(target)? {
+                    let runtime = state.target_apply.clone();
+                    let epoch = runtime.epoch().map_err(str::to_string)?;
+                    let captured = tokio::task::spawn_blocking(move || runtime.capture(field, epoch)).await
+                        .map_err(|_| "native_capture_worker_failed".to_string())?.map_err(str::to_string)?;
+                    if target_apply::focused_field(target)? != Some(field) {
+                        state.target_apply.cancel();
+                        return Err("capture_target_changed".into());
+                    }
+                    Some(captured)
+                } else { None };
+                let capture = match &native {
+                    Some(native) => clipboard::ClipboardCapture {
+                        selected_text: native.text.clone(), cursor: clipboard::current_cursor_position()?, native_edit: None,
+                    },
+                    None => clipboard::capture_selected_text_for(target).await?,
+                };
                 let token = {
                     let state = app.state::<AppState>();
                     let mut store = state.capture.lock().await;
-                    match capture.native_edit.clone() {
+                    let token = match capture.native_edit.clone() {
                         Some(binding) => store.capture_native(
                             Uuid::new_v4().to_string(),
                             capture.selected_text.clone(),
@@ -2062,18 +2191,29 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
                             target,
                         ),
                     }
-                    .map_err(|error| error.code().to_string())?
+                    .map_err(|error| error.code().to_string())?;
+                    if let Some(native) = &native {
+                        if let Err(error) = state.target_apply.bind(native, token.clone()) {
+                            let _ = store.cancel(&token);
+                            return Err(error.to_string());
+                        }
+                    }
+                    token
                 };
                 Ok(PreparedCapture {
                     token,
                     selected_text: capture.selected_text,
                     cursor: capture.cursor,
+                    direct_apply: native.is_some(),
                 })
             }
         },
         move |prepared| show_main_window(&focus_app, Some(&prepared.cursor)),
     )
-    .await?;
+    .await.map_err(|error| {
+        app.state::<AppState>().target_apply.cancel();
+        error
+    })?;
 
     let token = prepared.token.clone();
     {
@@ -2091,16 +2231,15 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
             session_id: prepared.token.session_id.clone(),
             generation: prepared.token.generation,
             selected_text: prepared.selected_text.clone(),
+            direct_apply: prepared.direct_apply,
         },
     ) {
         let state = app.state::<AppState>();
-        let active_turn = state
-            .capture
-            .lock()
-            .await
-            .cancel_with_active_turn(&token)
-            .ok()
-            .flatten();
+        let active_turn = {
+            let mut capture = state.capture.lock().await;
+            state.target_apply.cancel();
+            capture.cancel_with_active_turn(&token).ok().flatten()
+        };
         interrupt_active_turn(state.inner(), active_turn).await;
         return Err(format!("Could not notify window: {error}"));
     }

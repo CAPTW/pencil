@@ -121,6 +121,7 @@ type ActiveSelection = {
   token: CaptureToken;
   charCount: number;
   sourceText: string;
+  directApply: boolean;
 };
 
 type CaptureError = {
@@ -706,6 +707,7 @@ export default function App() {
         token,
         charCount: Array.from(payload.selectedText).length,
         sourceText: payload.selectedText,
+        directApply: payload.directApply === true,
       });
       setInstantRuntime(captureReset(EMPTY_INSTANT_RUNTIME_STATE, token.sessionId, token.generation));
       setCloudReviewOpen(false);
@@ -1435,13 +1437,12 @@ export default function App() {
     }
   }
 
-  // The one result action on the desktop: the backend checks the current
-  // capture, formats a translation locally and puts the approved result on the
-  // clipboard. The desktop app never changes text inside another application.
-  async function copyResult() {
+  // Both actions validate the same draft. Only a target-side capture enables
+  // explicit Apply; Copy always remains a separate clipboard operation.
+  async function copyResult(directApply = false) {
     const token = currentTokenRef.current;
     const intent = currentIntentRef.current;
-    if (!token || !intent || draft.length === 0) {
+    if (!token || !intent || draft.length === 0 || (directApply && !selection?.directApply)) {
       return;
     }
     if (result && !sameRewriteIntent(resultIntentRef.current, intent)) {
@@ -1459,6 +1460,7 @@ export default function App() {
     setError(null);
     try {
       const rawOutcome = await invoke<unknown>("apply_replacement", {
+        directApply,
         sessionId: token.sessionId,
         generation: token.generation,
         replacement: draft,
@@ -1476,18 +1478,26 @@ export default function App() {
         currentIntentRef.current = null;
         resultIntentRef.current = null;
         setSelection(null);
-        setError("Copy returned an invalid response. Capture the selection again.");
-        setStatus("Copy rejected");
+        setError(directApply ? "Apply could not be confirmed. Check the target document before trying again." : "Copy returned an invalid response. Capture the selection again.");
+        setStatus(directApply ? "Apply outcome unconfirmed" : "Copy rejected");
         return;
       }
-      if (outcome.status === "copied_fallback") {
+      if (outcome.status === "rejected_target" || outcome.status === "indeterminate") {
+        setSelection((current) => current ? { ...current, directApply: false } : null);
+        setStatus(outcome.status === "rejected_target" ? "Apply unavailable - Copy is available" : "Apply outcome unconfirmed");
+        setError(outcome.status === "rejected_target"
+          ? "The target no longer matches this capture or cannot accept it. Grammar did not apply this request. Copy explicitly or capture again."
+          : "The target did not confirm the result. Check its contents before copying or capturing again. Grammar will not retry.");
+        return;
+      }
+      if (outcome.status === "copied_fallback" || outcome.status === "applied") {
         currentTokenRef.current = null;
         currentIntentRef.current = null;
         resultIntentRef.current = null;
         setSelection(null);
-        setStatus("Copied — paste it into the field");
+        setStatus(outcome.status === "applied" ? "Applied to the captured field" : "Copied — paste it into the field");
         void refreshTerminology();
-        setError(copiedNotice(outcome.reason));
+        setError(outcome.status === "copied_fallback" ? copiedNotice(outcome.reason) : null);
         // Copy is now disabled; keep keyboard focus in the widget.
         window.setTimeout(() => dismissButtonRef.current?.focus(), 0);
         return;
@@ -1513,8 +1523,10 @@ export default function App() {
         currentTokenRef.current = null;
         setSelection(null);
       }
-      setError(toErrorMessage(nextError));
-      setStatus("Copy failed");
+      setError(directApply && !isBackendContentLimitError(nextError)
+        ? "Apply could not be confirmed. Check the target document before trying again."
+        : toErrorMessage(nextError));
+      setStatus(directApply ? "Apply outcome unconfirmed" : "Copy failed");
     } finally {
       if (sameCaptureToken(copyingTokenRef.current, token)) {
         copyingTokenRef.current = null;
@@ -2476,6 +2488,13 @@ export default function App() {
               ) : null}
 
               <div className="result-actions">
+                {selection?.directApply ? (
+                  <button className="primary-button" type="button" data-testid="apply-result"
+                    aria-label="Apply result to captured field" disabled={!canCopy}
+                    onClick={() => void copyResult(true)}>
+                    {isCopying ? <Loader2 className="spin" size={16} /> : null} Apply
+                  </button>
+                ) : null}
                 <button
                   className="primary-button"
                   type="button"

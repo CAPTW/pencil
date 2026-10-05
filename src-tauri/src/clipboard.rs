@@ -55,7 +55,7 @@ fn capture_supported_selection(top_level: isize) -> Result<ClipboardCapture, Str
     })
 }
 
-async fn wait_for_capture_modifiers_released() -> Result<(), String> {
+pub(crate) async fn wait_for_capture_modifiers_released() -> Result<(), String> {
     wait_for_modifier_release_with(
         any_user_modifier_down,
         || sleep(MODIFIER_RELEASE_POLL),
@@ -186,7 +186,7 @@ pub(crate) fn clipboard_sequence_number() -> u32 {
 }
 
 #[cfg(windows)]
-fn current_cursor_position() -> Result<CursorPoint, String> {
+pub(crate) fn current_cursor_position() -> Result<CursorPoint, String> {
     use windows_sys::Win32::Foundation::POINT;
     use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
@@ -203,6 +203,6 @@ fn current_cursor_position() -> Result<CursorPoint, String> {
 }
 
 #[cfg(not(windows))]
-fn current_cursor_position() -> Result<CursorPoint, String> {
+pub(crate) fn current_cursor_position() -> Result<CursorPoint, String> {
     Ok(CursorPoint { x: 80, y: 80 })
 }

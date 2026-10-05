@@ -420,11 +420,12 @@ fn zero_widget_or_own_process_target_is_rejected() {
 }
 
 #[test]
-fn selection_event_exposes_only_token_and_selected_text() {
+fn selection_event_exposes_token_selected_text_and_capability_not_native_authority() {
     let payload = SelectionCapturedEvent {
         session_id: "synthetic-session".to_string(),
         generation: 7,
         selected_text: "synthetic-selected-source".to_string(),
+        direct_apply: true,
     };
 
     let value = serde_json::to_value(payload).unwrap();
@@ -432,7 +433,10 @@ fn selection_event_exposes_only_token_and_selected_text() {
     let mut keys = object.keys().map(String::as_str).collect::<Vec<_>>();
     keys.sort_unstable();
 
-    assert_eq!(keys, ["generation", "selectedText", "sessionId"]);
+    assert_eq!(keys, ["directApply", "generation", "selectedText", "sessionId"]);
+    assert_eq!(object.get("directApply"), Some(&serde_json::Value::Bool(true)));
+    assert!(object.get("cookie").is_none());
+    assert!(object.get("captureId").is_none());
     assert!(object.get("hwnd").is_none());
     assert!(object.get("pid").is_none());
 }

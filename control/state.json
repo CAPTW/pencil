@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state_version": "2026-10-05.desktop-apply-peer-image",
+  "state_version": "2026-10-05.desktop-apply-widget-candidate",
   "repository_branch": "main",
   "product_target": "P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST",
   "p3a_status": "DESKTOP_DIRECT_APPLY_RESTORATION_PRIORITY_COPY_ONLY_TEMPORARY_CONTAINMENT",
@@ -136,7 +136,7 @@
     "Local window Quit product f90f3d5: explicit confirmation, existing managed shutdown; fresh Medium installed app35 PASS, natural exit0 with synthetic child and runtime session removed (434ms single observation, not budget); editor records64 with zero state changes. App Rust231 PASS/26 ignored; typecheck/contracts/governance/build/package PASS. Uninstall complete, all owned guests stopped. Tray registration restricted-Medium false versus ExistingLogin true is diagnostic only; tray route remains unqualified. Browser unchanged and not rerun. Evidence: D:/dev/grammar-evidence/grammar-window-exit-20261004/RESULT.md",
     "Product26b3045 repairs installed CLI filesystem cleanup retry: failed workspaces retain ownership, pending work blocks admission, explicit shutdown retry verifies removal; process/reap failures remain terminal. Old-package red FAIL and first green precondition FAIL preserved. Final app36/modified Chromium synthetic Deep44/unmodified installed keyboard11 PASS; Rust app233 (26 ignored)/host16, contracts/governance/build/package PASS. All five uninstalls complete and guests stopped. Test846bbf5 moves lock setup before finite Deep without extending lifetime or weakening assertions. Mission incomplete; no main/push/Source application. Evidence: D:/dev/grammar-evidence/grammar-shutdown-retry-20261004/RESULT.md"
   ],
-  "native_capture_activation": "ACTIVE_STANDARD_EDIT_ONLY_OWNED_DESKTOP_QUALIFIED_OTHERS_DENIED",
+  "native_capture_activation": "STANDARD_EDIT_COPY_PLUS_TARGET_SIDE_RICHEDIT_CANDIDATE_INSTALLED_ACCEPTANCE_PENDING",
   "chromium_deep_activation": "SOURCE_UNCONFIGURED_PERSONAL_INSTALLER_CONFIGURES_HOST_CONSENT_BOUND_SYNTHETIC_ONLY",
   "mission_completion": "INCOMPLETE",
   "main_adoption": "NOT_ADOPTED_CANDIDATE_ONLY",
