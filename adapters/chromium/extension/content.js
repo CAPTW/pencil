@@ -11,6 +11,7 @@
   let enableTarget = null, reanalyzeAll = false, held = false, busyWaits = 0;
   let selectionReview = null, reviewInput = null, reviewAccept = null, reviewTimer = null;
   let reviewRange = null, reviewOwnsFocus = false;
+  let desktopReview = null, desktopReviewTimer = null, desktopReviewObserver = null;
   const sensitive = /password|passwd|secret|token|credit|card.?number|ssn|social.?security|medical|health|otp|one.?time|verification|auth|private|sensitive/i;
   function labelText(label) {
     if (!label) return '';
@@ -63,6 +64,7 @@
     if(request) chrome.runtime.sendMessage({op:'cancel-deep',epoch:request.epoch,id:request.id}).catch(()=>{});
   }
   function wipeField() {
+    clearDesktopReview();
     clearReview();
     cancelDeepUI();
     clearTimeout(timer); clearTimeout(expiry); pending = null; deferredInstant = null; held = false; busyWaits = 0;
@@ -109,11 +111,13 @@
       'Field to enable: ' + describeField(chosen) + (supported(chosen) ? '' : ' (not supported)') : 'Select a text field in the page first.';
   }
   function focus(event) {
+    if(desktopReview && event.target!==editor)clearDesktopReview();
     if (root?.contains(event.target)) {reviewFocusStart(event);return;}
     if(selectionReview && event.target!==editor) revokeReview('Review target changed. Copy or dismiss the draft.');
     if (fieldLike(event.target)) choose(event.target);
   }
   function invalidate(clear = true) {
+    clearDesktopReview();
     if (!session) return;
     if(reviewInput?.isConnected) {if(clear)session.cache=[];list.replaceChildren();revokeReview('Review expired or field changed. Copy or dismiss the draft.');return;}
     if(clear) session.cache = []; list.replaceChildren(); card.replaceChildren(); selectedIndex = null;
@@ -343,14 +347,14 @@
     commitMutation(current,mutation,()=>session?.cache[index]===expected &&
       session.replacement(index,current,replacement)!==null);
   }
-  function commitMutation(current,mutation,valid,consume=()=>{}) {
+  function commitMutation(current,mutation,valid,consume=()=>{},restoreFocus=true) {
     const replacement=mutation.replacement;
     const target = editor, owner = session;
     // beforeinput handlers may modify the page. Revalidate AFTER synchronous page callbacks.
     const before = new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertReplacementText',data:replacement});
     if (!target.dispatchEvent(before) || session !== owner || editor !== target || read() !== current || !valid()) {
       if (session===owner && editor===target) resync(read()); else invalidate();
-      announce('Editor rejected replacement or changed. Copy only.'); return;
+      announce('Editor rejected replacement or changed. Copy only.'); return 0;
     }
     consume(); // One-shot authority is consumed before any DOM write or callback.
     if (target.tagName === 'TEXTAREA') {
@@ -366,7 +370,7 @@
         if (!endNode && mutation.end <= offset+node.length) {endNode=node;endOffset=mutation.end-offset;}
         offset+=node.length;
       }
-      if (!startNode || !endNode) { invalidate(); announce('Range unavailable. Copy only.'); return; }
+      if (!startNode || !endNode) { invalidate(); announce('Range unavailable. Copy only.'); return 0; }
       // Edit the existing text nodes in place: new nodes would push a simple
       // field past the supported node count after a few Accepts.
       if (startNode === endNode) startNode.replaceData(startOffset, endOffset - startOffset, replacement);
@@ -380,7 +384,53 @@
     const actual=read();
     if (session===owner) resync(actual); else invalidate();
     announce(actual===mutation.next ? 'Applied; content verified. Native undo is not guaranteed.' : 'Editor changed during Apply. No retry; inspect the field.');
-    focusEditor();
+    if(restoreFocus)focusEditor();
+    return actual===mutation.next && session===owner && editor===target ? 3 : 4;
+  }
+  function clearDesktopReview() {
+    clearTimeout(desktopReviewTimer);desktopReviewTimer=null;
+    desktopReviewObserver?.disconnect();desktopReviewObserver=null;
+    desktopReview?.grant.cancel();desktopReview=null;
+  }
+  const reviewToken=value=>typeof value==='string' && /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value);
+  function captureDesktopReview(id) {
+    // Only the authenticated native-host worker route may call this entry.
+    // It does not enable a document/field or infer permission from selection.
+    if(!reviewToken(id) || desktopReview || reviewInput?.isConnected || dirtyDraft() ||
+        !document.hasFocus() || document.activeElement!==editor)return {status:0,text:'',ticket:null};
+    const current=read(),range=selectedRange();
+    if(current===null || !range)return {status:0,text:'',ticket:null};
+    session.update(current);
+    const grant=SelectionReview.capture(session,range.start,range.end);
+    if(!grant)return {status:0,text:'',ticket:null};
+    const text=current.slice(range.start,range.end);
+    if(text.includes('\0')){grant.cancel();return {status:0,text:'',ticket:null};}
+    cancelDeepUI();
+    // A dedicated observer preserves ABA evidence even during synchronous
+    // beforeinput handlers, before MutationObserver callbacks can run.
+    const ancestors=[];for(let n=editor.parentElement;n;n=n.parentElement){ancestors.push(n);if(ancestors.length>32){grant.cancel();return {status:0,text:'',ticket:null};}}
+    desktopReviewObserver=new MutationObserver(clearDesktopReview);
+    desktopReviewObserver.observe(editor,{attributes:true,characterData:true,childList:true,subtree:true});
+    for(const ancestor of ancestors)desktopReviewObserver.observe(ancestor,{attributes:true,childList:true});
+    const ticket=crypto.randomUUID();desktopReview={id,ticket,grant};
+    desktopReviewTimer=setTimeout(clearDesktopReview,30000);
+    announce('Selected text captured for desktop review. Replacement requires Accept.');
+    return {status:2,text,ticket};
+  }
+  function applyDesktopReview(id,ticket,text) {
+    const heldReview=desktopReview;
+    if(!heldReview || heldReview.id!==id || heldReview.ticket!==ticket)return {status:0};
+    if(desktopReviewObserver?.takeRecords().length){clearDesktopReview();return {status:0};}
+    const grant=heldReview.grant,current=read(),range=selectedRange();
+    const mutation=current!==null && range ? grant.replacement(current,range.start,range.end,text) : null;
+    if(!mutation){clearDesktopReview();return {status:0};}
+    try {
+      const status=commitMutation(current,mutation,()=>{
+        const latest=selectedRange();
+        return desktopReview===heldReview && !desktopReviewObserver?.takeRecords().length && latest && !!grant.replacement(read(),latest.start,latest.end,text);
+      },clearDesktopReview,false);
+      clearDesktopReview();return {status};
+    } catch {clearDesktopReview();return {status:4};} // Never retry an uncertain write.
   }
   function clearReview() {
     clearTimeout(reviewTimer);reviewTimer=null;selectionReview?.cancel();selectionReview=null;
@@ -434,12 +484,17 @@
     return rangeOffsets(reviewRange);
   }
   function selectionChanged() {
+    if(desktopReview) {
+      const range=selectedRange(),grant=desktopReview.grant;
+      if(!range || range.start!==grant.start || range.end!==grant.end)clearDesktopReview();
+    }
     if(!selectionReview?.active)return;
     const range=currentReviewRange();
     if(!range || range.start!==selectionReview.start || range.end!==selectionReview.end)
       revokeReview('Selection changed. Copy or dismiss the draft, then select again.');
   }
   function openSelectionReview() {
+    clearDesktopReview();
     if(reviewInput?.isConnected || dirtyDraft()){announce('Copy or dismiss the current draft first.');return;}
     const current=read(),range=selectedRange();
     if(current===null || !range){announce('Select text in the enabled field first.');return;}
@@ -518,5 +573,10 @@
     if(message.op==='enable'&&typeof message.epoch==='string'){enable(message.epoch);respond({ready:true});}
     else if(message.op==='deep-policy'&&message.epoch===epoch){updateDeepPolicy(message.provider);respond({ok:true});}
     else if(message.op==='disable'&&message.epoch===epoch){disable();respond({ok:true});}
+    else if(message.op==='desktop-capture'&&epoch && message.epoch===epoch){respond(captureDesktopReview(message.id));}
+    else if(message.op==='desktop-apply'&&epoch && message.epoch===epoch){respond(applyDesktopReview(message.id,message.ticket,message.text));}
+    else if(message.op==='desktop-cancel'&&epoch && message.epoch===epoch){
+      if(desktopReview?.id===message.id)clearDesktopReview();respond({ok:true});
+    }
   });
 })();
