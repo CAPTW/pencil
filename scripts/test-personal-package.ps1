@@ -108,6 +108,8 @@ switch ($Phase) {
     $registered = (Get-Item -LiteralPath $install.nativeHost.registryKey).GetValue('')
     if ($registered -ne $install.nativeHost.manifest) { throw 'registry does not point at the installed host manifest' }
     $hostManifest = Get-Content -LiteralPath $registered -Raw | ConvertFrom-Json
+    if ($hostManifest.path -ine (Join-Path $installRoot 'grammar-chromium-host.exe') -or
+        -not (Test-Path -LiteralPath (Join-Path $installRoot 'target-apply.dll') -PathType Leaf)) { throw 'registered host is separated from its authenticated desktop/DLL runtime' }
     $origin = "chrome-extension://$($manifest.extensionId)/"
     if (@($hostManifest.allowed_origins).Count -ne 1 -or $hostManifest.allowed_origins[0] -cne $origin) { throw 'host manifest origin is not the packaged extension' }
     if ((Get-FileHash -LiteralPath $hostManifest.path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected['grammar-chromium-host.exe']) { throw 'registered host binary differs from package' }

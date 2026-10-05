@@ -3,6 +3,9 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[a-p]{32}$')][string]$ExtensionId,
     [Parameter(Mandatory)][string]$OutputDirectory,
     [switch]$Register,
+    # Personal installer already owns a fresh runtime root containing the app,
+    # host and hash-bound DLL. Keep that topology instead of copying just host.
+    [switch]$UseInstalledRuntime,
     # Chrome's per-user native messaging key. Tests pass a task-owned key instead.
     [string]$HostsKey = 'HKCU:\Software\Google\Chrome\NativeMessagingHosts'
 )
@@ -11,20 +14,33 @@ $ErrorActionPreference = 'Stop'
 $source = (Resolve-Path -LiteralPath $Executable).Path
 $destination = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $destination) { throw 'OutputDirectory must not exist.' }
+$runtime = $destination
+if ($UseInstalledRuntime) {
+    $runtime = Split-Path -Parent $source
+    if ((Split-Path -Leaf $source) -cne 'grammar-chromium-host.exe' -or
+        $destination -ine (Join-Path $runtime 'host') -or
+        -not (Test-Path -LiteralPath (Join-Path $runtime 'codex-pencil.exe') -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $runtime 'target-apply.dll') -PathType Leaf)) {
+        throw 'Installed runtime must have the app, host and target DLL in one root with a fresh host metadata directory.'
+    }
+    foreach ($sidecar in @('grammar-chromium-host.origin.json','grammar-cleanup.json','grammar-cleanup.lock')) {
+        if (Test-Path -LiteralPath (Join-Path $runtime $sidecar)) { throw 'Existing runtime sidecar must not be overwritten.' }
+    }
+}
 $name = 'org.grammar.personal.t' + [Guid]::NewGuid().ToString('N')
 $hosts = $HostsKey.TrimEnd('\')
 $key = $hosts + '\' + $name
 if (Test-Path -LiteralPath $key) { throw 'Registration already exists.' }
 New-Item -ItemType Directory -Path $destination | Out-Null
-$binary = Join-Path $destination 'grammar-chromium-host.exe'
-Copy-Item -LiteralPath $source -Destination $binary
+$binary = if ($UseInstalledRuntime) { $source } else { Join-Path $destination 'grammar-chromium-host.exe' }
+if (-not $UseInstalledRuntime) { Copy-Item -LiteralPath $source -Destination $binary }
 $origin = 'chrome-extension://' + $ExtensionId + '/'
 $encoding = [Text.UTF8Encoding]::new($false)
 $installation = [Guid]::NewGuid().ToString('N')
-[IO.File]::WriteAllText((Join-Path $destination 'grammar-chromium-host.origin.json'), (@{origin=$origin; installation_id=$installation} | ConvertTo-Json), $encoding)
+[IO.File]::WriteAllText((Join-Path $runtime 'grammar-chromium-host.origin.json'), (@{origin=$origin; installation_id=$installation} | ConvertTo-Json), $encoding)
 $slots = @(1..4 | ForEach-Object { @{generation=0; token=''; state='FREE'} })
-[IO.File]::WriteAllText((Join-Path $destination 'grammar-cleanup.json'), (@{version=1; installation=$installation; slots=$slots} | ConvertTo-Json -Depth 4), $encoding)
-[IO.File]::WriteAllBytes((Join-Path $destination 'grammar-cleanup.lock'), [byte[]]@())
+[IO.File]::WriteAllText((Join-Path $runtime 'grammar-cleanup.json'), (@{version=1; installation=$installation; slots=$slots} | ConvertTo-Json -Depth 4), $encoding)
+[IO.File]::WriteAllBytes((Join-Path $runtime 'grammar-cleanup.lock'), [byte[]]@())
 $manifestPath = Join-Path $destination 'host.json'
 $manifest = @{name=$name; description='Grammar task-owned local Instant host'; path=$binary; type='stdio'; allowed_origins=@($origin)}
 [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json), $encoding)
