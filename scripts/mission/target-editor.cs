@@ -42,7 +42,8 @@ public static class OwnedTarget {
    uint pid;uint foreground=GetWindowThreadProcessId(GetForegroundWindow(),out pid); uint current=GetCurrentThreadId();
    bool attached=(pid==app||pid==target)&&foreground!=current&&AttachThreadInput(current,foreground,true);
    try{BringWindowToTop(top);SetForegroundWindow(top);}finally{if(attached)AttachThreadInput(current,foreground,false);}
-   return GetForegroundWindow()==top;
+   IntPtr result;
+   return GetForegroundWindow()==top && SendMessageTimeoutW(top,0x8000+43,IntPtr.Zero,IntPtr.Zero,3,2000,out result)!=IntPtr.Zero && result==new IntPtr(1);
  }
  public static uint Hotkey(IntPtr top) {
    if(GetForegroundWindow()!=top)throw new Exception("owned target not foreground");
@@ -74,6 +75,9 @@ public static class Program {
       case "SET":OwnedTarget.Set(field,Encoding.UTF8.GetString(Convert.FromBase64String(part[1])));Console.WriteLine("OK");break;
       case "SELECT":OwnedTarget.Send(field,177,int.Parse(part[1]),int.Parse(part[2]));Console.WriteLine("OK");break;
       case "READ":Console.WriteLine("TEXT "+Convert.ToBase64String(Encoding.UTF8.GetBytes(OwnedTarget.Read(field))));break;
+      case "MODULES":
+       int count=0;child.Refresh();foreach(System.Diagnostics.ProcessModule module in child.Modules){if(string.Equals(module.ModuleName,"target-apply.dll",StringComparison.OrdinalIgnoreCase))count++;}
+       Console.WriteLine("MODULES "+count);break;
       case "CLIPBOARD":Console.WriteLine("TEXT "+Convert.ToBase64String(Encoding.UTF8.GetBytes(OwnedTarget.Clipboard())));break;
       case "PASSWORD":OwnedTarget.Send(field,204,int.Parse(part[1]),0);Console.WriteLine("OK");break;
       case "FOCUS":Console.WriteLine("FOCUS "+OwnedTarget.Focus(top,uint.Parse(Environment.GetEnvironmentVariable("GRAMMAR_EXPECTED_APP_PID")),(uint)child.Id));break;

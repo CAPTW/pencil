@@ -61,18 +61,27 @@ try{
  await capture();await set('application changed its own text');await apply.click();
  await until('source rejection',async()=>await status.textContent()==='Apply unavailable - Copy is available');
  assert.equal(await text(),'application changed its own text');pass('application source change rejected without restore');
+ await page.getByTestId('copy-result').click();
+ await until('rejected Apply fallback Copy',async()=>await status.textContent()==='Copied — paste it into the field');
+ assert.equal(await text(),'application changed its own text');
+ assert.equal(Buffer.from((await command('CLIPBOARD')).slice(5),'base64').toString('utf8'),'please separate this.');
+ pass('explicit Copy after rejected Apply preserves application edit');
  await capture();await command('SELECT 0 6');await apply.click();
  await until('range rejection',async()=>await status.textContent()==='Apply unavailable - Copy is available');
  assert.equal(await text(),'please seperate this.');pass('moved selection rejected without mutation');
  await capture();await command('PASSWORD 42');await apply.click();
  await until('privacy rejection',async()=>await status.textContent()==='Apply unavailable - Copy is available');
  await command('PASSWORD 0');assert.equal(await text(),'please seperate this.');pass('privacy revocation prevents Apply');
- await capture();await hide();assert.equal(await text(),'please seperate this.');pass('Dismiss revokes target capture without mutation');
+ const dismissed=await capture();await hide();
+ const revoked=await page.evaluate(token=>window.__TAURI_INTERNALS__.invoke('apply_replacement',{sessionId:token.sessionId,generation:token.generation,replacement:'must not apply after Dismiss',mode:'grammar',targetLanguage:null,autoReferenceLanguage:null,instantDraft:null,directApply:true}),dismissed);
+ assert.notEqual(revoked.status,'applied');assert.equal(await text(),'please seperate this.');pass('Dismiss rejects old Apply request without mutation');
  await capture();await draft.fill('Copy only draft.');await page.getByTestId('copy-result').click();
  await until('Copy outcome',async()=>await status.textContent()==='Copied — paste it into the field');
  assert.equal(await text(),'please seperate this.');assert.equal(Buffer.from((await command('CLIPBOARD')).slice(5),'base64').toString('utf8'),'Copy only draft.');pass('explicit Copy writes clipboard and leaves target unchanged');
  await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});
  await until('app natural exit',async()=>app.exitCode!==null,15000);assert.equal(app.exitCode,0);appNatural=true;
+ await until('target service unloaded before editor exit',async()=>await command('MODULES')==='MODULES 0',10000);
+ pass('target DLL unloaded while target process remains alive');
  assert.equal(await command('EXIT'),'EXIT 0');await until('editor controller natural exit',async()=>editor.exitCode!==null,15000);assert.equal(editor.exitCode,0);editorNatural=true;
  pass('app target cleanup and fixture natural exit');report.status='PASS';
 }catch(error){report.error=String(error.stack??error);console.error(report.error);}

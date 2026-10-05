@@ -75,3 +75,6 @@ Findings, reproductions, fixes and residual limits are in HANDOFF.md ("Pre-use i
 - Install and uninstall failure paths: FIXTURE_PROVEN with task-owned roots, registry tree, stand-in processes and user-data folder.
 - No automated test: W2, C2, C6, C12, C13, C14, D9, I8 and P4 (code review only).
 - NOT_RUN: physical keyboard/IME, live Providers, normal profiles and real documents, the mouse toolbar path, Edge.
+
+## Current owned Apply qualification (2026-10-05, supersedes older Copy-only current-state notes)
+Installed product40a7d26 passes the12-check owned Medium RichEdit flow in HANDOFF: actual reviewed draft mutation/reread, token/source/range/privacy/Dismiss rejection, explicit Copy and full teardown. This qualifies only x64 RichEdit50W with explicit non-sensitive TSF input scope. Standard Edit remains Copy-only; general editors/physical IME/live Providers are not accepted. Whole A/B/C remains INCOMPLETE. Earlier failures and historical audit bases are unchanged.
