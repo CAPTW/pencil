@@ -50,6 +50,16 @@ def run(repo):
 
     state = ps.read_json(repo / "control/state.json")
     inputs = ps.source_inputs(repo)
+    def legacy_original_integrity():
+        appendix = inputs["LEGACY_SOURCE_INTEGRATION.md"]
+        originals = re.findall(r"### ([^\n]+)\n\nSHA256: `([a-f0-9]{64})`\n\n```text\n([\s\S]*?)\n```", appendix)
+        check(len(originals) == 7, "exact seven provided legacy originals")
+        check({name for name, _, _ in originals} == set(ps.RETAINED_HISTORY[1:]), "missing multi-provider file must not be invented")
+        for name, digest, content in originals:
+            check(hashlib.sha256(content.encode("utf-8")).hexdigest() == digest, "legacy original bytes: " + name)
+        check("NOT_READ_NOT_INTEGRATED" in inputs["SOURCE_LIFECYCLE.md"], "missing source must remain explicit")
+        return "all seven originals hash-match; eighth remains missing"
+    record("legacy_original_integrity_and_missing_scope", legacy_original_integrity)
     record("current_state_exact_semantics", lambda: ps.state_check(state))
     f06 = next(d for d in state["known_defects"] if d["id"] == "F-06")
     if "qualification_scope" in f06:
@@ -152,6 +162,9 @@ def run(repo):
             return check(fenced(a / "FRESH_CHAT_SEMANTIC_VERIFICATION_PROMPT.md") == fenced(a / "payload" / ps.NAMES[2]),
                          "fresh chat expectations require only the accessible Source02 snapshot")
         record("fresh_chat_expected_equals_source02", fresh_chat_expected_matches_accessible_snapshot)
+        record("legacy_appendix_in_current12_without_extra_source", lambda: check(
+            inputs["LEGACY_SOURCE_INTEGRATION.md"] in (a / "payload" / ps.NAMES[11]).read_text(encoding="utf-8"),
+            "source11 carries complete provenance and historical originals"))
         access = (a / "FRESH_CHAT_ACCESS_DIAGNOSTIC_PROMPT.md").read_text(encoding="utf-8")
         record("retained_history_not_current_inventory_failure", lambda: check(
             ps.HISTORY_POLICY in access and all(name in access for name in ps.RETAINED_HISTORY)
