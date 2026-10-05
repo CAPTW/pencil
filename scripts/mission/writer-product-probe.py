@@ -85,10 +85,6 @@ def prepare_format():
                         original=[str(item.Value) for item in part.CharInteropGrabBag
                                   if item.Name == 'CharThemeOriginalColor']))
             result.setdefault('syntheticResetColorMetadata', []).append(metadata)
-            # Reset the entire newly recreated fixture, including inherited
-            # paragraph character aliases; clearing one bag leaves inherited
-            # DOCX RGB tags behind. This is fixture setup, never product Apply.
-            cursor.setAllPropertiesToDefault()
         cursor.CharWeight = cursor.CharWeightAsian = cursor.CharWeightComplex = 150.0
         cursor.CharColor = 0x2255AA
         cursor.ParaAdjust = 3
@@ -99,6 +95,13 @@ def prepare_format():
             cursor.goRight(len(doc.Text.String) - 9 - len(' | After'), True)
             cursor.CharWeight = cursor.CharWeightAsian = cursor.CharWeightComplex = 150.0
             cursor.CharColor = 0xBB2200
+            all_text = doc.Text.createTextCursor()
+            all_text.gotoEnd(True)
+            # DEFAULT_VALUE can expose an inherited DOCX original-RGB tag even
+            # after setAllPropertiesToDefault. Explicit empty sequence resets
+            # only this synthetic setup's imported color roundtrip metadata.
+            uno.invoke(all_text, 'setPropertyValue', ('CharInteropGrabBag',
+                uno.Any('[]com.sun.star.beans.PropertyValue', ())))
             # Read-only fixture diagnosis from the exact packaged core. This
             # never invokes enable/capture/accept; UI remains the acceptance path.
             import zipimport
