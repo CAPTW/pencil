@@ -73,7 +73,7 @@ int wmain() {
             unsigned reads=0,mutations=0;bool ok=true;
             {
                 auto callbackLifetime=std::make_shared<int>(0);std::weak_ptr<void> retained=callbackLifetime;
-                WordTsfRevisionBinding binding(context.Get(),scenario==3?top:edit,top,port,true,callbackLifetime);
+                WordTsfRevisionBinding binding(context.Get(),scenario==3?top:edit,top,port,true,callbackLifetime,[]{return true;});
                 callbackLifetime.reset();
                 if(scenario==1)f.range.text=L"other";
                 if(scenario==2)f.document.flag(L"HasPassword",true);
