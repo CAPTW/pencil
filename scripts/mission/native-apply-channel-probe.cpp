@@ -1,5 +1,5 @@
 // Real local pipe/process qualification in an owned Medium Windows Sandbox.
-#include "../../src-tauri/native/apply_channel.hpp"
+#include "../../src-tauri/native/apply_peer.hpp"
 #include <cstdio>
 #include <cstdlib>
 using namespace grammar;
@@ -106,7 +106,28 @@ int wmain(int argc, wchar_t** argv) {
         DeleteProcThreadAttributeList(attributes);
         if (!created) return 8;
         ChannelHandle process(info.hProcess), thread(info.hThread);
-        ApplyChannelAdmission admission(scenario == 3 ? GetCurrentProcess() : process.get());
+        std::unique_ptr<VerifiedApplyPeer> verified;
+        bool imageChecks = true;
+        if (scenario == 0) {
+            ChannelHandle image(CreateFileW(executable, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+            ApplyImageDigest expectedImage{};
+            imageChecks = image.get() != INVALID_HANDLE_VALUE && apply_image_digest(image.get(), expectedImage, GetTickCount64() + 2000);
+            verified = verify_apply_peer(info.dwProcessId, executable, expectedImage, GetTickCount64() + 2000);
+            auto wrongDigest = expectedImage; wrongDigest[0] ^= 1;
+            bool wrongHash = !verify_apply_peer(info.dwProcessId, executable, wrongDigest, GetTickCount64() + 2000);
+            bool self = !verify_apply_peer(GetCurrentProcessId(), executable, expectedImage, GetTickCount64() + 2000);
+            bool zero = !verify_apply_peer(0, executable, expectedImage, GetTickCount64() + 2000);
+            bool expired = !verify_apply_peer(info.dwProcessId, executable, expectedImage, GetTickCount64());
+            constexpr WCHAR copy[] = L"C:\\GrammarOutput\\same-image-copy.exe";
+            bool copied = CopyFileW(executable, copy, TRUE) != FALSE;
+            bool wrongPath = copied && !verify_apply_peer(info.dwProcessId, copy, expectedImage, GetTickCount64() + 2000);
+            bool removed = copied && DeleteFileW(copy);
+            imageChecks = imageChecks && verified && verified->alive() && wrongHash && self && zero && expired && wrongPath && removed;
+            printf("image_admission pass=%d live=%d wrong_hash=%d wrong_path=%d self=%d zero=%d expired=%d copy_removed=%d\n",
+                imageChecks, verified && verified->alive(), wrongHash, wrongPath, self, zero, expired, removed);
+        }
+        ApplyChannelAdmission admission(scenario == 0 ? (verified ? verified->process() : nullptr) :
+            scenario == 3 ? GetCurrentProcess() : process.get());
         DWORD sent = 0;
         bool ready = admission.alive() && WriteFile(writer.get(), admission.bootstrap_capability().data(), 32, &sent, nullptr) && sent == 32;
         ResumeThread(thread.get());
@@ -133,7 +154,7 @@ int wmain(int argc, wchar_t** argv) {
             started + ((scenario == 11 || scenario == 12 || scenario == 27) ? 150 : 1500));
         auto elapsed = GetTickCount64() - started;
         bool expected = scenario == 0 || scenario == 1 || scenario == 7 || scenario == 10 || scenario == 20 || scenario == 22 || scenario == 26 || scenario == 31;
-        bool pass = accepted == expected && (!accepted || connected);
+        bool pass = imageChecks && accepted == expected && (!accepted || connected);
         if (scenario == 7 || scenario == 10) {
             ChannelRequest repeated;
             pass = pass && !receive_apply_request(pipe.get(), admission, repeated, GetTickCount64() + 500) && !admission.alive();
@@ -154,6 +175,10 @@ int wmain(int argc, wchar_t** argv) {
         bool exited = WaitForSingleObject(process.get(), 3000) == WAIT_OBJECT_0;
         DWORD exitCode = STILL_ACTIVE; GetExitCodeProcess(process.get(), &exitCode);
         pass = pass && exited && exitCode == (scenario == 19 ? 41u : 0u);
+        if (scenario == 0) {
+            bool dead = verified && !verified->alive();
+            printf("image_peer_exit pass=%d\n", dead); pass = pass && dead;
+        }
         printf("case=%d pass=%d accepted=%d bytes=%zu elapsed_ms=%llu child_exited=%d child_exit=%lu\n",
             scenario, pass, accepted, request.body.size(), elapsed, exited, exitCode);
         if (!pass) ++failures;
