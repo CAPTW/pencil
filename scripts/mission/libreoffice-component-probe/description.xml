@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<description xmlns="http://openoffice.org/extensions/description/2006">
+  <identifier value="org.grammar.fixture.affinity"/>
+  <version value="0.0.1"/>
+  <display-name><name lang="en">Grammar isolated affinity fixture</name></display-name>
+</description>
