@@ -1,6 +1,6 @@
 # Grammar Tool-neutral Multi-Agent Development Contract
 
-Contract-Version: 1.3.0
+Contract-Version: 1.4.0
 
 ## Active mission override (Owner authorization, 2026-09-25)
 For GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1, the Owner explicitly authorizes investigation, implementation, tests, local commits, reviewed safe local main integration and continuation through P3-A stabilization and the first Chromium textarea/simple-contenteditable adapter for personal use. This section supersedes conflicting historical one-step gates below, fixed file/iteration/commit budgets, per-step new-worktree requirements and fresh Source UI upload prerequisites. Use one dedicated mission worktree; preserve historical failed candidates and unrelated work. Historical failures remain failures. Review changed main before integration; no history rewrite or forced conflict resolution.
@@ -12,6 +12,11 @@ The Owner now explicitly authorizes committing and pushing the current candidate
 
 ## Cloud session branch amendment (Owner authorization, 2026-09-27)
 In a Claude Code cloud session the Owner requested sequential execution of an eight-step plan inside this same mission: (1) independent cloud native tests with preserved failure logs, (2) standard Edit selection capture qualification, (3) native Apply safety, (4) built-app user flow, (5) runtime endurance, (6) final Chromium regression, (7) synthetic Deep integration, (8) personal package and handoff. When asked how Windows CI should run for that session, the Owner explicitly chose to authorize the session branch claude/eloquent-faraday-hh62qc of CAPTW/pencil (fast-forwarded from codex/grammar-autonomous-r1 at 099baead7d32f6f984b423b26774197fd3db4164) as an additional push and standard GitHub-hosted Windows CI destination, with codex/grammar-autonomous-r1 left untouched. The github_validation object may therefore name either branch; everything else in the previous amendment is unchanged: no main integration, tag/release/deployment, visibility change, paid larger runner, account/credential operation or live Provider inference, and evidence uploads exclude packaged executables. Native capture or Apply may be activated only for the exact scope whose synthetic qualification passes on the cloud Windows desktop; everything else stays Copy-only or disabled. Path claims for that branch transfer to agent claude-cloud in control/path-claims.json.
+
+## Global review-and-Accept amendment (Owner authorization, 2026-10-05)
+The Owner explicitly expands this ongoing development mission to standard Windows Edit source replacement and global review/Accept integration for Text, DOCX, XLSX, HWP, HWPX, PPTX and webpages. Implement editor-aware adapters for the applications actually editing these formats; a file extension alone is not a safe mutation capability. This supersedes the original first-Chromium-only/no-other-adapter restriction for these named targets. Reuse the dedicated local candidate and preserve its accepted evidence. `scope_expansion=false` continues to forbid work beyond this now-explicit named scope, not the named adapters themselves.
+
+Explicit Accept after reviewing the replacement is required. Exact document/field/range/source/revision, sensitive-field refusal, user edit preservation and bounded cleanup remain mandatory. Unsupported or unverified implementations must not be enabled or claimed complete. All existing external-action boundaries remain: no user documents/profiles, credentials/accounts/live Provider inference, system-wide installation, remote push/release or main adoption in this local continuation. Installed Office or Hancom metadata is not authorization to use the user's open documents or normal desktop for tests. Use owned synthetic isolated environments. App-specific deployment prerequisites may limit only their dependent acceptance, not independent implementation.
 
 ## Historical task defaults (except active mission override)
 
