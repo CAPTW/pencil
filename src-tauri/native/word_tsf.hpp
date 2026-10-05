@@ -3,6 +3,7 @@
 // Real Word provider qualification/deployment remains required before admission.
 #include "word_target.hpp"
 #include "tsf_selected_range.hpp"
+#include "tsf_subscription.hpp"
 
 namespace grammar {
 struct WordTsfState {
@@ -34,8 +35,10 @@ struct WordTsfState {
 class WordTsfRevisionSink final : public ITfTextEditSink {
     LONG refs_ = 1;
     std::weak_ptr<WordTsfState> state_;
+    std::shared_ptr<void> callback_lifetime_;
 public:
-    explicit WordTsfRevisionSink(std::weak_ptr<WordTsfState> state) : state_(std::move(state)) {}
+    WordTsfRevisionSink(std::weak_ptr<WordTsfState> state, std::shared_ptr<void> lifetime)
+        : state_(std::move(state)), callback_lifetime_(std::move(lifetime)) {}
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** out) override {
         if (!out) return E_POINTER; *out = nullptr;
         if (id == IID_IUnknown || id == IID_ITfTextEditSink) { *out = static_cast<ITfTextEditSink*>(this); AddRef(); return S_OK; }
@@ -50,25 +53,32 @@ public:
 };
 // All construction/use/destruction on target STA, retained until callbacks end.
 class WordTsfRevisionBinding final {
-    ComPtr<ITfSource> source_;
-    DWORD cookie_ = TF_INVALID_COOKIE;
+    TsfSinkSubscription subscription_;
 public:
     const std::shared_ptr<WordTsfState> state = std::make_shared<WordTsfState>();
     WordTsfRevisionBinding(ITfContext* context, HWND field, HWND root,
-        std::shared_ptr<WordNativeWindowPort> port, bool explicitOptIn) {
+        std::shared_ptr<WordNativeWindowPort> port, bool explicitOptIn, std::shared_ptr<void> callbackLifetime) {
         state->context = context; state->field = field; state->root = root; state->port = std::move(port);
-        if (!explicitOptIn || !context || !state->port ||
+        if (!explicitOptIn || !context || !state->port || !callbackLifetime ||
             !state->port->eligible(field, root, state->thread)) return;
-        ComPtr<WordTsfRevisionSink> sink; sink.Attach(new WordTsfRevisionSink(state));
-        state->enabled = SUCCEEDED(context->QueryInterface(IID_PPV_ARGS(&source_))) &&
-            SUCCEEDED(source_->AdviseSink(IID_ITfTextEditSink, sink.Get(), &cookie_));
+        ComPtr<WordTsfRevisionSink> sink; sink.Attach(new WordTsfRevisionSink(state, std::move(callbackLifetime)));
+        ComPtr<ITfSource> source;
+        state->enabled = SUCCEEDED(context->QueryInterface(IID_PPV_ARGS(&source))) &&
+            subscription_.attach(source.Get(), IID_ITfTextEditSink, sink.Get());
     }
     WordTsfRevisionBinding(const WordTsfRevisionBinding&) = delete;
     WordTsfRevisionBinding& operator=(const WordTsfRevisionBinding&) = delete;
     void disable() { state->enabled = false; state->invalidate(); }
+    bool close() {
+        if (GetCurrentThreadId() != state->thread) return false;
+        disable();
+        return subscription_.close();
+    }
+    bool disconnected() const { return subscription_.disconnected(); }
     ~WordTsfRevisionBinding() {
         disable();
-        if (source_ && cookie_ != TF_INVALID_COOKIE) source_->UnadviseSink(cookie_);
+        // subscription destructor is best effort; only an observed close()
+        // result plus expired callback owners qualifies runtime retirement.
     }
 };
 

@@ -72,7 +72,9 @@ int wmain() {
             auto port=std::make_shared<Port>(&f,edit,top);
             unsigned reads=0,mutations=0;bool ok=true;
             {
-                WordTsfRevisionBinding binding(context.Get(),scenario==3?top:edit,top,port,true);
+                auto callbackLifetime=std::make_shared<int>(0);std::weak_ptr<void> retained=callbackLifetime;
+                WordTsfRevisionBinding binding(context.Get(),scenario==3?top:edit,top,port,true,callbackLifetime);
+                callbackLifetime.reset();
                 if(scenario==1)f.range.text=L"other";
                 if(scenario==2)f.document.flag(L"HasPassword",true);
                 if(scenario==12)f.range.wrong=L"Text";
@@ -102,6 +104,7 @@ int wmain() {
                     const auto before=mutations;
                     ok=ok && run(context.Get(),client,TF_ES_READWRITE,[&](TfEditCookie cookie){return lease->accept(cookie,L"replay",reads,mutations)==ApplyResult::rejected?S_OK:E_FAIL;}) && mutations==before;
                 }
+                ok=ok && binding.close() && binding.disconnected() && retained.expired();
                 printf("case=%u pass=%d tsf_reads=%u word_selected_reads=%u mutations=%u revision=%llu\n",scenario,ok,reads,f.range.textReads,mutations,binding.state->revision.load());
             }
             if(!f.balanced())ok=false;
