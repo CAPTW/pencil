@@ -59,6 +59,21 @@ def rgb_metadata(portion):
     return (bag[0].Value,)
 
 
+def effective_character_format(portion, paragraph):
+    result=[]
+    for name in FORMATTED_CHARACTERS:
+        value=portion.getPropertyValue(name)
+        state=portion.getPropertyState(name).value
+        # Writer can move identical run-local direct formatting to a direct
+        # paragraph character property after whole-paragraph replacement.
+        # This is NOT style inheritance: require an exact directly-set parent.
+        if (state=='DEFAULT_VALUE' and paragraph.getPropertyState(name).value=='DIRECT_VALUE'
+                and paragraph.getPropertyValue(name)==value):
+            state='DIRECT_VALUE'
+        result.append((name,value,state))
+    return tuple(result)
+
+
 def plain_metadata(doc, allow_uniform_format=False, allow_mixed_format=False):
     if (doc.TextSections.Count or doc.TextTables.Count or doc.TextFrames.Count or doc.DrawPage.Count
             or doc.TextFields.createEnumeration().hasMoreElements() or doc.Bookmarks.hasElements()
@@ -140,8 +155,7 @@ def plain_metadata(doc, allow_uniform_format=False, allow_mixed_format=False):
                 if not allow_mixed_format and color_metadata is not None and rgb != color_metadata:
                     raise Refused('mixed_color_metadata')
                 color_metadata = rgb
-                current = tuple((name, portion.getPropertyValue(name), portion.getPropertyState(name).value)
-                    for name in FORMATTED_CHARACTERS)
+                current = effective_character_format(portion, paragraph)
                 if any(state not in ('DEFAULT_VALUE', 'DIRECT_VALUE') for _, _, state in current):
                     raise Refused('ambiguous_format')
                 if not allow_mixed_format and uniform is not None and current != uniform:
@@ -259,6 +273,138 @@ def replaced_layout(layout, start, length, replacement_length, allow_cross=False
         paragraph_format = ('paragraphs', tuple((offset + (replacement_length - length if offset > start else 0), value)
             for offset, value in paragraph_format[1]))
     return (tuple(output), paragraph_format, layout[2])
+
+
+def paragraph_span_plan(body, layout, start, length, replacement):
+    """Keep paragraph topology; map each nonempty selection part to one draft part."""
+    if layout[1][0] != 'paragraphs' or length <= 0 or start < 0 or start + length > len(body):
+        raise Refused('span_bounds')
+    if any(c in replacement for c in '\u2028\u2029') or '\r' in replacement.replace('\r\n', ''):
+        raise Refused('span_separator')
+    breaks, offset = [], 0
+    for size, chars, rgb in layout[0]:
+        if not chars:
+            if body[offset:offset+size] not in ('\n', '\r', '\r\n'):
+                raise Refused('span_separator')
+            breaks.append((offset, offset+size))
+        offset += size
+    if offset != len(body): raise Refused('span_bounds')
+    inside = [(a,b) for a,b in breaks if a < start+length and b > start]
+    if not inside or len(inside) > 7 or any(a < start or b > start+length for a,b in inside):
+        raise Refused('span_bounds')
+    bounds = [start] + [b for a,b in inside]
+    ends = [a for a,b in inside] + [start+length]
+    parts = replacement.replace('\r\n', '\n').split('\n')
+    if len(parts) != len(bounds): raise Refused('span_paragraph_count')
+    plans=[]
+    expected_body, expected_layout = body, layout
+    for begin,end,part in reversed(list(zip(bounds,ends,parts))):
+        if not part or begin == end:
+            if part or begin != end: raise Refused('span_empty_paragraph_changed')
+            continue
+        runs=selected_layout_runs(layout,begin,end-begin)
+        para=next(value for pos,value in reversed(layout[1][1]) if pos<=begin)
+        fmt=(runs[0][1],para,layout[2],runs[0][2])
+        plans.append((begin,end-begin,part,fmt,runs))
+        expected_layout=replaced_layout(expected_layout,begin,end-begin,len(part),True)
+        expected_body=expected_body[:begin]+part+expected_body[end:]
+    if len(plans)<2: raise Refused('span_nonempty_parts')
+    return plans,expected_body,expected_layout
+
+
+def span_cursor(doc, selected, offset, length):
+    cursor=doc.Text.createTextCursorByRange(selected.Start)
+    for stage,target in enumerate((offset,length)):
+        for _ in range(4097):
+            measured=len(cursor.String)
+            if measured==target: break
+            if measured>target or not cursor.goRight(1,True): raise Refused('span_cursor_bounds')
+        else: raise Refused('span_cursor_bounds')
+        if stage==0:
+            cursor.collapseToEnd()
+    return cursor
+
+
+def apply_paragraph_span(owner, review, replacement, deadline):
+    wrote=False
+    failure=None
+    outcome=None
+    manager=owner.document.getUndoManager()
+    entered=False
+    try:
+        owner.validate(review,deadline)
+        body=body_snapshot(owner.document,True,owner.allow_mixed_format)
+        prefix=owner.document.Text.createTextCursor()
+        prefix.gotoStart(False);prefix.gotoRange(review['range'].Start,True)
+        start=len(prefix.String)
+        plans,expected_body,expected_layout=paragraph_span_plan(body,review['layout'],start,len(review['source']),replacement)
+        cursors=[span_cursor(owner.document,review['range'],a-start,n) for a,n,_,_,_ in plans]
+        owner.validate(review,deadline)
+        manager.enterUndoContext('Grammar reviewed paragraph replacement');entered=True
+        owner.validate(review,deadline)
+        if manager.isLocked(): raise Refused('undo_owned_elsewhere')
+        current_body,current_layout=body,review['layout']
+        current_hash=document_fingerprint(owner.document,True,owner.allow_mixed_format)
+        for (offset,length,part,fmt,runs),cursor in zip(plans,cursors):
+            owner.permission(review['epoch']);owner.deadline(deadline)
+            if time.monotonic()>=review['expires']: raise Refused('expired_review')
+            selected=owner.selected()
+            text=owner.document.Text
+            if text.compareRegionStarts(selected,review['range']) or text.compareRegionEnds(selected,review['range']):
+                raise Refused('span_selection_changed')
+            owner.check_document(owner.document);owner.foreground_document()
+            if document_fingerprint(owner.document,True,owner.allow_mixed_format)!=current_hash:
+                raise Refused('span_document_changed')
+            original=cursor.String
+            if original!=current_body[offset:offset+length]: raise Refused('span_source_changed')
+            steps=movement_to(owner.document,cursor.Start)
+            count=movement_to(owner.document,cursor.End)-steps
+            next_layout=replaced_layout(current_layout,offset,length,len(part),True)
+            next_body=current_body[:offset]+part+current_body[offset+length:]
+            next_hash=fingerprint(json.dumps((next_body,next_layout),ensure_ascii=True,separators=(',',':')))
+            manager.lock()
+            try:
+                owner.document.disableSetModified()
+                try:
+                    owner.permission(review['epoch']);owner.deadline(deadline)
+                    owner.check_document(owner.document,own_notification_batch=True)
+                    owner.foreground_document()
+                    selected=owner.selected()
+                    if time.monotonic()>=review['expires'] or owner.document.Text.compareRegionStarts(selected,review['range']) or owner.document.Text.compareRegionEnds(selected,review['range']):
+                        raise Refused('span_review_changed')
+                    if cursor.String!=original or document_fingerprint(owner.document,True,owner.allow_mixed_format)!=current_hash:
+                        raise Refused('span_document_changed')
+                    wrote=True
+                    cursor.String=part
+                    restore_uniform_format(cursor,fmt)
+                finally: owner.document.enableSetModified()
+            finally: manager.unlock()
+            if document_fingerprint(owner.document,True,owner.allow_mixed_format)!=next_hash:
+                raise Refused('span_postwrite_mismatch')
+            action=ReplacementUndo(owner.document,cursor,original,part,steps,count,current_hash,next_hash,fmt,owner.allow_mixed_format,runs)
+            manager.addUndoAction(action)
+            current_body,current_layout,current_hash=next_body,next_layout,next_hash
+        owner.document.setModified(True)
+        if current_body!=expected_body or current_layout!=expected_layout or document_fingerprint(owner.document,True,owner.allow_mixed_format)!=current_hash:
+            raise Refused('span_postwrite_mismatch')
+        outcome=dict(status='APPLIED',undo=False)
+        return outcome,wrote
+    except Exception as error:
+        failure=str(error)
+        return dict(status='UNKNOWN_CHANGED' if wrote else 'REJECTED',reason=failure),wrote
+    finally:
+        if entered:
+            try:
+                if wrote: owner.document.setModified(True)
+                manager.leaveUndoContext()
+                if outcome is not None:
+                    outcome['undo']=bool(manager.isUndoPossible())
+                if wrote:
+                    owner.permission(review['epoch'])
+                    if document_fingerprint(owner.document,True,owner.allow_mixed_format)!=current_hash:
+                        raise Refused('span_changed_after_context')
+            except Exception as error:
+                return dict(status='UNKNOWN_CHANGED' if wrote else 'REJECTED',reason=(failure+'; ' if failure else '')+str(error)),wrote
 
 
 def restore_selected_runs(doc, selected, runs, formatting):
@@ -517,22 +663,27 @@ class Callback(unohelper.Base, XCallback):
                 source = owner.read_range(selected)
                 if not source or len(source) > 4096:
                     raise Refused('source_bounds')
-                if owner.allow_uniform_format and any(c in source for c in '\r\n\u2028\u2029'):
+                if owner.allow_uniform_format and not owner.allow_span and any(c in source for c in '\r\n\u2028\u2029'):
                     raise Refused('formatted_single_paragraph_only')
                 owner.deadline(self.deadline)
                 owner.permission(self.epoch)
                 owner.foreground_document()
                 layout = plain_metadata(owner.document, True, owner.allow_mixed_format) if owner.allow_mixed_format else None
-                mixed_range = mixed_selection(owner.document, selected, layout, owner.allow_cross_format) if layout is not None else None
+                span = owner.allow_span and any(c in source for c in '\r\n')
+                if span:
+                    prefix=owner.document.Text.createTextCursor()
+                    prefix.gotoStart(False);prefix.gotoRange(selected.Start,True)
+                    paragraph_span_plan(owner.document.Text.String,layout,len(prefix.String),len(source),source)
+                mixed_range = mixed_selection(owner.document, selected, layout, owner.allow_cross_format) if layout is not None and not span else None
                 owner.deadline(self.deadline)
                 owner.permission(self.epoch)
                 owner.review = dict(token=secrets.token_hex(24), source=source,
                     range=owner.document.Text.createTextCursorByRange(selected),
                     revision=owner.revision, selection_revision=owner.selection_revision,
                     expires=time.monotonic() + 30, epoch=self.epoch,
-                    layout=layout, mixed_range=mixed_range,
+                    layout=layout, mixed_range=mixed_range, span=span,
                     formatting=mixed_range[2] if mixed_range else
-                        (plain_metadata(owner.document, True) if owner.allow_uniform_format else None))
+                        (plain_metadata(owner.document, True) if owner.allow_uniform_format and not span else None))
                 owner.schedule_expiry(owner.review['token'])
                 value = dict(status='CAPTURED', token=owner.review['token'], source=source)
             elif action == 'accept':
@@ -546,60 +697,63 @@ class Callback(unohelper.Base, XCallback):
                     raise Refused('replacement_bounds')
                 if review['formatting'] is not None and any(c in replacement for c in '\r\n\u2028\u2029'):
                     raise Refused('formatted_single_paragraph_only')
-                owner.validate(review, self.deadline)
-                undo = owner.document.getUndoManager()
-                undo.enterUndoContext('Grammar experimental reviewed replacement')
-                try:
-                    # enterUndoContext can call listeners. Recheck everything after it.
-                    owner.validate(review, self.deadline)
-                    # Record one custom action after replacement, while native
-                    # sub-operation notifications/recording are suppressed. Existing
-                    # history is retained; no clear/reset or whole-document rollback.
-                    if undo.isLocked():
-                        raise Refused('undo_owned_elsewhere')
-                    # The bounded local body hash qualifies custom Undo/Redo
-                    # after earlier native history rebuilds live range objects.
-                    before_hash = document_fingerprint(owner.document, owner.allow_uniform_format, owner.allow_mixed_format)
-                    expected_after_hash = None
-                    if review['layout'] is not None:
-                        offset, length, _ = review['mixed_range']
-                        expected_layout = replaced_layout(review['layout'], offset, length, len(replacement), owner.allow_cross_format)
-                        body = body_snapshot(owner.document, True, owner.allow_mixed_format)
-                        expected_body = body[:offset] + replacement + body[offset + length:]
-                        expected_after_hash = fingerprint(json.dumps((expected_body, expected_layout),
-                            ensure_ascii=True, separators=(',', ':')))
-                    start = movement_to(owner.document, review['range'].Start)
-                    before_steps = movement_to(owner.document, review['range'].End) - start
-                    undo.lock()
-                    try:
-                        owner.validate(review, self.deadline)
-                        owner.document.disableSetModified()
-                        try:
-                            owner.validate(review, self.deadline, own_notification_batch=True)
-                            wrote = True
-                            review['range'].String = replacement
-                            if review['formatting'] is not None:
-                                restore_uniform_format(review['range'], review['formatting'])
-                        finally:
-                            owner.document.enableSetModified()
-                    finally:
-                        undo.unlock()
-                    after_hash = document_fingerprint(owner.document, owner.allow_uniform_format, owner.allow_mixed_format)
-                    if expected_after_hash is not None and after_hash != expected_after_hash:
-                        raise Refused('postwrite_layout_mismatch')
-                    undo.addUndoAction(ReplacementUndo(owner.document, review['range'], review['source'], replacement,
-                        start, before_steps, before_hash, after_hash, review['formatting'], owner.allow_mixed_format,
-                        selected_layout_runs(review['layout'], *review['mixed_range'][:2]) if owner.allow_cross_format else None))
-                    owner.document.setModified(True)
-                finally:
-                    undo.leaveUndoContext()
-                if (owner.read_range(review['range']) != replacement or (owner.allow_mixed_format
-                        and document_fingerprint(owner.document, True, owner.allow_mixed_format) != expected_after_hash)
-                        or (not owner.allow_mixed_format and review['formatting'] is not None
-                        and plain_metadata(owner.document, True) != review['formatting'])):
-                    value = dict(status='UNKNOWN_CHANGED', reason='postwrite_mismatch')
+                if review.get('span'):
+                    value,wrote=apply_paragraph_span(owner,review,replacement,self.deadline)
                 else:
-                    value = dict(status='APPLIED', undo=bool(undo.isUndoPossible()))
+                    owner.validate(review, self.deadline)
+                    undo = owner.document.getUndoManager()
+                    undo.enterUndoContext('Grammar experimental reviewed replacement')
+                    try:
+                        # enterUndoContext can call listeners. Recheck everything after it.
+                        owner.validate(review, self.deadline)
+                        # Record one custom action after replacement, while native
+                        # sub-operation notifications/recording are suppressed. Existing
+                        # history is retained; no clear/reset or whole-document rollback.
+                        if undo.isLocked():
+                            raise Refused('undo_owned_elsewhere')
+                        # The bounded local body hash qualifies custom Undo/Redo
+                        # after earlier native history rebuilds live range objects.
+                        before_hash = document_fingerprint(owner.document, owner.allow_uniform_format, owner.allow_mixed_format)
+                        expected_after_hash = None
+                        if review['layout'] is not None:
+                            offset, length, _ = review['mixed_range']
+                            expected_layout = replaced_layout(review['layout'], offset, length, len(replacement), owner.allow_cross_format)
+                            body = body_snapshot(owner.document, True, owner.allow_mixed_format)
+                            expected_body = body[:offset] + replacement + body[offset + length:]
+                            expected_after_hash = fingerprint(json.dumps((expected_body, expected_layout),
+                                ensure_ascii=True, separators=(',', ':')))
+                        start = movement_to(owner.document, review['range'].Start)
+                        before_steps = movement_to(owner.document, review['range'].End) - start
+                        undo.lock()
+                        try:
+                            owner.validate(review, self.deadline)
+                            owner.document.disableSetModified()
+                            try:
+                                owner.validate(review, self.deadline, own_notification_batch=True)
+                                wrote = True
+                                review['range'].String = replacement
+                                if review['formatting'] is not None:
+                                    restore_uniform_format(review['range'], review['formatting'])
+                            finally:
+                                owner.document.enableSetModified()
+                        finally:
+                            undo.unlock()
+                        after_hash = document_fingerprint(owner.document, owner.allow_uniform_format, owner.allow_mixed_format)
+                        if expected_after_hash is not None and after_hash != expected_after_hash:
+                            raise Refused('postwrite_layout_mismatch')
+                        undo.addUndoAction(ReplacementUndo(owner.document, review['range'], review['source'], replacement,
+                            start, before_steps, before_hash, after_hash, review['formatting'], owner.allow_mixed_format,
+                            selected_layout_runs(review['layout'], *review['mixed_range'][:2]) if owner.allow_cross_format else None))
+                        owner.document.setModified(True)
+                    finally:
+                        undo.leaveUndoContext()
+                    if (owner.read_range(review['range']) != replacement or (owner.allow_mixed_format
+                            and document_fingerprint(owner.document, True, owner.allow_mixed_format) != expected_after_hash)
+                            or (not owner.allow_mixed_format and review['formatting'] is not None
+                            and plain_metadata(owner.document, True) != review['formatting'])):
+                        value = dict(status='UNKNOWN_CHANGED', reason='postwrite_mismatch')
+                    else:
+                        value = dict(status='APPLIED', undo=bool(undo.isUndoPossible()))
             else:
                 raise Refused('action')
         except Refused as error:
@@ -620,7 +774,7 @@ class Callback(unohelper.Base, XCallback):
 
 
 class WriterCore(unohelper.Base, XJob):
-    def __init__(self, context, *, allow_saved_documents=False, allow_uniform_format=False, allow_mixed_format=False, allow_paragraphs=False, allow_cross_format=False):
+    def __init__(self, context, *, allow_saved_documents=False, allow_uniform_format=False, allow_mixed_format=False, allow_paragraphs=False, allow_cross_format=False, allow_span=False):
         self.context = context
         self.desktop = context.ServiceManager.createInstanceWithContext('com.sun.star.frame.Desktop', context)
         self.document = self.controller = self.listener = self.review = self.result = None
@@ -635,6 +789,9 @@ class WriterCore(unohelper.Base, XJob):
         self.allow_saved_documents = allow_saved_documents
         if allow_cross_format and not allow_paragraphs:
             raise ValueError('cross format requires paragraph mode')
+        if allow_span and not allow_cross_format:
+            raise ValueError('span requires cross formatting')
+        self.allow_span = allow_span
         self.allow_cross_format = allow_cross_format
         self.allow_uniform_format = allow_uniform_format
         if allow_mixed_format and not allow_uniform_format:
