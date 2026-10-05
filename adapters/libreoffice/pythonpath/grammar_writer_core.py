@@ -20,6 +20,7 @@ from com.sun.star.awt import XCallback
 from com.sun.star.util import XModifyListener
 from com.sun.star.view import XSelectionChangeListener
 from com.sun.star.lang.SystemDependent import SYSTEM_WIN32
+from com.sun.star.beans.PropertyAttribute import READONLY
 
 
 class Refused(Exception):
@@ -33,9 +34,53 @@ def plain_metadata(doc):
         raise Refused('unsupported_structure')
     cursor = doc.Text.createTextCursor()
     cursor.gotoStart(False)
-    cursor.gotoEnd(True)
+    cursor.goRight(16385, True)
+    if doc.Text.compareRegionEnds(cursor, doc.Text.End) != 0:
+        raise Refused('body_bounds')
     if cursor.getPropertyState('CharHidden').value == 'AMBIGUOUS_VALUE' or cursor.CharHidden:
         raise Refused('hidden_text')
+    # The custom Undo action restores text, not arbitrary rich formatting.
+    # Inspect actual portions, not aggregate cursor property states: Writer can
+    # report DEFAULT_VALUE there even after direct formatting was assigned.
+    style = doc.StyleFamilies.getByName('ParagraphStyles').getByName('Standard')
+    characters = ('CharFontName', 'CharFontNameAsian', 'CharFontNameComplex',
+        'CharHeight', 'CharHeightAsian', 'CharHeightComplex',
+        'CharWeight', 'CharWeightAsian', 'CharWeightComplex',
+        'CharPosture', 'CharPostureAsian', 'CharPostureComplex',
+        'CharColor', 'CharBackColor', 'CharUnderline', 'CharStrikeout',
+        'CharEscapement', 'CharKerning', 'CharAutoKerning', 'CharScaleWidth',
+        'CharCaseMap', 'CharRelief', 'CharShadowed', 'CharContoured', 'CharRotation', 'CharEmphasis')
+    paragraphs = ('ParaAdjust', 'ParaLeftMargin', 'ParaRightMargin', 'ParaTopMargin',
+        'ParaBottomMargin', 'ParaFirstLineIndent')
+    defaults = {name: style.getPropertyValue(name) for name in characters + paragraphs}
+    enumeration = doc.Text.createEnumeration()
+    paragraph_count = portion_count = 0
+    while enumeration.hasMoreElements():
+        paragraph_count += 1
+        if paragraph_count > 256:
+            raise Refused('paragraph_bounds')
+        paragraph = enumeration.nextElement()
+        if paragraph.ParaStyleName != 'Standard' or paragraph.NumberingStyleName:
+            raise Refused('unsupported_paragraph_style')
+        for name in paragraphs:
+            if paragraph.getPropertyValue(name) != defaults[name]:
+                raise Refused('unsupported_format_' + name)
+        portions = paragraph.createEnumeration()
+        while portions.hasMoreElements():
+            portion_count += 1
+            if portion_count > 1024:
+                raise Refused('portion_bounds')
+            portion = portions.nextElement()
+            if portion.TextPortionType != 'Text' or portion.CharStyleName or portion.HyperLinkURL or portion.CharHidden:
+                raise Refused('unsupported_text_portion')
+            for property_info in portion.getPropertySetInfo().getProperties():
+                name = property_info.Name
+                if name.startswith('Char') and not (property_info.Attributes & READONLY):
+                    if portion.getPropertyState(name).value != 'DEFAULT_VALUE':
+                        raise Refused('unsupported_character_format')
+            for name in characters:
+                if portion.getPropertyValue(name) != defaults[name]:
+                    raise Refused('unsupported_format_' + name)
 
 
 def body_snapshot(doc):
@@ -191,6 +236,7 @@ class Callback(unohelper.Base, XCallback):
                 owner.check_document(document)
                 owner.document = document
                 owner.controller = document.CurrentController
+                owner.window = int(owner.controller.Frame.ContainerWindow.getWindowHandle((), SYSTEM_WIN32))
                 owner.listener = Changes(owner)
                 document.addModifyListener(owner.listener)
                 owner.controller.addSelectionChangeListener(owner.listener)
@@ -208,12 +254,14 @@ class Callback(unohelper.Base, XCallback):
                 owner.clear_review()
                 owner.permission(self.epoch)
                 owner.check_document(owner.document)
+                owner.foreground_document()
                 selected = owner.selected()
                 source = owner.read_range(selected)
                 if not source or len(source) > 4096:
                     raise Refused('source_bounds')
                 owner.deadline(self.deadline)
                 owner.permission(self.epoch)
+                owner.foreground_document()
                 owner.review = dict(token=secrets.token_hex(24), source=source,
                     range=owner.document.Text.createTextCursorByRange(selected),
                     revision=owner.revision, selection_revision=owner.selection_revision,
@@ -298,6 +346,7 @@ class WriterCore(unohelper.Base, XJob):
         self.text_reads = 0
         self.epoch = 0
         self.revoked = True
+        self.window = 0
 
     def deadline(self, expiry):
         ticks = None
@@ -368,6 +417,12 @@ class WriterCore(unohelper.Base, XJob):
         if selected.Text != self.document.Text:
             raise Refused('non_body_range')
         return selected
+
+    def foreground_document(self):
+        foreground = ctypes.windll.user32.GetForegroundWindow
+        foreground.restype = ctypes.c_void_p
+        if foreground() != self.window:
+            raise Refused('document_not_foreground')
 
     def read_range(self, selected):
         bounded = self.document.Text.createTextCursorByRange(selected.Start)

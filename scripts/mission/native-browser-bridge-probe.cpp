@@ -10,7 +10,13 @@ static ApplyImageDigest digest() {
 }
 static int serve(int scenario) {
     auto hash=digest();if(scenario==1)hash[0]^=1;
-    BrowserBridgeServer server(image(),hash);ChannelRequest request;unsigned calls=0;
+    struct WindowOwner {HWND value=nullptr;~WindowOwner(){if(value)DestroyWindow(value);}} window;
+    if(scenario>=13){
+        const auto title=L"Grammar.WindowBinding."+std::to_wstring(GetCurrentProcessId());
+        window.value=CreateWindowExW(0,L"STATIC",title.c_str(),WS_OVERLAPPEDWINDOW,0,0,200,100,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+        if(!window.value)return 26;
+    }
+    BrowserBridgeServer server(image(),hash,window.value);ChannelRequest request;unsigned calls=0;
     const auto eventName=L"Local\\Grammar.BridgeProbe."+std::to_wstring(GetCurrentProcessId());
     ChannelHandle capturedEvent(CreateEventW(nullptr,TRUE,FALSE,eventName.c_str()));
     if(!capturedEvent.get())return 25;
@@ -18,7 +24,7 @@ static int serve(int scenario) {
     while(GetTickCount64()<deadline) {
         auto state=server.poll(request);
         if(state==BrowserPoll::closed) {
-            unsigned expected=(scenario==0 || scenario==9 || scenario==10)?2:(scenario==2 || scenario==1 || scenario==3 || scenario==4 || scenario==5 || scenario==6 || scenario==7)?0:1;
+            unsigned expected=(scenario==0 || scenario==9 || scenario==10 || scenario==14)?2:(scenario==2 || scenario==1 || scenario==3 || scenario==4 || scenario==5 || scenario==6 || scenario==7 || scenario==13)?0:1;
             return calls==expected?0:20;
         }
         if(state==BrowserPoll::request) {
@@ -42,7 +48,7 @@ int wmain(int argc,wchar_t** argv) try {
     if(!GetUserNameW(user,&size) || _wcsicmp(user,L"WDAGUtilityAccount"))return 3;
     if(argc==3 && !wcscmp(argv[1],L"--server"))return serve(_wtoi(argv[2]));
     unsigned failures=0,cases=0;
-    for(int scenario=0;scenario<=12;++scenario) {
+    for(int scenario=0;scenario<=14;++scenario) {
 #ifdef GRAMMAR_ABI_PROBE
         if(scenario!=0 && scenario!=8 && scenario!=9 && scenario!=10 && scenario!=11 && scenario!=12)continue;
 #endif
@@ -80,8 +86,14 @@ int wmain(int argc,wchar_t** argv) try {
             // closing first would prove only disconnect, not header admission.
             pass=pass && WaitForSingleObject(process.get(),4000)==WAIT_OBJECT_0;
         } else {
-            BrowserBridgeClient client;bool connected=client.connect(std::move(peer),deadline);
-            if(scenario==1)pass=!connected;
+            HWND expectedWindow=nullptr;
+            if(scenario==14){
+                const auto title=L"Grammar.WindowBinding."+std::to_wstring(child.dwProcessId);
+                do {expectedWindow=FindWindowW(L"STATIC",title.c_str());if(expectedWindow)break;Sleep(1);}while(GetTickCount64()<deadline);
+                DWORD pid=0;if(!expectedWindow || !GetWindowThreadProcessId(expectedWindow,&pid) || pid!=child.dwProcessId)return 27;
+            }
+            BrowserBridgeClient client;bool connected=client.connect(std::move(peer),deadline,expectedWindow);
+            if(scenario==1 || scenario==13)pass=!connected;
             else if(connected) {
                 TargetReply reply;std::wstring text;std::thread cancellation;
                 bool cancellationSignalled=false;

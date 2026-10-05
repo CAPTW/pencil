@@ -26,8 +26,8 @@ class WriterBridge:
         self.tick.restype = ctypes.c_ulonglong
         u32, u64 = ctypes.c_uint32, ctypes.c_ulonglong
         ref = ctypes.POINTER
-        self.create = self.library.GrammarBrowserServerCreateV2
-        self.create.argtypes, self.create.restype = [ref(u64), ref(u64)], u32
+        self.create = self.library.GrammarWriterServerCreateV2
+        self.create.argtypes, self.create.restype = [ctypes.c_void_p, ref(u64), ref(u64)], u32
         self.poll = self.library.GrammarBrowserServerPollV2
         self.poll.argtypes = [u64, ref(u32), ref(u32), ref(u64), ctypes.c_wchar_p, u32, ref(u32), ref(u64)]
         self.poll.restype = u32
@@ -64,7 +64,7 @@ class WriterBridge:
         buffer = ctypes.create_unicode_buffer(8193)
         try:
             anchor = ctypes.c_ulonglong()
-            if self.create(ctypes.byref(self.cookie), ctypes.byref(anchor)):
+            if self.create(self.core.window, ctypes.byref(self.cookie), ctypes.byref(anchor)):
                 raise RuntimeError('native_channel_unavailable')
             while not self.stop_requested.is_set():
                 state, command, units = ctypes.c_uint32(), ctypes.c_uint32(), ctypes.c_uint32()

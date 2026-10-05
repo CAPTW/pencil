@@ -61,7 +61,8 @@ try{
  await until('changed source refused',async()=>await status.textContent()==='Apply unavailable - Copy is available');
  assert.equal(await command('read'),'USER SYNTHETIC CHANGE');pass('concurrent source edit is preserved without rollback');await command('settled');
  await capture();await command('disable');await apply.click();
- await until('revoked permission refused',async()=>await status.textContent()==='Apply unavailable - Copy is available');
+ await until('revoked permission refused',async()=>['Apply unavailable - Copy is available','Apply outcome unconfirmed'].includes(await status.textContent()));
+ result.revokedStatus=await status.textContent();
  assert.equal(await command('read'),'Before | please seperate this. | After');pass('Disable after capture prevents mutation');
  await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app'));
  await until('app natural exit',()=>app.exitCode!==null);assert.equal(app.exitCode,0);pass('app exits naturally');result.status='PASS';

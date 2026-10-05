@@ -81,6 +81,14 @@ try:
         (arg('Hidden', False), arg('MacroExecutionMode', NEVER_EXECUTE)))
     wait(lambda: desktop.CurrentComponent == doc)
     doc.Text.String = source
+    format_cursor = doc.Text.createTextCursor()
+    format_cursor.gotoStart(False)
+    format_cursor.gotoEnd(True)
+    names = ('CharWeight', 'CharPosture', 'CharHeight', 'CharFontName', 'CharStyleName', 'CharUnderline', 'ParaStyleName')
+    result['plainFormatStates'] = {name: format_cursor.getPropertyState(name).value for name in names}
+    format_cursor.CharWeight = 150.0
+    result['boldFormatStates'] = {name: format_cursor.getPropertyState(name).value for name in names}
+    format_cursor.setPropertyToDefault('CharWeight')
     cursor = doc.Text.createTextCursor()
     cursor.gotoStart(False)
     cursor.goRight(9, False)

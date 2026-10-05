@@ -65,7 +65,7 @@ extern "C" __declspec(dllexport) uint32_t WINAPI GrammarWriterClientCapture(uint
     if(!GetWindowThreadProcessId(slot->window,&slot->pid)||!slot->target_alive(true))return 4;
     ApplyImageDigest digest{};if(!trusted_digest(digest))return 4;
     auto peer=verify_apply_peer(slot->pid,GRAMMAR_TRUSTED_WRITER_PATH,digest,deadline);
-    if(!peer||slot->cancelled||!slot->target_alive(true)||!slot->client.connect(std::move(peer),deadline))return 4;
+    if(!peer||slot->cancelled||!slot->target_alive(true)||!slot->client.connect(std::move(peer),deadline,slot->window))return 4;
     TargetReply reply;std::wstring source;
     const bool ok=slot->client.request(ChannelCommand::capture,L"",reply,source,deadline)&&reply.status==2&&
         !slot->cancelled&&slot->target_alive(true)&&GetTickCount64()<deadline;
