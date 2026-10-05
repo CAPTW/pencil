@@ -28,6 +28,10 @@ class Hook(unohelper.Base, XUndoManagerListener, XModifyListener):
                 self.args['Document'].Text.String = self.args['UserText']
             elif mode in ('delay', 'tickdelay'):
                 time.sleep(2.7 if mode == 'delay' else .35)
+            elif mode == 'format':
+                cursor = self.args['Document'].Text.createTextCursor()
+                cursor.gotoEnd(True)
+                cursor.CharColor = 0x880022
             elif mode == 'save':
                 self.args['Document'].store()
             else:

@@ -67,6 +67,27 @@ def button(name):
     assert context.doAccessibleAction(0)
 
 
+def prepare_format():
+    if '--formatted' in sys.argv:
+        cursor = doc.Text.createTextCursor()
+        cursor.gotoEnd(True)
+        cursor.CharWeight = cursor.CharWeightAsian = cursor.CharWeightComplex = 150.0
+        cursor.CharColor = 0x2255AA
+        cursor.ParaAdjust = 3
+
+
+def format_ok():
+    rows = []
+    paragraphs = doc.Text.createEnumeration()
+    while paragraphs.hasMoreElements():
+        para = paragraphs.nextElement()
+        parts = para.createEnumeration()
+        while parts.hasMoreElements():
+            part = parts.nextElement()
+            rows.append((part.CharWeight, part.CharWeightAsian, part.CharWeightComplex, part.CharColor, para.ParaAdjust))
+    return bool(rows) and all(row == (150.0, 150.0, 150.0, 0x2255AA, 3) for row in rows)
+
+
 try:
     out.write_text(json.dumps(result), encoding='utf-8')
     ctx = uno.getComponentContext()
@@ -82,6 +103,7 @@ try:
         (arg('Hidden', False), arg('MacroExecutionMode', NEVER_EXECUTE)))
     wait(lambda: desktop.CurrentComponent == doc)
     doc.Text.String = source
+    prepare_format()
     saved_path = None
     if '--saved' in sys.argv:
         saved_path = Path(r'C:\GrammarOutput\product-owned.docx')
@@ -97,6 +119,8 @@ try:
         wait(lambda: desktop.CurrentComponent == doc)
         check('saved-docx-reopened-exact', doc.Text.String == source and doc.hasLocation())
         saved_digest = hashlib.sha256(saved_path.read_bytes()).hexdigest()
+        if '--formatted' in sys.argv:
+            check('saved-docx-reopened-bold-color-alignment', format_ok())
     format_cursor = doc.Text.createTextCursor()
     format_cursor.gotoStart(False)
     format_cursor.gotoEnd(True)
@@ -105,6 +129,7 @@ try:
     format_cursor.CharWeight = 150.0
     result['boldFormatStates'] = {name: format_cursor.getPropertyState(name).value for name in names}
     format_cursor.setPropertyToDefault('CharWeight')
+    prepare_format()
     cursor = doc.Text.createTextCursor()
     cursor.gotoStart(False)
     cursor.goRight(9, False)
@@ -134,7 +159,7 @@ try:
     if '--widget' in sys.argv:
         result['scope'] = 'installed Grammar widget through product Writer entry'
         log = open(r'C:\GrammarOutput\widget-driver-error.log', 'w', encoding='utf-8')
-        node = subprocess.Popen([r'C:\GrammarPayload\node.exe', r'C:\GrammarPayload\writer-app-e2e.mjs'],
+        node = subprocess.Popen([r'C:\GrammarPayload\node.exe', r'C:\GrammarPayload\writer-app-e2e.mjs'] + (['--formatted'] if '--formatted' in sys.argv else []),
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, text=True, encoding='utf-8',
             creationflags=subprocess.CREATE_NO_WINDOW)
         dispatcher = ctx.ServiceManager.createInstanceWithContext('com.sun.star.frame.DispatchHelper', ctx)
@@ -144,6 +169,7 @@ try:
                 value = True
                 if command == 'prepare':
                     doc.Text.String = 'Before | please seperate this. | After'
+                    prepare_format()
                     cursor = doc.Text.createTextCursor()
                     cursor.gotoStart(False)
                     cursor.goRight(9, False)
@@ -167,6 +193,7 @@ try:
                     time.sleep(.08)
                     for vk in (0x47, 0x10, 0x11): key(vk, 0, 2, 0)
                 elif command == 'read': value = doc.Text.String
+                elif command == 'format': value = format_ok()
                 elif command == 'undo': doc.getUndoManager().undo()
                 elif command == 'change': doc.Text.String = 'USER SYNTHETIC CHANGE'
                 elif command == 'disable': button('Disable')
