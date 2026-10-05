@@ -352,7 +352,9 @@ def apply_paragraph_span(owner, review, replacement, deadline):
             text=owner.document.Text
             if text.compareRegionStarts(selected,review['range']) or text.compareRegionEnds(selected,review['range']):
                 raise Refused('span_selection_changed')
-            owner.check_document(owner.document);owner.foreground_document()
+            # Review widget owns foreground during explicit Accept, as in the
+            # single-range path. Exact bound document/controller/range still checked.
+            owner.check_document(owner.document)
             if document_fingerprint(owner.document,True,owner.allow_mixed_format)!=current_hash:
                 raise Refused('span_document_changed')
             original=cursor.String
@@ -368,7 +370,6 @@ def apply_paragraph_span(owner, review, replacement, deadline):
                 try:
                     owner.permission(review['epoch']);owner.deadline(deadline)
                     owner.check_document(owner.document,own_notification_batch=True)
-                    owner.foreground_document()
                     selected=owner.selected()
                     if time.monotonic()>=review['expires'] or owner.document.Text.compareRegionStarts(selected,review['range']) or owner.document.Text.compareRegionEnds(selected,review['range']):
                         raise Refused('span_review_changed')

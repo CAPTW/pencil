@@ -74,7 +74,7 @@ try{
  assert.equal(normalized(await command('read')),initial);pass('Disable after capture prevents mutation');
  await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app'));
  await until('app natural exit',()=>app.exitCode!==null);assert.equal(app.exitCode,0);pass('app exits naturally');result.status='PASS';
-}catch(error){result.error=String(error.stack??error);}
+}catch(error){result.error=String(error.stack??error);if(page){result.lastStatus=await page.locator('.status-pill').textContent().catch(()=>null);}}
 finally{
  if(page){result.captureErrors=await page.evaluate(()=>window.__errors).catch(()=>[]);}
  if(page&&app?.exitCode===null){await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});await until('cleanup app',()=>app.exitCode!==null).catch(()=>{});}
