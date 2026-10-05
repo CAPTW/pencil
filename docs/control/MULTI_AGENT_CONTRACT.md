@@ -1,6 +1,6 @@
 # Grammar Tool-neutral Multi-Agent Development Contract
 
-Contract-Version: 1.5.0
+Contract-Version: 1.5.1
 
 ## Active mission override (Owner authorization, 2026-09-25)
 For GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1, the Owner explicitly authorizes investigation, implementation, tests, local commits, reviewed safe local main integration and continuation through P3-A stabilization and the first Chromium textarea/simple-contenteditable adapter for personal use. This section supersedes conflicting historical one-step gates below, fixed file/iteration/commit budgets, per-step new-worktree requirements and fresh Source UI upload prerequisites. Use one dedicated mission worktree; preserve historical failed candidates and unrelated work. Historical failures remain failures. Review changed main before integration; no history rewrite or forced conflict resolution.
@@ -27,13 +27,17 @@ and extraction checks. This is eligible for manual Project Source replacement,
 not canonical main adoption, product acceptance, release or UI application proof.
 The default canonical export and non-applicable preview remain distinct modes.
 External UI upload remains Owner work and does not block authorized development.
+Owner subsequently retains eight named legacy Project files as historical reference.
+Exact12 constrains the current authoritative payload, not total Project inventory.
+Legacy files cannot override current00-11 state or authority; duplicate/ambiguous
+current-set versions, missing or unreadable current Sources still fail verification.
 
 ## Historical task defaults (except active mission override)
 
 ## Authority and boundaries
 Repository files and measured Git state are authority; chat, private memory, model identity and historical packets are not. Read this contract, control/state.json, docs/control/ACTIVE_TASK_LEDGER.md (if present), the current charter, roadmap and acceptance matrix before work. The Owner authorizes exactly one bounded task packet; examples in control/examples are EXAMPLE_NOT_AUTHORIZED and must never execute. Canonical integration uses Codex/Owner workflow, but every tool follows identical validation. P3-B direction approval does not authorize implementation. No automatic continuation and no next gate execution in this reset task. Preserve other agents' and existing dirty/untracked files.
 
-control/state.json holds semantic state. The Project Source generator measures main HEAD/tree/parent/subject at export; never write self-referential HEAD identity into the tracked semantic state. Historical evidence remains explicitly historical. The Project Source package is external and its exact 12 payload files are the only logical Sources.
+control/state.json holds semantic state. The Project Source generator measures main HEAD/tree/parent/subject at export; never write self-referential HEAD identity into the tracked semantic state. Historical evidence remains explicitly historical. The Project Source package is external and its exact 12 payload files are the current authoritative logical Sources; retained legacy files are historical only.
 
 ## Worktree and task admission
 Every development task uses a NEW dedicated worktree and branch. Never develop on canonical main or reuse an existing worktree. Recommended branch: candidate/<task-id-lowercase>/<agent-id>/<timestamp>; worktree: D:\dev\worktrees\Grammar\<TASK_ID>__<AGENT_ID>__<timestamp>. Resolve canonical repository identity before starting. Validate task packet against current local main HEAD, tree and subject using `python scripts/validate_governance.py --root . --task <packet.json> --execution`. Stale base blocks admission: no inferred reinterpretation, rebase or cherry-pick. A successful validator proves structure/base, not Owner authorization, acceptance or safe external side effects; integrator checks actual Owner decision evidence.

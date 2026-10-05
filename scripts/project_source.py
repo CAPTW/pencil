@@ -40,6 +40,27 @@ GLOBAL_APPLY_STATUS = "OWNED_SINGLELINE_EDIT_AND_RICHEDIT_ACCEPT_SYNTHETIC_VERIF
 GLOBAL_APPLY_TASK = "GRAMMAR-GLOBAL-ACCEPT-MULTILINE-AND-APPLICATION-ADAPTERS"
 GLOBAL_BROWSER_TASK = "GRAMMAR-GLOBAL-ACCEPT-DESKTOP-BROWSER-AND-APPLICATION-ADAPTERS"
 EDIT_APPLY_STATUS = "OWNED_QUALIFIED_EDIT_AND_RICHEDIT_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_INCOMPLETE"
+F06_SCOPED_VERDICT = "EDIT_RICHEDIT_CHROMIUM_AND_BOUNDED_WRITER_ACCEPT_SYNTHETIC_VERIFIED_GENERAL_EDITOR_ACCEPTANCE_INCOMPLETE"
+F06_SCOPE = {
+    "native_controls": "Owned qualified Windows Edit/RichEdit styles only; no generic native editor admission.",
+    "chromium": "Opted-in textarea and supported simple contenteditable; installed synthetic scope only.",
+    "writer": "LibreOffice26.2.4.2, new unsaved default-style plain body, pinned runtime0fc8624 and paired OXT; installed R27 synthetic verified.",
+    "remaining": "Saved/rich Writer documents, Calc/Impress product Apply, actual Microsoft Office/Hancom unqualified; physical IME, normal profiles and live Providers NOT_RUN. Mission INCOMPLETE."
+}
+RETAINED_HISTORY = (
+    "12_MULTI_PROVIDER_ARCHITECTURE_AND_IMPLEMENTATION_PLAN(1).md",
+    "12_P3_INSTANT_AND_PROACTIVE_ASSIST_PRODUCT_STRATEGY(1).md",
+    "13_GRAMMARLY_INSPIRED_ENGINE_SCOPE_AND_NON_GOALS(1).md",
+    "14_EDITOR_ADAPTER_AND_INCREMENTAL_DOCUMENT_MODEL(1).md",
+    "15_PROACTIVE_ASSIST_PRIVACY_AND_THREAT_CONTRACT(1).md",
+    "16_CURRENT_LOCAL_REPOSITORY_AUDIT_2026-09-06.md",
+    "17_P3_ACCEPTANCE_AND_SUCCESSOR_GATE_MATRIX(1).md",
+    "Codex_Pencil_Project_Source_Master_v2026-09-06.1.md",
+)
+HISTORY_POLICY = ("현재 권위 세트는 아래 신규 12개다. Owner가 보존한 구형 8개는 역사 참고이며 "
+                  "현재 상태·승인·검증 결과를 덮어쓰지 않는다. Project 전체 파일 수가 12를 넘는다는 이유만으로 실패하지 않는다. "
+                  "신규 12개의 누락·중복·버전 모호성·접근 실패는 여전히 실패다.\n")
+
 AUDIT_BASE = "9f54ebd4b7586f7a1658245761ccccf8a77500c6"
 
 
@@ -159,6 +180,10 @@ def state_check(state):
             verdicts["F-06"] = "OWNED_SINGLELINE_EDIT_AND_RICHEDIT_TARGET_SIDE_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED"
         if edit_apply:
             verdicts["F-06"] = "OWNED_QUALIFIED_EDIT_AND_RICHEDIT_TARGET_SIDE_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED"
+        f06 = next(d for d in state["known_defects"] if d["id"] == "F-06")
+        if "qualification_scope" in f06:
+            fail(edit_apply and f06["qualification_scope"] == F06_SCOPE, "F06_SCOPE_DRIFT")
+            verdicts["F-06"] = F06_SCOPED_VERDICT
         for defect in state["known_defects"]:
             fail(defect["verdict"] == verdicts[defect["id"]], f"VERDICT_DRIFT:{defect['id']}")
             fail(isinstance(defect.get("evidence"), list) and bool(defect["evidence"]), "DEFECT_EVIDENCE_MISSING")
@@ -231,7 +256,7 @@ def render(state, ident, inputs, package_id, preview, candidate=False):
                     "다음 작업은 02에 명시된 정확히 하나이며 자동 실행하지 않는다.\n")
     payload[NAMES[0]] = ("# Grammar Project Source — 읽기 순서\n\n" +
         ("후보 작업트리의 Owner 요청 교체용 snapshot이다. main 채택·제품 완료·UI 적용 성공을 뜻하지 않는다.\n\n" if candidate else "") +
-        "이 exact 12-file 세트는 기존 active Source 전체를 대체한다. 현재 사실은 02의 단일 machine-readable snapshot에 있다. "
+        HISTORY_POLICY + "현재 사실은 02의 단일 machine-readable snapshot에 있다. "
         "Repository Git/current bytes > 실제 현재 실행 > 코드 > Repository 결정 > 이 Source > 과거 대화 순서로 확인한다.\n\n"
         "00 → 02 → 04 → 08 → 선택 작업 관련 Source 순서로 읽는다. P3-B 방향 승인과 구현 승인은 다르다. "
         "역사 acceptance는 현재 제품 수용이 아니다. " + continuation + "\n"
@@ -314,10 +339,10 @@ def make(root, out, preview=False, candidate=False):
         "digest_algorithm": "SHA256(sorted filename + TAB + SHA256(bytes), LF joined, no trailing LF)",
         "ui_application_state": "OUTSIDE_PAYLOAD_NOT_CURRENT_TRUTH"}
     handoff = ("# Owner handoff\n\n" + ("**PREVIEW — NOT QUALIFIED. 이 패키지는 적용하지 않는다.**\n\n" if preview else ("**Owner 요청 후보 snapshot — main 미채택, 제품 미완료.**\n\n" if candidate else "")) +
-        "1. 현재 Grammar Project의 기존 active Sources를 전부 제거한다.\n"
+        "1. 이전 00~11 현재 세트만 교체한다. Owner가 의도적으로 보존한 구형 8개는 삭제할 필요가 없다.\n"
         "2. payload/의 아래 exact 12 markdown만 업로드한다.\n"
         "3. ZIP은 업로드하지 않는다.\n4. manifest/checksums/verification record/handoff는 업로드하지 않는다.\n"
-        "5. 중복 이름 Source를 만들지 않는다.\n6. genuinely fresh top-level chat에서 access diagnostic을 실행한다.\n"
+        "5. 신규 00~11의 중복 이름·버전을 만들지 않는다.\n6. genuinely fresh top-level chat에서 access diagnostic을 실행한다.\n"
         "7. access PASS 후 같은 fresh chat에서 semantic verification을 실행한다.\n"
         "8. 아래 expected values를 사용한다.\n9. 접근 누락은 해당 payload 파일만 재적용하고 중복은 제거한다. "
         "semantic mismatch는 수동 문장 패치 대신 manifest에 표시된 동일 Repository branch에서 다시 생성한다.\n" +
@@ -325,21 +350,23 @@ def make(root, out, preview=False, candidate=False):
          "10. 성공 뒤에도 next task를 자동 실행하지 않는다. 별도 Owner 실행 권한을 부여한다.\n\n") +
         "\n".join(f"- {name}" for name in NAMES) + "\n\nExpected values:\n```json\n" +
         encode(resolved).decode() + "```\n")
-    access = ("Genuinely fresh top-level chat에서만 실행. 다음 exact 12 Source를 각각 열고 실제 첫 heading과 "
+    access = (HISTORY_POLICY + "\n보존 가능한 역사 자료:\n" + "\n".join(RETAINED_HISTORY) + "\n\n" + "Genuinely fresh top-level chat에서만 실행. 다음 exact 12 Source를 각각 열고 실제 첫 heading과 "
         "읽은 내용 한 문장씩 보고하라. 이름 목록을 기억으로 복창하지 말라. 누락/중복/접근 불가는 "
         "ACCESS_FAIL로 멈추고 추측하지 말라. ZIP/manifest는 Source가 아니다. 모두 직접 읽었을 때만 ACCESS_PASS.\n\n" +
         "\n".join(NAMES) + "\n")
     source_snapshot = {key: value for key, value in resolved.items() if key != "source_content_digest"}
     semantic_prompt = ("같은 fresh chat에서 ACCESS_PASS 이후에만 실행. 02 JSON에서 아래 expected 값을 읽어 비교하고, "
         "04 첫 adapter, 05 roadmap, 08 exact next task, 02 현재 F01-F06/D020 판정과 06 검증 한계의 일관성을 확인하라. "
+        "F-06의 qualification_scope를 06의 최신 Writer/Chromium/native 한계와 대조하라. "
+        "보존된 구형 8개는 역사 참고이며 신규 세트의 현재 권위를 덮어쓰지 않는다. "
         "10은 역사적 감사이며 현재 수용 근거를 대신하지 않는다. P3-B 전체 구현/현재 제품 acceptance/다음 task 실행을 선언하지 말라. 불일치는 SEMANTIC_FAIL, 모두 직접 확인했을 때만 "
         "SEMANTIC_PASS. source_content_digest 실제 값은 payload 밖 manifest의 Owner 검증 대상이므로 "
         "이 채팅의 접근 성공 조건에 넣지 않는다. digest 위치 필드는 02와 비교한다. 어떠한 작업도 실행하지 말라.\n\n```json\n" + encode(source_snapshot).decode() + "```\n")
     files = {f"payload/{k}": v for k, v in payload.items()}
     files.update({"PROJECT_SOURCE_MANIFEST.json": encode(manifest), "OWNER_HANDOFF.md": handoff.encode(),
         "FRESH_CHAT_ACCESS_DIAGNOSTIC_PROMPT.md": access.encode(), "FRESH_CHAT_SEMANTIC_VERIFICATION_PROMPT.md": semantic_prompt.encode(),
-        "SOURCE_REPLACEMENT_MATRIX.md": ("# Full replacement matrix\n\n"
-            "기존 active Source 전체를 아래 exact 12개로 교체한다. 중복 bootstrap/handoff/current-state는 통합하고 과거 gate는 역사 기록으로만 취급한다.\n\n"
+        "SOURCE_REPLACEMENT_MATRIX.md": ("# Full replacement matrix\n\n" +
+            HISTORY_POLICY + "\n"
             "| New logical Source | Repository source / role |\n|---|---|\n" +
             "\n".join(f"| {n} | {DOCS.get(n, 'generated from control/state.json')} |" for n in NAMES) +
             "\n\nD020은 CURRENT_DECISIONS의 정정 판정을 사용한다. 구 ZIP을 새 active Source로 남기지 않는다.\n").encode("utf-8"),

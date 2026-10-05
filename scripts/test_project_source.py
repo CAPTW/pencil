@@ -51,6 +51,18 @@ def run(repo):
     state = ps.read_json(repo / "control/state.json")
     inputs = ps.source_inputs(repo)
     record("current_state_exact_semantics", lambda: ps.state_check(state))
+    f06 = next(d for d in state["known_defects"] if d["id"] == "F-06")
+    if "qualification_scope" in f06:
+        for name, mutate, token in (
+            ("missing_scope", lambda d: d.pop("qualification_scope"), "VERDICT_DRIFT:F-06"),
+            ("writer_overclaim", lambda d: d["qualification_scope"].update(writer="ALL_WRITER_DOCUMENTS_QUALIFIED"), "F06_SCOPE_DRIFT"),
+            ("stale_summary", lambda d: d.update(verdict="OWNED_QUALIFIED_EDIT_AND_RICHEDIT_TARGET_SIDE_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED"), "VERDICT_DRIFT:F-06"),
+        ):
+            changed = copy.deepcopy(state)
+            mutate(next(d for d in changed["known_defects"] if d["id"] == "F-06"))
+            record("scoped_f06_" + name + "_refused", lambda changed=changed,token=token: rejected(lambda: ps.state_check(changed), [token]))
+        historical = json.loads(ps.git(repo, "show", "167e5f4:control/state.json"))
+        record("historical_pre_scope_state_preserved", lambda: ps.state_check(historical))
     if state["p3a_status"] in (ps.APPLY_STATUS, ps.GLOBAL_APPLY_STATUS, ps.EDIT_APPLY_STATUS):
         changed = copy.deepcopy(state)
         next(d for d in changed["known_defects"] if d["id"] == "F-06")["verdict"] = "CONTAINED_COPY_ONLY_NATIVE_NOT_QUALIFIED"
@@ -140,6 +152,11 @@ def run(repo):
             return check(fenced(a / "FRESH_CHAT_SEMANTIC_VERIFICATION_PROMPT.md") == fenced(a / "payload" / ps.NAMES[2]),
                          "fresh chat expectations require only the accessible Source02 snapshot")
         record("fresh_chat_expected_equals_source02", fresh_chat_expected_matches_accessible_snapshot)
+        access = (a / "FRESH_CHAT_ACCESS_DIAGNOSTIC_PROMPT.md").read_text(encoding="utf-8")
+        record("retained_history_not_current_inventory_failure", lambda: check(
+            ps.HISTORY_POLICY in access and all(name in access for name in ps.RETAINED_HISTORY)
+            and "버전 모호성" in access and "모두 직접 읽었을 때만 ACCESS_PASS" in access,
+            "legacy eight permitted, exact current12 access and ambiguity gates retained"))
         record("deterministic_all_bytes_including_zip", lambda: check(inventory(a) == inventory(b), "two independent outputs identical"))
         record("exact_12_and_fresh_extraction", lambda: check(baseline["logical_sources"] == 12 and baseline["fresh_extraction"] == "PASS", "12 Sources and extraction verified"))
         if ps.mission_state(state):
