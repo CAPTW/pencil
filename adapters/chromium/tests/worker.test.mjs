@@ -574,3 +574,45 @@ test('a document closed during a busy reserve frees its slot',async()=>{
   f.controlAuto(true);
   for (const tab of [2,3,4,5]) assert.doesNotMatch((await f.command('enable',tab)).status,/limit/i,`tab ${tab} can be enabled`);
 });
+
+test('local analysis completes while Deep remains in flight on another owned port',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});
+ const deep={...f.request('deep'),op:'deep',provider:'claude'};
+ const d=f.dispatch(deep,f.sender());await tick();const dp=f.ports[0];
+ const local=f.request('local'),l=f.dispatch(local,f.sender());await tick();
+ assert.equal(f.ports.length,2,'local must not wait for Deep');const lp=f.ports[1];
+ assert.equal(lp.posted[0].op,'analyze');assert.equal(lp.posted[0].provider,undefined);
+ lp.onMessage.emit({...local,suggestions:[]});assert.equal((await l).id,'local');
+ assert.equal(dp.posted.length,1,'local cannot cancel or replay Deep');
+ await f.command('disable');assert.equal((await d).error,'disabled');assert.equal(lp.closed,1);assert.equal(dp.closed,0);
+ dp.onMessage.emit({...deep,error:'cancelled',cleanup_complete:true});await tick();assert.equal(dp.closed,1);assert.equal(f.timers.size,0);
+});
+
+test('local analysis is independent of Deep reservation storage and revoked with its document',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});
+ const gate=f.delayWrite(),deep={...f.request('deep'),op:'deep',provider:'claude'};
+ const d=f.dispatch(deep,f.sender());await tick();
+ const local=f.request('local'),l=f.dispatch(local,f.sender());await tick();assert.equal(f.ports.length,1);
+ const lp=f.ports[0];await f.command('disable');assert.equal((await l).error,'disabled');assert.equal(lp.closed,1);
+ lp.onMessage.emit({...local,suggestions:[{replacement:'late'}]});
+ gate.resolve();assert.equal((await d).error,'permission_revoked');assert.equal(f.timers.size,0);
+});
+
+test('local lane stays bounded and does not inherit unresolved Deep cleanup',async()=>{
+ const f=fixture({deniedOrigins:[],deepCleanupPending:['old-marker']});await f.command('enable');
+ const a=f.request('a'),one=f.dispatch(a,f.sender());await tick();const p=f.ports[0];
+ assert.equal((await f.dispatch(f.request('b'),f.sender())).error,'busy');assert.equal(f.ports.length,1);
+ p.onMessage.emit({...a,suggestions:[]});assert.equal((await one).id,'a');
+ const two=f.dispatch(f.request('c'),f.sender());await tick();assert.equal(f.ports.length,1);
+ f.onUpdated.emit(1,{status:'loading'});assert.equal((await two).error,'disabled');assert.equal(p.closed,1);assert.equal(f.timers.size,0);
+ assert.deepEqual(f.stored().deepCleanupPending,['old-marker']);
+});
+
+test('local port failure cannot cancel Deep or clear its durable cleanup ownership',async()=>{
+ const f=fixture();await f.command('enable');await f.command('deep-consent',1,{provider:'claude',consent:true});
+ const deep={...f.request('deep'),op:'deep',provider:'claude'},d=f.dispatch(deep,f.sender());await tick();const dp=f.ports[0];
+ const l=f.dispatch(f.request('local'),f.sender());await tick();f.ports[1].onDisconnect.emit();
+ assert.equal((await l).error,'native_unavailable');assert.equal(dp.posted.length,1);assert.equal(f.stored().deepCleanupPending.length,1);
+ dp.onMessage.emit({...deep,suggestions:[],cleanup_complete:true});assert.equal((await d).id,'deep');
+ assert.deepEqual(f.stored().deepCleanupPending,[]);await f.command('disable');assert.equal(f.timers.size,0);
+});

@@ -1971,3 +1971,20 @@ Changed repository direction: Contract1.5.2/pins, charter/decisions/roadmap/acce
 Next: production bounded local-engine IPC/lifecycle and independent local/Deep scheduling; connect revision-bound recommendation cache and measure input-to-popup plus Accept-to-reread per adapter. Retain quality defect and evaluate wider held-out cases before activation; keep cloud providers optional. No installed Gemma activation yet. Mission INCOMPLETE.
 
 Evidence: D:/dev/grammar-evidence/grammar-gemma-20261007/RESULT.md.
+
+
+## Local/Deep independent lanes — 2026-10-07
+
+# Local/Deep lane separation
+
+Base397c3a7. Two production-worker regressions first failed: local request could not obtain a port while Deep was running or reserving its cleanup marker. Change gives each admitted document one separately bounded local port/pending request while retaining existing Deep port/ticket ownership. Maximum4 admitted documents unchanged; each can now own at most one local and one Deep data channel (control/desktop channels unchanged). No Gemma production invocation or new model activation yet.
+
+Disable/navigation resolve and discard local pending requests, invalidate the port before disconnect, and retain Deep cancellation/cleanup acknowledgement. Local failure cannot erase a Deep marker. Local continues when a historical incomplete Deep marker blocks external admission. Duplicate local requests remain busy, with existing timeout. UI busy text corrected to local analysis. This does not claim queue wait or full recommendation within1s.
+
+Unchanged red tests pass;77 combined core/worker tests pass, including4 new independent-lane tests. JS syntax/governance/diff checks pass. Same-integrator review only. Browser trial details follow in result.json; initial missing evidence-parent failure preserved as browser.log. No Provider calls or user profile/documents; no main/push.
+
+Next: bounded Gemma local runtime transport/lifecycle and revision-bound cache integration, then input-to-popup<=1000ms and Accept-to-reread<=500ms checks. Current local analyze still uses the existing Instant rules; no inference-only timings promoted to UI acceptance.
+
+Browser modified isolated extension with real existing host: 67 checks PASS, runner exit0 after context/server/registration cleanup. Synthetic profile/evidence retained; not unmodified installed package or live Gemma acceptance.
+
+Evidence: D:/dev/grammar-evidence/grammar-local-lanes-20261007/RESULT.md.
