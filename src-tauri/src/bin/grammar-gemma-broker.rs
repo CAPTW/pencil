@@ -85,7 +85,9 @@ async fn run() -> Result<(), String> {
         return Err("gemma_broker_revoked".into());
     }
     eprintln!("gemma_boot phase=model_verified ms={}", started.elapsed().as_millis());
-    let engine = GemmaEngine::start(Path::new(&args[0]), model, startup_deadline).await?;
+    let engine = GemmaEngine::start_cancellable(
+        Path::new(&args[0]), model, startup_deadline, active.clone(),
+    ).await?;
     let (service, client) = Service::own(engine);
     let result = async {
         if !active.load(Ordering::SeqCst) {

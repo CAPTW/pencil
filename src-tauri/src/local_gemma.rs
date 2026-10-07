@@ -30,6 +30,30 @@ pub mod service;
 const MAX_RESPONSE: usize = 32768;
 const MAX_TEXT: usize = 8192;
 
+// Only readiness I/O is interruptible here. The caller still owns the engine
+// and must await stop() after an error; dropping this future is not cleanup.
+async fn startup_until_revoked<T>(
+    active: &AtomicBool,
+    deadline: Instant,
+    load: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    let revoked = async {
+        while active.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    };
+    let result = tokio::select! {
+        biased;
+        _ = revoked => Err("gemma_start_revoked".into()),
+        result = timeout_at(deadline, load) => result
+            .map_err(|_| "gemma_start_timeout".to_string()).and_then(|r| r),
+    };
+    if !active.load(Ordering::SeqCst) {
+        return Err("gemma_start_revoked".into());
+    }
+    result
+}
+
 #[derive(Clone, Debug)]
 pub struct Binding {
     pub epoch: String,
@@ -212,6 +236,19 @@ pub struct GemmaEngine {
 impl GemmaEngine {
     /// Local verified artifacts only. Never resolves PATH, downloads or reads account config.
     pub async fn start(executable: &Path, model: &Path, deadline: Instant) -> Result<Self, String> {
+        Self::start_cancellable(executable, model, deadline, Arc::new(AtomicBool::new(true))).await
+    }
+
+    /// Retains process/workspace ownership through cancellation and actual teardown.
+    pub async fn start_cancellable(
+        executable: &Path,
+        model: &Path,
+        deadline: Instant,
+        active: Arc<AtomicBool>,
+    ) -> Result<Self, String> {
+        if !active.load(Ordering::SeqCst) {
+            return Err("gemma_start_revoked".into());
+        }
         let started = Instant::now();
         eprintln!("gemma_engine phase=lease ms=0");
         if !executable.is_absolute()
@@ -281,7 +318,7 @@ impl GemmaEngine {
             lease: Some(lease),
             cleanup_deadline: None,
         };
-        let load = timeout_at(deadline, async {
+        let load = startup_until_revoked(&active, deadline, async {
             loop {
                 if engine
                     .child
@@ -312,9 +349,7 @@ impl GemmaEngine {
                 .await?;
             Ok::<_, String>(())
         })
-        .await
-        .map_err(|_| "gemma_start_timeout".to_string())
-        .and_then(|r| r);
+        .await;
         if let Err(error) = load {
             engine.stop().await.map_err(|e| format!("{error};{e}"))?;
             return Err(error);
@@ -567,6 +602,45 @@ impl Drop for GemmaEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn startup_revocation_interrupts_pending_readiness() {
+        let active = AtomicBool::new(true);
+        let load = async {
+            active.store(false, Ordering::SeqCst);
+            std::future::pending::<Result<(), String>>().await
+        };
+        assert_eq!(startup_until_revoked(&active, Instant::now() + Duration::from_secs(2), load).await,
+            Err("gemma_start_revoked".into()));
+    }
+
+    #[tokio::test]
+    async fn startup_revocation_wins_over_simultaneous_success() {
+        let active = AtomicBool::new(true);
+        let load = async {
+            active.store(false, Ordering::SeqCst);
+            Ok(())
+        };
+        assert_eq!(startup_until_revoked(&active, Instant::now() + Duration::from_secs(2), load).await,
+            Err("gemma_start_revoked".into()));
+    }
+
+    #[tokio::test]
+    async fn startup_keeps_original_deadline_and_load_errors() {
+        let active = AtomicBool::new(true);
+        assert_eq!(startup_until_revoked(&active, Instant::now(), std::future::pending::<Result<(), String>>()).await,
+            Err("gemma_start_timeout".into()));
+        assert_eq!(startup_until_revoked(&active, Instant::now() + Duration::from_secs(2), async { Err::<(), _>("load_failed".into()) }).await,
+            Err("load_failed".into()));
+        assert_eq!(startup_until_revoked(&active, Instant::now() + Duration::from_secs(2), async { Ok(17) }).await, Ok(17));
+    }
+
+    #[tokio::test]
+    async fn revoked_start_never_opens_artifacts() {
+        let result = GemmaEngine::start_cancellable(Path::new("missing-runtime"), Path::new("missing-model"),
+            Instant::now() + Duration::from_secs(2), Arc::new(AtomicBool::new(false))).await;
+        assert!(matches!(result, Err(error) if error == "gemma_start_revoked"));
+    }
+
     #[test]
     fn literal_guard_refuses_model_rewrites_without_suppressing_errors() {
         assert!(preserve_literals("The label is \"teh\".", "The label is \"the\".").is_err());
