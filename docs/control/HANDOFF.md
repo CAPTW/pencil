@@ -2016,3 +2016,18 @@ Review: same integrator only. Previous structured-output3-case grammar result un
 Next: cross-process single-service admission and shared IPC, preserve bounded cancellation while avoiding repeated cold starts, then revision-bound adapter routing and full input-to-popup/Accept-to-reread measurements. Wider semantic quality and original gender counterexamples remain open.
 
 Evidence: D:/dev/grammar-evidence/grammar-gemma-20261007/service-faults-r1.json, service-faults-r2.json, service-live-r1.log, service-live-r2.log, service-all-final.log.
+
+
+## Gemma process ownership and deferred CUDA tuning — 2026-10-07
+
+Owner asks to defer optional CUDA optimizations if they distract from the existing recommendation1s/Apply0.5s goal. Additional Flash Attention/backend-sampling/architecture-build A-B profiles are now follow-up work, not a prerequisite. Existing CUDA backend remains in use; no option/driver/model quantization change this turn.
+
+Base cdc6e23. Gemma start now obtains a Windows exclusive-share file lease before creating a workspace or spawning the model. Concurrent owners using the same trusted temp-root namespace are rejected; no waiting/fallback. Lease is released only after explicit stop proves Job0, child reap and workspace cleanup. A single absolute5s cleanup deadline is retained across repeated stop and destructor paths instead of restarting that budget. Unexpected destructor tries bounded termination/cleanup; failure deliberately retains one lease handle until the owner process exits, preventing repeated admission in that namespace. Destructor itself is not an acknowledged shutdown API.
+
+Scope: this is process exclusion, NOT a shared cross-process request broker, peer authentication or OS-wide hostile-process protection. Processes using different temp roots are separate namespaces; production launcher must pin the shared owner location. Forced OS termination release is tested for the lease holder only, not a complete model-child crash qualification. Fixed empty gemma-owner.lock remains under codex-pencil-runtime-v1 intentionally; it stores no text/token/endpoint/PID. Test-only UUID directories are removed nonrecursively after child exit. No documents or credentials used.
+
+Verification: actual Windows test executable child rejects the held lease, acquires after release, exits without Rust destructors and allows subsequent acquisition; empty-marker size0 verified. Rust library97 PASS/13 ignored. Explicit GPU service fault test additionally refuses duplicate Gemma start before loading and runs3 successive engine lifetimes. Cleanup receipts: dropped waiter1199ms, deadline1129ms, shutdown1123ms; every case workspace removed/port closed/explicit cleanup acknowledged. Shutdown caller observed gemma_deadline while owner cleanup continued; deadline return is not cleanup completion. No success-latency claim from these fault durations. No thresholds widened. Original evidence preserved.
+
+Review by same integrator only. Installed activation, shared IPC, artifact admission and endpoint peer binding remain pending. Keeping the model warm after cancellation remains unresolved; current cancellation deliberately terminates it. CUDA tuning deferred, wider grammar/translation/paraphrase quality and full UI latency still pending. Authenticated Sandbox untouched. No main/push/release; mission INCOMPLETE.
+
+Evidence: D:/dev/grammar-evidence/grammar-gemma-20261007/lease-all.log, lease-live-r1.log, service-faults-lease-r1.json. Next implement trusted shared broker/adapter routing and warm cancellation qualification.

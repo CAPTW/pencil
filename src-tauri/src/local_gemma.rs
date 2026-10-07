@@ -16,6 +16,8 @@ use tokio::{
     time::{timeout_at, Instant},
 };
 
+#[path = "local_gemma_lease.rs"]
+mod lease;
 #[path = "local_gemma_service.rs"]
 pub mod service;
 
@@ -105,6 +107,8 @@ pub struct GemmaEngine {
     endpoint: String,
     token: String,
     ready: bool,
+    lease: Option<lease::Lease>,
+    cleanup_deadline: Option<std::time::Instant>,
 }
 
 impl GemmaEngine {
@@ -117,6 +121,7 @@ impl GemmaEngine {
         {
             return Err("gemma_artifact_unavailable".into());
         }
+        let lease = lease::Lease::acquire(&std::env::temp_dir().join("codex-pencil-runtime-v1"))?;
         let http = reqwest::Client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
@@ -171,6 +176,8 @@ impl GemmaEngine {
             endpoint: format!("http://127.0.0.1:{port}"),
             token,
             ready: false,
+            lease: Some(lease),
+            cleanup_deadline: None,
         };
         let load = timeout_at(deadline, async {
             loop {
@@ -276,7 +283,14 @@ impl GemmaEngine {
     /// Completion requires child/descendants exit and owned workspace removal.
     pub async fn stop(&mut self) -> Result<(), String> {
         self.ready = false;
-        let end = Instant::now() + Duration::from_secs(5);
+        if self.lease.is_none() {
+            return Ok(());
+        }
+        let end = Instant::from_std(
+            *self
+                .cleanup_deadline
+                .get_or_insert_with(|| std::time::Instant::now() + Duration::from_secs(5)),
+        );
         self.job.terminate()?;
         timeout_at(end, self.child.wait())
             .await
@@ -292,7 +306,44 @@ impl GemmaEngine {
             workspace.try_close_before(end.into_std())?;
         }
         self.workspace = None;
+        self.lease = None;
         Ok(())
+    }
+}
+
+// Unexpected owner loss remains bounded and fail-closed. Explicit stop is the
+// only API that acknowledges cleanup; a failed Drop retains the lease until exit.
+impl Drop for GemmaEngine {
+    fn drop(&mut self) {
+        if self.lease.is_none() {
+            return;
+        }
+        let end = *self
+            .cleanup_deadline
+            .get_or_insert_with(|| std::time::Instant::now() + Duration::from_secs(5));
+        let mut cleared = self.job.terminate().is_ok();
+        while cleared {
+            match self.job.active_processes() {
+                Ok(0) => break,
+                Ok(_) if std::time::Instant::now() < end => {
+                    std::thread::sleep(Duration::from_millis(5))
+                }
+                _ => {
+                    cleared = false;
+                }
+            }
+        }
+        if cleared {
+            cleared = self
+                .workspace
+                .as_mut()
+                .is_none_or(|w| w.try_close_before(end).is_ok());
+        }
+        if !cleared {
+            if let Some(lease) = self.lease.take() {
+                std::mem::forget(lease);
+            }
+        }
     }
 }
 
@@ -436,6 +487,13 @@ mod tests {
             )
             .await
             .unwrap();
+            let duplicate = GemmaEngine::start(
+                &root.join("runtime/llama-server.exe"),
+                &root.join("gemma-4-12b-it-qat-q4_0.gguf"),
+                Instant::now() + Duration::from_secs(1),
+            )
+            .await;
+            assert_eq!(duplicate.err().unwrap(), "gemma_owner_unavailable");
             let runtime = engine
                 .workspace
                 .as_ref()
@@ -480,7 +538,7 @@ mod tests {
                 Duration::from_millis(100),
             )
             .is_err();
-            rows.push(json!({"case":mode,"result":result,"totalMs":before.elapsed().as_millis(),"cleanupAcknowledged":true,"workspaceRemoved":!runtime.exists(),"portClosed":closed}));
+            rows.push(json!({"case":mode,"result":result,"totalMs":before.elapsed().as_millis(),"duplicateOwnerRefused":true,"cleanupAcknowledged":true,"workspaceRemoved":!runtime.exists(),"portClosed":closed}));
             std::fs::write(&receipt, serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
             assert!(!runtime.exists() && closed);
         }

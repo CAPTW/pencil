@@ -154,3 +154,6 @@ codex/claude/antigravity as optional consent-bound Deep; no silent fallback/repl
 No main adoption, remote push, release, credential access or general-profile work.
 This priority is within the existing global adapter mission, not broader editor
 acceptance. Current source packages become stale until regenerated and uploaded.
+
+
+Owner sequencing2026-10-07: defer optional CUDA tuning profiles behind shared Gemma runtime, warm cancellation and adapter routing. Preserve recommendation<=1000ms and Apply<=500ms targets plus quality. Existing CUDA remains enabled; tuning is unqualified follow-up, not an implementation blocker.
