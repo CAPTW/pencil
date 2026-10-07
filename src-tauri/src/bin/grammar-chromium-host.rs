@@ -22,6 +22,7 @@ use std::{
 use tokio::sync::{mpsc as channel, oneshot};
 
 const WRITE_BUDGET: Duration = Duration::from_secs(3);
+type LocalFuture = Pin<Box<dyn Future<Output = Result<Response, &'static str>> + Send>>;
 type DeepFuture = Pin<Box<dyn Future<Output = Response> + Send>>;
 type CleanupFuture = Pin<Box<dyn Future<Output = bool> + Send>>;
 
@@ -207,8 +208,36 @@ fn analyze(body: &[u8]) -> Result<Response, &'static str> {
     Ok(response)
 }
 
+// Trusted launcher ticket only; never accepted from extension JSON, environment
+// or origin config. No production ticket provisioning is activated yet.
+async fn analyze_gemma(body: &[u8], ticket: &codex_pencil::local_gemma::pipe::Ticket, deadline: tokio::time::Instant) -> Result<Response, &'static str> {
+    let request = parse_request(body)?;
+    if request.op != "analyze" || request.provider.is_some() || request.consent.is_some()
+        || request.cleanup_token.is_some() || request.cleanup_ticket.is_some() {
+        return Err("invalid_request");
+    }
+    let binding = codex_pencil::local_gemma::Binding {epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
+    let result = codex_pencil::local_gemma::pipe::recommend(ticket,binding.clone(),deadline).await.map_err(|_| "analysis_unavailable")?;
+    if !result.matches(&binding) {return Err("analysis_binding_changed");}
+    let mut response=response_for(&request,None);
+    if result.replacement!=request.text {
+        response.suggestions.push(Suggestion {start:0,end:request.text.encode_utf16().count(),replacement:result.replacement,rule:"gemma:grammar".into(),message:"grammar_correction".into()});
+    }
+    Ok(response)
+}
+
 // The service seam permits synthetic actor tests without any executable discovery.
 trait DeepService {
+    fn local_ticket(&self) -> Option<codex_pencil::local_gemma::pipe::Ticket> { None }
+    fn local(&self, body: Vec<u8>) -> LocalFuture {
+        let ticket = self.local_ticket();
+        Box::pin(async move {
+            match ticket {
+                Some(ticket) => analyze_gemma(&body, &ticket, tokio::time::Instant::now()+Duration::from_secs(1)).await,
+                None => analyze(&body),
+            }
+        })
+    }
     fn start(&self, request: Request, cancellation: DeepCancellation) -> DeepFuture;
     fn shutdown(&self) -> CleanupFuture;
     fn admit(&self, _: &Request) -> Result<(), &'static str> {
@@ -473,9 +502,16 @@ async fn run_actor<S: DeepService>(
                 });
             }
             "analyze" => {
-                let response = match analyze(&body) {
-                    Ok(response) => response,
-                    Err(_) => break Err(()),
+                let response = tokio::select! {
+                    biased;
+                    // Local ports admit one request at a time. EOF or an extra
+                    // message invalidates this operation; dropping pipe transport
+                    // notifies the separate owner, which retains physical cleanup.
+                    _ = input.recv() => break Err(()),
+                    response = service.local(body) => match response {
+                        Ok(response) => response,
+                        Err(_) => break Err(()),
+                    },
                 };
                 if output.send(&response).await.is_err() {
                     break Err(());
@@ -598,6 +634,75 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct PipeLocal(codex_pencil::local_gemma::pipe::Ticket);
+    impl DeepService for PipeLocal {
+        fn local_ticket(&self)->Option<codex_pencil::local_gemma::pipe::Ticket>{Some(self.0.clone())}
+        fn start(&self, _:Request, _:DeepCancellation)->DeepFuture {panic!("no Deep authority in local fixture")}
+        fn shutdown(&self)->CleanupFuture {Box::pin(async{true})}
+    }
+    #[tokio::test]
+    #[ignore="owned GPU native actor pipeline"]
+    async fn owned_gemma_actor_pipeline() {
+        use codex_pencil::local_gemma::{GemmaEngine,service::Service,pipe::{Endpoint,Permit}};
+        assert_eq!(std::env::var("GRAMMAR_GEMMA_TRIAL").as_deref(),Ok("owned-synthetic"));
+        let root=std::path::Path::new("D:/dev/grammar-evidence/grammar-gemma-20261007");
+        let file=root.join("host-gemma-r2.json");assert!(!file.exists());
+        let engine=GemmaEngine::start(&root.join("runtime/llama-server.exe"),&root.join("gemma-4-12b-it-qat-q4_0.gguf"),tokio::time::Instant::now()+Duration::from_secs(120)).await.unwrap();
+        let (owner,client)=Service::own(engine);let mut rows=Vec::new();
+        for (source,expected) in [("She have two books.","She has two books."),("The results is uncertain, so do not approve the release.","The results are uncertain, so do not approve the release."),("이 결과는 검토가 더 필요하므로 지금 결론을 내리면 안됍니다.","이 결과는 검토가 더 필요하므로 지금 결론을 내리면 안 됩니다.")] {
+            let endpoint=Endpoint::create().unwrap();let ticket=endpoint.ticket();
+            let serving=tokio::spawn(endpoint.serve(Permit{client_pid:std::process::id(),epoch:"b".into(),active:Arc::new(std::sync::atomic::AtomicBool::new(true))},client.clone(),tokio::time::Instant::now()+Duration::from_secs(1)));
+            let (tx,rx)=channel::channel(2);let (output,replies)=actor_output(Duration::from_secs(1));
+            let actor=tokio::spawn(async move{run_actor(rx,&output,&PipeLocal(ticket)).await});
+            let before=tokio::time::Instant::now();tx.send(Ok(request(source))).await.unwrap();
+            let response=receipt(&replies).await;
+            let ms=before.elapsed().as_millis();drop(tx);
+            let ended=actor.await.unwrap();let served=serving.await.unwrap();
+            rows.push(serde_json::json!({"source":source,"expected":expected,"response":response,"ms":ms,"actorOk":ended.is_ok(),"pipeOk":served.is_ok()}));
+            std::fs::write(&file,serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
+            assert!(ended.is_ok() && served.is_ok());
+            assert_eq!(response["suggestions"][0]["replacement"],expected);
+            assert_eq!(response["suggestions"][0]["end"],source.encode_utf16().count());
+            assert_eq!(response["epoch"],"b");assert_eq!(response["revision"],7);
+        }
+        let cleanup=owner.close().await;
+        std::fs::write(root.join("host-gemma-r2-cleanup.json"),serde_json::to_vec(&serde_json::json!({"cleanup":cleanup})).unwrap()).unwrap();
+        cleanup.unwrap();
+    }
+    #[tokio::test]
+    async fn local_eof_drops_pending_transport_before_shutdown() {
+        struct PendingLocal(Arc<AtomicUsize>, Arc<AtomicUsize>);
+        struct Guard(Arc<AtomicUsize>);
+        impl Drop for Guard {fn drop(&mut self){self.0.fetch_add(1,Ordering::SeqCst);}}
+        impl DeepService for PendingLocal {
+            fn local(&self,_:Vec<u8>)->LocalFuture {
+                let started=self.0.clone();let ended=self.1.clone();
+                Box::pin(async move {let _guard=Guard(ended);started.fetch_add(1,Ordering::SeqCst);std::future::pending().await})
+            }
+            fn start(&self,_:Request,_:DeepCancellation)->DeepFuture {panic!("no Deep")}
+            fn shutdown(&self)->CleanupFuture {let ended=self.1.clone();Box::pin(async move {ended.load(Ordering::SeqCst)==1})}
+        }
+        let started=Arc::new(AtomicUsize::new(0));let ended=Arc::new(AtomicUsize::new(0));
+        let service=PendingLocal(started.clone(),ended.clone());let (tx,rx)=channel::channel(2);let (output,replies)=actor_output(Duration::from_secs(1));
+        let actor=tokio::spawn(async move {run_actor(rx,&output,&service).await});
+        tx.send(Ok(request("synthetic"))).await.unwrap();observed(&started).await;drop(tx);
+        assert!(actor.await.unwrap().is_err());assert_eq!(ended.load(Ordering::SeqCst),1);assert!(replies.try_recv().is_err());
+    }
+    #[tokio::test]
+    async fn gemma_failure_does_not_fall_back_to_rules() {
+        let service=PipeLocal(codex_pencil::local_gemma::pipe::Ticket{name:"invalid-pipe".into(),owner_pid:0});
+        let (tx,rx)=channel::channel(2);let (output,replies)=actor_output(Duration::from_secs(1));
+        let actor=tokio::spawn(async move {run_actor(rx,&output,&service).await});
+        tx.send(Ok(request("seperate"))).await.unwrap();
+        assert!(actor.await.unwrap().is_err());drop(tx);assert!(replies.try_recv().is_err());
+    }
+    #[tokio::test]
+    async fn gemma_rejects_deep_fields_before_opening_pipe() {
+        let ticket=codex_pencil::local_gemma::pipe::Ticket{name:"never-opened".into(),owner_pid:0};
+        let mut body:serde_json::Value=serde_json::from_slice(&request("synthetic")).unwrap();body["consent"]=serde_json::json!(true);
+        let result=analyze_gemma(&serde_json::to_vec(&body).unwrap(),&ticket,tokio::time::Instant::now()+Duration::from_secs(1)).await;
+        assert_eq!(result.err(),Some("invalid_request"));
+    }
     fn request(text: &str) -> Vec<u8> {
         serde_json::to_vec(&serde_json::json!({"version":1,"op":"analyze","id":"a","epoch":"b","revision":7,"text":text})).unwrap()
     }
