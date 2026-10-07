@@ -1891,3 +1891,20 @@ retry its policy-rejected cleanup. No installed HWP/HWPX acceptance expansion.
 Final admission-final10/default-denial4/admission-unit9/Instant-unit6 PASS.
 Source/governance/syntax/diff PASS. New red/green profiles removed; owned server
 stopped, port17707 closed. Exact source/receipt hashes in admission-proof.json.
+
+
+## Owner-requested gpt-6-luna live quality trial — 2026-10-07
+
+Owner explicitly authorizes migrating5.6-luna to gpt-6-luna and actual synthetic
+quality/speed testing across implemented features. This supersedes the no-live
+boundary for this trial only; no credential copying/login by agent or user data.
+Default/fast translation thread/turn model changed; Codex tests39 PASS/6 ignored.
+Owned Sandbox20980ce1-ef75-4528-9fd9-4d014e68c50e preflight reaches product client,
+reports LOGIN_REQUIRED_NOT_RUN and shutdownComplete, zero inference calls. Owner
+must log in inside guest via C:\GrammarQualityPayload\Owner-Login.cmd. Agent can
+then run guest-quality-trial.ps1 -Live via wsb ExistingLogin; no further approval
+needed for authorized synthetic trial. Guest remains active. Initial10-case runner
+covers shared client only; additional terminology/languages/cancel/UI/editor rounds
+remain. No quality/latency verdict until real outputs reviewed. Initial missing-DLL
+failure retained; app-local runtime resolved it. Evidence and payload hashes:
+D:/dev/grammar-evidence/grammar-6luna-trial-20261007/STATUS.md. No main/push/release.
