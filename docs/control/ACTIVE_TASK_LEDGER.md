@@ -103,3 +103,30 @@ formatting, bound8; soft linebreaks refused. All guests stopped after natural cl
 installed removal complete. Continue differing-format topology and application
 adapters; exact next task unchanged, mission INCOMPLETE, no main/push/release.
 Evidence grammar-writer-topology-20261007; Source preview is not external application.
+
+
+## Gemma local recommendation priority (Owner decision, 2026-10-07)
+The Owner now requires Gemma quantized models as the implementation baseline for
+local proactive writing assistance, superseding Qwen-first exploration and further
+cloud CLI tuning as the primary speed strategy. Start with official Gemma4 12B IT
+QAT Q4_0 and compare E4B only with explicit quality/latency evidence. This authorizes
+trusted model/runtime downloads and bounded synthetic local GPU inference in a
+task-owned host process; no system install, driver/security changes or user files.
+A host-only synthetic GPU benchmark is not Sandbox/editor integration acceptance.
+
+Recommendation target is <=1000ms from committed input (including debounce, queue,
+inference and complete actionable publication); Apply target is <=500ms from
+explicit Accept through exact target/revision/source validation, mutation and
+reread confirmation. Apply must not invoke inference/network. Record all deadline
+misses and p50/p95/p99/max; do not weaken the targets to averages or hide misses.
+Cold startup and full-document coverage remain separately visible. Quality must
+be evaluated alongside coverage, false edits, meaning, negation, numbers and terms;
+fewer suggestions or truncated output cannot establish unchanged quality.
+
+Keep opt-in, sensitive-field refusal, memory-only document caches, explicit Accept,
+user-edit preservation and bounded cancellation/cleanup. Separate local analysis
+from external Deep scheduling so Deep cannot stall local recommendations. Preserve
+codex/claude/antigravity as optional consent-bound Deep; no silent fallback/replay.
+No main adoption, remote push, release, credential access or general-profile work.
+This priority is within the existing global adapter mission, not broader editor
+acceptance. Current source packages become stale until regenerated and uploaded.

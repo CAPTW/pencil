@@ -1953,3 +1953,21 @@ are historical. Next: exact newer CLI hardening/protocol/privacy qualification,
 then installed widget/Chromium/Writer live routes, stale/cancel/draft protection and
 visible latency. HWP/rHWP unimplemented installed routing remains unqualified.
 Mission INCOMPLETE; Source materiality changed, no new package/UI application yet.
+
+
+## Gemma priority and actual local GPU trial — 2026-10-07
+
+Official Google Gemma4 12B IT QAT Q4_0 revision29d097773436b69ff9feafd636ab4cf873786537, modelSHA93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b. Pinned llama.cpp b11461 CUDA12.4 portable binaries; all download sizes/SHA256 verified against upstream metadata. No modelmmproj loaded, text-only. No installer/driver/security changes. Host RTX5070Ti16GB, synthetic corpus only; not Sandbox or installed product acceptance.
+
+R1: load38484ms, first request26046ms, following9 requests313-515ms.10 complete outputs. Manual review9 usable, grammar-en04 incorrectly neutralized explicitly stated She. First-request latency remains a recorded miss; internal JIT cause is a hypothesis, not established.
+R2: clarified preserve explicit gender/pronouns. Load6578ms;10 requests313-547ms, median359.5ms,10/10 complete. Explicit She preserved, but context translation now invents she for an unspecified Korean name;9 usable/1 needs edit under same-integrator review. No general quality parity or quality improvement claim. Neutralization and invented-gender counterexamples both retained. No silent fallback or retry.
+
+Latency is full local HTTP replacement completion only, excluding document detection, debounce, source qualification, UI publication and Apply. These results support further integration, NOT recommendation<=1s or Apply<=0.5s acceptance. Exact inference setup differs from prior CLI: replacement-only output, deterministictemperature0, bounded prompt/no JSON explanations; no model-only speedup ratio claimed. Small10-case samples cannot establish p95 reliability. No hidden first-run exclusion: both complete receipts retained.
+
+Server loopback only, ephemeral bearer401 test passed, offline flag, webUI disabled, no remote inference. Both owned server processes exited and ports closed; model files retained intentionally. No credential reads/copies, user documents, main/push/release. Existing authenticated Sandbox left untouched.
+
+Changed repository direction: Contract1.5.2/pins, charter/decisions/roadmap/acceptance/ledger/state; explicit user-requested persistent memory note in memories/extensions/ad_hoc/notes. Uploaded ChatGPT Project Source NOT replaced. Source materiality changed. Governance+selftests PASS, Source package tests82 PASS, Python compilation and diff checks PASS. Source checks are not product tests. Actual GPU runner2 rounds completed; no independent reviewer.
+
+Next: production bounded local-engine IPC/lifecycle and independent local/Deep scheduling; connect revision-bound recommendation cache and measure input-to-popup plus Accept-to-reread per adapter. Retain quality defect and evaluate wider held-out cases before activation; keep cloud providers optional. No installed Gemma activation yet. Mission INCOMPLETE.
+
+Evidence: D:/dev/grammar-evidence/grammar-gemma-20261007/RESULT.md.
