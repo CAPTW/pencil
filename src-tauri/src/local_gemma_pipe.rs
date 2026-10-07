@@ -34,6 +34,7 @@ pub struct Permit {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Request {
+    intent: super::Intent,
     epoch: String,
     revision: u64,
     text: String,
@@ -41,6 +42,7 @@ struct Request {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Reply {
+    intent: super::Intent,
     epoch: String,
     revision: u64,
     replacement: String,
@@ -117,6 +119,7 @@ impl Endpoint {
             let request: Request = serde_json::from_slice(&read_frame(&mut self.pipe).await?)
                 .map_err(|_| "gemma_pipe_request")?;
             let binding = Binding {
+                intent: request.intent,
                 epoch: request.epoch,
                 revision: request.revision,
                 source: request.text,
@@ -132,6 +135,7 @@ impl Endpoint {
                 return Err("gemma_pipe_revoked".into());
             }
             let reply = serde_json::to_vec(&Reply {
+                intent: binding.intent,
                 epoch: binding.epoch,
                 revision: binding.revision,
                 replacement: result.replacement,
@@ -170,6 +174,7 @@ pub async fn recommend(
             return Err("gemma_pipe_peer".into());
         }
         let data = serde_json::to_vec(&Request {
+            intent: binding.intent.clone(),
             epoch: binding.epoch.clone(),
             revision: binding.revision,
             text: binding.source.clone(),
@@ -179,6 +184,7 @@ pub async fn recommend(
         let reply: Reply = serde_json::from_slice(&read_frame(&mut pipe).await?)
             .map_err(|_| "gemma_pipe_reply")?;
         if reply.epoch != binding.epoch
+            || reply.intent != binding.intent
             || reply.revision != binding.revision
             || reply.replacement.len() > 8192
             || reply.replacement.trim().is_empty()
@@ -201,6 +207,35 @@ pub async fn recommend(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn wire_intent_is_required_and_strict() {
+        for intent in [serde_json::json!({"mode":"translate"}),
+            serde_json::json!({"mode":"translate","target":"unknown"}),
+            serde_json::json!({"mode":"grammar","target":"en"}),
+            serde_json::json!({"mode":"paraphrase","instructions":"override"})] {
+            assert!(serde_json::from_value::<Request>(serde_json::json!({"epoch":"d","revision":1,"text":"s","intent":intent})).is_err());
+        }
+        assert!(serde_json::from_value::<Request>(serde_json::json!({"epoch":"d","revision":1,"text":"s"})).is_err());
+    }
+
+    #[tokio::test]
+    async fn actual_pipe_rejects_response_for_another_translation_language() {
+        let mut endpoint = Endpoint::create().unwrap();
+        let ticket = endpoint.ticket();
+        let server = tokio::spawn(async move {
+            endpoint.pipe.connect().await.unwrap();
+            let request: Request = serde_json::from_slice(&read_frame(&mut endpoint.pipe).await.unwrap()).unwrap();
+            assert_eq!(request.intent, super::super::Intent::Translate { target: super::super::Language::English });
+            let reply = Reply { epoch: request.epoch, revision: request.revision,
+                intent: super::super::Intent::Translate { target: super::super::Language::Korean }, replacement: "wrong language".into() };
+            write_frame(&mut endpoint.pipe, &serde_json::to_vec(&reply).unwrap()).await.unwrap();
+        });
+        let result = recommend(&ticket, Binding { epoch: "doc".into(), revision: 1, source: "synthetic".into(),
+            intent: super::super::Intent::Translate { target: super::super::Language::English } },
+            Instant::now() + std::time::Duration::from_secs(2)).await;
+        server.await.unwrap();
+        assert!(matches!(result, Err(error) if error == "gemma_pipe_reply_binding"));
+    }
     #[tokio::test]
     #[ignore = "owned child launched by GPU pipe trial"]
     async fn gpu_pipe_child() {
@@ -219,6 +254,7 @@ mod tests {
         let result = recommend(
             &ticket,
             Binding {
+                intent: crate::local_gemma::Intent::Grammar,
                 epoch: "owned-gpu".into(),
                 revision: 1,
                 source: "She have two books.".into(),
@@ -320,6 +356,7 @@ mod tests {
                 let result = recommend(
                     &ticket,
                     Binding {
+                        intent: crate::local_gemma::Intent::Grammar,
                         epoch: "wrong".into(),
                         revision: 1,
                         source: "synthetic".into(),
@@ -348,6 +385,7 @@ mod tests {
             recommend(
                 &ticket,
                 Binding {
+                    intent: crate::local_gemma::Intent::Grammar,
                     epoch: "e".into(),
                     revision: 1,
                     source: "synthetic".into(),
