@@ -160,6 +160,13 @@ class Tests(unittest.TestCase):
                         offset+=len(part)+2
                     self.assertEqual(result[1][1],tuple(expected_positions))
 
+    def test_topology_never_converts_existing_soft_breaks_to_paragraphs(self):
+        for separator in ('\n','\r','\u2028','\u2029'):
+            body='a'+separator+'b'
+            layout=(((3,('red',),()),),('paragraphs',((0,'left'),)),())
+            with self.assertRaises(Refused):
+                namespace['uniform_topology_plan'](body,layout,0,1,'replacement')
+
     def test_invalid_ranges_fail_closed(self):
         layout = (((4, ('blue',), ()),), (), ())
         for start, size, new_size in [(-1, 2, 1), (5, 1, 1), (3, 2, 1), (0, 0, 1), (0, 1, 0)]:

@@ -312,6 +312,8 @@ def uniform_topology_plan(body, layout, start, length, replacement):
     parts = replacement.replace('\r\n', '\n').split('\n')
     if first is None or last is None or not 1 <= last-first+1 <= 8 or len(parts) > 8:
         raise Refused('topology_bounds')
+    if any(c in rows[i][1] for i in range(first,last+1) for c in '\r\n\u2028\u2029'):
+        raise Refused('topology_soft_break')
     chosen = rows[first][2][0][1:]
     para = paragraphs[first][1]
     if any(paragraphs[i][1] != para or any(run[1:] != chosen for run in rows[i][2])
