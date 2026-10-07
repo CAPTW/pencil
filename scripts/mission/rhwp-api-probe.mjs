@@ -61,7 +61,7 @@ try {
   });
  }
  page.on('console',m=>{if(m.text().startsWith('GATE_STAGE'))console.log(m.text());});
- const errors=[];page.on('pageerror',e=>errors.push(String(e)));
+ const errors=[];result.pageErrors=errors;page.on('pageerror',e=>errors.push(String(e)));
  await page.goto(origin+'/grammar-owned-harness.html');
  await page.evaluate(async({sdk,core,origin})=>{
   const {createEditor}=await import(sdk);
@@ -89,7 +89,7 @@ try {
    return {state,selection,evidence,command:{schemaVersion:1,commandId:crypto.randomUUID(),expectedDocumentEpoch:state.documentEpoch,expectedChangeSeq:state.changeSeq,expectedDocumentSha256:state.documentSha256,target,expectedBeforeSha256:evidence.textSha256,expectedFormatSha256:evidence.formatSha256,expectedAdjacentContextSha256:evidence.adjacentContextSha256,replacement}};
   };
  },{sdk,core,origin});
- for(const format of (['--review-only','--instant-only'].includes(process.argv[6])?[]:['hwp','hwpx'])){
+ for(const format of (['--review-only','--instant-only','--bootstrap-only','--bootstrap-denied-only'].includes(process.argv[6])?[]:['hwp','hwpx'])){
   const bytes=await page.evaluate(format=>synthetic[format],format);
   const data=Buffer.from(bytes);await writeFile(join(output,'synthetic.'+format),data);
   result[format]={sha256:createHash('sha256').update(data).digest('hex'),bytes:data.length};
@@ -336,6 +336,42 @@ try {
   }
   await page.evaluate(()=>removeReview());
  }
+ if(['--bootstrap-only','--bootstrap-denied-only'].includes(process.argv[6]))for(const format of ['hwp','hwpx']){
+  await page.evaluate(async format=>{
+   await editor.loadFile(new Uint8Array(synthetic[format]),'bootstrap.'+format,{suppressDialogs:true,skipUnsavedGuard:true});
+   const w=editor.element.contentWindow;
+   // Remove globals previously used to construct the test session. The compiled
+   // editor initialization now supplies dependencies directly.
+   delete w.__inputHandler;delete w.__eventBus;delete w.__canvasView;
+   await editor.focusTarget({kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(readAll()[1]).length});
+  },format);
+  await page.waitForFunction(async()=>editor.element.contentDocument.getElementById('grammar-review-host')?.dataset.grammarGeneration===String((await editor.getDocumentState()).documentEpoch));
+  const panel=page.frameLocator('iframe').locator('#grammar-review-host');
+  assert.equal(await panel.getByRole('status').textContent(),'Disabled');record(format+' editor bootstrap mounts disabled without dev dependency globals');
+  if(process.argv[6]==='--bootstrap-denied-only'){
+   await page.evaluate(()=>{const w=editor.element.contentWindow;window.bootReads=0;window.oldBootRead=w.__wasm.getTextRange;w.__wasm.getTextRange=function(...args){bootReads++;return oldBootRead.apply(this,args);};});
+   await panel.getByRole('button',{name:'Enable review',exact:true}).click();await panel.getByRole('button',{name:'Capture selection',exact:true}).click();
+   assert.equal(await panel.getByRole('status').textContent(),'NOT_ENABLED_OR_ELIGIBLE');assert.equal(await page.evaluate(()=>bootReads),0);
+   await page.evaluate(()=>{editor.element.contentWindow.__wasm.getTextRange=oldBootRead;});
+   assert.equal(await panel.getByRole('textbox',{name:'Reviewed replacement'}).inputValue(),'');record(format+' default build admission denies capture before source read');
+   continue;
+  }
+  await panel.getByRole('button',{name:'Enable review',exact:true}).click();await panel.getByRole('button',{name:'Capture selection',exact:true}).click();
+  assert.equal(await panel.getByRole('textbox',{name:'Reviewed replacement'}).inputValue(),'Synthetic 한국어 😀 please seperate this.');
+  await panel.getByRole('textbox',{name:'Reviewed replacement'}).fill('Bootstrap explicit replacement');await panel.getByRole('button',{name:'Accept',exact:true}).click();
+  await panel.getByRole('status').filter({hasText:/^Applied$/}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>readAll()),['Header','Bootstrap explicit replacement','Unselected tail']);record(format+' compiled in-editor bootstrap explicit Accept exact reread');
+  await page.evaluate(()=>editor.focusTarget({kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(readAll()[1]).length}));
+  await panel.getByRole('button',{name:'Capture selection',exact:true}).click();
+  await page.evaluate(async format=>editor.loadFile(new Uint8Array(synthetic[format]),'replacement.'+format,{suppressDialogs:true,skipUnsavedGuard:true}),format);
+  await page.waitForFunction(async()=>editor.element.contentDocument.getElementById('grammar-review-host')?.dataset.grammarGeneration===String((await editor.getDocumentState()).documentEpoch));
+  assert.equal(await panel.getByRole('textbox',{name:'Reviewed replacement'}).inputValue(),'');assert.equal(await panel.getByRole('status').textContent(),'Disabled');record(format+' new document clears draft and revokes opt-in');
+  await page.evaluate(()=>editor.element.contentWindow.dispatchEvent(new PageTransitionEvent('pagehide')));
+  assert.equal(await panel.getByRole('button',{name:'Accept',exact:true}).count(),0);record(format+' pagehide disposes panel and authority');
+  // Reload the editor iframe for the next document; parent SDK object handshake
+  // is recreated rather than reviving a closed bootstrap.
+  if(format==='hwp')await page.evaluate(async({sdk,origin})=>{editor.destroy();const {createEditor}=await import(sdk);editor=await createEditor('#host',{studioUrl:origin+'/',renderer:'canvas2d',handshakeTimeoutMs:10000});},{sdk,origin});
+ }
  result.pageErrors=errors;
  await page.evaluate(()=>editor.destroy());
  result.indexedDatabases=await page.evaluate(async()=>{
@@ -352,10 +388,12 @@ try {
 } catch(e){result.status='FAIL';result.error=String(e.stack??e);}
 finally{
  clearTimeout(watchdog);
- if(browser)await browser.close();
- assert.equal(profile,join(output,'owned-profile'));
- await rm(profile,{recursive:true,force:true});
- result.profileRemoved=true;
+ try { if(browser)await browser.close(); } catch(e){result.status='FAIL';result.browserCloseError=String(e);}
+ try {
+  assert.equal(profile,join(output,'owned-profile'));
+  await rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:200});
+  result.profileRemoved=true;
+ } catch(e){result.status='FAIL';result.profileRemoved=false;result.cleanupError=String(e);}
  await writeFile(join(output,'receipt.json'),JSON.stringify(result,null,2));
 }
 console.log(JSON.stringify({status:result.status,checks:result.checks.length,findings:result.findings.map(x=>({format:x.format,kind:x.kind,accepted:x.accepted})),error:result.error}));

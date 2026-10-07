@@ -1860,3 +1860,19 @@ Same-integrator review only; native host library unused warnings retained.
 
 Final Instant10/UI20/gate-history38/unit6 PASS.8 real local host exits0, final
 profiles removed and server/port closed. Source/governance/syntax/diff PASS.
+
+
+## rHWP trusted bootstrap — 2026-10-07
+
+Base3ff6707. rHWP trusted bootstrap: pinned Studio main imports lexical review initialization, default-deny admission; synthetic build only permits normal HWP/HWPX. bootstrap-r2 8 and bootstrap-denied-r1 4 checks PASS: explicit edited Accept exact reread, document generation clears draft/opt-in, pagehide disposes panel, default denies before target text read. Dev input/event/render globals removed; __wasm retained solely as reread oracle. Initial bootstrap-r1 import-resolution FAIL plus EBUSY cleanup preserved; later cleanup request policy-rejected, residual owned profile remains. No installed activation, real sensitive-document policy or production Instant transport. Visibility path implemented but not separately qualified. Evidence grammar-rhwp-20261007/BOOTSTRAP_RESULT.md; mission INCOMPLETE, no main/push/Provider.
+
+Next: trusted document-sensitive admission and bounded production selected-text
+local transport, then installed package/widget routing qualification. The test
+server synthetic admission option is not a deployable permission decision.
+Bootstrap source-only review and earlier Instant bridge evidence remain separate.
+Same-integrator review only; no independent peer. Initial failed-run residual
+profile contains synthetic task data; cleanup was not completed or relabeled PASS.
+
+Final bootstrap8/default-denial4/UI20/unit6 PASS; Source/governance/syntax/diff
+PASS. Passing profiles removed, owned server stopped and port closed. Failed-r1
+residual explicitly retained as above. Source/receipt hashes: bootstrap-proof.json.

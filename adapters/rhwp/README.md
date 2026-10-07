@@ -155,3 +155,25 @@ bytes. No live Provider, Deep or remote upload. This extends the earlier source-
 draft scope when an analyzer is supplied; default mounting still works without it.
 Production bootstrap/transport, desktop shortcut/widget and installed package remain
 pending. The build emits existing unused-library warnings; none were suppressed.
+
+
+## Trusted editor bootstrap (source fixture only)
+
+bootstrap-overlay.mjs adds a direct lexical initialization call in the pinned
+Studio main module. bootstrap.mjs receives the real editor dependencies, without
+looking them up in dev globals or accepting page messages. Default admission is
+false. Only the server --bootstrap-fixture build grants synthetic HWP/HWPX normal
+edit-mode admission; this is not a sensitive-document classifier or deployment
+permission. --bootstrap-denied exercises the default refusal before target reads.
+
+Each document generation receives a new disabled session. Generation equality is
+checked synchronously before capture/Accept; a 100ms metadata poll clears the UI
+and old draft. Hidden-page transitions revoke the session, and pagehide or editor
+reinitialization disposes the panel, session and timer. Visibility handling is
+implemented but not separately browser-qualified in this checkpoint.
+
+--bootstrap-only checks mounting, edited Accept and exact reread, document-switch
+revocation and pagehide disposal for both formats. Input/event/render dev globals
+are removed by the fixture; __wasm remains only as the independent reread oracle.
+The bootstrap has no injected Instant transport yet. Earlier Instant tests remain
+separate; no installed shortcut/widget/package or broad HWP support is claimed.
