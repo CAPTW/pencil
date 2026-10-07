@@ -1,4 +1,4 @@
-param([switch]$Live)
+param([switch]$Live,[switch]$Catalog,[switch]$NewCli,[switch]$Extended,[switch]$ContextOnly,[switch]$Safety,[switch]$FullProfile)
 $ErrorActionPreference='Stop'
 if($env:USERNAME -ne 'WDAGUtilityAccount' -or $PSScriptRoot -ne 'C:\GrammarQualityPayload'){throw 'Owned Sandbox only'}
 $trial='C:\GrammarQuality'
@@ -8,7 +8,14 @@ Copy-Item -LiteralPath "$PSScriptRoot/codex.exe" -Destination "$trial/codex.exe"
 Copy-Item -LiteralPath "$PSScriptRoot/quality-tests.exe" -Destination "$trial/quality-tests.exe" -Force
 Copy-Item -LiteralPath "$PSScriptRoot/vcruntime140.dll" -Destination "$trial/vcruntime140.dll" -Force
 $env:CODEX_PENCIL_CODEX_BIN="$trial/codex.exe"
+$env:GRAMMAR_QUALITY_CONTEXT_ONLY=if($ContextOnly){'1'}else{'0'}
+$env:GRAMMAR_QUALITY_FULL_PROFILE=if($FullProfile){'1'}else{'0'}
+$env:GRAMMAR_QUALITY_SAFETY=if($Safety){'1'}else{'0'}
+$env:GRAMMAR_QUALITY_EXTENDED=if($Extended){'1'}else{'0'}
 $env:GRAMMAR_QUALITY_TRIAL='owned-synthetic-20261007'
+$env:GRAMMAR_QUALITY_NEWCLI=if($NewCli){'1'}else{'0'}
+if($NewCli){$env:CODEX_PENCIL_CODEX_BIN='C:\GrammarModelProbe\codex-new.exe'}
+$env:GRAMMAR_QUALITY_CATALOG=if($Catalog){'1'}else{'0'}
 $env:GRAMMAR_QUALITY_LIVE=if($Live){'1'}else{'0'}
 $ErrorActionPreference='Continue'
 & "$trial/quality-tests.exe" 'codex_client::quality_trial::owned_sandbox_quality_trial' --ignored --exact --nocapture *> 'C:\GrammarQualityOutput/runner.log'

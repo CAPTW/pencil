@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "scope": "SYNTHETIC_ONLY",
+  "cases": [
+    {
+      "id": "context-recheck-1",
+      "mode": "translate",
+      "targetLanguage": "en",
+      "source": "민수는 지연에게 보고서를 보냈다. 지연은 수치를 다시 확인한 뒤 내일까지 답하겠다고 했다.",
+      "mustPreserve": [
+        "Minsu sends report to Jiyeon",
+        "Jiyeon checks figures and replies by tomorrow"
+      ]
+    },
+    {
+      "id": "context-recheck-2",
+      "mode": "translate",
+      "targetLanguage": "en",
+      "source": "민수는 지연에게 보고서를 보냈다. 지연은 수치를 다시 확인한 뒤 내일까지 답하겠다고 했다.",
+      "mustPreserve": [
+        "Minsu sends report to Jiyeon",
+        "Jiyeon checks figures and replies by tomorrow"
+      ]
+    },
+    {
+      "id": "context-recheck-3",
+      "mode": "translate",
+      "targetLanguage": "en",
+      "source": "민수는 지연에게 보고서를 보냈다. 지연은 수치를 다시 확인한 뒤 내일까지 답하겠다고 했다.",
+      "mustPreserve": [
+        "Minsu sends report to Jiyeon",
+        "Jiyeon checks figures and replies by tomorrow"
+      ]
+    },
+    {
+      "id": "translate-ja",
+      "mode": "translate",
+      "targetLanguage": "ja",
+      "source": "Please send the revised draft by 3 p.m. Friday. Approval is still pending.",
+      "mustPreserve": [
+        "Friday 3pm",
+        "revised draft",
+        "approval pending"
+      ]
+    },
+    {
+      "id": "translate-zh-Hans",
+      "mode": "translate",
+      "targetLanguage": "zh-Hans",
+      "source": "Please send the revised draft by 3 p.m. Friday. Approval is still pending.",
+      "mustPreserve": [
+        "Friday 3pm",
+        "revised draft",
+        "approval pending"
+      ]
+    },
+    {
+      "id": "translate-zh-Hant",
+      "mode": "translate",
+      "targetLanguage": "zh-Hant",
+      "source": "Please send the revised draft by 3 p.m. Friday. Approval is still pending.",
+      "mustPreserve": [
+        "Friday 3pm",
+        "revised draft",
+        "approval pending"
+      ]
+    },
+    {
+      "id": "auto-en",
+      "mode": "translate",
+      "targetLanguage": "auto",
+      "autoReference": "en",
+      "source": "The replacement may arrive tomorrow, but delivery is not guaranteed.",
+      "mustPreserve": [
+        "possibility",
+        "not guaranteed"
+      ]
+    },
+    {
+      "id": "auto-ko",
+      "mode": "translate",
+      "targetLanguage": "auto",
+      "autoReference": "en",
+      "source": "교체 부품은 내일 도착할 수 있지만 배송이 보장된 것은 아닙니다.",
+      "mustPreserve": [
+        "possibility",
+        "not guaranteed"
+      ]
+    },
+    {
+      "id": "term-translation",
+      "mode": "translate",
+      "targetLanguage": "en",
+      "source": "안전 정지 기능을 확인한 뒤 Nova-X7을 재시작하세요.",
+      "terms": [
+        {
+          "id": "trial-approved-1",
+          "type": "translation",
+          "sourceText": "안전 정지",
+          "preferredText": "safety shutdown"
+        },
+        {
+          "id": "trial-approved-2",
+          "type": "protected",
+          "sourceText": "Nova-X7"
+        }
+      ],
+      "mustPreserve": [
+        "safety shutdown",
+        "Nova-X7",
+        "check before restart"
+      ]
+    },
+    {
+      "id": "term-preferred",
+      "mode": "natural",
+      "targetLanguage": null,
+      "source": "Please utilize the Nova-X7 interface to view the report.",
+      "terms": [
+        {
+          "id": "trial-approved-3",
+          "type": "preferred",
+          "sourceText": "utilize",
+          "preferredText": "use"
+        },
+        {
+          "id": "trial-approved-2",
+          "type": "protected",
+          "sourceText": "Nova-X7"
+        }
+      ],
+      "mustPreserve": [
+        "use",
+        "Nova-X7",
+        "view report"
+      ]
+    }
+  ]
+}
