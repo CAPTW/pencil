@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/edwardkim/rhwp",
+  "commit": "1a76570e833917d15817415a53c09ad61ab3203f",
+  "version": "0.8.7",
+  "license": "MIT",
+  "coreTarball": "https://registry.npmjs.org/@rhwp/core/-/core-0.8.7.tgz",
+  "coreIntegrity": "sha512-qgNpY9aclCvy9D7cPnpuplu42kUFZCCPhdjAS5HBso4Z4XeHG3uchYdUleQBoas/zEuwfJ7H4/ulepqdL/LXDA==",
+  "qualification": "NOT_ENABLED_API_FIXTURE_ONLY"
+}

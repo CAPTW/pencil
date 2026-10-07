@@ -1,0 +1,136 @@
+// Synthetic upstream API qualification only; never installed Grammar acceptance.
+// No screenshots, OCR, user files, clipboard, Provider calls or external browsing.
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {readFile, writeFile, mkdir, rm} from 'node:fs/promises';
+import {resolve, join} from 'node:path';
+import {createHash} from 'node:crypto';
+
+const [rootArg, playwrightArg, chromeArg, outputArg] = process.argv.slice(2);
+assert.ok(rootArg && playwrightArg && chromeArg && outputArg, 'root playwright chrome output required');
+const root=resolve(rootArg), output=resolve(outputArg);
+const {chromium}=createRequire(import.meta.url)(resolve(playwrightArg));
+const pin=JSON.parse(await readFile(new URL('../../adapters/rhwp/upstream.json',import.meta.url),'utf8'));
+const proof=JSON.parse(await readFile(join(root,'upstream-receipt.json'),'utf8'));
+assert.equal(proof.sourceCommit,pin.commit);assert.equal(proof.coreIntegrity,pin.coreIntegrity);
+for(const file of proof.files){
+ const bytes=await readFile(join(root,'upstream',file.path));
+ assert.equal(createHash('sha256').update(bytes).digest('hex'),file.sha256,file.path);
+}
+assert.equal('sha512-'+createHash('sha512').update(await readFile(join(root,'core-0.8.7.tgz'))).digest('base64'),pin.coreIntegrity);
+await mkdir(output,{recursive:false});
+const profile=join(output,'owned-profile');
+const origin='http://127.0.0.1:17707';
+const sdk='/@fs/'+join(root,'upstream/npm/editor/index.js').replaceAll('\\','/');
+const core='/@fs/'+join(root,'upstream/pkg/rhwp.js').replaceAll('\\','/');
+const result={status:'RUNNING',scope:'RHWP_API_SYNTHETIC_NOT_GRAMMAR_ACCEPTANCE',upstreamCommit:pin.commit,version:pin.version,checks:[],findings:[],networkBlocked:0};
+let browser;
+const record=name=>result.checks.push(name);
+try {
+ browser=await chromium.launchPersistentContext(profile,{executablePath:resolve(chromeArg),headless:true,chromiumSandbox:true,serviceWorkers:'block',acceptDownloads:false});
+ await browser.route('**/*',route=>{
+  const url=new URL(route.request().url());
+  if(url.origin===origin || ['data:','blob:'].includes(url.protocol))return route.continue();
+  result.networkBlocked++;return route.abort();
+ });
+ await browser.addInitScript(()=>{
+  localStorage.setItem('rhwp-settings',JSON.stringify({version:1,theme:{skin:'default',skinChosen:true},autosave:{recoveryEnabled:false,idleSaveEnabled:false}}));
+ });
+ const page=await browser.newPage();
+ const errors=[];page.on('pageerror',e=>errors.push(String(e)));
+ await page.goto(origin+'/grammar-owned-harness.html');
+ await page.evaluate(async({sdk,core,origin})=>{
+  const {createEditor}=await import(sdk);
+  const mod=await import(core);
+  globalThis.measureTextWidth=(font,text)=>{const c=document.createElement('canvas').getContext('2d');c.font=font;return c.measureText(text).width;};
+  await mod.default({module_or_path:core.replace(/rhwp\.js$/,'rhwp_bg.wasm')});
+  const doc=mod.HwpDocument.createEmpty();doc.createBlankDocument();
+  doc.insertText(0,0,0,'Header');doc.insertParagraph(0,1);doc.insertText(0,1,0,'Synthetic 한국어 😀 please seperate this.');
+  doc.insertParagraph(0,2);doc.insertText(0,2,0,'Unselected tail');
+  window.synthetic={hwp:Array.from(doc.exportHwp()),hwpx:Array.from(doc.exportHwpx())};doc.free();
+  window.editor=await createEditor('#host',{studioUrl:origin+'/',renderer:'canvas2d',handshakeTimeoutMs:10000});
+  window.expected=['Header','Synthetic 한국어 😀 please seperate this.','Unselected tail'];
+  window.readAll=()=>{
+   const w=editor.element.contentWindow.__wasm;const rows=[];
+   for(let s=0;s<w.getSectionCount();s++)for(let p=0;p<w.getParagraphCount(s);p++)rows.push(w.getTextRange(s,p,0,w.getParagraphLength(s,p)));
+   return rows;
+  };
+  window.commandFor=async(replacement)=>{
+   const state=await editor.getDocumentState();
+   const target={kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(readAll()[1]).length};
+   await editor.focusTarget(target);
+   const selection=await editor.getSelectionContext();
+   const {collectTargetEvidence}=await import('/src/document-agent/controller.ts');
+   const evidence=collectTargetEvidence(editor.element.contentWindow.__wasm,target);
+   return {state,selection,evidence,command:{schemaVersion:1,commandId:crypto.randomUUID(),expectedDocumentEpoch:state.documentEpoch,expectedChangeSeq:state.changeSeq,expectedDocumentSha256:state.documentSha256,target,expectedBeforeSha256:evidence.textSha256,expectedFormatSha256:evidence.formatSha256,expectedAdjacentContextSha256:evidence.adjacentContextSha256,replacement}};
+  };
+ },{sdk,core,origin});
+ for(const format of ['hwp','hwpx']){
+  const bytes=await page.evaluate(format=>synthetic[format],format);
+  const data=Buffer.from(bytes);await writeFile(join(output,'synthetic.'+format),data);
+  result[format]={sha256:createHash('sha256').update(data).digest('hex'),bytes:data.length};
+  await page.evaluate(async format=>{await editor.loadFile(new Uint8Array(synthetic[format]),'synthetic.'+format,{suppressDialogs:true,skipUnsavedGuard:true});},format);
+  assert.deepEqual(await page.evaluate(()=>readAll()),['Header','Synthetic 한국어 😀 please seperate this.','Unselected tail']);record(format+' synthetic export/open exact text');
+  for(const field of ['expectedBeforeSha256','expectedFormatSha256','expectedDocumentSha256','expectedAdjacentContextSha256']){
+   const refused=await page.evaluate(async field=>{
+    const bound=await commandFor('MUST NOT WRITE');const before=readAll();
+    bound.command[field]='0'.repeat(64);
+    try{await editor.applyTextCommand(bound.command);return {accepted:true};}
+    catch(e){return {accepted:false,code:e.code,before,after:readAll()};}
+   },field);
+   assert.equal(refused.accepted,false);assert.ok(refused.code);assert.deepEqual(refused.after,refused.before);
+   record(format+' refuses '+field+' mismatch with exact preservation');
+  }
+  const trial=await page.evaluate(async()=>{
+   const bound=await commandFor('Reviewed 한국어 😀 sentence.');
+   const before=readAll();const receipt=await editor.applyTextCommand(bound.command);const after=readAll();
+   const state=await editor.getDocumentState();
+   await editor.revertTextCommand({schemaVersion:1,commandId:receipt.commandId,expectedDocumentEpoch:receipt.documentEpoch,expectedChangeSeq:receipt.afterChangeSeq,expectedAfterDocumentSha256:receipt.afterDocumentSha256,expectedAfterSha256:receipt.afterTextSha256});
+   return {selection:bound.selection,before,after,reverted:readAll(),receipt,state};
+  });
+  assert.equal(trial.selection.editable,true);assert.equal(trial.selection.collapsed,false);
+  assert.deepEqual(trial.after,['Header','Reviewed 한국어 😀 sentence.','Unselected tail']);assert.deepEqual(trial.reverted,trial.before);
+  assert.equal(trial.receipt.afterDocumentSha256,trial.state.documentSha256);record(format+' exact API apply/revert and outside text preserved');
+  const stale=await page.evaluate(async()=>{
+   const old=await commandFor('STALE');const current=await commandFor('User synthetic edit');await editor.applyTextCommand(current.command);
+   try{await editor.applyTextCommand(old.command);return {accepted:true,text:readAll()};}catch(e){return {accepted:false,code:e.code,text:readAll()};}
+  });
+  assert.equal(stale.accepted,false);assert.equal(stale.code,'CHANGE_SEQ_MISMATCH');assert.deepEqual(stale.text,['Header','User synthetic edit','Unselected tail']);record(format+' stale revision refuses without overwriting edit');
+  const saved=await page.evaluate(async format=>Array.from(await (format==='hwp'?editor.exportHwp():editor.exportHwpx())),format);
+  await writeFile(join(output,'edited.'+format),Buffer.from(saved));
+  await page.evaluate(async({saved,format})=>editor.loadFile(new Uint8Array(saved),'edited.'+format,{suppressDialogs:true,skipUnsavedGuard:true}),{saved,format});
+  assert.deepEqual(await page.evaluate(()=>readAll()),stale.text);record(format+' edited export/reopen exact text');
+  const moved=await page.evaluate(async()=>{
+   const bound=await commandFor('Changed old selection');
+   await editor.focusTarget({kind:'body_paragraph',section:0,paragraph:2,charOffset:0,length:Array.from(readAll()[2]).length});
+   const selection=await editor.getSelectionContext();
+   try{await editor.applyTextCommand(bound.command);return {accepted:true,selection,text:readAll()};}catch(e){return {accepted:false,code:e.code,selection,text:readAll()};}
+  });
+  assert.equal(moved.selection.target.paragraph,2);
+  result.findings.push({format,kind:'SELECTION_FENCE_PROBE',...moved});
+  // This measures an upstream API boundary, not a pass criterion for Grammar.
+  // A hash-bound old target may still be accepted after selection moves.
+ }
+ result.pageErrors=errors;
+ await page.evaluate(()=>editor.destroy());
+ result.indexedDatabases=await page.evaluate(async()=>{
+  const rows=[];
+  for(const info of await indexedDB.databases()){
+   const db=await new Promise((ok,no)=>{const q=indexedDB.open(info.name);q.onsuccess=()=>ok(q.result);q.onerror=()=>no(q.error);});
+   const stores={};
+   for(const name of db.objectStoreNames)stores[name]=await new Promise((ok,no)=>{const q=db.transaction(name).objectStore(name).count();q.onsuccess=()=>ok(q.result);q.onerror=()=>no(q.error);});
+   rows.push({name:info.name,stores});db.close();
+  }
+  return rows;
+ });
+ result.status='PASS_API_FIXTURE';
+} catch(e){result.status='FAIL';result.error=String(e.stack??e);}
+finally{
+ if(browser)await browser.close();
+ assert.equal(profile,join(output,'owned-profile'));
+ await rm(profile,{recursive:true,force:true});
+ result.profileRemoved=true;
+ await writeFile(join(output,'receipt.json'),JSON.stringify(result,null,2));
+}
+console.log(JSON.stringify({status:result.status,checks:result.checks.length,findings:result.findings.map(x=>({format:x.format,kind:x.kind,accepted:x.accepted})),error:result.error}));
+if(result.status==='FAIL')process.exitCode=1;
