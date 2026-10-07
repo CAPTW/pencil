@@ -54,7 +54,19 @@ try {
  context=await chromium.launchPersistentContext(profile,{headless:true,chromiumSandbox:true,executablePath:'C:/Users/USER/AppData/Local/ms-playwright/chromium-1217/chrome-win64/chrome.exe',ignoreDefaultArgs:['--disable-extensions'],args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
  context.setDefaultTimeout(12000);
  const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');
- await worker.evaluate(()=>{globalThis.gemmaMetrics={requests:0,responses:0};chrome.runtime.onMessage.addListener(m=>{if(m.op==='analyze')gemmaMetrics.requests++;});const original=chrome.runtime.connectNative.bind(chrome.runtime);chrome.runtime.connectNative=(...args)=>{const port=original(...args);port.onMessage.addListener(m=>{if(Array.isArray(m.suggestions)){gemmaMetrics.responses++;if(/^\d+$/.test(m.id))gemmaMetrics.last=m;}});return port;};});
+ await worker.evaluate(()=>{
+  globalThis.gemmaMetrics={requests:0,responses:0};
+  chrome.runtime.onMessage.addListener(m=>{if(m.op==='analyze')gemmaMetrics.requests++;});
+  const original=chrome.runtime.connectNative.bind(chrome.runtime);
+  chrome.runtime.connectNative=(...args)=>{
+   const port=original(...args),sent=new Map(),post=port.postMessage.bind(port);
+   port.postMessage=m=>{if(m.op==='analyze')sent.set(m.id,Date.now());return post(m);};
+   port.onMessage.addListener(m=>{if(Array.isArray(m.suggestions)){
+    gemmaMetrics.responses++;
+    if(/^\d+$/.test(m.id)){gemmaMetrics.last=m;gemmaMetrics.timing={sent:sent.get(m.id),received:Date.now()};sent.delete(m.id);}
+   }});return port;
+  };
+ });
  const page=await context.newPage();await page.goto(url);await page.bringToFront();
  const popup=await context.newPage();await page.bringToFront();await popup.goto(`chrome-extension://${id}/popup.html`);
  await popup.getByRole('button',{name:'Enable this document',exact:true}).click();
@@ -91,8 +103,15 @@ try {
    const row=await page.evaluate(field=>({...window.trial.row,actualReread:document.getElementById(field).tagName==='TEXTAREA'?document.getElementById(field).value:document.getElementById(field).textContent}),field);report.rows.push(row);assert.ok(row.correct);assert.equal(row.actualReread,expected);
    assert.equal((await worker.evaluate(()=>gemmaMetrics.requests)),before);report.checks.push(field+' Accept reread correct; no inference during Accept');
  }
- if(process.env.GRAMMAR_GEMMA_CORPUS==='1'){
-  const path=resolve('scripts/mission/gemma-grammar-corpus.json');report.corpusSha256=await hash(path);report.corpus=await runCorpus(page,worker,JSON.parse(await readFile(path)));
+ if(['1','holdout','all'].includes(process.env.GRAMMAR_GEMMA_CORPUS)){
+  const corpusName=process.env.GRAMMAR_GEMMA_CORPUS==='holdout'?'gemma-grammar-holdout.json':'gemma-grammar-corpus.json';
+  const path=resolve('scripts/mission/'+corpusName);report.corpusName=corpusName;report.corpusSha256=await hash(path);
+  const corpus=JSON.parse(await readFile(path));
+  if(process.env.GRAMMAR_GEMMA_CORPUS==='all'){
+   const extra=resolve('scripts/mission/gemma-grammar-holdout.json');report.additionalCorpusSha256=await hash(extra);
+   corpus.cases.push(...JSON.parse(await readFile(extra)).cases);report.corpusName='regression + former holdout';
+  }
+  report.corpus=await runCorpus(page,worker,corpus);
   if(!report.corpus.qualityPass||report.corpus.recommendationMisses.length||report.corpus.applyMisses.length)process.exitCode=1;
  }
  await page.locator('#writing').click();await page.getByRole('button',{name:'Enable this field',exact:true}).click();
