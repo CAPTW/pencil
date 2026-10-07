@@ -207,6 +207,12 @@ function close(tabId) {
   const s = sessions.get(tabId); sessions.delete(tabId);
   if (s) {
     s.deepProvider = null; s.closed = true;
+    // Local analysis owns a separate bounded channel; no Deep cleanup ticket.
+    if(s.local) {
+      const local=s.local;s.local=null;local.closed=true;
+      clearTimeout(local.timer);local.pending?.resolve({error:'disabled'});local.pending=null;
+      const port=local.port;local.port=null;port?.disconnect();
+    }
     if(s.admitting) {s.admitting.cancelled=true;retiring.add(s);}
     if (s.pending?.op === 'deep') { retiring.add(s); cancelDeep(s); s.pending.resolve({error:'disabled'}); }
     else { clearTimeout(s.timer); s.pending?.resolve({error:'disabled'}); s.pending = null; s.port?.disconnect(); }
@@ -340,7 +346,6 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (!['analyze','deep'].includes(message.op) || message.version !== 1 || typeof message.text !== 'string' || message.text.length > 8192 ||
         typeof message.id !== 'string' || !message.id || message.id.length > 128 || !Number.isSafeInteger(message.revision) || message.revision < 1) return {error: 'invalid_request'};
     const request={version:1,op:message.op,id:message.id,epoch:s.epoch,revision:message.revision,text:message.text};
-    if(s.admitting)return {error:'busy'};
     if(message.op==='deep') {
       if(!message.text.trim())return {error:'invalid_request'};
       if(!HOST)return {error:'native_host_not_configured'};
@@ -382,7 +387,10 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
 
       finally {if(s.admitting===admission)s.admitting=null;}
     }
-    return analyze(s,request);
+    // At most one local request and one Deep request per admitted document.
+    // Neither Deep reservation/storage nor inference occupies this local lane.
+    s.local ??= {epoch:s.epoch,port:null,pending:null,timer:null,closed:false};
+    return analyze(s.local,request);
   })().then(respond).catch(() => respond({error: 'unavailable'}));
   return true;
 });

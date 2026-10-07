@@ -208,9 +208,9 @@
         revision:request.revision,text:request.text});
       if (session !== owner || !epoch) return;
       if (response?.error === 'busy' && busyWaits < 150) {
-        // A Deep request (or its cleanup) is still using the host: wait, then
+        // The bounded local lane is still occupied: wait, then
         // re-check. A request that never ends does not keep the page waiting.
-        busyWaits++; status.textContent = 'Waiting for the Deep request to finish…';
+        busyWaits++; status.textContent = 'Waiting for local analysis to finish…';
         reanalyzeAll = true; clearTimeout(timer); timer = setTimeout(analyzeChanged, 1000); return;
       }
       busyWaits = 0;
