@@ -104,3 +104,33 @@ history entry identity. Normal roundtrips must complete without any error.
 The fixture adds three extra Undo/Redo cycles per format. This remains an internal
 real-editor API test, not keyboard/IME or installed Grammar qualification. Capture,
 UI routing, hostile synchronous callbacks and rich formatting remain pending.
+
+## Selected-text review component
+
+`review-session.mjs` adds a trusted in-editor capture/review lifetime. It is off by
+default and requires a host-supplied eligibility decision before reading text or
+exporting document state. Only an exact whole plain paragraph (1–4000 codepoints)
+is currently supported; partial, empty and non-body selections are refused without
+expanding the selection. Upstream evidence checks reject controls/fields and mixed
+formatting. Document/neighbor hashes are computed inside the editor; the review
+payload contains only `{id, source}`. This is selected-only output, not a claim that
+the editor's internal hash calculation reads only the selected text.
+
+`review-panel.mjs` is a small internal browser review UI: explicit Enable, Capture,
+editable draft, Accept and Disable. It initializes the draft with source text;
+it does not yet run Grammar Instant or Deep. Accept edits only replacement text in
+the original bound grant; it does not renew the original 30s capture lifetime or
+replace target/document binding. Recapture consumes the old ID; Disable clears the
+draft/authority. Stale asynchronous UI completion cannot replace a newer status.
+
+This is not the installed desktop widget or an enabled public adapter. The fixture
+obtains real editor dependencies through dev hooks; production dependency injection,
+document-sensitive admission and trusted deployment remain unqualified. No page
+message listener, remote transport, persistence, inference or Provider is added.
+
+Run the same probe with a final `--review-only` argument for UI tests in a fresh
+owned browser profile. HWP/HWPX checks use actual Playwright button clicks and draft
+input, then reread all document text. They cover disabled/ineligible zero text reads,
+selected-only payload, explicit edited Accept, moved selection, Disable clearing,
+recapture stale ID, partial selection, revoked admission and changed source. This
+is automated browser input, not physical keyboard/IME or installed qualification.

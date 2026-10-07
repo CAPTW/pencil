@@ -1833,3 +1833,18 @@ Postimage fingerprint failure now releases unrecorded snapshot without rollback;
 that fault path was reviewed but not injected in this round. Same-integrator review
 only. Continue selected-only capture/visible review integration and synchronous
 fault qualification; existing product activation scopes remain unchanged.
+
+## rHWP selected-text review component — 2026-10-07
+
+Base7471b19. rHWP selected-text review component: explicit Enable/Capture, editable browser draft and Accept/Disable; trusted host eligibility required before source/export. Whole plain paragraph only; UI payload id/source only, internal hashes remain target-side. Edited Accept preserves original document/selection binding and30s expiry. review-final20 UI assertions PASS across HWP/HWPX including disabled/ineligible zero reads, partial-selection refusal, stale ID/selection/source and revoked admission. No Instant/Deep or installed desktop connection; production admission/deployment/lifecycle still unqualified. Prior gate/history regression results in grammar-rhwp-20261007/REVIEW_RESULT.md. Mission INCOMPLETE, no activation/main/push.
+
+Review uses original source as editable draft; not yet Instant. Fixture alone supplies
+real editor dependencies through dev hooks and synthetic admission. Before installed
+activation, connect trusted in-editor bootstrap, real sensitive-document admission,
+close/navigation cleanup and existing local Instant/widget transport. Keep payload
+selected-only. Internal full-document export hashes are not sent to review UI.
+Separate same-integrator review only; no independent peer. See external result for
+exact final regression and cleanup; current F06 qualification unchanged.
+
+Final UI20 and gate/history38 PASS, Source/governance/JS syntax/diff PASS.
+Owned profiles/browser contexts removed, server stopped and port17707 closed.
