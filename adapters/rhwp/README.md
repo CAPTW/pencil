@@ -134,3 +134,24 @@ input, then reread all document text. They cover disabled/ineligible zero text r
 selected-only payload, explicit edited Accept, moved selection, Disable clearing,
 recapture stale ID, partial selection, revoked admission and changed source. This
 is automated browser input, not physical keyboard/IME or installed qualification.
+
+## Local Instant continuation
+
+The panel accepts an optional trusted local analyzer. instant-draft.mjs reuses the
+Chromium DocumentSession/SelectionReview UTF-16 validation and draft assembly, not
+a second spelling engine. Source remains editable during analysis. Publication
+requires the same capture, unchanged user-edit revision and a fresh target-side
+binding/authority check. Disable, recapture, Accept and close cancel publication.
+Only one request per analyzer may be in flight; no retry, Provider or fallback.
+Abort stops publication; physical cancellation depends on the injected transport.
+
+The --instant-only fixture invokes the real Grammar native host local engine via
+framed analyze requests. Its owned executable copy/origin sidecar is unregistered.
+The Playwright bridge is test-only, not production transport. Each process has a
+10s deadline and256KiB output cap; receipt records binary SHA256/calls/exit codes.
+Delayed replies hold actual analysis results to test edit/Disable/selection races.
+instant-host-build-proof.json binds the offline locked debug build to tracked Rust
+bytes. No live Provider, Deep or remote upload. This extends the earlier source-only
+draft scope when an analyzer is supplied; default mounting still works without it.
+Production bootstrap/transport, desktop shortcut/widget and installed package remain
+pending. The build emits existing unused-library warnings; none were suppressed.

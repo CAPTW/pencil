@@ -17,7 +17,8 @@ const wasmPath=join(root,'upstream/pkg/rhwp_bg.wasm');
 const wasm=await readFile(wasmPath);
 const gate=await readFile(new URL('../../adapters/rhwp/accept-gate.mjs',import.meta.url));
 const reviewModules=new Map();
-for(const name of ['accept-gate','review-session','review-panel'])reviewModules.set('/grammar-review/'+name+'.mjs',await readFile(new URL('../../adapters/rhwp/'+name+'.mjs',import.meta.url)));
+for(const name of ['accept-gate','review-session','review-panel','instant-draft'])reviewModules.set('/grammar-review/'+name+'.mjs',await readFile(new URL('../../adapters/rhwp/'+name+'.mjs',import.meta.url)));
+reviewModules.set('/grammar-core.js',await readFile(new URL('../../adapters/chromium/extension/core.js',import.meta.url)));
 const route='/@fs/'+wasmPath.replaceAll('\\','/');
 await writeFile(join(studio,'grammar-owned-harness.html'),'<!doctype html><html><body><div id="host" style="height:95vh"></div></body></html>',{flag:'wx'}).catch(e=>{if(e.code!=='EEXIST')throw e;});
 const server=await createServer({root:studio,server:{host:'127.0.0.1',port:17707,strictPort:true,hmr:false},optimizeDeps:{noDiscovery:true},plugins:[{

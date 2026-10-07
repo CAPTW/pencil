@@ -2,7 +2,8 @@
 // No screenshots, OCR, user files, clipboard, Provider calls or external browsing.
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {readFile, writeFile, mkdir, rm} from 'node:fs/promises';
+import {readFile, writeFile, mkdir, rm, copyFile} from 'node:fs/promises';
+import {spawn} from 'node:child_process';
 import {resolve, join} from 'node:path';
 import {createHash} from 'node:crypto';
 
@@ -38,6 +39,27 @@ try {
   localStorage.setItem('rhwp-settings',JSON.stringify({version:1,theme:{skin:'default',skinChosen:true},autosave:{recoveryEnabled:false,idleSaveEnabled:false}}));
  });
  const page=await browser.newPage();
+ if(process.argv[6]==='--instant-only'){
+  const hostDir=join(output,'host');await mkdir(hostDir);
+  const host=join(hostDir,'grammar-chromium-host.exe');await copyFile(new URL('../../src-tauri/target/debug/grammar-chromium-host.exe',import.meta.url),host);
+  const hostOrigin='chrome-extension://'+'a'.repeat(32)+'/';
+  await writeFile(join(hostDir,'grammar-chromium-host.origin.json'),JSON.stringify({origin:hostOrigin}));
+  result.hostSha256=createHash('sha256').update(await readFile(host)).digest('hex');result.hostCalls=0;result.hostExits=[];
+  await page.exposeFunction('grammarLocalAnalyze',async request=>{
+   assert.equal(request.op,'analyze');assert.equal(typeof request.text,'string');assert.ok(request.text.length<=8192);
+   const body=Buffer.from(JSON.stringify({version:1,op:'analyze',id:request.id,epoch:request.epoch,revision:request.revision,text:request.text}));
+   const frame=Buffer.alloc(4);frame.writeUInt32LE(body.length);result.hostCalls++;
+   return await new Promise((ok,no)=>{
+    const child=spawn(host,[hostOrigin],{windowsHide:true,stdio:['pipe','pipe','pipe']});let chunks=[],size=0,error=null;
+    const timer=setTimeout(()=>{error=new Error('HOST_TIMEOUT');child.kill();},10000);
+    child.on('error',e=>{error=e;});child.stdout.on('data',b=>{size+=b.length;if(size>256*1024){error=new Error('HOST_OUTPUT_LIMIT');child.kill();}else chunks.push(b);});
+    child.stderr.on('data',()=>{error=new Error('HOST_STDERR');});child.stdin.on('error',e=>{error=e;});
+    child.on('close',code=>{clearTimeout(timer);result.hostExits.push(code);if(error||code!==0)return no(error??new Error('HOST_EXIT'));
+     try{const out=Buffer.concat(chunks);assert.ok(out.length>=4);assert.equal(out.readUInt32LE(0),out.length-4);ok(JSON.parse(out.subarray(4).toString('utf8')));}catch(e){no(e);}
+    });child.stdin.end(Buffer.concat([frame,body]));
+   });
+  });
+ }
  page.on('console',m=>{if(m.text().startsWith('GATE_STAGE'))console.log(m.text());});
  const errors=[];page.on('pageerror',e=>errors.push(String(e)));
  await page.goto(origin+'/grammar-owned-harness.html');
@@ -67,7 +89,7 @@ try {
    return {state,selection,evidence,command:{schemaVersion:1,commandId:crypto.randomUUID(),expectedDocumentEpoch:state.documentEpoch,expectedChangeSeq:state.changeSeq,expectedDocumentSha256:state.documentSha256,target,expectedBeforeSha256:evidence.textSha256,expectedFormatSha256:evidence.formatSha256,expectedAdjacentContextSha256:evidence.adjacentContextSha256,replacement}};
   };
  },{sdk,core,origin});
- for(const format of (process.argv[6]==='--review-only'?[]:['hwp','hwpx'])){
+ for(const format of (['--review-only','--instant-only'].includes(process.argv[6])?[]:['hwp','hwpx'])){
   const bytes=await page.evaluate(format=>synthetic[format],format);
   const data=Buffer.from(bytes);await writeFile(join(output,'synthetic.'+format),data);
   result[format]={sha256:createHash('sha256').update(data).digest('hex'),bytes:data.length};
@@ -274,6 +296,44 @@ try {
   assert.equal(boundaries.selected,true);assert.equal(boundaries.partial,'SELECT_WHOLE_PLAIN_PARAGRAPH');assert.equal(boundaries.partialReads,0);record(format+' partial selection refused without source read');
   assert.equal(boundaries.revoked,'NOT_ENABLED_OR_ELIGIBLE');record(format+' admission revoked after capture refuses Accept');
   assert.equal(boundaries.changed,'DOCUMENT_CHANGED');assert.deepEqual(boundaries.text,['Header','New application source','Unselected tail']);record(format+' changed application source preserves new text');
+  await page.evaluate(()=>removeReview());
+ }
+ if(process.argv[6]==='--instant-only')for(const format of ['hwp','hwpx']){
+  await page.evaluate(async format=>{
+   await editor.loadFile(new Uint8Array(synthetic[format]),'instant.'+format,{suppressDialogs:true,skipUnsavedGuard:true});
+   const w=editor.element.contentWindow;
+   await import('/grammar-core.js');
+   const {createInstantDraft}=await import('/grammar-review/instant-draft.mjs');
+   const {createReviewSession}=await import('/grammar-review/review-session.mjs');
+   const {mountReviewPanel}=await import('/grammar-review/review-panel.mjs');
+   const {DocumentAgentController,collectTargetEvidence}=await import('/src/document-agent/controller.ts');
+   window.review=createReviewSession(DocumentAgentController,collectTargetEvidence,{wasm:w.__wasm,input:w.__inputHandler,eventBus:w.__eventBus,isDirty:()=>true,render:()=>w.__canvasView.refreshDocumentAgentMutation()},()=>true);
+   window.holdInstant=false;window.releaseInstant=null;
+   const instant=createInstantDraft(async request=>{const result=await grammarLocalAnalyze(request);if(holdInstant)await new Promise(resolve=>{releaseInstant=resolve;});return result;},GrammarCore);
+   window.removeReview=mountReviewPanel(document.body,review,instant);
+   await editor.focusTarget({kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(readAll()[1]).length});
+  },format);
+  const capture=()=>page.getByRole('button',{name:'Capture selection',exact:true}).click();
+  const field=page.getByRole('textbox',{name:'Reviewed replacement'});
+  await page.getByRole('button',{name:'Enable review',exact:true}).click();await capture();
+  await page.getByRole('status').filter({hasText:/^Local Instant ready/}).waitFor();
+  assert.equal(await field.inputValue(),'Synthetic 한국어 😀 please separate this.');
+  assert.equal((await page.evaluate(()=>readAll()))[1],'Synthetic 한국어 😀 please seperate this.');record(format+' real native Instant corrects draft without document mutation');
+  await page.getByRole('button',{name:'Accept',exact:true}).click();await page.getByRole('status').filter({hasText:/^Applied$/}).waitFor();
+  assert.equal((await page.evaluate(()=>readAll()))[1],'Synthetic 한국어 😀 please separate this.');record(format+' explicit Accept applies Instant draft');
+  for(const race of ['edit','disable','selection']){
+   await page.evaluate(async()=>{await editor.focusTarget({kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(readAll()[1]).length});holdInstant=true;releaseInstant=null;});
+   if(race==='selection')await page.getByRole('button',{name:'Enable review',exact:true}).click();
+   await capture();await page.waitForFunction(()=>typeof releaseInstant==='function');
+   if(race==='edit')await field.fill('User draft must remain');
+   if(race==='disable')await page.getByRole('button',{name:'Disable review',exact:true}).click();
+   if(race==='selection')await page.evaluate(()=>editor.focusTarget({kind:'body_paragraph',section:0,paragraph:2,charOffset:0,length:Array.from(readAll()[2]).length}));
+   await page.evaluate(async()=>{holdInstant=false;releaseInstant();await new Promise(r=>setTimeout(r,0));});
+   if(race==='edit'){await page.getByRole('status').filter({hasText:/^Your edited draft was kept$/}).waitFor();assert.equal(await field.inputValue(),'User draft must remain');}
+   if(race==='disable'){assert.equal(await field.inputValue(),'');assert.equal(await page.getByRole('button',{name:'Accept',exact:true}).isDisabled(),true);}
+   if(race==='selection'){await page.getByRole('status').filter({hasText:/^Selection changed/}).waitFor();assert.equal(await page.getByRole('button',{name:'Accept',exact:true}).isDisabled(),true);}
+   assert.equal((await page.evaluate(()=>readAll()))[1],'Synthetic 한국어 😀 please separate this.');record(format+' delayed Instant preserves '+race+' boundary');
+  }
   await page.evaluate(()=>removeReview());
  }
  result.pageErrors=errors;
