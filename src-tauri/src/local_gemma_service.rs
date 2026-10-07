@@ -172,6 +172,13 @@ impl Client {
 }
 
 #[cfg(test)]
+pub(super) fn closed_test_client() -> Client {
+    let (queue, receiver) = mpsc::channel(1);
+    drop(receiver);
+    Client { queue }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     #[tokio::test]
