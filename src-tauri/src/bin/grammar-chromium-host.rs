@@ -37,6 +37,26 @@ struct OriginConfig {
     origin: String,
     #[serde(default)]
     installation_id: Option<String>,
+    #[serde(default)]
+    gemma: Option<GemmaConfig>,
+}
+
+// Trusted launcher writes this alongside its owned host copy. Never accepted
+// from browser frames or environment variables; absent preserves Instant rules.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GemmaConfig {
+    pipe: String,
+    broker_sha256: String,
+}
+impl GemmaConfig {
+    fn connect(self, directory: &std::path::Path) -> Result<codex_pencil::local_gemma::broker::Connection, ()> {
+        let suffix = self.pipe.strip_prefix(r"\\.\pipe\Grammar.Gemma.Broker.").ok_or(())?;
+        if uuid::Uuid::parse_str(suffix).is_err() { return Err(()); }
+        let image = codex_pencil::local_gemma::peer::ImagePin::verify(
+            &directory.join("grammar-gemma-broker.exe"), &self.broker_sha256).map_err(|_| ())?;
+        Ok(codex_pencil::local_gemma::broker::Connection { name:self.pipe, broker_image:image })
+    }
 }
 
 #[derive(Deserialize)]
@@ -241,12 +261,15 @@ async fn analyze_gemma_broker(body:&[u8],broker:&codex_pencil::local_gemma::brok
 
 // The service seam permits synthetic actor tests without any executable discovery.
 trait DeepService {
+    fn local_unavailable(&self) -> bool { false }
     fn local_broker(&self)->Option<codex_pencil::local_gemma::broker::Connection>{None}
     fn local_ticket(&self) -> Option<codex_pencil::local_gemma::pipe::Ticket> { None }
     fn local(&self, body: Vec<u8>) -> LocalFuture {
         let ticket = self.local_ticket();
         let broker = self.local_broker();
+        let unavailable = self.local_unavailable();
         Box::pin(async move {
+            if unavailable { return Err("gemma_configuration_unavailable"); }
             let deadline=tokio::time::Instant::now()+Duration::from_secs(1);
             if let Some(broker)=broker {return analyze_gemma_broker(&body,&broker,deadline).await;}
             match ticket {
@@ -264,8 +287,10 @@ trait DeepService {
         response_for(request, Some("cleanup_unavailable"))
     }
 }
-struct ProviderService(Arc<DeepRuntime>, Option<cleanup::Store>);
+struct ProviderService(Arc<DeepRuntime>, Option<cleanup::Store>, Result<Option<codex_pencil::local_gemma::broker::Connection>, ()>);
 impl DeepService for ProviderService {
+    fn local_unavailable(&self) -> bool { self.2.is_err() }
+    fn local_broker(&self) -> Option<codex_pencil::local_gemma::broker::Connection> { self.2.as_ref().ok().cloned().flatten() }
     fn admit(&self, request: &Request) -> Result<(), &'static str> {
         if request.cleanup_token.is_some() {
             return Err("cleanup_invalid_ticket");
@@ -642,7 +667,9 @@ fn main() {
             directory: std::env::current_exe().unwrap().parent().unwrap().into(),
             installation,
         });
-        run_stdio(ProviderService(Arc::new(DeepRuntime::default()), store))
+        let directory = std::env::current_exe().map_err(|_| ())?.parent().ok_or(())?.to_owned();
+        let broker = parsed.gemma.map(|config| config.connect(&directory)).transpose();
+        run_stdio(ProviderService(Arc::new(DeepRuntime::default()), store, broker))
     })();
     // No parser/provider error or document text is printed to stderr.
     std::process::exit(if result.is_ok() { 0 } else { 1 });
@@ -650,6 +677,17 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn gemma_configuration_is_explicit_and_fail_closed() {
+        let base = serde_json::json!({"origin":"chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"});
+        assert!(serde_json::from_value::<OriginConfig>(base.clone()).unwrap().gemma.is_none());
+        let mut configured = base;
+        configured["gemma"] = serde_json::json!({"pipe":"remote", "broker_sha256":"0".repeat(64)});
+        let value = serde_json::from_value::<OriginConfig>(configured.clone()).unwrap();
+        assert!(value.gemma.unwrap().connect(std::path::Path::new("C:/not-read")).is_err());
+        configured["gemma"]["executable"] = serde_json::json!("arbitrary.exe");
+        assert!(serde_json::from_value::<OriginConfig>(configured).is_err());
+    }
     use super::*;
     struct BrokerLocal(codex_pencil::local_gemma::broker::Connection);
     impl DeepService for BrokerLocal {
