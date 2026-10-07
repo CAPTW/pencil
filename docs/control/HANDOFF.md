@@ -1848,3 +1848,15 @@ exact final regression and cleanup; current F06 qualification unchanged.
 
 Final UI20 and gate/history38 PASS, Source/governance/JS syntax/diff PASS.
 Owned profiles/browser contexts removed, server stopped and port17707 closed.
+
+## rHWP local Instant — 2026-10-07
+
+Base2d9d972. rHWP local Instant: optional selected-text analyzer reuses Chromium UTF16 cache/review assembly and real Grammar native host analyze engine. instant-r1 HWP/HWPX10 PASS: draft correction then explicit Accept, delayed response preserves user draft/Disable/selection boundaries. One in-flight request, no silent retry/fallback; abort prevents publication, not a claim of physical transport cancellation.6 bounded orchestration unit tests PASS. Owned offline locked debug host proof and final regression in grammar-rhwp-20261007/INSTANT_RESULT.md. Test-only Playwright bridge, no installed activation/desktop hotkey/production transport; mission INCOMPLETE, no main/push/Provider.
+
+Next: trusted in-editor bootstrap/admission/lifecycle and bounded production local
+transport, then installed shortcut/widget/package qualification. Do not promote the
+test-only exposeFunction bridge to production. No Deep or live account activity.
+Same-integrator review only; native host library unused warnings retained.
+
+Final Instant10/UI20/gate-history38/unit6 PASS.8 real local host exits0, final
+profiles removed and server/port closed. Source/governance/syntax/diff PASS.

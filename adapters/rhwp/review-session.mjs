@@ -10,6 +10,10 @@ export function createReviewSession(Controller, collectEvidence, deps, eligible,
   return Object.freeze({
     enable(){if(disposed)fail('CLOSED');enabled=true;},
     disable(){enabled=false;clear();},
+    valid(id){
+      try{allowed();if(!current||current.id!==id)return false;return current.gate.validate(current.token);}
+      catch{clear();return false;}
+    },
     capture(){
       if(busy)fail('BUSY');clear();allowed();
       const selection=deps.input.getSelection();

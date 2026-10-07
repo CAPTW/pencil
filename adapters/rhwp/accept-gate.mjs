@@ -30,6 +30,7 @@ export function createAcceptGate(Controller, deps, now = () => performance.now()
   return Object.freeze({
     enable(){if(closed || uncertain)fail('CLOSED');enabled=true;},
     disable(){enabled=false;pending=null;},
+    validate(token){if(!pending||pending.token!==token)fail('INVALID_TOKEN');check(pending.grant);return true;},
     capture(command){
       if(active)fail('BUSY');
       pending=null;
