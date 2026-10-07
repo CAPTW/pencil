@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "scope": "SYNTHETIC_ONLY",
+  "requestedModel": "gpt-6-luna",
+  "liveStatus": "NOT_RUN",
+  "cases": [
+    {
+      "id": "translate-ko-en-01",
+      "mode": "translate",
+      "targetLanguage": "en",
+      "source": "금요일 오후 3시까지 초안을 보내 주세요. 최종 승인은 아직 받지 못했습니다.",
+      "mustPreserve": [
+        "Friday 3 pm deadline",
+        "draft, not final version",
+        "approval still pending"
+      ]
+    },
+    {
+      "id": "translate-en-ko-02",
+      "mode": "translate",
+      "targetLanguage": "ko",
+      "source": "The release may be delayed, but we have not decided to cancel it.",
+      "mustPreserve": [
+        "possibility, not certainty",
+        "no cancellation decision"
+      ]
+    },
+    {
+      "id": "translate-context-03",
+      "mode": "translate",
+      "targetLanguage": "en",
+      "source": "민수는 지연에게 보고서를 보냈다. 지연은 수치를 다시 확인한 뒤 내일까지 답하겠다고 했다.",
+      "mustPreserve": [
+        "Minsu sends report to Jiyeon",
+        "Jiyeon checks figures and replies by tomorrow"
+      ]
+    },
+    {
+      "id": "grammar-en-04",
+      "mode": "grammar",
+      "targetLanguage": null,
+      "source": "She don’t know whether the results is reliable, so she have asked for another test.",
+      "mustPreserve": [
+        "subject verb agreement",
+        "uncertainty preserved",
+        "additional test requested"
+      ]
+    },
+    {
+      "id": "grammar-ko-05",
+      "mode": "grammar",
+      "targetLanguage": null,
+      "source": "이 결과는 검토가 더 필요하므로, 지금 결론을 내리면 안됍니다.",
+      "mustPreserve": [
+        "spelling corrected",
+        "must not conclude yet"
+      ]
+    },
+    {
+      "id": "grammar-clean-06",
+      "mode": "grammar",
+      "targetLanguage": null,
+      "source": "The revised estimate is 12.5%, not 15%, and it excludes shipping costs.",
+      "mustPreserve": [
+        "numbers and negation unchanged",
+        "shipping exclusion preserved",
+        "no unnecessary meaning change"
+      ]
+    },
+    {
+      "id": "natural-context-07",
+      "mode": "natural",
+      "targetLanguage": null,
+      "source": "I understand why you want to launch today. However, the payment test has not passed yet. Could we wait until that check is complete?",
+      "mustPreserve": [
+        "acknowledge request",
+        "test not passed",
+        "polite request to wait"
+      ]
+    },
+    {
+      "id": "natural-ko-08",
+      "mode": "natural",
+      "targetLanguage": null,
+      "source": "회의를 못 가는 것은 관심이 없어서가 아니라 같은 시간에 고객과의 약속이 있기 때문입니다. 자료를 보내 주시면 오늘 안에 의견을 드리겠습니다.",
+      "mustPreserve": [
+        "scheduling conflict, not disinterest",
+        "feedback today if materials provided"
+      ]
+    },
+    {
+      "id": "concise-09",
+      "mode": "concise",
+      "targetLanguage": null,
+      "source": "At this point in time, we are currently waiting for the supplier to confirm whether the replacement part can arrive before Monday.",
+      "mustPreserve": [
+        "confirmation pending",
+        "arrival before Monday uncertain",
+        "shorter without factual loss"
+      ]
+    },
+    {
+      "id": "polite-10",
+      "mode": "polite",
+      "targetLanguage": null,
+      "source": "You sent the wrong file. Send the corrected version by noon tomorrow.",
+      "mustPreserve": [
+        "wrong file",
+        "corrected file needed",
+        "tomorrow noon deadline",
+        "professional tone"
+      ]
+    }
+  ],
+  "measurement": {
+    "start": "explicit Deep submission",
+    "end": "validated draft visible; record provider completion separately",
+    "units": "milliseconds, monotonic clock",
+    "fields": [
+      "coldOrWarm",
+      "modelRequested",
+      "modelReportedOrUnknown",
+      "effort",
+      "serviceTier",
+      "providerMs",
+      "draftVisibleMs",
+      "status"
+    ],
+    "report": "per case; median and maximum for successful requests; failures and timeouts separate; 10 cases insufficient for reliable p95"
+  },
+  "quality": {
+    "scores": "0 unacceptable, 1 needs edits, 2 usable",
+    "dimensions": [
+      "meaning preservation",
+      "grammar",
+      "context/coherence",
+      "requested style or target language"
+    ],
+    "hardFailures": [
+      "invented facts",
+      "changed numbers/deadlines",
+      "reversed negation",
+      "lost conditions or uncertainty"
+    ],
+    "review": "manual model-assisted review, not independent human qualification; no exact-reference-string grading"
+  },
+  "execution": {
+    "silentRetry": false,
+    "silentFallback": false,
+    "autoApply": false,
+    "credentialsInEvidence": false
+  }
+}
