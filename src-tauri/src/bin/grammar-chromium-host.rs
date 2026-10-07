@@ -218,6 +218,10 @@ async fn analyze_gemma(body: &[u8], ticket: &codex_pencil::local_gemma::pipe::Ti
     }
     let binding = codex_pencil::local_gemma::Binding {epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
     let result = codex_pencil::local_gemma::pipe::recommend(ticket,binding.clone(),deadline).await.map_err(|_| "analysis_unavailable")?;
+    gemma_response(request,result)
+}
+fn gemma_response(request:Request,result:codex_pencil::local_gemma::Recommendation)->Result<Response,&'static str>{
+    let binding=codex_pencil::local_gemma::Binding{epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
     if !result.matches(&binding) {return Err("analysis_binding_changed");}
     let mut response=response_for(&request,None);
     if result.replacement!=request.text {
@@ -226,12 +230,25 @@ async fn analyze_gemma(body: &[u8], ticket: &codex_pencil::local_gemma::pipe::Ti
     Ok(response)
 }
 
+async fn analyze_gemma_broker(body:&[u8],broker:&codex_pencil::local_gemma::broker::Connection,deadline:tokio::time::Instant)->Result<Response,&'static str>{
+    let request=parse_request(body)?;
+    if request.op!="analyze" || request.provider.is_some() || request.consent.is_some() || request.cleanup_token.is_some() || request.cleanup_ticket.is_some(){return Err("invalid_request");}
+    let binding=codex_pencil::local_gemma::Binding{epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
+    let grant=broker.acquire(&request.epoch,deadline).await.map_err(|_|"analysis_unavailable")?;
+    let result=grant.recommend(binding,deadline).await.map_err(|_|"analysis_unavailable")?;
+    gemma_response(request,result)
+}
+
 // The service seam permits synthetic actor tests without any executable discovery.
 trait DeepService {
+    fn local_broker(&self)->Option<codex_pencil::local_gemma::broker::Connection>{None}
     fn local_ticket(&self) -> Option<codex_pencil::local_gemma::pipe::Ticket> { None }
     fn local(&self, body: Vec<u8>) -> LocalFuture {
         let ticket = self.local_ticket();
+        let broker = self.local_broker();
         Box::pin(async move {
+            let deadline=tokio::time::Instant::now()+Duration::from_secs(1);
+            if let Some(broker)=broker {return analyze_gemma_broker(&body,&broker,deadline).await;}
             match ticket {
                 Some(ticket) => analyze_gemma(&body, &ticket, tokio::time::Instant::now()+Duration::from_secs(1)).await,
                 None => analyze(&body),
@@ -634,6 +651,12 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct BrokerLocal(codex_pencil::local_gemma::broker::Connection);
+    impl DeepService for BrokerLocal {
+        fn local_broker(&self)->Option<codex_pencil::local_gemma::broker::Connection>{Some(self.0.clone())}
+        fn start(&self,_:Request,_:DeepCancellation)->DeepFuture{panic!("no Deep in broker trial")}
+        fn shutdown(&self)->CleanupFuture{Box::pin(async{true})}
+    }
     struct PipeLocal(codex_pencil::local_gemma::pipe::Ticket);
     impl DeepService for PipeLocal {
         fn local_ticket(&self)->Option<codex_pencil::local_gemma::pipe::Ticket>{Some(self.0.clone())}
@@ -643,17 +666,21 @@ mod tests {
     #[tokio::test]
     #[ignore="owned GPU native actor pipeline"]
     async fn owned_gemma_actor_pipeline() {
-        use codex_pencil::local_gemma::{GemmaEngine,service::Service,pipe::{Endpoint,Permit}};
+        use codex_pencil::local_gemma::{GemmaEngine,service::Service};
         assert_eq!(std::env::var("GRAMMAR_GEMMA_TRIAL").as_deref(),Ok("owned-synthetic"));
         let root=std::path::Path::new("D:/dev/grammar-evidence/grammar-gemma-20261007");
-        let file=root.join("host-gemma-r2.json");assert!(!file.exists());
+        let file=root.join("host-broker-r1.json");assert!(!file.exists());
         let engine=GemmaEngine::start(&root.join("runtime/llama-server.exe"),&root.join("gemma-4-12b-it-qat-q4_0.gguf"),tokio::time::Instant::now()+Duration::from_secs(120)).await.unwrap();
         let (owner,client)=Service::own(engine);let mut rows=Vec::new();
+        let image=std::env::current_exe().unwrap();
+        let hash=codex_pencil::instant_selection::sha256_hex(&std::fs::read(&image).unwrap());
+        let pin=codex_pencil::local_gemma::peer::ImagePin::verify(&image,&hash).unwrap();
         for (source,expected) in [("She have two books.","She has two books."),("The results is uncertain, so do not approve the release.","The results are uncertain, so do not approve the release."),("이 결과는 검토가 더 필요하므로 지금 결론을 내리면 안됍니다.","이 결과는 검토가 더 필요하므로 지금 결론을 내리면 안 됩니다.")] {
-            let endpoint=Endpoint::create().unwrap();let ticket=endpoint.ticket();
-            let serving=tokio::spawn(endpoint.serve(Permit{client_pid:std::process::id(),epoch:"b".into(),active:Arc::new(std::sync::atomic::AtomicBool::new(true))},client.clone(),tokio::time::Instant::now()+Duration::from_secs(1)));
+            let admission=codex_pencil::local_gemma::broker::Admission::create(pin.clone()).unwrap();
+            let connection=codex_pencil::local_gemma::broker::Connection{name:admission.name(),broker_image:pin.clone()};
+            let serving=tokio::spawn(admission.serve(client.clone(),Arc::new(std::sync::atomic::AtomicBool::new(true)),tokio::time::Instant::now()+Duration::from_secs(1)));
             let (tx,rx)=channel::channel(2);let (output,replies)=actor_output(Duration::from_secs(1));
-            let actor=tokio::spawn(async move{run_actor(rx,&output,&PipeLocal(ticket)).await});
+            let actor=tokio::spawn(async move{run_actor(rx,&output,&BrokerLocal(connection)).await});
             let before=tokio::time::Instant::now();tx.send(Ok(request(source))).await.unwrap();
             let response=receipt(&replies).await;
             let ms=before.elapsed().as_millis();drop(tx);
@@ -666,7 +693,7 @@ mod tests {
             assert_eq!(response["epoch"],"b");assert_eq!(response["revision"],7);
         }
         let cleanup=owner.close().await;
-        std::fs::write(root.join("host-gemma-r2-cleanup.json"),serde_json::to_vec(&serde_json::json!({"cleanup":cleanup})).unwrap()).unwrap();
+        std::fs::write(root.join("host-broker-r1-cleanup.json"),serde_json::to_vec(&serde_json::json!({"cleanup":cleanup})).unwrap()).unwrap();
         cleanup.unwrap();
     }
     #[tokio::test]

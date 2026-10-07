@@ -16,8 +16,12 @@ use tokio::{
     time::{timeout_at, Instant},
 };
 
+#[path = "local_gemma_broker.rs"]
+pub mod broker;
 #[path = "local_gemma_lease.rs"]
 mod lease;
+#[path = "local_gemma_peer.rs"]
+pub mod peer;
 #[path = "local_gemma_pipe.rs"]
 pub mod pipe;
 #[path = "local_gemma_service.rs"]
