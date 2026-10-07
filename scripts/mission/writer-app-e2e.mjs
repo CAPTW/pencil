@@ -17,11 +17,12 @@ async function command(action){assert.ok(reply==null);return new Promise((resolv
  reply=value=>{clearTimeout(timer);value.error?reject(Error(value.error)):resolve(value.value);};
  process.stdout.write(JSON.stringify({action})+'\n');
 });}
+const topology=process.argv.includes('--topology');
 const span=process.argv.includes('--span');
 const normalized=value=>value.replace(/\r\n/g,'\n');
 const initial=span?'First paragraph\nBefore | please seperate this. | After\n\nLast paragraph':'Before | please seperate this. | After';
-const edited=span?'Reviewed\nMiddle 한국어 😀\n\nFinal':'검토한 교체 문장 🙂';
-const finalText=span?'First Reviewed\nMiddle 한국어 😀\n\nFinal paragraph':'Before | 검토한 교체 문장 🙂 | After';
+const edited=topology?'Reviewed 한국어 😀':span?'Reviewed\nMiddle 한국어 😀\n\nFinal':'검토한 교체 문장 🙂';
+const finalText=topology?'First Reviewed 한국어 😀 paragraph':span?'First Reviewed\nMiddle 한국어 😀\n\nFinal paragraph':'Before | 검토한 교체 문장 🙂 | After';
 let app,browser,page;
 const result={status:'FAIL',classification:'INSTALLED_WRITER_WIDGET_SYNTHETIC',checks:[],providerLive:'NOT_RUN'};
 const pass=name=>result.checks.push(name);
@@ -65,6 +66,14 @@ try{
  pass('Writer Undo restores original and surrounding text');
  if(process.argv.includes('--formatted')){assert.equal(await command('format'),true);pass('all Writer portions preserve bold color and alignment after Undo');}
  await command('settled');
+ if(topology){
+  await capture();await draft.fill('Reviewed\nMiddle 한국어 😀\n\nExtra\nFinal');await apply.click();
+  await until('split Accept result',async()=>await status.textContent()==='Applied to the captured field');
+  assert.equal(normalized(await command('read')),'First Reviewed\nMiddle 한국어 😀\n\nExtra\nFinal paragraph');
+  assert.equal(await command('format'),true);pass('split and empty paragraph insertion exact text and formatting');
+  await command('undo');assert.equal(normalized(await command('read')),initial);
+  assert.equal(await command('format'),true);pass('split Undo exact text and formatting');await command('settled');
+ }
  await capture();await command('change');await apply.click();
  await until('changed source refused',async()=>await status.textContent()==='Apply unavailable - Copy is available');
  assert.equal(await command('read'),'USER SYNTHETIC CHANGE');pass('concurrent source edit is preserved without rollback');await command('settled');

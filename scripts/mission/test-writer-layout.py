@@ -7,7 +7,7 @@ source = Path(__file__).resolve().parents[2] / 'adapters/libreoffice/pythonpath/
 tree = ast.parse(source.read_text(encoding='utf-8'))
 namespace = {'FORMATTED_CHARACTERS': ('CharColor',)}
 selected = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))
-            and node.name in ('Refused', 'selected_layout_runs', 'replaced_layout', 'restore_uniform_format', 'paragraph_span_plan', 'effective_character_format')]
+            and node.name in ('Refused', 'selected_layout_runs', 'replaced_layout', 'restore_uniform_format', 'paragraph_span_plan', 'effective_character_format', 'uniform_topology_plan')]
 exec(compile(ast.Module(body=selected, type_ignores=[]), str(source), 'exec'), namespace)
 replace = namespace['replaced_layout']
 Refused = namespace['Refused']
@@ -104,6 +104,61 @@ class Tests(unittest.TestCase):
         self.assertEqual(normal(local,Props(17,'DIRECT_VALUE')),(('CharColor',17,'DIRECT_VALUE'),))
         self.assertEqual(normal(local,Props(17,'DEFAULT_VALUE')),(('CharColor',17,'DEFAULT_VALUE'),))
         self.assertEqual(normal(local,Props(18,'DIRECT_VALUE')),(('CharColor',17,'DEFAULT_VALUE'),))
+
+    def test_uniform_topology_merge_split_and_empty_parts(self):
+        plan = namespace['uniform_topology_plan']
+        body = 'abc\r\n\r\ndef'
+        layout = (((3,('red',),()),(2,(),('paragraph_break','\r\n')),
+            (0,('red',),()),(2,(),('paragraph_break','\r\n')),(3,('red',),())),
+            ('paragraphs',((0,'left'),(5,'left'),(7,'left'))),())
+        for value in ('joined','a\n\nb','\n','x\ny\nz\nw','한국어 😀'):
+            text,result,fmt = plan(body,layout,1,8,value)
+            expected = 'a'+value.replace('\n','\r\n')+'f'
+            self.assertEqual(text,expected)
+            parts=expected.split('\r\n')
+            offsets=[]; offset=0
+            for part in parts:
+                offsets.append((offset,'left'));offset+=len(part)+2
+            self.assertEqual(result[1],('paragraphs',tuple(offsets)))
+            self.assertEqual(sum(n for n,_,_ in result[0]),len(text))
+            self.assertEqual(fmt,(('red',),'left',(),()))
+        different=(layout[0],('paragraphs',((0,'left'),(5,'center'),(7,'left'))),())
+        with self.assertRaises(Refused):plan(body,different,1,8,'merged')
+        for value in ('a\rb','a\u2028b','\n'*8,''):
+            with self.assertRaises(Refused):plan(body,layout,1,8,value)
+        with self.assertRaises(Refused):plan(body,layout,4,3,'x')
+
+    def test_topology_outside_styles_and_all_partial_endpoints(self):
+        plan=namespace['uniform_topology_plan']
+        parts=['OUT','abc','de','TAIL']
+        styles=[('blue',),('red',),('red',),('green',)]
+        alignments=['left','center','center','right']
+        runs=[];positions=[];offset=0
+        for i,part in enumerate(parts):
+            positions.append((offset,alignments[i]))
+            runs.append((len(part),styles[i],()))
+            offset+=len(part)
+            if i<3:runs.append((2,(),('paragraph_break','\r\n')));offset+=2
+        layout=(tuple(runs),('paragraphs',tuple(positions)),('defaults',))
+        body='\r\n'.join(parts)
+        for a in range(4):
+            for b in range(3):
+                for replacement in ('X','X\nY','\n','X\n\nY','😀\n한국어'):
+                    start=5+a;end=10+b
+                    actual,result,_=plan(body,layout,start,end-start,replacement)
+                    changed=(parts[1][:a]+replacement+parts[2][b:]).split('\n')
+                    expected=['OUT']+changed+['TAIL']
+                    self.assertEqual(actual,'\r\n'.join(expected))
+                    char_oracle=[('blue',)]*3+[()]*2
+                    for i,part in enumerate(changed):
+                        char_oracle += [('red',)]*len(part)+[()]*2
+                    char_oracle += [('green',)]*4
+                    self.assertEqual([style for n,style,_ in result[0] for _ in range(n)],char_oracle)
+                    offset=0;expected_positions=[]
+                    for i,part in enumerate(expected):
+                        expected_positions.append((offset,'left' if i==0 else 'right' if i==len(expected)-1 else 'center'))
+                        offset+=len(part)+2
+                    self.assertEqual(result[1][1],tuple(expected_positions))
 
     def test_invalid_ranges_fail_closed(self):
         layout = (((4, ('blue',), ()),), (), ())

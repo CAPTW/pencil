@@ -1,5 +1,5 @@
 #Requires -Version 7.0
-param([switch]$SavedDocx, [switch]$UniformFormat, [switch]$MixedSurroundings, [switch]$Paragraphs, [switch]$CrossFormat, [switch]$ParagraphSpan,
+param([switch]$SavedDocx, [switch]$UniformFormat, [switch]$MixedSurroundings, [switch]$Paragraphs, [switch]$CrossFormat, [switch]$ParagraphSpan, [switch]$UniformTopology,
  [ValidatePattern('^writer-product-package(?:-[a-f0-9]{7})?$')][string]$PackageDirectoryName='writer-product-package')
 # Offline, task-owned Sandbox only. Payload contains receipt-bound package/OXT.
 $ErrorActionPreference='Stop'
@@ -42,6 +42,7 @@ try {
  if($Paragraphs){$probeArgs+='--paragraphs'}
  if($CrossFormat){$probeArgs+='--cross-format'}
  if($ParagraphSpan){$probeArgs+='--span'}
+ if($UniformTopology){if(-not $ParagraphSpan){throw 'UniformTopology requires ParagraphSpan'};$probeArgs+='--topology';$report.uniformTopology=$true}
  $python=Start-Process "$program\python.exe" -ArgumentList $probeArgs -WindowStyle Hidden -PassThru -RedirectStandardOutput C:\GrammarOutput\python.log -RedirectStandardError C:\GrammarOutput\python-error.log
  if(-not $python.WaitForExit(120000)){$python.Kill($true);$report.forced=$true;throw 'Widget fixture timeout'}
  $report.pythonExit=$python.ExitCode

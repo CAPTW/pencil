@@ -11,7 +11,7 @@ from com.sun.star.task import XJobExecutor
 from com.sun.star.awt import XActionListener, XTopWindowListener, XCallback
 from grammar_writer_core import WriterCore
 from grammar_writer_bridge import WriterBridge
-from grammar_writer_installation import LIBRARY_PATH, LIBRARY_SHA256, ALLOW_SAVED_DOCX, ALLOW_UNIFORM_FORMAT, ALLOW_MIXED_FORMAT, ALLOW_PARAGRAPHS, ALLOW_CROSS_FORMAT, ALLOW_SPAN
+from grammar_writer_installation import LIBRARY_PATH, LIBRARY_SHA256, ALLOW_SAVED_DOCX, ALLOW_UNIFORM_FORMAT, ALLOW_MIXED_FORMAT, ALLOW_PARAGRAPHS, ALLOW_CROSS_FORMAT, ALLOW_SPAN, ALLOW_TOPOLOGY
 
 _owner = None
 
@@ -26,7 +26,7 @@ class Panel(unohelper.Base, XActionListener, XTopWindowListener):
         self.context = context
         self.core = WriterCore(context, allow_saved_documents=ALLOW_SAVED_DOCX is True,
             allow_uniform_format=ALLOW_UNIFORM_FORMAT is True, allow_mixed_format=ALLOW_MIXED_FORMAT is True,
-            allow_paragraphs=ALLOW_PARAGRAPHS is True, allow_cross_format=ALLOW_CROSS_FORMAT is True, allow_span=ALLOW_SPAN is True)
+            allow_paragraphs=ALLOW_PARAGRAPHS is True, allow_cross_format=ALLOW_CROSS_FORMAT is True, allow_span=ALLOW_SPAN is True, allow_topology=ALLOW_TOPOLOGY is True)
         self.bridge = None
         self.starting = False
         self.closed = False
@@ -37,7 +37,8 @@ class Panel(unohelper.Base, XActionListener, XTopWindowListener):
         model = context.ServiceManager.createInstanceWithContext('com.sun.star.awt.UnoControlDialogModel', context)
         model.Title, model.Width, model.Height = 'Grammar Writer — disabled', 235, 103
         for name, kind, label, x, y, w, h in (
-            ('status', 'FixedText', ('Keep paragraph count and empty paragraphs. Each part uses its first style; Undo restores original styles.' if ALLOW_SPAN is True
+            ('status', 'FixedText', ('Merge/split requires identical styles in affected paragraphs. Other spans keep paragraph count and empty parts. Undo restores originals.' if ALLOW_TOPOLOGY is True
+                else 'Keep paragraph count and empty paragraphs. Each part uses its first style; Undo restores original styles.' if ALLOW_SPAN is True
                 else 'One paragraph only. Replacement uses first selected style; Undo restores original styles.' if ALLOW_CROSS_FORMAT is True
                 else 'Select text with one bold/color style in one paragraph.' if ALLOW_MIXED_FORMAT is True
                 else 'Enable one uniformly bold/colored paragraph.' if ALLOW_UNIFORM_FORMAT is True

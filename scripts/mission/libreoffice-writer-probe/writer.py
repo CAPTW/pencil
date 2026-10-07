@@ -86,3 +86,12 @@ class SpanWriter(CrossFormatWriter):
 
 
 g_ImplementationHelper.addImplementation(SpanWriter, 'org.grammar.fixture.SpanWriter', ('org.grammar.fixture.SpanWriter',))
+
+
+class TopologyWriter(SpanWriter):
+    def __init__(self, context):
+        super().__init__(context)
+        self.allow_topology = True
+
+
+g_ImplementationHelper.addImplementation(TopologyWriter, 'org.grammar.fixture.TopologyWriter', ('org.grammar.fixture.TopologyWriter',))

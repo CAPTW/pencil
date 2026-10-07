@@ -91,8 +91,8 @@ def prepare_format():
             cursor = doc.Text.createTextCursorByRange(para.Start)
             cursor.gotoRange(para.End, True)
             cursor.setAllPropertiesToDefault()
-            cursor.ParaAdjust = (0, 3, 0, 1)[index]
-            cursor.CharColor = (0x118822, 0xBB2200, 0x2255AA, 0x442299)[index]
+            cursor.ParaAdjust = 3 if '--topology' in sys.argv else (0, 3, 0, 1)[index]
+            cursor.CharColor = 0xBB2200 if '--topology' in sys.argv else (0x118822, 0xBB2200, 0x2255AA, 0x442299)[index]
             cursor.CharWeight = cursor.CharWeightAsian = cursor.CharWeightComplex = 150.0
         if '--cross-format' in sys.argv and '--span' not in sys.argv:
             colored = doc.Text.createTextCursorByRange(paragraph_list()[1].Start)
@@ -153,6 +153,20 @@ def prepare_format():
 
 
 def format_ok():
+    if '--topology' in sys.argv:
+        items=paragraph_list()
+        if [p.String for p in items] not in (
+            ['First paragraph','Before | please seperate this. | After','','Last paragraph'],
+            ['First Reviewed 한국어 😀 paragraph'],
+            ['First Reviewed','Middle 한국어 😀','','Extra','Final paragraph']): return False
+        for para in items:
+            if para.ParaAdjust != 3:return False
+            parts=para.createEnumeration();count=0
+            while parts.hasMoreElements():
+                part=parts.nextElement();count+=1
+                if (part.CharWeight,part.CharWeightAsian,part.CharWeightComplex,part.CharColor)!=(150.0,150.0,150.0,0xBB2200):return False
+            if not count:return False
+        return True
     if '--paragraphs' in sys.argv:
         items = paragraph_list()
         if len(items) != 4 or [items[i].String for i in (0, 2, 3)] not in ([['First paragraph', '', 'Last paragraph'], ['First Reviewed', '', 'Final paragraph']] if '--span' in sys.argv else [['First paragraph', '', 'Last paragraph']]):
@@ -265,7 +279,7 @@ try:
     if '--widget' in sys.argv:
         result['scope'] = 'installed Grammar widget through product Writer entry'
         log = open(r'C:\GrammarOutput\widget-driver-error.log', 'w', encoding='utf-8')
-        node = subprocess.Popen([r'C:\GrammarPayload\node.exe', r'C:\GrammarPayload\writer-app-e2e.mjs'] + (['--formatted'] if '--formatted' in sys.argv else []) + (['--span'] if '--span' in sys.argv else []),
+        node = subprocess.Popen([r'C:\GrammarPayload\node.exe', r'C:\GrammarPayload\writer-app-e2e.mjs'] + (['--formatted'] if '--formatted' in sys.argv else []) + (['--span'] if '--span' in sys.argv else []) + (['--topology'] if '--topology' in sys.argv else []),
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, text=True, encoding='utf-8',
             creationflags=subprocess.CREATE_NO_WINDOW)
         dispatcher = ctx.ServiceManager.createInstanceWithContext('com.sun.star.frame.DispatchHelper', ctx)
@@ -292,7 +306,9 @@ try:
                     dispatcher.executeDispatch(doc.CurrentController.Frame, 'service:org.grammar.Writer?review', '', 0, ())
                     if '--cross-format' in sys.argv and '--span' not in sys.argv:
                         wait(lambda: any('Replacement uses first selected style; Undo restores original styles.' in n for n, _ in accessible_names()))
-                    if '--span' in sys.argv:
+                    if '--topology' in sys.argv:
+                        wait(lambda: any('Merge/split requires identical styles' in n for n,_ in accessible_names()))
+                    elif '--span' in sys.argv:
                         wait(lambda: any('Keep paragraph count and empty paragraphs.' in n for n,_ in accessible_names()))
                     button('Enable one review')
                     wait(lambda: any('enabled for one review' in n for n, _ in accessible_names()))
