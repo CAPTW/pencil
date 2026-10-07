@@ -85,3 +85,22 @@ The corrected oracle compares exact history command identities immediately befor
 and after the render failure, requiring no new failed entry and all prior entries
 retained. Final target is gate-qualified/receipt.json. Earlier rejection effects on
 normal editor Undo still need qualification; no Undo-support claim is made.
+
+## Bound Undo/Redo continuation
+
+The Grammar overlay now associates each successful `snapshot:grammar:apply`
+history command with before/after document SHA256 values (WeakMap, memory only).
+Undo requires the exact after image; Redo requires the exact before image. The
+check precedes snapshot restoration and stack movement. A mismatch retains the
+entry and refuses, rather than falling through to an older snapshot. Non-Grammar
+history behavior is unchanged. Failure computing the postimage releases the
+unrecorded snapshot without restoring document contents.
+
+`history-red` reproduces unrelated paragraph edits lost through both Undo and Redo.
+`history-green` stops on the new typed refusal because the fixture initially did
+not catch the expected error; this is retained. Final fixture accepts that exact
+error only in the negative cases and still compares complete document text and
+history entry identity. Normal roundtrips must complete without any error.
+The fixture adds three extra Undo/Redo cycles per format. This remains an internal
+real-editor API test, not keyboard/IME or installed Grammar qualification. Capture,
+UI routing, hostile synchronous callbacks and rich formatting remain pending.

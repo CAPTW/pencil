@@ -1824,3 +1824,12 @@ Final gate-qualified32 PASS; both render-failure application edits preserved, ex
 prior history identities retained and failed entry absent. gate-final count oracle
 FAIL preserved and corrected to actual identities. Profile/browser/server removed;
 port17707 closed. Governance/Source behavior/JS syntax/diff PASS. No activation.
+
+## rHWP history fence — 2026-10-07
+
+Base d33a64c. rHWP Grammar history fence: each successful Grammar snapshot has before/after document SHA256; Undo/Redo refuse changed images before mutation/stack movement and retain the blocked entry. history-red reproduces external edit loss on Undo and Redo; history-green preserved expected-refusal fixture failure. history-final38 PASS incl normal4 roundtrips per HWP/HWPX and both changed-source history refusals, exact text and entry identity. API component only, no installed activation. Source pin unchanged; overlay and fixture hashes in grammar-rhwp-20261007/HISTORY_RESULT.md. Synchronous fault/reentry, rich formatting, selected-only capture and actual widget routing remain pending; mission INCOMPLETE, no main/push.
+
+Postimage fingerprint failure now releases unrecorded snapshot without rollback;
+that fault path was reviewed but not injected in this round. Same-integrator review
+only. Continue selected-only capture/visible review integration and synchronous
+fault qualification; existing product activation scopes remain unchanged.
