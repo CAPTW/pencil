@@ -186,6 +186,7 @@ mod tests {
         let (queue, mut receiver) = mpsc::channel(1);
         let client = Client { queue };
         let binding = Binding {
+            intent: crate::local_gemma::Intent::Grammar,
             epoch: "owned".into(),
             revision: 1,
             source: "text".into(),

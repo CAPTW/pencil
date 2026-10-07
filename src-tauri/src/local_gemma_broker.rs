@@ -288,7 +288,7 @@ mod tests {
                 let before = Instant::now();
                 let deadline = before + std::time::Duration::from_secs(1);
                 let result = connection.acquire("owned-binary", deadline).await?
-                    .recommend(Binding { epoch:"owned-binary".into(), revision:revision as u64 + 1, source:source.into() }, deadline).await?;
+                    .recommend(Binding { intent: crate::local_gemma::Intent::Grammar, epoch:"owned-binary".into(), revision:revision as u64 + 1, source:source.into() }, deadline).await?;
                 rows.push(serde_json::json!({"revision":revision+1,"ms":before.elapsed().as_millis(),"replacement":result.replacement}));
                 if result.replacement != expected { return Err("quality mismatch".into()); }
             }
@@ -325,6 +325,7 @@ mod tests {
             assert!(grant
                 .recommend(
                     Binding {
+                        intent: crate::local_gemma::Intent::Grammar,
                         epoch: "owned".into(),
                         revision,
                         source: "She have books.".into()

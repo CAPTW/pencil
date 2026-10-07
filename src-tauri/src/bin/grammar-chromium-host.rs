@@ -236,12 +236,12 @@ async fn analyze_gemma(body: &[u8], ticket: &codex_pencil::local_gemma::pipe::Ti
         || request.cleanup_token.is_some() || request.cleanup_ticket.is_some() {
         return Err("invalid_request");
     }
-    let binding = codex_pencil::local_gemma::Binding {epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
+    let binding = codex_pencil::local_gemma::Binding {intent: codex_pencil::local_gemma::Intent::Grammar,epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
     let result = codex_pencil::local_gemma::pipe::recommend(ticket,binding.clone(),deadline).await.map_err(|_| "analysis_unavailable")?;
     gemma_response(request,result)
 }
 fn gemma_response(request:Request,result:codex_pencil::local_gemma::Recommendation)->Result<Response,&'static str>{
-    let binding=codex_pencil::local_gemma::Binding{epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
+    let binding=codex_pencil::local_gemma::Binding{intent:codex_pencil::local_gemma::Intent::Grammar,epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
     if !result.matches(&binding) {return Err("analysis_binding_changed");}
     let mut response=response_for(&request,None);
     if result.replacement!=request.text {
@@ -253,7 +253,7 @@ fn gemma_response(request:Request,result:codex_pencil::local_gemma::Recommendati
 async fn analyze_gemma_broker(body:&[u8],broker:&codex_pencil::local_gemma::broker::Connection,deadline:tokio::time::Instant)->Result<Response,&'static str>{
     let request=parse_request(body)?;
     if request.op!="analyze" || request.provider.is_some() || request.consent.is_some() || request.cleanup_token.is_some() || request.cleanup_ticket.is_some(){return Err("invalid_request");}
-    let binding=codex_pencil::local_gemma::Binding{epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
+    let binding=codex_pencil::local_gemma::Binding{intent:codex_pencil::local_gemma::Intent::Grammar,epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
     let grant=broker.acquire(&request.epoch,deadline).await.map_err(|_|"analysis_unavailable")?;
     let result=grant.recommend(binding,deadline).await.map_err(|_|"analysis_unavailable")?;
     gemma_response(request,result)
