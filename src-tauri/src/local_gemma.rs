@@ -18,6 +18,8 @@ use tokio::{
 
 #[path = "local_gemma_lease.rs"]
 mod lease;
+#[path = "local_gemma_pipe.rs"]
+pub mod pipe;
 #[path = "local_gemma_service.rs"]
 pub mod service;
 
