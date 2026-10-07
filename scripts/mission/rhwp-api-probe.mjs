@@ -175,6 +175,42 @@ try {
   assert.equal(renderRace.unexpectedEntries,0);assert.equal(renderRace.priorPreserved,true);
   record(format+' render failure preserves intervening application edit and quarantines gate');
   result.findings.push({format,kind:'RENDER_FAILURE_APPLICATION_EDIT_PROBE',...renderRace});
+  const historyCases=await page.evaluate(async format=>{
+   const rows=[];
+   for(const scenario of ['roundtrip','changed-before-undo','changed-before-redo']){
+    await editor.loadFile(new Uint8Array(synthetic[format]),'history.'+format,{suppressDialogs:true,skipUnsavedGuard:true});
+    const w=editor.element.contentWindow;
+    const {createAcceptGate}=await import('/grammar-accept-gate.mjs');
+    const {DocumentAgentController}=await import('/src/document-agent/controller.ts');
+    const bound=await commandFor('History replacement');
+    const gate=createAcceptGate(DocumentAgentController,{wasm:w.__wasm,input:w.__inputHandler,eventBus:w.__eventBus,isDirty:()=>true,render:()=>w.__canvasView.refreshDocumentAgentMutation()});
+    gate.enable();const state=gate.getDocumentState();Object.assign(bound.command,{expectedDocumentEpoch:state.documentEpoch,expectedChangeSeq:state.changeSeq,expectedDocumentSha256:state.documentSha256});
+    const before=readAll();await gate.accept(gate.capture(bound.command));const applied=readAll();
+    if(scenario==='changed-before-undo'){w.__wasm.replaceText(0,2,0,Array.from(readAll()[2]).length,'External edit retained');w.__eventBus.emit('document-mutated','synthetic-external');}
+    const undoTop=w.__inputHandler.history.peekUndoTop();
+    try{w.__inputHandler.handleUndo();}catch(e){if(scenario!=='changed-before-undo'||e.message!=='GRAMMAR_HISTORY_SOURCE_CHANGED')throw e;}
+    const undone=readAll();
+    const undoRefusedPreservesEntry=scenario!=='changed-before-undo'||w.__inputHandler.history.peekUndoTop()===undoTop;
+    if(scenario==='changed-before-redo'){w.__wasm.replaceText(0,2,0,Array.from(readAll()[2]).length,'External edit retained');w.__eventBus.emit('document-mutated','synthetic-external');}
+    const redoTop=w.__inputHandler.history.peekRedoTop();
+    if(scenario!=='changed-before-undo')try{w.__inputHandler.handleRedo();}catch(e){if(scenario!=='changed-before-redo'||e.message!=='GRAMMAR_HISTORY_SOURCE_CHANGED')throw e;}
+    const redoRefusedPreservesEntry=scenario!=='changed-before-redo'||w.__inputHandler.history.peekRedoTop()===redoTop;
+    const cycles=[];
+    if(scenario==='roundtrip')for(let n=0;n<3;n++){w.__inputHandler.handleUndo();const undo=readAll();w.__inputHandler.handleRedo();cycles.push({undo,redo:readAll()});}
+    rows.push({scenario,before,applied,undone,final:readAll(),cycles,undoRefusedPreservesEntry,redoRefusedPreservesEntry});gate.close();
+   }
+   return rows;
+  },format);
+  result[format].historyCases=historyCases;
+  // Persist counterexample observations before assertions.
+  await writeFile(join(output,'history-'+format+'.json'),JSON.stringify(historyCases,null,2));
+  for(const row of historyCases){
+   if(row.scenario==='roundtrip'){assert.deepEqual(row.undone,row.before);assert.deepEqual(row.final,row.applied);}
+   else {assert.equal(row.final[2],'External edit retained');assert.equal(row.final[1],row.scenario==='changed-before-undo'?'History replacement':row.before[1]);}
+   record(format+' history '+row.scenario+' exact text');
+   assert.equal(row.undoRefusedPreservesEntry,true);assert.equal(row.redoRefusedPreservesEntry,true);
+   for(const cycle of row.cycles){assert.deepEqual(cycle.undo,row.before);assert.deepEqual(cycle.redo,row.applied);}
+  }
   // This measures an upstream API boundary, not a pass criterion for Grammar.
   // A hash-bound old target may still be accepted after selection moves.
  }
