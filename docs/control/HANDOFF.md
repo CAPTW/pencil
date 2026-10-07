@@ -1797,3 +1797,15 @@ Final prior-span regression guest-span-regression PASS82 on the same core; inclu
 guests stopped. Total native129, installed15. Source behavior82 and governance PASS.
 Unchanged Rust/Chromium and plain/uniform native suites not rerun this round; prior
 scope evidence remains historical. No new source UI application claimed.
+
+
+## rHWP API investigation — 2026-10-07
+
+rHWP0.8.7 pinned1a76570: local sandboxed Chromium API fixture16 PASS for synthetic HWP/HWPX exact apply/revert/export/reopen and stale/hash refusals. Both moved-selection probes accepted old targets: integration gap, not Grammar acceptance. No adapter activation. Readonly dev hooks only; autosave drafts0, metadata recent4, task profile removed. Render rollback/concurrency, selected plaintext capture, target-side authority and privacy lifecycle pending. Evidence grammar-rhwp-20261007/run-final/receipt.json; mission INCOMPLETE, no main/push.
+
+See adapters/rhwp/README.md for pinned provenance, reproduction, preserved failures
+and limits. First paragraph control refusal was a fixture assumption, not relaxed
+policy. Selection movement is not guarded by upstream explicit-target API. Next:
+implement target-side selection/revocation fencing and review render-failure
+rollback against concurrent edits before any Grammar integration. Existing F-06
+qualified scopes unchanged. Same-integrator review only; no independent review.
