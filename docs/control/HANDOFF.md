@@ -1751,3 +1751,49 @@ not external Project UI application. Historical failed evidence remains unchange
 Final revision-guard code cde1097: native guest-revision PASS82, including unchanged-content revision event stopping later writes; installed guest-product-final PASS8 widget/5 enclosing. OXT9dc837a2c308f7d79e045cc0869ca31d4d3cc4e1caa21fd6e00fd768b8bbc709 pairs unchanged runtime0fc8624. Both natural exits0/cleanuptrue/forcedfalse/processes0, installed removal complete. Exact source binding: source-input-proof-qualified.json; fixture/product core bytes equal. Prior-mode final regression and shutdown recorded in RESULT.md.
 
 Final prior uniform-format native regression PASS32/16 saved cycles on the same core; natural cleanup complete. Layout9/package8/bridge6/Source81 and governance/self-test PASS. All owned Sandbox instances stopped. Final exact12 preview is separate from external Project application and product acceptance.
+
+
+## Uniform paragraph topology — 2026-10-07
+
+Base deb15d8; implementation62d4a89, soft-linebreak containment86dfae4,
+installed fixture fixesd9a6b1e/a426701. Dedicated candidate unchanged; main remains
+4e833988ed27086dd6d4acb78d39fc3e9c98c707, no adoption/push/release.
+Evidence D:/dev/grammar-evidence/grammar-writer-topology-20261007.
+
+Explicit defaultoff uniform-topology option requires prior span flags. At most8
+input/output Standard paragraphs, identical whole-paragraph character/RGB/alignment
+metadata, permits reviewed merge/split and empty-part changes. Others retain old
+span policy. Soft linebreaks inside affected paragraphs refused. One range write,
+exact whole-document text/layout hashes, custom range Undo/Redo, no automatic Save.
+Failed writes remain dirty/UNKNOWN_CHANGED; no rollback/replay. Undo after external
+edit refuses without changing it. Native text representation kept in source/hash;
+Writer setString gets CR paragraph delimiters for this path only, including Undo.
+
+Native guest-qualified PASS47 (8 saved cycles), installed guest-product-r3 PASS10
+widget/5 enclosing; source change/Disable, exact rereads/styles/Undo, natural exits0,
+cleanuptrue/forcedfalse/processes0 and uninstall complete. OXT SHA256:
+047f69398018141db11f076620790f0b04da19fef4042c860ebfb5c15d97f095.
+Paired app/native0fc8624 unchanged, hashes in QUALIFIED_COMBINATION.json. Product and
+fixture core bytes equal; source-input-proof-qualified.json binds Git blobs/bytes.
+
+Preserved failures: guest-r1 foreground setup (no mutation tests); guest-r2 merge
+passed but literal CRLF Undo inserted extra linefeeds; guest-product-final omitted
+initial saved synthetic text from fixture oracle; guest-product-qualified timed out
+before widget entry on document activation (exact original stage not known). The
+fixture now activates its owned document and labels timeout call sites, without
+changing product foreground checks or deadlines. R3/guest-final native44/46 are
+intermediate evidence, not final. Soft-break ambiguity discovered in separate
+same-integrator review; no independent peer review. Layout12/package9/bridge6 PASS.
+Prior span/native regression and Source validation final results in RESULT.md.
+
+Continue differing-format topology semantics and application-specific adapters.
+Complex Writer, Calc/Impress product Apply, actual Office/Hancom, physical IME,
+normal profiles/live Provider remain incomplete/NOT_RUN. Do not claim general
+Writer or whole-product completion. Exact next task unchanged. Local Source preview
+is not Project UI application; no new external Source upload prerequisite.
+
+Final prior-span regression guest-span-regression PASS82 on the same core; including
+8 saved single-range and8 saved span cycles. Natural cleanup0/forcedfalse, all owned
+guests stopped. Total native129, installed15. Source behavior82 and governance PASS.
+Unchanged Rust/Chromium and plain/uniform native suites not rerun this round; prior
+scope evidence remains historical. No new source UI application claimed.

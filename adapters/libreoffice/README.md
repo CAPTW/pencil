@@ -1,6 +1,6 @@
 # LibreOffice Writer adapter (implementation in progress)
 
-Current checkpoint: see "Paragraph-span candidate" below. The opted-in
+Current checkpoint: see "Uniform paragraph topology candidate" below. The opted-in
 candidate OXT is installed-widget qualified only in the documented owned synthetic
 scope; general Writer acceptance is incomplete. Earlier sections below are
 chronological implementation/qualification history, not the current scope limit.
@@ -302,3 +302,21 @@ Paragraph merging/splitting, new/deleted empty parts and complex structures rema
 unsupported. Source/permission changes refuse; postwrite uncertainty preserves user
 edits and dirty state without whole-body rollback or automatic replay. See evidence
 D:/dev/grammar-evidence/grammar-writer-span-20261006/RESULT.md for failures and scope.
+
+
+## Uniform paragraph topology candidate (2026-10-07)
+
+Explicit `--enable-uniform-topology` additionally requires all prior paragraph/span
+flags. It defaults off. Up to8 affected/output Standard body paragraphs must share
+identical whole-paragraph supported character/RGB/alignment metadata. Reviewed
+replacement can merge/split and add/remove empty parts using that common format.
+Outside paragraphs retain exact text/styles. Undo/Redo is one range action, never
+whole-body restoration. Embedded soft linebreaks in affected paragraphs are refused;
+differently formatted spans keep the previous count/empty-part preservation policy.
+
+Product OXTd9a6b1e (core86dfae4) + runtime0fc8624, installed fixturea426701, in pinned
+LibreOffice26.2.4.2: native47 and installed10+5 PASS in owned synthetic new/local saved
+DOCX only. No automatic Save. Source-change and Disable preserve actual contents.
+Disable UI can still say outcome unconfirmed; independent reread proves no mutation.
+Evidence: D:/dev/grammar-evidence/grammar-writer-topology-20261007. Product activation
+in general profiles, physical IME, live Provider and general Writer are NOT_RUN.
