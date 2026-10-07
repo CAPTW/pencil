@@ -16,6 +16,9 @@ use tokio::{
     time::{timeout_at, Instant},
 };
 
+#[path = "local_gemma_service.rs"]
+pub mod service;
+
 const MAX_RESPONSE: usize = 32768;
 const MAX_TEXT: usize = 8192;
 
@@ -78,6 +81,20 @@ fn replacement(value: Value) -> Result<String, String> {
         return Err("gemma_invalid_output".into());
     }
     Ok(text.to_owned())
+}
+
+async fn read_response(mut response: reqwest::Response) -> Result<String, String> {
+    if !response.status().is_success() {
+        return Err("gemma_http_status".into());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|_| "gemma_transport")? {
+        if bytes.len() + chunk.len() > MAX_RESPONSE {
+            return Err("gemma_output_limit".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    replacement(serde_json::from_slice(&bytes).map_err(|_| "gemma_invalid_json")?)
 }
 
 pub struct GemmaEngine {
@@ -200,7 +217,7 @@ impl GemmaEngine {
         let body = json!({"messages":[{"role":"user","content":prompt}],"temperature":0,
             "seed":42,"max_tokens":256,"stream":false,
             "response_format":{"type":"json_object","schema":{"type":"object","properties":{"replacement":{"type":"string"}},"required":["replacement"],"additionalProperties":false}}});
-        let mut response = self
+        let response = self
             .http
             .post(format!("{}/v1/chat/completions", self.endpoint))
             .bearer_auth(&self.token)
@@ -209,17 +226,7 @@ impl GemmaEngine {
             .send()
             .await
             .map_err(|_| "gemma_transport")?;
-        if !response.status().is_success() {
-            return Err("gemma_http_status".into());
-        }
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(|_| "gemma_transport")? {
-            if bytes.len() + chunk.len() > MAX_RESPONSE {
-                return Err("gemma_output_limit".into());
-            }
-            bytes.extend_from_slice(&chunk);
-        }
-        replacement(serde_json::from_slice(&bytes).map_err(|_| "gemma_invalid_json")?)
+        read_response(response).await
     }
 
     /// One request at a time. Dropping this future leaves ready=false until explicit stop.
@@ -292,6 +299,61 @@ impl GemmaEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn actual_http_reader_caps_output_and_bounds_stalled_body() {
+        use std::io::{Read, Write};
+        for stall in [false, true] {
+            let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            let address = listener.local_addr().unwrap();
+            let writer = std::thread::spawn(move || {
+                let (mut socket, _) = listener.accept().unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(1)))
+                    .unwrap();
+                let mut headers = Vec::new();
+                while !headers.ends_with(b"\r\n\r\n") {
+                    let mut byte = [0];
+                    socket.read_exact(&mut byte).unwrap();
+                    headers.push(byte[0]);
+                    assert!(headers.len() < 4096);
+                }
+                if stall {
+                    socket
+                        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n")
+                        .unwrap();
+                    std::thread::sleep(Duration::from_millis(100));
+                } else {
+                    let body = vec![b'x'; MAX_RESPONSE + 1];
+                    write!(
+                        socket,
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+                        body.len()
+                    )
+                    .unwrap();
+                    let _ = socket.write_all(&body);
+                }
+            });
+            let response = reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .unwrap()
+                .get(format!("http://{address}"))
+                .send()
+                .await
+                .unwrap();
+            let result = timeout_at(
+                Instant::now() + Duration::from_millis(25),
+                read_response(response),
+            )
+            .await;
+            if stall {
+                assert!(result.is_err());
+            } else {
+                assert_eq!(result.unwrap().unwrap_err(), "gemma_output_limit");
+            }
+            writer.join().unwrap();
+        }
+    }
     #[test]
     fn refuses_incomplete_or_tool_outputs() {
         for value in [
@@ -346,6 +408,81 @@ mod tests {
             },
         ] {
             assert!(!r.matches(&other));
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "explicit owned synthetic GPU service fault trial"]
+    async fn owned_gpu_service_faults() {
+        assert_eq!(
+            std::env::var("GRAMMAR_GEMMA_TRIAL").as_deref(),
+            Ok("owned-synthetic")
+        );
+        let root = Path::new("D:/dev/grammar-evidence/grammar-gemma-20261007");
+        let run = std::env::var("GRAMMAR_GEMMA_FAULT_RUN").unwrap_or_else(|_| "r1".into());
+        assert!(
+            !run.is_empty()
+                && run.len() <= 32
+                && run.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
+        );
+        let receipt = root.join(format!("service-faults-{run}.json"));
+        assert!(!receipt.exists());
+        let mut rows = Vec::new();
+        for mode in ["dropped_waiter", "deadline", "service_shutdown"] {
+            let engine = GemmaEngine::start(
+                &root.join("runtime/llama-server.exe"),
+                &root.join("gemma-4-12b-it-qat-q4_0.gguf"),
+                Instant::now() + Duration::from_secs(120),
+            )
+            .await
+            .unwrap();
+            let runtime = engine
+                .workspace
+                .as_ref()
+                .unwrap()
+                .cwd()
+                .parent()
+                .unwrap()
+                .to_owned();
+            let endpoint = engine.endpoint.clone();
+            let (service, client) = service::Service::own(engine);
+            let limit = if mode == "deadline" { 10 } else { 1000 };
+            let before = Instant::now();
+            let waiter = tokio::spawn(async move {
+                client
+                    .recommend(
+                        Binding {
+                            epoch: "owned-fault".into(),
+                            revision: 1,
+                            source: "This draft contain many errors. ".repeat(20),
+                        },
+                        Instant::now() + Duration::from_millis(limit),
+                    )
+                    .await
+            });
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            let result;
+            if mode == "dropped_waiter" {
+                waiter.abort();
+                result = format!("{:?}", waiter.await.unwrap_err().is_cancelled());
+                service.close().await.unwrap();
+            } else if mode == "deadline" {
+                result = waiter.await.unwrap().unwrap_err();
+                assert_eq!(result, "gemma_deadline");
+                service.close().await.unwrap();
+            } else {
+                service.close().await.unwrap();
+                result = waiter.await.unwrap().unwrap_err();
+            }
+            let port = endpoint.rsplit(':').next().unwrap().parse::<u16>().unwrap();
+            let closed = std::net::TcpStream::connect_timeout(
+                &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+                Duration::from_millis(100),
+            )
+            .is_err();
+            rows.push(json!({"case":mode,"result":result,"totalMs":before.elapsed().as_millis(),"cleanupAcknowledged":true,"workspaceRemoved":!runtime.exists(),"portClosed":closed}));
+            std::fs::write(&receipt, serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
+            assert!(!runtime.exists() && closed);
         }
     }
 
