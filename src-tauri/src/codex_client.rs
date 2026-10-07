@@ -36,7 +36,7 @@ const CONNECTION_INITIALIZING: u8 = 1;
 const CONNECTION_READY: u8 = 2;
 const CONNECTION_DEAD: u8 = 3;
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
-const DEFAULT_REWRITE_MODEL: &str = "gpt-5.6-luna";
+const DEFAULT_REWRITE_MODEL: &str = "gpt-6-luna";
 const DEFAULT_REWRITE_REASONING_EFFORT: &str = "medium";
 const FAST_TRANSLATION_REASONING_EFFORT: &str = "low";
 const FAST_TRANSLATION_SERVICE_TIER: &str = "priority";
@@ -3346,7 +3346,7 @@ mod tests {
     }
 
     #[test]
-    fn rewrite_requests_pin_the_benchmarked_personal_default_model_and_effort() {
+    fn rewrite_requests_pin_the_owner_requested_model_and_effort() {
         let thread = rewrite_thread_params("C:\\synthetic-codex-pencil-runtime");
         let turn = rewrite_turn_params(
             "thread-fixture",
@@ -3356,17 +3356,17 @@ mod tests {
 
         assert_eq!(
             thread.get("model").and_then(Value::as_str),
-            Some("gpt-5.6-luna")
+            Some("gpt-6-luna")
         );
         assert_eq!(
             turn.get("model").and_then(Value::as_str),
-            Some("gpt-5.6-luna")
+            Some("gpt-6-luna")
         );
         assert_eq!(turn.get("effort").and_then(Value::as_str), Some("medium"));
     }
 
     #[test]
-    fn unbound_translation_uses_the_benchmarked_fast_ui_profile() {
+    fn unbound_translation_preserves_the_fast_ui_profile() {
         use crate::translation::TranslationTargetLanguage;
 
         let intent =
@@ -3388,7 +3388,7 @@ mod tests {
 
         assert_eq!(
             thread.get("model").and_then(Value::as_str),
-            Some("gpt-5.6-luna")
+            Some("gpt-6-luna")
         );
         assert_eq!(
             thread.get("serviceTier").and_then(Value::as_str),
@@ -3759,3 +3759,7 @@ mod runtime_protocol_tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "codex_quality_trial.rs"]
+mod quality_trial;
