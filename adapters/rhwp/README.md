@@ -49,3 +49,39 @@ Preserved failed runs: r1 hot reload destroyed execution context; r2/r3 WASM rou
 returned HTML; r4 first paragraph control refusal (fixture target assumption).
 r5 passed 8 checks; r6 and final passed 16. These are API fixtures, not installed
 Grammar, physical input/IME, arbitrary formatting, or general HWP/HWPX acceptance.
+
+## Target-side gate continuation
+
+`accept-gate.mjs` is a target-process component, still not installed/activated.
+Trusted host opt-in binds a cloned reviewed command to a single-use token with a
+30s lifetime. Exact document epoch/revision/hash and noncollapsed editable selection
+are checked at capture, Accept, before history entry, and synchronously inside the
+mutation callback. A separate asynchronous preflight is not the mutation authority.
+One gate handles one Accept attempt; terminal disposal releases its controller and
+in-memory journal reference. Disable clears pending authority. Concurrent Accept
+is refused. There is no page-message transport, desktop shortcut, selected-text
+capture UI or provider integration yet.
+
+`input-overlay.mjs` applies narrowly matched source changes to the pinned upstream
+InputHandler/CommandHistory in the test server. Upstream files remain untouched;
+the executed source is explicitly a Grammar overlay, not unmodified upstream.
+The gate refuses an executor without the overlay capability. Non-Grammar operation
+types retain upstream behavior. For Grammar render failure, never restore the
+whole-document snapshot: discard only the exact failed history entry, notify dirty
+state, report an uncertain failure, close the gate. No replay or automatic rollback.
+Synchronous mutation failures retain upstream behavior and need further fault tests.
+
+Preserved `gate-r2` counterexample: a synthetic application mutation in another
+paragraph during a throwing render callback was lost in both formats. Its aggregate
+API fixture status is not a safety pass; `userEditPreserved=false` is the failure.
+`gate-r3` preserves the edit; final additionally checks failed history removal and
+terminal gate cleanup. This is injected application activity, not physical typing.
+Review was by the same integrator; no independent reviewer. Product activation,
+trusted bridge packaging, selected-only capture, normal Undo/Redo and sensitive
+document admission still require qualification.
+
+The gate-final run failed an assumed history count (0 versus1); it is preserved.
+The corrected oracle compares exact history command identities immediately before
+and after the render failure, requiring no new failed entry and all prior entries
+retained. Final target is gate-qualified/receipt.json. Earlier rejection effects on
+normal editor Undo still need qualification; no Undo-support claim is made.
