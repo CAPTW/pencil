@@ -19,6 +19,7 @@ npm ci --offline --ignore-scripts
 cargo build --manifest-path src-tauri/Cargo.toml --locked --offline --bin grammar-chromium-host
 node adapters/chromium/tests/core.test.mjs
 node adapters/chromium/tests/worker.test.mjs
+node --test adapters/chromium/tests/scheduling.test.mjs
 $env:GRAMMAR_PLAYWRIGHT = '<installed playwright package directory>'
 $env:GRAMMAR_CHROMIUM = '<matching Chromium chrome.exe>'
 $env:GRAMMAR_EVIDENCE = '<owned external evidence directory>'

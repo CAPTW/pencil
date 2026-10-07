@@ -23,6 +23,12 @@ let broker,context,registered=false,brokerExit;
 const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Owned Gemma fixture</title><textarea id="writing"></textarea><div id="editable" contenteditable="true" style="min-height:40px;border:1px solid"></div><input id="password" type="password">');});
 try {
  await cp('adapters/chromium/extension',extension,{recursive:true});
+ // Fixture-only timestamp; worker strips it from the native request.
+ const contentPath=join(extension,'content.js'),contentSource=await readFile(contentPath,'utf8');
+ const marker="{version:1,op:'analyze',id:String(++sequence),epoch,";
+ assert.equal(contentSource.split(marker).length,2);
+ await writeFile(contentPath,contentSource.replace(marker,"{version:1,op:'analyze',testContentSent:Date.now(),id:String(++sequence),epoch,"));
+ report.fixtureContentSha256=await hash(contentPath);
  const {publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
  const der=publicKey.export({type:'spki',format:'der'});
  const id=createHash('sha256').update(der).digest('hex').slice(0,32).replace(/[a-f0-9]/g,c=>String.fromCharCode(97+parseInt(c,16)));
@@ -55,15 +61,28 @@ try {
  context.setDefaultTimeout(12000);
  const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');
  await worker.evaluate(()=>{
-  globalThis.gemmaMetrics={requests:0,responses:0};
-  chrome.runtime.onMessage.addListener(m=>{if(m.op==='analyze')gemmaMetrics.requests++;});
+  globalThis.gemmaMetrics={requests:0,responses:0,arrivals:new Map(),storage:[]};
+  chrome.runtime.onMessage.addListener(m=>{if(m.op==='analyze'){
+   gemmaMetrics.requests++;gemmaMetrics.arrivals.set(m.id,{contentSent:m.testContentSent,workerReceived:Date.now()});
+  }});
+  const storageGet=chrome.storage.local.get.bind(chrome.storage.local);
+  chrome.storage.local.get=async (...args)=>{
+   if(args[0]!=='deniedOrigins')return storageGet(...args);
+   const start=Date.now();try{return await storageGet(...args);}finally{
+    gemmaMetrics.storage.push({start,end:Date.now()});if(gemmaMetrics.storage.length>256)gemmaMetrics.storage.shift();
+   }
+  };
   const original=chrome.runtime.connectNative.bind(chrome.runtime);
   chrome.runtime.connectNative=(...args)=>{
    const port=original(...args),sent=new Map(),post=port.postMessage.bind(port);
    port.postMessage=m=>{if(m.op==='analyze')sent.set(m.id,Date.now());return post(m);};
    port.onMessage.addListener(m=>{if(Array.isArray(m.suggestions)){
     gemmaMetrics.responses++;
-    if(/^\d+$/.test(m.id)){gemmaMetrics.last=m;gemmaMetrics.timing={sent:sent.get(m.id),received:Date.now()};sent.delete(m.id);}
+    if(/^\d+$/.test(m.id)){
+     gemmaMetrics.last=m;const arrival=gemmaMetrics.arrivals.get(m.id)||{};
+     gemmaMetrics.timing={...arrival,sent:sent.get(m.id),received:Date.now(),storage:gemmaMetrics.storage.filter(x=>x.start>=arrival.contentSent&&x.end<=sent.get(m.id))};
+     sent.delete(m.id);gemmaMetrics.arrivals.delete(m.id);
+    }
    }});return port;
   };
  });
@@ -111,6 +130,9 @@ try {
    const extra=resolve('scripts/mission/gemma-grammar-holdout.json');report.additionalCorpusSha256=await hash(extra);
    corpus.cases.push(...JSON.parse(await readFile(extra)).cases);report.corpusName='regression + former holdout';
   }
+  const rounds=Number(process.env.GRAMMAR_GEMMA_ROUNDS||1);
+  assert.ok(Number.isInteger(rounds)&&rounds>=1&&rounds<=3);report.corpusRounds=rounds;
+  corpus.cases=Array.from({length:rounds},(_,round)=>corpus.cases.map((row,index)=>({...row,id:`r${round+1}-${index+1}-${row.id}`}))).flat();
   report.corpus=await runCorpus(page,worker,corpus);
   if(!report.corpus.qualityPass||report.corpus.recommendationMisses.length||report.corpus.applyMisses.length)process.exitCode=1;
  }

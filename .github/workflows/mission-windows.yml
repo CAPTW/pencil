@@ -98,6 +98,11 @@ jobs:
         run: |
           node adapters/chromium/tests/worker.test.mjs 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/chromium-worker.log"
           exit $LASTEXITCODE
+      - name: Chromium scheduling contract
+        if: ${{ !cancelled() }}
+        run: |
+          node --test adapters/chromium/tests/scheduling.test.mjs 2>&1 | Tee-Object "$env:GRAMMAR_EVIDENCE/logs/chromium-scheduling.log"
+          exit $LASTEXITCODE
       - name: Governance self-test
         if: ${{ !cancelled() }}
         run: |
