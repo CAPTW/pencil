@@ -14,7 +14,7 @@ import uno
 from com.sun.star.document.MacroExecMode import NEVER_EXECUTE
 from com.sun.star.lang import DisposedException
 from com.sun.star.beans.PropertyAttribute import READONLY
-from com.sun.star.text.ControlCharacter import PARAGRAPH_BREAK
+from com.sun.star.text.ControlCharacter import PARAGRAPH_BREAK, LINE_BREAK
 
 out = Path(r'C:\GrammarOutput\uno-result.json')
 result = dict(status='RUNNING', scope='experimental uniform paragraph topology; not product qualified', eventHarness='target_internal', checks=[])
@@ -177,7 +177,7 @@ try:
         return cursor
 
 
-    def ready_topology(first=1, last=3, a=3, b=4):
+    def ready_topology(first=1, last=3, a=3, b=4, required=True):
         cursor=doc.Text.createTextCursorByRange(paragraphs()[first].Start)
         cursor.goRight(a,False)
         end=doc.Text.createTextCursorByRange(paragraphs()[last].Start)
@@ -188,6 +188,7 @@ try:
         assert call('enable',Document=doc)['status']=='ENABLED'
         focus_owned_document()
         answer=call('capture')
+        if not required:return answer
         assert answer['status']=='CAPTURED',answer
         return answer['token']
 
@@ -227,6 +228,10 @@ try:
             record(mode+'-preserves-user-edit',doc.Text.String=='TOPOLOGY USER EVENT' and answer['status']==('REJECTED' if mode=='edit' else 'UNKNOWN_CHANGED'))
         elif mode=='reentry':record('nested-busy',event['nested']['status']=='BUSY' and answer['status']=='APPLIED')
         else:record(mode+'-no-write',answer['status']=='REJECTED' and snapshot()==preserved)
+    reset()
+    doc.Text.insertControlCharacter(paragraphs()[1].End,LINE_BREAK,False)
+    preserved=snapshot();answer=ready_topology(required=False)
+    record('soft-line-break-refused-before-write',answer['status']=='REJECTED' and snapshot()==preserved)
     reset()
     choose(2,0,0).ParaAdjust=1
     token=ready_topology();preserved=snapshot()
