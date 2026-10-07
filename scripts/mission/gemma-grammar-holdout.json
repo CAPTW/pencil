@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "scope": "New independent synthetic grammar cohort frozen before first run against 2d2c5c8; no translation or paraphrase acceptance",
+  "recommendationBudgetMs": 1000,
+  "applyBudgetMs": 500,
+  "qualityRule": "Exact minimal correction or verbatim preservation; preserve first-run failures. Any later repair reclassifies this cohort as regression.",
+  "cases": [
+    {
+      "id": "past-price",
+      "source": "Last year, this laptop cost $950.",
+      "expected": "Last year, this laptop cost $950."
+    },
+    {
+      "id": "singular-they",
+      "source": "Morgan said they might not attend the meeting.",
+      "expected": "Morgan said they might not attend the meeting."
+    },
+    {
+      "id": "conditional",
+      "source": "If I were you, I would not delete the backup.",
+      "expected": "If I were you, I would not delete the backup."
+    },
+    {
+      "id": "plural-agreement",
+      "source": "These files is ready.",
+      "expected": "These files are ready."
+    },
+    {
+      "id": "article",
+      "source": "We need an reliable backup.",
+      "expected": "We need a reliable backup."
+    },
+    {
+      "id": "ko-correct",
+      "source": "검토 결과는 아직 확정되지 않았습니다.",
+      "expected": "검토 결과는 아직 확정되지 않았습니다."
+    },
+    {
+      "id": "ko-spacing",
+      "source": "그렇게 할수는 없습니다.",
+      "expected": "그렇게 할 수는 없습니다."
+    },
+    {
+      "id": "ko-typo",
+      "source": "내일 뵙겠읍니다.",
+      "expected": "내일 뵙겠습니다."
+    },
+    {
+      "id": "code-term",
+      "source": "Call getUserID() before retry_count reaches 3; do not rename either identifier.",
+      "expected": "Call getUserID() before retry_count reaches 3; do not rename either identifier."
+    },
+    {
+      "id": "quote",
+      "source": "The label reads \"teh\" because the test requires those exact three characters.",
+      "expected": "The label reads \"teh\" because the test requires those exact three characters."
+    },
+    {
+      "id": "repeated-error",
+      "source": "Nora have a red folder. Nora have a blue folder.",
+      "expected": "Nora has a red folder. Nora has a blue folder."
+    },
+    {
+      "id": "two-distinct-errors",
+      "source": "The editor recieve the draft each morning, but the reviewers does not approve it automatically.",
+      "expected": "The editor receives the draft each morning, but the reviewers do not approve it automatically."
+    },
+    {
+      "id": "long-correct",
+      "source": "The operations team has completed the review. No customer records were included in the test. The report lists three devices priced at $14.25 each. Morgan may send an update tomorrow, but the deadline has not been confirmed. Keep the API identifiers unchanged. The first checkpoint covers validation, the second covers explicit approval, and the third checks the saved result. A failed check must leave the original document intact. The reviewer can dismiss a suggestion without changing the source. This paragraph describes a synthetic exercise and makes no claim about production readiness.",
+      "expected": "The operations team has completed the review. No customer records were included in the test. The report lists three devices priced at $14.25 each. Morgan may send an update tomorrow, but the deadline has not been confirmed. Keep the API identifiers unchanged. The first checkpoint covers validation, the second covers explicit approval, and the third checks the saved result. A failed check must leave the original document intact. The reviewer can dismiss a suggestion without changing the source. This paragraph describes a synthetic exercise and makes no claim about production readiness."
+    }
+  ]
+}
