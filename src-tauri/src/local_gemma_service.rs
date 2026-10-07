@@ -13,6 +13,7 @@ use tokio::{
 
 struct Request {
     binding: Binding,
+    supersedable: bool,
     cancel: Arc<AtomicBool>,
     deadline: Instant,
     reply: oneshot::Sender<Result<Recommendation, String>>,
@@ -50,20 +51,35 @@ impl Service {
                 }
                 let cancellation = request.cancel.clone();
                 let result = {
-                    let operation =
-                        engine.recommend(request.binding, cancellation.clone(), request.deadline);
+                    let operation = async {
+                        if request.supersedable {
+                            engine
+                                .recommend_supersedable(
+                                    request.binding,
+                                    cancellation.clone(),
+                                    request.deadline,
+                                )
+                                .await
+                        } else {
+                            engine
+                                .recommend(request.binding, cancellation.clone(), request.deadline)
+                                .await
+                        }
+                    };
                     tokio::pin!(operation);
                     tokio::select! {
                         biased;
                         _ = revoked(&closing) => {
-                            // Do not drop the operation: it owns actual process cleanup.
+                            // Leaving this scope drops only the request future.
+                            // The owner explicitly stops the actual engine immediately below.
                             cancellation.store(true, Ordering::SeqCst);
-                            operation.await
+                            Err("gemma_service_closed".into())
                         },
                         result = &mut operation => result,
                     }
                 };
                 let result = if closing.load(Ordering::SeqCst) {
+                    engine.stop().await?;
                     Err("gemma_service_closed".into())
                 } else {
                     result
@@ -105,6 +121,23 @@ impl Client {
         binding: Binding,
         deadline: Instant,
     ) -> Result<Recommendation, String> {
+        self.request(binding, deadline, false).await
+    }
+    /// Only use for source supersession while permission remains granted.
+    /// Disable/revocation must retain the hard-cancellation/close path.
+    pub async fn recommend_supersedable(
+        &self,
+        binding: Binding,
+        deadline: Instant,
+    ) -> Result<Recommendation, String> {
+        self.request(binding, deadline, true).await
+    }
+    async fn request(
+        &self,
+        binding: Binding,
+        deadline: Instant,
+        supersedable: bool,
+    ) -> Result<Recommendation, String> {
         if Instant::now() >= deadline {
             return Err("gemma_deadline".into());
         }
@@ -114,6 +147,7 @@ impl Client {
         self.queue
             .try_send(Request {
                 binding,
+                supersedable,
                 cancel: cancellation,
                 deadline,
                 reply,
