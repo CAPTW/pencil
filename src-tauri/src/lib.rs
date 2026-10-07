@@ -21,3 +21,4 @@ mod writing_contract;
 pub mod provider;
 
 pub mod instant_selection;
+pub mod local_gemma;
