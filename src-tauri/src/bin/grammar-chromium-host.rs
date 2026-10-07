@@ -62,6 +62,8 @@ impl GemmaConfig {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Request {
+    #[serde(default)]
+    intent: Option<codex_pencil::local_gemma::Intent>,
     version: u32,
     op: String,
     id: String,
@@ -91,6 +93,8 @@ struct Suggestion {
 
 #[derive(Serialize)]
 struct Response {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    intent: Option<codex_pencil::local_gemma::Intent>,
     id: String,
     epoch: String,
     revision: u64,
@@ -155,6 +159,7 @@ fn write_frame<T: Serialize>(writer: &mut impl Write, response: &T) -> io::Resul
 fn parse_request(body: &[u8]) -> Result<Request, &'static str> {
     let request: Request = serde_json::from_slice(body).map_err(|_| "invalid_request")?;
     if request.version != (if request.op == "review-listen" { 2 } else { 1 })
+        || (request.op != "analyze" && request.intent.is_some())
         || (request.op != "review-listen" && request.clock_anchor.is_some())
         || request.id.is_empty()
         || request.id.len() > 128
@@ -171,6 +176,7 @@ fn parse_request(body: &[u8]) -> Result<Request, &'static str> {
 
 fn response_for(request: &Request, error: Option<&'static str>) -> Response {
     Response {
+        intent: request.intent.clone(),
         id: request.id.clone(),
         epoch: request.epoch.clone(),
         revision: request.revision,
@@ -186,6 +192,9 @@ fn response_for(request: &Request, error: Option<&'static str>) -> Response {
 
 fn analyze(body: &[u8]) -> Result<Response, &'static str> {
     let request = parse_request(body)?;
+    if request.intent.as_ref().is_some_and(|i| *i != codex_pencil::local_gemma::Intent::Grammar) {
+        return Err("gemma_required");
+    }
     if request.op != "analyze"
         || request.provider.is_some()
         || request.consent.is_some()
@@ -236,16 +245,16 @@ async fn analyze_gemma(body: &[u8], ticket: &codex_pencil::local_gemma::pipe::Ti
         || request.cleanup_token.is_some() || request.cleanup_ticket.is_some() {
         return Err("invalid_request");
     }
-    let binding = codex_pencil::local_gemma::Binding {intent: codex_pencil::local_gemma::Intent::Grammar,epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
+    let binding = codex_pencil::local_gemma::Binding {intent: request.intent.clone().unwrap_or(codex_pencil::local_gemma::Intent::Grammar),epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
     let result = codex_pencil::local_gemma::pipe::recommend(ticket,binding.clone(),deadline).await.map_err(|_| "analysis_unavailable")?;
     gemma_response(request,result)
 }
 fn gemma_response(request:Request,result:codex_pencil::local_gemma::Recommendation)->Result<Response,&'static str>{
-    let binding=codex_pencil::local_gemma::Binding{intent:codex_pencil::local_gemma::Intent::Grammar,epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
+    let binding=codex_pencil::local_gemma::Binding{intent:request.intent.clone().unwrap_or(codex_pencil::local_gemma::Intent::Grammar),epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
     if !result.matches(&binding) {return Err("analysis_binding_changed");}
     let mut response=response_for(&request,None);
     if result.replacement!=request.text {
-        response.suggestions.push(Suggestion {start:0,end:request.text.encode_utf16().count(),replacement:result.replacement,rule:"gemma:grammar".into(),message:"grammar_correction".into()});
+        response.suggestions.push(Suggestion {start:0,end:request.text.encode_utf16().count(),replacement:result.replacement,rule:format!("gemma:{}", match binding.intent { codex_pencil::local_gemma::Intent::Grammar => "grammar", codex_pencil::local_gemma::Intent::Paraphrase => "paraphrase", codex_pencil::local_gemma::Intent::Translate {..} => "translation" }),message:"Local Gemma review".into()});
     }
     Ok(response)
 }
@@ -253,7 +262,7 @@ fn gemma_response(request:Request,result:codex_pencil::local_gemma::Recommendati
 async fn analyze_gemma_broker(body:&[u8],broker:&codex_pencil::local_gemma::broker::Connection,deadline:tokio::time::Instant)->Result<Response,&'static str>{
     let request=parse_request(body)?;
     if request.op!="analyze" || request.provider.is_some() || request.consent.is_some() || request.cleanup_token.is_some() || request.cleanup_ticket.is_some(){return Err("invalid_request");}
-    let binding=codex_pencil::local_gemma::Binding{intent:codex_pencil::local_gemma::Intent::Grammar,epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
+    let binding=codex_pencil::local_gemma::Binding{intent:request.intent.clone().unwrap_or(codex_pencil::local_gemma::Intent::Grammar),epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
     let grant=broker.acquire(&request.epoch,deadline).await.map_err(|_|"analysis_unavailable")?;
     let result=grant.recommend(binding,deadline).await.map_err(|_|"analysis_unavailable")?;
     gemma_response(request,result)
@@ -677,6 +686,18 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn local_rewrite_requires_gemma_and_exact_intent_response() {
+        use codex_pencil::local_gemma::{Binding, Intent, Language, Recommendation};
+        let body=serde_json::to_vec(&serde_json::json!({"version":1,"op":"analyze","id":"i","epoch":"e","revision":1,"text":"hello","intent":{"mode":"translate","target":"ko"}})).unwrap();
+        assert!(matches!(analyze(&body),Err("gemma_required")));
+        let wrong=Recommendation { binding:Binding {epoch:"e".into(),revision:1,source:"hello".into(),intent:Intent::Translate{target:Language::English}},replacement:"hello".into() };
+        assert!(matches!(gemma_response(parse_request(&body).unwrap(),wrong),Err("analysis_binding_changed")));
+        let right=Recommendation { binding:Binding {epoch:"e".into(),revision:1,source:"hello".into(),intent:Intent::Translate{target:Language::Korean}},replacement:"안녕하세요".into() };
+        let response=gemma_response(parse_request(&body).unwrap(),right).unwrap();
+        assert_eq!(response.intent,Some(Intent::Translate{target:Language::Korean}));
+        assert_eq!(response.suggestions[0].rule,"gemma:translation");
+    }
     #[test]
     fn gemma_configuration_is_explicit_and_fail_closed() {
         let base = serde_json::json!({"origin":"chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"});

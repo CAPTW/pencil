@@ -8,6 +8,7 @@
   let timer = null, heartbeat = null, expiry = null, observer = null, inflight = false, pending = null, deferredInstant = null;
   let selectedIndex = null, editBox = null, sequence = 0;
   let deepProvider = null, deepRequest = null, deepButton = null, draftVersion = 0;
+  let localChoice='paraphrase', localGeneration=0, localRewrite=null;
   let enableTarget = null, reanalyzeAll = false, held = false, busyWaits = 0;
   let selectionReview = null, reviewInput = null, reviewAccept = null, reviewTimer = null;
   let reviewRange = null, reviewOwnsFocus = false;
@@ -65,6 +66,7 @@
     if(request) chrome.runtime.sendMessage({op:'cancel-deep',epoch:request.epoch,id:request.id}).catch(()=>{});
   }
   function wipeField() {
+    localRewrite=null;localGeneration++;
     clearDesktopReview();
     clearReview();
     cancelDeepUI();
@@ -124,7 +126,7 @@
     if(reviewInput?.isConnected) {if(clear)session.cache=[];list.replaceChildren();revokeReview('Review expired or field changed. Copy or dismiss the draft.');return;}
     if(clear) session.cache = []; list.replaceChildren(); card.replaceChildren(); selectedIndex = null;
   }
-  function input(event) { if (event.target === editor) { if (event.isTrusted) held = false; cancelDeepUI(); invalidate(false); schedule(); } }
+  function input(event) { if (event.target === editor) { localRewrite=null; if (event.isTrusted) held = false; cancelDeepUI(); invalidate(false); schedule(); } }
   // The outcome of an explicit action stays readable until the user acts
   // again: later re-checks update the list, not this message.
   function announce(message) { if (status) { status.textContent = message; held = true; } }
@@ -215,11 +217,11 @@
   }
   async function pump() {
     if (inflight || !pending || !session || composing) return;
-    const request = pending, owner = session; pending = null; inflight = true;
+    const request = pending, owner = session, generation=localGeneration; pending = null; inflight = true;
     try {
       const response = await chrome.runtime.sendMessage({version:1,op:'analyze',id:String(++sequence),epoch,
         revision:request.revision,text:request.text});
-      if (session !== owner || !epoch) return;
+      if (session !== owner || !epoch || generation!==localGeneration) return;
       if (response?.error === 'busy' && busyWaits < 150) {
         // The bounded local lane is still occupied: wait, then
         // re-check. A request that never ends does not keep the page waiting.
@@ -348,6 +350,32 @@
       if (cardOpen) announce('Deep result ready: choose it in the list.'); else show(0);
     } catch {if(deepRequest===request)announce('Deep connection unavailable. No retry.');}
     finally {if(deepRequest===request)deepRequest=null;}
+  }
+  async function requestLocalRewrite() {
+    if(reviewInput?.isConnected || dirtyDraft()) {announce('Copy, apply or dismiss your draft first.');return;}
+    if(!session || chosen!==editor || inflight || deepRequest || composing) {announce('Local review is busy or the selected field is not enabled.');return;}
+    const text=read();if(text===null || !text.trim())return;
+    cancelSchedule();pending=null;deferredInstant=null;
+    session.update(text);invalidate();
+    const owner=session,target=editor,generation=localGeneration,draft=draftVersion;
+    const intent=localChoice==='paraphrase'?{mode:'paraphrase'}:{mode:'translate',target:localChoice};
+    const request={intent,version:1,op:'analyze',id:String(++sequence),epoch,revision:owner.revision,text};
+    localRewrite=request;inflight=true;held=false;status.textContent='Preparing local Gemma review…';
+    try {
+      const result=await chrome.runtime.sendMessage(request);
+      if(localRewrite!==request || session!==owner || editor!==target || generation!==localGeneration)return;
+      if(result?.error){announce('Local Gemma review unavailable. No retry or cloud fallback.');return;}
+      if(read()!==text || owner.revision!==request.revision || draftVersion!==draft || result?.epoch!==epoch ||
+        result.revision!==request.revision || result.intent?.mode!==intent.mode || result.intent?.target!==intent.target) {
+        announce('Local result stale or invalid. No changes applied.');return;
+      }
+      // Never replace a card the user opened or edited during inference.
+      if(selectedIndex!==null || reviewInput?.isConnected || dirtyDraft()){announce('Review changed; request again explicitly.');return;}
+      if(owner.publish(owner.full(),result.suggestions)) {
+        render();announce(owner.cache.length?'Local review ready. Choose a suggestion, then Accept.':'No local change suggested.');
+      }
+    } catch {if(localRewrite===request)announce('Local Gemma connection unavailable. No retry.');}
+    finally {if(localRewrite===request)localRewrite=null;inflight=false;if(pending)pump();}
   }
   function apply(index, expected, replacement) {
     // The card's own suggestion, still in the same place: never a neighbour
@@ -577,8 +605,21 @@
     deepButton=button('Deep requires document permission in the popup',requestDeep);deepButton.disabled=true;
     enableTarget=document.createElement('p');choose(chosen);
     const selectionHint=document.createElement('p');selectionHint.textContent='Select text in the enabled field and press Alt+Shift+R to review and Accept a replacement.';
+    const localLabel=document.createElement('label');localLabel.textContent='Local review (Gemma preview) ';
+    const localMode=document.createElement('select');localMode.setAttribute('aria-label','Local review mode');
+    for(const [value,text] of [['paraphrase','Paraphrase'],['en','Translate to English'],['ko','Translate to Korean']]) {
+      const option=document.createElement('option');option.value=value;option.textContent=text;localMode.append(option);
+    }
+    localChoice='paraphrase';localMode.value=localChoice;
+    localMode.addEventListener('change',event=>{
+      if(!event.isTrusted)return;
+      if(dirtyDraft() || reviewInput?.isConnected){localMode.value=localChoice;announce('Copy, apply or dismiss your draft before changing mode.');return;}
+      localChoice=localMode.value;localGeneration++;localRewrite=null;cancelDeepUI();cancelSchedule();pending=null;deferredInstant=null;
+      invalidate();announce('Mode changed. Request a new local review explicitly.');
+    });
+    localLabel.append(localMode);
     panel.append(status,deepButton,button('Cancel Deep',()=>{cancelDeepUI();status.textContent='Deep cancelled; cleanup receipt pending in host.';}),enableTarget,button('Enable this field',()=>enableField(chosen)),
-      button('Pause field',()=>{wipeField();status.textContent='Paused; cache cleared';}),button('Disable document',()=>disable(true)),selectionHint,list,card);
+      button('Pause field',()=>{wipeField();status.textContent='Paused; cache cleared';}),button('Disable document',()=>disable(true)),localLabel,button('Review locally',requestLocalRewrite),selectionHint,list,card);
     shadow.append(style,panelToggle,panel);document.documentElement.append(root);
     layoutObserver=new ResizeObserver(scheduleLayout);layoutObserver.observe(root);
     window.addEventListener('resize',scheduleLayout,{passive:true});
