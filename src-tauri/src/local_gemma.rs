@@ -212,6 +212,8 @@ pub struct GemmaEngine {
 impl GemmaEngine {
     /// Local verified artifacts only. Never resolves PATH, downloads or reads account config.
     pub async fn start(executable: &Path, model: &Path, deadline: Instant) -> Result<Self, String> {
+        let started = Instant::now();
+        eprintln!("gemma_engine phase=lease ms=0");
         if !executable.is_absolute()
             || !model.is_absolute()
             || !executable.is_file()
@@ -230,6 +232,7 @@ impl GemmaEngine {
         let port = listener.local_addr().map_err(|_| "gemma_port")?.port();
         let token = uuid::Uuid::new_v4().to_string();
         let workspace = RuntimeWorkspace::create()?;
+        eprintln!("gemma_engine phase=spawn ms={}", started.elapsed().as_millis());
         let mut command = Command::new(executable);
         command
             .arg("-m")
@@ -266,6 +269,7 @@ impl GemmaEngine {
         command.env("LLAMA_API_KEY", &token);
         drop(listener);
         let (child, job) = ProcessJob::spawn_before(&mut command, deadline).await?;
+        eprintln!("gemma_engine phase=health ms={}", started.elapsed().as_millis());
         let mut engine = Self {
             child,
             job,
@@ -300,6 +304,7 @@ impl GemmaEngine {
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
             // Warm-up is part of startup, not hidden as a successful user request.
+            eprintln!("gemma_engine phase=warmup ms={}", started.elapsed().as_millis());
             engine
                 .complete(
                     "Correct grammar only. Return a JSON object with one replacement string: She have two books.",
@@ -315,6 +320,7 @@ impl GemmaEngine {
             return Err(error);
         }
         engine.ready = true;
+        eprintln!("gemma_engine phase=ready ms={}", started.elapsed().as_millis());
         Ok(engine)
     }
 
@@ -424,6 +430,7 @@ impl GemmaEngine {
         if binding.source.contains('"') || binding.source.contains('`') {
             prompt = format!("Text inside double quotation marks or backticks is a verbatim literal: never correct its contents, even intentional misspellings. Preserve each literal byte-for-byte. Only correct text OUTSIDE those literals.\n{prompt}");
         }
+        let request_started = Instant::now();
         let result = {
             let operation = timeout_at(deadline, async {
                 if sparse {
@@ -453,6 +460,11 @@ impl GemmaEngine {
                 result
             }
         };
+        // Trusted launcher diagnostic, disabled by default. Never emits document
+        // content, binding identity, endpoint, credentials or model response.
+        if std::env::var_os("GRAMMAR_GEMMA_TIMING").as_deref() == Some(std::ffi::OsStr::new("1")) {
+            eprintln!("gemma_request elapsed_ms={} ok={}", request_started.elapsed().as_millis(), result.is_ok());
+        }
         if result
             .as_ref()
             .err()

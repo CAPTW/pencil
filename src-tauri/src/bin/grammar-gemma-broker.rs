@@ -28,7 +28,10 @@ async fn run() -> Result<(), String> {
     if args.len() != 6 {
         return Err("gemma_broker_args: runtime runtime-sha model model-sha host host-sha".into());
     }
-    let startup_deadline = Instant::now() + Duration::from_secs(180);
+    let started = Instant::now();
+    let startup_deadline = started + Duration::from_secs(180);
+    // Fixed phase names/times only: no paths, document text, endpoint or token.
+    eprintln!("gemma_boot phase=artifact_pins ms=0");
     let active = Arc::new(AtomicBool::new(true));
     let closing = active.clone();
     // Any control byte or EOF revokes permission. Thread never reads documents.
@@ -39,6 +42,7 @@ async fn run() -> Result<(), String> {
     });
     let _runtime = ImagePin::verify(Path::new(&args[0]), &args[1])?;
     let host = ImagePin::verify(Path::new(&args[4]), &args[5])?;
+    eprintln!("gemma_boot phase=model_hash ms={}", started.elapsed().as_millis());
     let model = Path::new(&args[2]);
     if !model.is_absolute()
         || args[3].len() != 64
@@ -80,6 +84,7 @@ async fn run() -> Result<(), String> {
     if !active.load(Ordering::SeqCst) {
         return Err("gemma_broker_revoked".into());
     }
+    eprintln!("gemma_boot phase=model_verified ms={}", started.elapsed().as_millis());
     let engine = GemmaEngine::start(Path::new(&args[0]), model, startup_deadline).await?;
     let (service, client) = Service::own(engine);
     let result = async {

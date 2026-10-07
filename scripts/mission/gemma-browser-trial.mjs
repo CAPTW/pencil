@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {createServer} from 'node:http';
 import {mkdtemp,cp,readFile,writeFile,rm} from 'node:fs/promises';
+import {writeFileSync} from 'node:fs';
 import {join,resolve,sep} from 'node:path';
 import {createHash,generateKeyPairSync} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
@@ -43,7 +44,7 @@ try {
  await cp(join(binaryRoot,'grammar-gemma-broker.exe'),brokerPath);
  report.brokerSha256=await hash(brokerPath);report.hostSha256=await hash(hostPath);
  const start=performance.now();
- broker=spawn(brokerPath,[join(evidence,'runtime/llama-server.exe'),'a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1',join(evidence,'gemma-4-12b-it-qat-q4_0.gguf'),'93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b',hostPath,report.hostSha256],{windowsHide:true,stdio:['pipe','pipe','pipe']});
+ broker=spawn(brokerPath,[join(evidence,'runtime/llama-server.exe'),'a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1',join(evidence,'gemma-4-12b-it-qat-q4_0.gguf'),'93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b',hostPath,report.hostSha256],{windowsHide:true,env:{...process.env,GRAMMAR_GEMMA_TIMING:'1'},stdio:['pipe','pipe','pipe']});
  broker.stdin.on('error',error=>{report.controlError=error.code;});
  brokerExit=new Promise(r=>broker.once('exit',(code,signal)=>r({code,signal})));
  let readyResolve,readyReject;const readyPromise=new Promise((r,j)=>{readyResolve=r;readyReject=j;});
@@ -51,7 +52,12 @@ try {
  const lines=createInterface({input:broker.stdout});
  lines.on('line',line=>{try{const value=JSON.parse(line);if(value.name)readyResolve(value);if(value.cleanup)report.cleanup.broker=value.cleanup;}catch{readyReject(Error('invalid broker metadata'));}});
  broker.on('error',readyReject);broker.once('exit',()=>readyReject(Error('broker startup exit')));
- broker.stderr.on('data',data=>{report.brokerError=(report.brokerError||'')+data.toString().slice(0,1024);});
+ broker.stderr.on('data',data=>{
+  // Broker emits fixed diagnostic phases/errors, never raw model stderr or text.
+  report.brokerDiagnostics=((report.brokerDiagnostics||'')+data.toString()).slice(0,4096);
+  try {writeFileSync(join(run,'startup-phases.log'),report.brokerDiagnostics);}
+  catch {report.traceWriteFailed=true;process.exitCode=1;}
+ });
  let ready;try{ready=await readyPromise;}finally{clearTimeout(timer);}
  report.startupMs=performance.now()-start;
  const configPath=join(hostDir,'grammar-chromium-host.origin.json');
@@ -167,6 +173,6 @@ finally {
  if(resolve(profile).startsWith(resolve(run)+sep)){try{await rm(profile,{recursive:true,force:true});report.cleanup.profile=true;}catch(error){report.cleanup.profile=false;report.cleanup.profileError=String(error);process.exitCode=1;}}
  report.cleanupPass=report.cleanup.browser===true&&report.cleanup.broker==='complete'&&report.cleanup.exit?.code===0&&report.cleanup.registration===true&&report.cleanup.profile===true;
  if(!report.cleanupPass)process.exitCode=1;
- report.acceptance=report.functional==='PASS'&&report.qualityPass&&report.latencyPass&&report.cleanupPass?'PASS':'FAIL';
+ report.acceptance=report.functional==='PASS'&&report.qualityPass&&report.latencyPass&&report.cleanupPass&&!report.traceWriteFailed?'PASS':'FAIL';
  await writeFile(join(run,'receipt.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({run,...report},null,2));
 }
