@@ -42,7 +42,7 @@ try {
  if($Paragraphs){$probeArgs+='--paragraphs'}
  if($CrossFormat){$probeArgs+='--cross-format'}
  if($ParagraphSpan){$probeArgs+='--span'}
- if($UniformTopology){if(-not $ParagraphSpan){throw 'UniformTopology requires ParagraphSpan'};$probeArgs+='--topology';$report.uniformTopology=$true}
+ if($UniformTopology){if(-not $ParagraphSpan){throw 'UniformTopology requires ParagraphSpan'};$probeArgs+='--topology';$report.uniformTopology=$true;$report.classification='INSTALLED_WRITER_WIDGET_OWNED_UNIFORM_TOPOLOGY'}
  $python=Start-Process "$program\python.exe" -ArgumentList $probeArgs -WindowStyle Hidden -PassThru -RedirectStandardOutput C:\GrammarOutput\python.log -RedirectStandardError C:\GrammarOutput\python-error.log
  if(-not $python.WaitForExit(120000)){$python.Kill($true);$report.forced=$true;throw 'Widget fixture timeout'}
  $report.pythonExit=$python.ExitCode

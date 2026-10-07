@@ -156,6 +156,7 @@ def format_ok():
     if '--topology' in sys.argv:
         items=paragraph_list()
         if [p.String for p in items] not in (
+            ['First paragraph',source,'','Last paragraph'],
             ['First paragraph','Before | please seperate this. | After','','Last paragraph'],
             ['First Reviewed 한국어 😀 paragraph'],
             ['First Reviewed','Middle 한국어 😀','','Extra','Final paragraph']): return False
