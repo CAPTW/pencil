@@ -77,6 +77,11 @@ F06_SCOPE = {**F06_SCOPE,
     "writer": "LibreOffice26.2.4.2: prior scopes retained; OXTcde1097 adds topology-preserving selection across up to8 Standard body paragraphs. Draft keeps paragraph count and empty parts; each nonempty part uses its first selected style, grouped Undo restores original runs. Paragraph boundaries/alignment/empty typing format preserved. App/native0fc8624 paired; owned installed synthetic new/local saved DOCX scope only. No automatic file Save.",
     "remaining": "Paragraph merge/split or insertion/deletion of empty parts, complex Writer structures, inconsistent imported color metadata, Calc/Impress product Apply and actual Microsoft Office/Hancom unqualified; physical IME, normal profiles and live Providers NOT_RUN. Mission INCOMPLETE."
 }
+HISTORICAL_SPAN_F06_SCOPE = dict(F06_SCOPE)
+F06_SCOPE = {**F06_SCOPE,
+    "writer": "LibreOffice26.2.4.2: prior scopes retained; OXTd9a6b1e (core86dfae4) adds defaultoff uniform-topology merge/split and empty-part changes, bounded to8 affected/output Standard paragraphs with identical whole-paragraph character/RGB/alignment metadata. Different styles retain prior topology-preserving span policy. Exact text/format and range Undo/Redo verified; embedded soft linebreaks refused. App/native0fc8624 paired; owned installed synthetic new/local saved DOCX only. No automatic file Save.",
+    "remaining": "Merge/split across differently formatted paragraphs, complex Writer structures, inconsistent imported color metadata, Calc/Impress product Apply and actual Microsoft Office/Hancom unqualified; physical IME, normal profiles and live Providers NOT_RUN. Mission INCOMPLETE."
+}
 RETAINED_HISTORY = (
     "12_MULTI_PROVIDER_ARCHITECTURE_AND_IMPLEMENTATION_PLAN(1).md",
     "12_P3_INSTANT_AND_PROACTIVE_ASSIST_PRODUCT_STRATEGY(1).md",
@@ -212,7 +217,7 @@ def state_check(state):
             verdicts["F-06"] = "OWNED_QUALIFIED_EDIT_AND_RICHEDIT_TARGET_SIDE_ACCEPT_SYNTHETIC_VERIFIED_OTHER_EDITORS_UNQUALIFIED"
         f06 = next(d for d in state["known_defects"] if d["id"] == "F-06")
         if "qualification_scope" in f06:
-            fail(edit_apply and f06["qualification_scope"] in (F06_SCOPE, HISTORICAL_F06_SCOPE, HISTORICAL_SAVED_F06_SCOPE, HISTORICAL_UNIFORM_F06_SCOPE, HISTORICAL_MIXED_F06_SCOPE, HISTORICAL_PARAGRAPH_F06_SCOPE, HISTORICAL_CROSS_FORMAT_F06_SCOPE), "F06_SCOPE_DRIFT")
+            fail(edit_apply and f06["qualification_scope"] in (F06_SCOPE, HISTORICAL_F06_SCOPE, HISTORICAL_SAVED_F06_SCOPE, HISTORICAL_UNIFORM_F06_SCOPE, HISTORICAL_MIXED_F06_SCOPE, HISTORICAL_PARAGRAPH_F06_SCOPE, HISTORICAL_CROSS_FORMAT_F06_SCOPE, HISTORICAL_SPAN_F06_SCOPE), "F06_SCOPE_DRIFT")
             verdicts["F-06"] = F06_SCOPED_VERDICT
         for defect in state["known_defects"]:
             fail(defect["verdict"] == verdicts[defect["id"]], f"VERDICT_DRIFT:{defect['id']}")

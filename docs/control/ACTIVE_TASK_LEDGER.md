@@ -95,3 +95,11 @@ No additional Owner gate, no main adoption/push; mission INCOMPLETE.
 2026-10-06 cross-format: OXT600aa72 + runtime0fc8624 native47/installed8+5 PASS. One paragraph only, first-selected-style replacement/original-run Undo, defaultoff package option and visible policy. Continue paragraph-spanning semantics under existing global task. Mission INCOMPLETE; evidence grammar-writer-cross-format-20261006.
 
 2026-10-06 paragraph-span: OXTcde1097/runtime0fc8624 native82 + installed8/5 PASS; preserve paragraph count/empty parts, grouped exact range Undo, intervening revision stops subsequent writes. Continue topology changes and named application adapters; mission INCOMPLETE. Evidence grammar-writer-span-20261006. No main/push.
+
+2026-10-07 uniform topology: OXTd9a6b1e/core86dfae4 + runtime0fc8624,
+installed fixturea426701; native47, prior span regression82, installed10+5 PASS.
+Defaultoff merge/split/empty-part changes only with identical affected paragraph
+formatting, bound8; soft linebreaks refused. All guests stopped after natural cleanup,
+installed removal complete. Continue differing-format topology and application
+adapters; exact next task unchanged, mission INCOMPLETE, no main/push/release.
+Evidence grammar-writer-topology-20261007; Source preview is not external application.

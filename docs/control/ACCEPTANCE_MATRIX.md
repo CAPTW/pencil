@@ -1,3 +1,16 @@
+> Current uniform-topology checkpoint (2026-10-07): OXTd9a6b1e/core86dfae4,
+> paired unchanged runtime0fc8624; installed harnessa426701. Explicit defaultoff
+> --enable-uniform-topology permits merge/split and empty-part changes only across
+> identically formatted affected Standard paragraphs, bounded to8 input/output.
+> Native47 (8 saved DOCX cycles), installed widget10/enclosing5 PASS with exact text,
+> alignment, weights/RGB, empty typing style, Undo/Redo and source/Disable boundaries.
+> Affected soft linebreaks and differing-style merge/split are refused. Other spans
+> retain the prior topology-preserving policy. No automatic Save. General Writer,
+> Calc/Impress product Apply, actual Office/Hancom, IME/normal profiles/live Provider
+> remain unqualified. Mission INCOMPLETE, no main/push/release. Evidence:
+> D:/dev/grammar-evidence/grammar-writer-topology-20261007. Prior checkpoints below
+> are historical; this does not imply general-editor acceptance.
+
 > Current paragraph-span checkpoint (2026-10-06): OXTcde1097 paired with
 > unchanged app/native0fc8624. Explicit defaultoff paragraph-span option keeps
 > existing paragraph boundaries and empty parts (bounded to8 paragraphs). Each
