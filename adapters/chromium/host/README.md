@@ -24,3 +24,21 @@ The actor has a bounded input channel of two frames and output channel of one re
 The host never persists document text. Provider history controls are separate: Claude is invoked with `--no-session-persistence`, `--bare`, `--disallowedTools '*'`, and `--disable-slash-commands`; bare mode does not support the existing OAuth login flow. Headless Antigravity returns `provider_privacy_unqualified` before admission until history suppression is qualified, with no fallback. Live Provider behavior remains NOT_RUN. Tests using the synthetic service prove actor cancellation/EOF/output ownership and consent gates, not external-account behavior. `test_host.py` runs only real-binary Instant, missing-consent rejection, framing and origin cases; it does not invoke a Provider, read credentials, or establish external-account acceptance. The Deep fixture checks Claude privacy flag booleans without saving raw arguments or source text. Live Provider calls require separate Owner authorization.
 
 `Prepare-Host.ps1 -Executable <exe> -ExtensionId <32 letters a-p> -OutputDirectory <new-task-owned-dir>` prepares a unique host manifest, copied executable, origin sidecar and hash receipt. It does not register by default. The optional `-Register` creates only a unique HKCU Chrome native host entry; use only with coordinator-admitted task-owned browser testing. It never overwrites an existing key/package. Use the returned host name in extension configuration. `Remove-Registration.ps1 -PackageDirectory <dir>` removes only that exact unchanged registration and preserves files. Normal user-profile installation remains outside this fixture workflow.
+# Candidate Gemma local route
+
+The owned launcher may add `gemma` to `grammar-chromium-host.origin.json`:
+`{"pipe":"\\\\.\\pipe\\Grammar.Gemma.Broker.<uuid>","broker_sha256":"<64 hex digits>"}`.
+The broker executable must be named `grammar-gemma-broker.exe` beside this host.
+The host verifies and retains its image pin; OS process-image checks bind the live
+pipe peer before any document text is sent. Browser frames cannot select a broker
+or executable. Missing `gemma` preserves the Instant rules path; an explicitly
+configured but unavailable broker fails local analysis without rules fallback.
+A failed local image pin does not disable consent/cleanup handling for external Deep.
+
+This route is currently qualified only by the task-owned modified-extension trial
+in `scripts/mission/gemma-browser-trial.mjs`. It copies the extension, changes its
+key/host configuration, adds permission for its loopback fixture, and registers a
+unique temporary native host. It is not installed-package or toolbar qualification.
+The personal installer does not enable this option. Never point a normal profile
+at the test registration. The launcher owns broker readiness and stdin lifetime;
+EOF ends admission and awaits model cleanup. No automatic restart or fallback.
