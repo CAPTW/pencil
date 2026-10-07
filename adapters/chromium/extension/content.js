@@ -68,7 +68,7 @@
     clearDesktopReview();
     clearReview();
     cancelDeepUI();
-    clearTimeout(timer); clearTimeout(expiry); pending = null; deferredInstant = null; held = false; busyWaits = 0;
+    cancelSchedule(); clearTimeout(expiry); pending = null; deferredInstant = null; held = false; busyWaits = 0;
     session?.clear(); session = null; editor = null; composing = false;
     selectedIndex = null; editBox = null;
     list?.replaceChildren(); card?.replaceChildren();
@@ -136,7 +136,7 @@
     if (request) pending = request;
     render(); schedule();
   }
-  function compositionStart(event) { if (event.target === editor) { composing = true; held = false; cancelDeepUI(); invalidate(false); clearTimeout(timer); } }
+  function compositionStart(event) { if (event.target === editor) { composing = true; held = false; cancelDeepUI(); invalidate(false); cancelSchedule(); } }
   function compositionEnd(event) { if (event.target === editor) { composing = false; schedule(); } }
   function scheduleLayout() {
     if (!root || layoutFrame !== null) return;
@@ -183,8 +183,21 @@
   }
   function visibility() { if (document.hidden) { wipeField(); if (status) status.textContent = 'Paused. Enable the field again when ready.'; } }
   function pagehide() { disable(true); }
-  function schedule() { clearTimeout(timer); if (!composing) timer = setTimeout(analyzeChanged, 250); }
+  function reconcileChanged() {
+    if (!session || composing || document.hidden) return;
+    const current=read();
+    if(current===null) {wipeField();return;}
+    if(current!==session.text) {
+      cancelDeepUI();invalidate(false);
+      // Reconciliation must not restart the debounce for an input already seen.
+      // The pending analysis reads the latest value and binds its own revision.
+      if(timer===null) schedule();
+    }
+  }
+  function cancelSchedule() { clearTimeout(timer);timer=null; }
+  function schedule() { cancelSchedule(); if (!composing) timer = setTimeout(analyzeChanged, 250); }
   function analyzeChanged() {
+    timer=null;
     if (!session || composing) return;
     const text = read();
     if (text === null) { wipeField(); status.textContent = 'Field unavailable. No text was sent.'; return; }
@@ -211,7 +224,7 @@
         // The bounded local lane is still occupied: wait, then
         // re-check. A request that never ends does not keep the page waiting.
         busyWaits++; status.textContent = 'Waiting for local analysis to finish…';
-        reanalyzeAll = true; clearTimeout(timer); timer = setTimeout(analyzeChanged, 1000); return;
+        reanalyzeAll = true; cancelSchedule(); timer = setTimeout(analyzeChanged, 1000); return;
       }
       busyWaits = 0;
       if (!response || response.error) { status.textContent = 'Local engine unavailable. Disable, check host, then enable again.'; invalidate(); return; }
@@ -309,7 +322,7 @@
     if(dirtyDraft()) {status.textContent='Apply, copy, or dismiss your edited draft before requesting Deep.';return;}
     if(!deepProvider || !session || deepRequest || inflight) {status.textContent='Deep unavailable or local request still running. Try explicitly when ready.';return;}
     const text=read();if(text===null || !text.trim())return;
-    clearTimeout(timer);pending=null;
+    cancelSchedule();pending=null;
     // A change the page made without an input event: close any card opened for
     // the old text before sending.
     if(session.update(text))render();
@@ -588,7 +601,7 @@
       try {const response=await chrome.runtime.sendMessage({op:'heartbeat',epoch});if (epoch===activeEpoch) {if(!response?.ok)disable();else updateDeepPolicy(response.deepProvider);}}
       catch {if (epoch===activeEpoch) disable();}
       // Bounded reconciliation catches programmatic textarea value changes without key logging.
-      if (session && !composing && !document.hidden) {const current=read();if(current===null){wipeField();}else if(current!==session.text){cancelDeepUI();invalidate(false);schedule();}}
+      reconcileChanged();
       armDesktopLink();
     },1000);
   }

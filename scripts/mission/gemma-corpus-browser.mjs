@@ -26,7 +26,9 @@ export async function runCorpus(page,worker,corpus) {
   const response=await worker.evaluate(()=>gemmaMetrics.last);
   Object.assign(row,{recommendMs:done.ms,status:done.status,response});
   const timing=await worker.evaluate(()=>gemmaMetrics.timing);
-  if(timing&&Number.isFinite(timing.sent))row.stagesMs={inputToNativeSend:timing.sent-done.startWall,nativeRoundTrip:timing.received-timing.sent,responseToPaint:done.paintWall-timing.received};
+  if(timing&&Number.isFinite(timing.sent))row.stagesMs={inputToNativeSend:timing.sent-done.startWall,nativeRoundTrip:timing.received-timing.sent,responseToPaint:done.paintWall-timing.received,
+   inputToContentSend:timing.contentSent-done.startWall,contentToWorker:timing.workerReceived-timing.contentSent,workerToNativeSend:timing.sent-timing.workerReceived,
+   observedStorageReads:timing.storage?.length,observedStorageMs:timing.storage?.reduce((n,x)=>n+x.end-x.start,0)};
   if(!response||response.error||!Array.isArray(response.suggestions)) {row.error='transport unavailable';break;}
   assert.ok(response.suggestions.length<=1);
   row.actual=response.suggestions.length?response.suggestions[0].replacement:test.source;
