@@ -7,6 +7,7 @@ import {join,resolve,sep} from 'node:path';
 import {createHash,generateKeyPairSync} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
 import {createInterface} from 'node:readline';
+import {runCorpus} from './gemma-corpus-browser.mjs';
 const require=createRequire(import.meta.url);
 const {chromium}=require('C:/Users/USER/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const evidence='D:/dev/grammar-evidence/grammar-gemma-20261007';
@@ -17,6 +18,7 @@ const hash=async path=>createHash('sha256').update(await readFile(path)).digest(
 const pwsh=(script,args)=>execFileSync('pwsh.exe',['-NoProfile','-File',resolve(script),...args],{encoding:'utf8',windowsHide:true,timeout:20000});
 const report={scope:'MODIFIED_EXTENSION_OWNED_PROFILE_REAL_STDIO_GPU_NOT_INSTALLED_PACKAGE',rows:[],checks:[],cleanup:{}};
 report.scriptSha256=await hash(new URL(import.meta.url));
+report.corpusModuleSha256=await hash(new URL('./gemma-corpus-browser.mjs',import.meta.url));
 let broker,context,registered=false,brokerExit;
 const server=createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Owned Gemma fixture</title><textarea id="writing"></textarea><div id="editable" contenteditable="true" style="min-height:40px;border:1px solid"></div><input id="password" type="password">');});
 try {
@@ -52,7 +54,7 @@ try {
  context=await chromium.launchPersistentContext(profile,{headless:true,chromiumSandbox:true,executablePath:'C:/Users/USER/AppData/Local/ms-playwright/chromium-1217/chrome-win64/chrome.exe',ignoreDefaultArgs:['--disable-extensions'],args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
  context.setDefaultTimeout(12000);
  const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');
- await worker.evaluate(()=>{globalThis.gemmaMetrics={requests:0,responses:0};chrome.runtime.onMessage.addListener(m=>{if(m.op==='analyze')gemmaMetrics.requests++;});const original=chrome.runtime.connectNative.bind(chrome.runtime);chrome.runtime.connectNative=(...args)=>{const port=original(...args);port.onMessage.addListener(m=>{if(Array.isArray(m.suggestions))gemmaMetrics.responses++;});return port;};});
+ await worker.evaluate(()=>{globalThis.gemmaMetrics={requests:0,responses:0};chrome.runtime.onMessage.addListener(m=>{if(m.op==='analyze')gemmaMetrics.requests++;});const original=chrome.runtime.connectNative.bind(chrome.runtime);chrome.runtime.connectNative=(...args)=>{const port=original(...args);port.onMessage.addListener(m=>{if(Array.isArray(m.suggestions)){gemmaMetrics.responses++;if(/^\d+$/.test(m.id))gemmaMetrics.last=m;}});return port;};});
  const page=await context.newPage();await page.goto(url);await page.bringToFront();
  const popup=await context.newPage();await page.bringToFront();await popup.goto(`chrome-extension://${id}/popup.html`);
  await popup.getByRole('button',{name:'Enable this document',exact:true}).click();
@@ -89,6 +91,10 @@ try {
    const row=await page.evaluate(field=>({...window.trial.row,actualReread:document.getElementById(field).tagName==='TEXTAREA'?document.getElementById(field).value:document.getElementById(field).textContent}),field);report.rows.push(row);assert.ok(row.correct);assert.equal(row.actualReread,expected);
    assert.equal((await worker.evaluate(()=>gemmaMetrics.requests)),before);report.checks.push(field+' Accept reread correct; no inference during Accept');
  }
+ if(process.env.GRAMMAR_GEMMA_CORPUS==='1'){
+  const path=resolve('scripts/mission/gemma-grammar-corpus.json');report.corpusSha256=await hash(path);report.corpus=await runCorpus(page,worker,JSON.parse(await readFile(path)));
+  if(!report.corpus.qualityPass||report.corpus.recommendationMisses.length||report.corpus.applyMisses.length)process.exitCode=1;
+ }
  await page.locator('#writing').click();await page.getByRole('button',{name:'Enable this field',exact:true}).click();
  await page.locator('#writing').fill('She have two books.');
  await page.getByRole('button',{name:/Suggestion 1:/}).click();
@@ -106,7 +112,8 @@ try {
  assert.equal(await worker.evaluate(()=>gemmaMetrics.requests),count);report.checks.push('password refusal');
  await page.getByRole('button',{name:'Disable document',exact:true}).click();
  assert.equal(await page.locator('#grammar-local-assist').count(),0);report.checks.push('disable removes UI');
- report.functional='PASS';report.latencyPass=report.rows.every(r=>r.recommendMs<=1000&&r.applyMs<=500);
+ report.functional='PASS';report.qualityPass=!report.corpus||report.corpus.qualityPass;
+ report.latencyPass=report.rows.every(r=>r.recommendMs<=1000&&r.applyMs<=500)&&(!report.corpus||(report.corpus.notRun.length===0&&report.corpus.rows.every(r=>!r.error)&&report.corpus.recommendationMisses.length===0&&report.corpus.applyMisses.length===0));
  const stats=key=>{const v=report.rows.map(r=>r[key]).sort((a,b)=>a-b);return {n:v.length,p50:v[Math.ceil(v.length*.5)-1],p95:v[Math.ceil(v.length*.95)-1],p99:v[Math.ceil(v.length*.99)-1],max:v.at(-1)};};
  report.latency={recommend:stats('recommendMs'),apply:stats('applyMs')};
  if(!report.latencyPass)process.exitCode=1;
@@ -119,5 +126,6 @@ finally {
  if(resolve(profile).startsWith(resolve(run)+sep)){try{await rm(profile,{recursive:true,force:true});report.cleanup.profile=true;}catch(error){report.cleanup.profile=false;report.cleanup.profileError=String(error);process.exitCode=1;}}
  report.cleanupPass=report.cleanup.browser===true&&report.cleanup.broker==='complete'&&report.cleanup.exit?.code===0&&report.cleanup.registration===true&&report.cleanup.profile===true;
  if(!report.cleanupPass)process.exitCode=1;
+ report.acceptance=report.functional==='PASS'&&report.qualityPass&&report.latencyPass&&report.cleanupPass?'PASS':'FAIL';
  await writeFile(join(run,'receipt.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({run,...report},null,2));
 }
