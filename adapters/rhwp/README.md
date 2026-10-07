@@ -177,3 +177,27 @@ revocation and pagehide disposal for both formats. Input/event/render dev global
 are removed by the fixture; __wasm remains only as the independent reread oracle.
 The bootstrap has no injected Instant transport yet. Earlier Instant tests remain
 separate; no installed shortcut/widget/package or broad HWP support is claimed.
+
+
+## Document admission refusal guard
+
+The trusted bootstrap now checks hasLoadedDocument(), documentGeneration,
+requiresPasswordForSave, source format, and the separate trusted eligible callback
+before capture/Accept and on the metadata-only lifecycle poll. Missing metadata,
+exceptions, unloaded/unsupported documents, protection, or host revocation deny.
+An observed denial is sticky for that generation: clearing the mutable save-password
+flag or restoring the host callback cannot revive the previous grant. A different
+loaded generation is evaluated anew; close is terminal. A poll-observed revocation
+also clears the UI draft and session (100ms scheduling target, not a hard deadline).
+
+This guard is necessary, not sufficient to identify every protected or sensitive
+document. requiresPasswordForSave is mutable save-intent metadata; it does not
+prove original load provenance, DRM absence or non-sensitive contents. Unobserved
+transient changes are not certified by polling. Default host admission remains
+false, synthetic fixture admission is not deployable, and real document admission
+and production local transport remain pending. No password contents are accessed.
+
+The protection counterexample sets only synthetic editor metadata, then clicks
+Accept in the same JS task before the polling callback. It checks zero subsequent
+target reads, unchanged whole-document text, cleared draft and refusal after the
+flag is cleared. This is not an encrypted-file or real-password qualification.
