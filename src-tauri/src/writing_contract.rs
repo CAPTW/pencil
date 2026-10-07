@@ -115,6 +115,7 @@ pub fn build_canonical_prompt(
          - For preferred constraints, prefer preferredText where appropriate.\n\
          - For protected constraints, preserve sourceText exactly, including spelling and case, and do not translate or rewrite it.\n\
          - Preserve the original meaning.\n\
+         - Preserve negation, uncertainty, conditions, who did what, and event order. Do not infer gender from names. Distinguish promised or planned actions from completed actions. Preserve the scope of reported speech: actions promised inside a statement must stay inside that statement, not become events completed before the speaker spoke.\n\
          - Do not add new facts, claims, details, or promises.\n\
          - Preserve URLs, code, shell commands, product names, numbers, and email addresses exactly unless translation requires surrounding words to change.\n\
          - Preserve LNG, ESD, CBHS, units, file paths, and product codes exactly.\n\

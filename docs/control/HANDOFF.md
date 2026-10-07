@@ -1908,3 +1908,48 @@ covers shared client only; additional terminology/languages/cancel/UI/editor rou
 remain. No quality/latency verdict until real outputs reviewed. Initial missing-DLL
 failure retained; app-local runtime resolved it. Evidence and payload hashes:
 D:/dev/grammar-evidence/grammar-6luna-trial-20261007/STATUS.md. No main/push/release.
+
+
+## gpt-6-luna actual Sandbox trial checkpoint — 2026-10-07
+
+Owner completed guest login; agent stopped guest Magnify with explicit permission.
+No credentials read/copied, account changes, host user data, main adoption or push.
+Old pinned CLI0.144.6 rejected gpt-6-luna (codex_model_capability_unavailable);
+its complete catalog omits the model. Bundled CLI0.162.0-alpha.2 catalog includes
+it and exact-version test-only Rust transport completed actual synthetic calls.
+Production CLI pin stays0.144.6 pending compatibility/privacy/installed qualification;
+therefore the model-default edit does NOT yet make the normal installed product usable
+with6luna. No automatic fallback to5.6. New CLI acceptance is not claimed.
+
+36 corpus outputs across baseline10, extended10, context-low3, context-full3,
+final10; plus one interrupted turn and one successful recovery (38 new-CLI turn
+attempts). Two old-CLI rejected attempts are separately retained. Requested model
+is6luna; server-reported model UNKNOWN. All raw source/output is synthetic.
+Manual same-integrator review: baseline9/10 and final9/10 usable for these samples;
+three-language/auto-direction/terminology7 cases preserve intended facts/terms,
+with literal Chinese approval phrasing. Targeted reported-speech case retains
+meaning/gender problems: prompt strengthening did not reliably fix it; low3 has
+0/3 fully usable, full-medium3 has1/3. Final fast case preserves event scope but
+again invents female gender. Do not claim quality PASS, general accuracy or repair.
+Full comparison changes prompt/schema/effort together, not an isolated effort test.
+Production effort remains unchanged. User must review before explicit Accept.
+
+Client end-to-end includes prepare/start/complete/validation, excludes initial
+connection and visible-widget latency. Final10 min3238/median4186/max8519ms;
+full-medium counterexample max32058ms. Small targeted sample, no reliable p95.
+Cancellation acknowledgement1ms, outcome INTERRUPTED, same-client recovery2907ms;
+not proof of remote physical cancellation time. Final10 shutdown succeeds and
+owned runtime directory is actually absent. Guest remains active/authenticated;
+whole-Sandbox cleanup not claimed. Earlier intermediate binaries were overwritten;
+only final10 has final source-byte/test-binary proof, not retroactive provenance.
+
+Validation: library91 PASS/10 ignored; application239 PASS/30 ignored; governance/self-test/diff PASS. Original failures (including standalone PS protocol diagnostic failure
+on both old/new CLI) retained, not counted as provider success. Ordinary test runs
+cannot launch ignored live runner. Failure receipts now produce nonzero exit;
+safety-start failure also preserves a receipt. Same-integrator review only.
+Evidence: D:/dev/grammar-evidence/grammar-6luna-trial-20261007/QUALITY_REVIEW.json,
+FINAL_TRIAL_PROVENANCE.json and live-new-*.json. Earlier prelogin STATUS/PREPARATION
+are historical. Next: exact newer CLI hardening/protocol/privacy qualification,
+then installed widget/Chromium/Writer live routes, stale/cancel/draft protection and
+visible latency. HWP/rHWP unimplemented installed routing remains unqualified.
+Mission INCOMPLETE; Source materiality changed, no new package/UI application yet.
