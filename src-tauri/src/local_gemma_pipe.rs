@@ -16,7 +16,8 @@ use tokio::{
 };
 use windows_sys::Win32::System::Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId};
 const LIMIT: usize = 32768;
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Ticket {
     pub name: String,
     pub owner_pid: u32,
@@ -44,7 +45,7 @@ struct Reply {
     revision: u64,
     replacement: String,
 }
-async fn read_frame<T: AsyncRead + Unpin>(stream: &mut T) -> Result<Vec<u8>, String> {
+pub(super) async fn read_frame<T: AsyncRead + Unpin>(stream: &mut T) -> Result<Vec<u8>, String> {
     let size = stream.read_u32_le().await.map_err(|_| "gemma_pipe_read")? as usize;
     if size == 0 || size > LIMIT {
         return Err("gemma_pipe_frame_limit".into());
@@ -56,7 +57,10 @@ async fn read_frame<T: AsyncRead + Unpin>(stream: &mut T) -> Result<Vec<u8>, Str
         .map_err(|_| "gemma_pipe_read")?;
     Ok(data)
 }
-async fn write_frame<T: AsyncWrite + Unpin>(stream: &mut T, data: &[u8]) -> Result<(), String> {
+pub(super) async fn write_frame<T: AsyncWrite + Unpin>(
+    stream: &mut T,
+    data: &[u8],
+) -> Result<(), String> {
     if data.is_empty() || data.len() > LIMIT {
         return Err("gemma_pipe_frame_limit".into());
     }
