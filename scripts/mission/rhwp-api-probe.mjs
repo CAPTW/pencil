@@ -366,6 +366,20 @@ try {
   await page.evaluate(async format=>editor.loadFile(new Uint8Array(synthetic[format]),'replacement.'+format,{suppressDialogs:true,skipUnsavedGuard:true}),format);
   await page.waitForFunction(async()=>editor.element.contentDocument.getElementById('grammar-review-host')?.dataset.grammarGeneration===String((await editor.getDocumentState()).documentEpoch));
   assert.equal(await panel.getByRole('textbox',{name:'Reviewed replacement'}).inputValue(),'');assert.equal(await panel.getByRole('status').textContent(),'Disabled');record(format+' new document clears draft and revokes opt-in');
+  // Synthetic protection metadata fault; no password or encrypted user file.
+  await page.evaluate(()=>editor.focusTarget({kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(readAll()[1]).length}));
+  await panel.getByRole('button',{name:'Enable review',exact:true}).click();await panel.getByRole('button',{name:'Capture selection',exact:true}).click();
+  const beforeProtection=await page.evaluate(()=>readAll());
+  await page.evaluate(()=>{const w=editor.element.contentWindow.__wasm;window.protectedReads=0;window.oldProtectedRead=w.getTextRange;w.getTextRange=function(...a){protectedReads++;return oldProtectedRead.apply(this,a);};w.requiresPasswordForSave=true;const button=[...editor.element.contentDocument.querySelectorAll('#grammar-review-host button')].find(b=>b.textContent==='Accept');if(button.disabled)throw Error('EXPECTED_READY_ACCEPT');button.click();});
+  // Protection change and click share one JS task, before the UI poll.
+  assert.equal(await page.evaluate(()=>protectedReads),0);
+  await panel.getByRole('status').filter({hasText:/^Disabled$/}).waitFor();
+  assert.equal(await panel.getByRole('textbox',{name:'Reviewed replacement'}).inputValue(),'');
+  await page.evaluate(()=>{const w=editor.element.contentWindow.__wasm;w.requiresPasswordForSave=false;});
+  await panel.getByRole('button',{name:'Enable review',exact:true}).click();await panel.getByRole('button',{name:'Capture selection',exact:true}).click();
+  assert.equal(await panel.getByRole('status').textContent(),'NOT_ENABLED_OR_ELIGIBLE');assert.equal(await page.evaluate(()=>protectedReads),0);
+  await page.evaluate(()=>{editor.element.contentWindow.__wasm.getTextRange=oldProtectedRead;});
+  assert.deepEqual(await page.evaluate(()=>readAll()),beforeProtection);record(format+' protection revokes before reads, clears draft and cannot revive same document');
   await page.evaluate(()=>editor.element.contentWindow.dispatchEvent(new PageTransitionEvent('pagehide')));
   assert.equal(await panel.getByRole('button',{name:'Accept',exact:true}).count(),0);record(format+' pagehide disposes panel and authority');
   // Reload the editor iframe for the next document; parent SDK object handshake

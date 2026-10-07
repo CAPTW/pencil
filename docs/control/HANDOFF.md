@@ -1876,3 +1876,18 @@ profile contains synthetic task data; cleanup was not completed or relabeled PAS
 Final bootstrap8/default-denial4/UI20/unit6 PASS; Source/governance/syntax/diff
 PASS. Passing profiles removed, owned server stopped and port closed. Failed-r1
 residual explicitly retained as above. Source/receipt hashes: bootstrap-proof.json.
+
+
+## rHWP document admission guard — 2026-10-07
+
+Base099543b. rHWP admission refusal guard: trusted loaded/generation/protection/format metadata and separate host policy checked before capture/Accept. Observed protection, unknown metadata or revoked host policy latch denial for that generation; polling clears draft/session, close terminal. admission-red uses exact099543b bootstrap and fails at22 target reads after synthetic protection flag plus immediate Accept. admission-r1 10 PASS; no password contents/encrypted-file qualification. Default host policy remains deny; mutable save-intent flag is not full sensitive/protected provenance. Production transport and installed routing remain pending; no main/push/Provider, mission INCOMPLETE. Evidence grammar-rhwp-20261007/ADMISSION_RESULT.md.
+
+Necessary refusal checks only: a trusted default-deny host must still establish
+real document provenance and sensitive-document eligibility before deployment.
+Polls cannot certify unobserved transient flag changes. Same-integrator review
+only. Prior bootstrap-r1 residual profile remains unresolved; this round does not
+retry its policy-rejected cleanup. No installed HWP/HWPX acceptance expansion.
+
+Final admission-final10/default-denial4/admission-unit9/Instant-unit6 PASS.
+Source/governance/syntax/diff PASS. New red/green profiles removed; owned server
+stopped, port17707 closed. Exact source/receipt hashes in admission-proof.json.
