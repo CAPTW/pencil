@@ -39,7 +39,7 @@ def wait(probe, seconds=5):
         if found:
             return found
         time.sleep(.03)
-    raise AssertionError('condition timeout')
+    raise AssertionError('condition timeout at caller line '+str(sys._getframe(1).f_lineno))
 
 
 def accessible_names():
@@ -221,6 +221,8 @@ try:
     check('fixture-service-not-installed', ctx.ServiceManager.createInstanceWithContext('org.grammar.fixture.Writer', ctx) is None)
     doc = desktop.loadComponentFromURL('private:factory/swriter', '_blank', 0,
         (arg('Hidden', False), arg('MacroExecutionMode', NEVER_EXECUTE)))
+    result['setupStage']='new-document-activation'
+    doc.CurrentController.Frame.activate()
     wait(lambda: desktop.CurrentComponent == doc)
     doc.Text.String = source
     prepare_format()
@@ -236,6 +238,8 @@ try:
         doc = desktop.loadComponentFromURL(url, '_blank', 0,
             (arg('Hidden', False), arg('MacroExecutionMode', NEVER_EXECUTE), arg('UpdateDocMode', 0)))
         keeper.close(True)
+        result['setupStage']='saved-document-activation'
+        doc.CurrentController.Frame.activate()
         wait(lambda: desktop.CurrentComponent == doc)
         reopened_text = paragraph_list()[1].String if '--paragraphs' in sys.argv else doc.Text.String
         check('saved-docx-reopened-exact', reopened_text == source and doc.hasLocation())
