@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile,writeFile} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {overlayInput,overlayHistory} from '../../adapters/rhwp/input-overlay.mjs';
 const root=resolve(process.argv[2]??'');
 assert.ok(process.argv[2],'external evidence root required');
 const pin=JSON.parse(await readFile(new URL('../../adapters/rhwp/upstream.json',import.meta.url),'utf8'));
@@ -14,10 +15,17 @@ const studio=join(root,'upstream/rhwp-studio');
 const {createServer}=await import(pathToFileURL(join(studio,'node_modules/vite/dist/node/index.js')).href);
 const wasmPath=join(root,'upstream/pkg/rhwp_bg.wasm');
 const wasm=await readFile(wasmPath);
+const gate=await readFile(new URL('../../adapters/rhwp/accept-gate.mjs',import.meta.url));
 const route='/@fs/'+wasmPath.replaceAll('\\','/');
 await writeFile(join(studio,'grammar-owned-harness.html'),'<!doctype html><html><body><div id="host" style="height:95vh"></div></body></html>',{flag:'wx'}).catch(e=>{if(e.code!=='EEXIST')throw e;});
 const server=await createServer({root:studio,server:{host:'127.0.0.1',port:17707,strictPort:true,hmr:false},optimizeDeps:{noDiscovery:true},plugins:[{
+ name:'grammar-input-overlay',enforce:'pre',transform(source,id){
+  if(id.replaceAll('\\','/').endsWith('/src/engine/input-handler.ts'))return overlayInput(source.replaceAll('\r\n','\n'));
+  if(id.replaceAll('\\','/').endsWith('/src/engine/history.ts'))return overlayHistory(source.replaceAll('\r\n','\n'));
+ }
+},{
  name:'owned-wasm-route',configureServer(s){s.middlewares.use((req,res,next)=>{
+  if(req.url==='/grammar-accept-gate.mjs'){res.setHeader('Content-Type','text/javascript');return res.end(gate);}
   if(req.url?.split('?')[0]!==route)return next();
   res.setHeader('Content-Type','application/wasm');res.end(wasm);
  });}

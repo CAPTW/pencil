@@ -24,10 +24,11 @@ const origin='http://127.0.0.1:17707';
 const sdk='/@fs/'+join(root,'upstream/npm/editor/index.js').replaceAll('\\','/');
 const core='/@fs/'+join(root,'upstream/pkg/rhwp.js').replaceAll('\\','/');
 const result={status:'RUNNING',scope:'RHWP_API_SYNTHETIC_NOT_GRAMMAR_ACCEPTANCE',upstreamCommit:pin.commit,version:pin.version,checks:[],findings:[],networkBlocked:0};
-let browser;
+let browser, watchdog;
 const record=name=>result.checks.push(name);
 try {
  browser=await chromium.launchPersistentContext(profile,{executablePath:resolve(chromeArg),headless:true,chromiumSandbox:true,serviceWorkers:'block',acceptDownloads:false});
+ watchdog=setTimeout(()=>{result.timeout=true;browser.close().catch(()=>{});},120000);
  await browser.route('**/*',route=>{
   const url=new URL(route.request().url());
   if(url.origin===origin || ['data:','blob:'].includes(url.protocol))return route.continue();
@@ -37,6 +38,7 @@ try {
   localStorage.setItem('rhwp-settings',JSON.stringify({version:1,theme:{skin:'default',skinChosen:true},autosave:{recoveryEnabled:false,idleSaveEnabled:false}}));
  });
  const page=await browser.newPage();
+ page.on('console',m=>{if(m.text().startsWith('GATE_STAGE'))console.log(m.text());});
  const errors=[];page.on('pageerror',e=>errors.push(String(e)));
  await page.goto(origin+'/grammar-owned-harness.html');
  await page.evaluate(async({sdk,core,origin})=>{
@@ -108,6 +110,71 @@ try {
   });
   assert.equal(moved.selection.target.paragraph,2);
   result.findings.push({format,kind:'SELECTION_FENCE_PROBE',...moved});
+  const guarded=await page.evaluate(async()=>{
+   const {createAcceptGate}=await import('/grammar-accept-gate.mjs');
+   const {DocumentAgentController}=await import('/src/document-agent/controller.ts');
+   const w=editor.element.contentWindow;let clock=0;const rows=[];
+   for(const scenario of ['normal','moved','disabled','expired','source','operation-selection','operation-disable']){
+    console.log('GATE_STAGE',scenario);
+    const bound=await commandFor('Guarded replacement');
+    let gate;
+    const input=new Proxy(w.__inputHandler,{get(target,key){
+     if(key==='executeDocumentAgentOperation')return (desc,render)=>{
+      // Race precisely after controller preflight, before real history execution.
+      if(scenario==='operation-selection')target.focusBodyParagraph(0,2,Array.from(readAll()[2]).length);
+      if(scenario==='operation-disable')gate.disable();
+      return target.executeDocumentAgentOperation(desc,render);
+     };
+     const value=target[key];return typeof value==='function'?value.bind(target):value;
+    }});
+    gate=createAcceptGate(DocumentAgentController,{wasm:w.__wasm,input,eventBus:w.__eventBus,isDirty:()=>true,render:()=>w.__canvasView.refreshDocumentAgentMutation()},()=>clock);
+    gate.enable();const state=gate.getDocumentState();
+    Object.assign(bound.command,{expectedDocumentEpoch:state.documentEpoch,expectedChangeSeq:state.changeSeq,expectedDocumentSha256:state.documentSha256});
+    const token=gate.capture(bound.command);
+    if(scenario==='moved')await editor.focusTarget({kind:'body_paragraph',section:0,paragraph:2,charOffset:0,length:Array.from(readAll()[2]).length});
+    if(scenario==='disabled')gate.disable();
+    if(scenario==='expired')clock+=30000;
+    if(scenario==='source'){const other=await commandFor('User intervening edit');await editor.applyTextCommand(other.command);}
+    const before=readAll();let code='APPLIED';
+    try{await gate.accept(token);}catch(e){code=e.code??String(e);}
+    const after=readAll();let replay;
+    try{await gate.accept(token);replay='APPLIED';}catch(e){replay=e.code;}
+    rows.push({scenario,code,before,after,replay});gate.close();
+   }
+   return rows;
+  });
+  for(const row of guarded){
+   if(row.scenario==='normal'){assert.equal(row.code,'APPLIED');assert.deepEqual(row.after,[row.before[0],'Guarded replacement',row.before[2]]);}
+   else {assert.notEqual(row.code,'APPLIED');assert.deepEqual(row.after,row.before);}
+   assert.equal(row.replay,'INVALID_TOKEN');record(format+' target gate '+row.scenario+' exact reread and single use');
+  }
+  result[format].guarded=guarded;
+  const renderRace=await page.evaluate(async()=>{
+   const {createAcceptGate}=await import('/grammar-accept-gate.mjs');
+   const {DocumentAgentController}=await import('/src/document-agent/controller.ts');
+   const w=editor.element.contentWindow,bound=await commandFor('Pending render');let injected=false;
+   const gate=createAcceptGate(DocumentAgentController,{wasm:w.__wasm,input:w.__inputHandler,eventBus:w.__eventBus,isDirty:()=>true,render:async()=>{
+    if(!injected){injected=true;w.__wasm.replaceText(0,2,0,Array.from(readAll()[2]).length,'Intervening application edit');w.__eventBus.emit('document-mutated','synthetic-external');}
+    throw new Error('Injected render failure');
+   }});
+   gate.enable();const state=gate.getDocumentState();Object.assign(bound.command,{expectedDocumentEpoch:state.documentEpoch,expectedChangeSeq:state.changeSeq,expectedDocumentSha256:state.documentSha256});
+   const history=w.__inputHandler.history;
+   const priorCommands=[...history.undoStack,...history.redoStack];
+   const token=gate.capture(bound.command);let code;
+   try{await gate.accept(token);code='APPLIED';}catch(e){code=e.code??String(e);}
+   const text=readAll();let reuse;
+   try{gate.capture(bound.command);reuse='ALLOWED';}catch(e){reuse=e.code;}
+   const remaining=[...history.undoStack,...history.redoStack];
+   const unexpectedEntries=remaining.filter(c=>!priorCommands.includes(c)).length;
+   const priorPreserved=priorCommands.every(c=>remaining.includes(c));
+   gate.close();return {injected,code,text,reuse,unexpectedEntries,priorPreserved,userEditPreserved:text[2]==='Intervening application edit'};
+  });
+  assert.equal(renderRace.injected,true);assert.notEqual(renderRace.code,'APPLIED');assert.equal(renderRace.reuse,'AUTHORITY_REVOKED');
+  assert.equal(renderRace.userEditPreserved,true);assert.equal(renderRace.text[1],'Pending render');
+  // Observe actual prior entries, not an assumed count after upstream rollback.
+  assert.equal(renderRace.unexpectedEntries,0);assert.equal(renderRace.priorPreserved,true);
+  record(format+' render failure preserves intervening application edit and quarantines gate');
+  result.findings.push({format,kind:'RENDER_FAILURE_APPLICATION_EDIT_PROBE',...renderRace});
   // This measures an upstream API boundary, not a pass criterion for Grammar.
   // A hash-bound old target may still be accepted after selection moves.
  }
@@ -126,6 +193,7 @@ try {
  result.status='PASS_API_FIXTURE';
 } catch(e){result.status='FAIL';result.error=String(e.stack??e);}
 finally{
+ clearTimeout(watchdog);
  if(browser)await browser.close();
  assert.equal(profile,join(output,'owned-profile'));
  await rm(profile,{recursive:true,force:true});

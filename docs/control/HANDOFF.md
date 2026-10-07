@@ -1809,3 +1809,18 @@ policy. Selection movement is not guarded by upstream explicit-target API. Next:
 implement target-side selection/revocation fencing and review render-failure
 rollback against concurrent edits before any Grammar integration. Existing F-06
 qualified scopes unchanged. Same-integrator review only; no independent review.
+
+## rHWP target-side binding and render failure — 2026-10-07
+
+Base a9b5997. rHWP target-side gate continuation: single-use30s reviewed binding checks current editable selection and exact document at capture/Accept and synchronous mutation callback; no product activation. Pinned upstream input/history overlay suppresses Grammar async-render rollback, removes only failed command snapshot, marks dirty and quarantines failure. gate-r2 reproduces lost intervening application edits in both formats; retained as safety FAIL despite API aggregate label. Final evidence grammar-rhwp-20261007/gate-qualified/receipt.json. Installed routing, selected-only capture, normal Undo and synchronous fault qualification remain pending. Mission INCOMPLETE; no main/push.
+
+Component and overlay in adapters/rhwp. Raw upstream selection probe intentionally
+continues to accept old targets; guarded cases must refuse with unchanged full text.
+Render-failure injection uses real WasmBridge external mutation/event, not human
+input. No whole-product/installed or Hancom qualification. Same-integrator review;
+no independent reviewer. Final measured results and cleanup in external GATE_RESULT.md.
+
+Final gate-qualified32 PASS; both render-failure application edits preserved, exact
+prior history identities retained and failed entry absent. gate-final count oracle
+FAIL preserved and corrected to actual identities. Profile/browser/server removed;
+port17707 closed. Governance/Source behavior/JS syntax/diff PASS. No activation.
