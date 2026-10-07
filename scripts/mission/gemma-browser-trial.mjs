@@ -9,6 +9,7 @@ import {createHash,generateKeyPairSync} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {runCorpus} from './gemma-corpus-browser.mjs';
+import {runRewriteUI} from './gemma-rewrite-browser.mjs';
 const require=createRequire(import.meta.url);
 const {chromium}=require('C:/Users/USER/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const evidence='D:/dev/grammar-evidence/grammar-gemma-20261007';
@@ -69,7 +70,7 @@ try {
  await worker.evaluate(()=>{
   globalThis.gemmaMetrics={requests:0,responses:0,arrivals:new Map(),storage:[]};
   chrome.runtime.onMessage.addListener(m=>{if(m.op==='analyze'){
-   gemmaMetrics.requests++;gemmaMetrics.arrivals.set(m.id,{contentSent:m.testContentSent,workerReceived:Date.now()});
+   gemmaMetrics.requests++;gemmaMetrics.lastIntent=m.intent??null;gemmaMetrics.arrivals.set(m.id,{contentSent:m.testContentSent,workerReceived:Date.now()});
   }});
   const storageGet=chrome.storage.local.get.bind(chrome.storage.local);
   chrome.storage.local.get=async (...args)=>{
@@ -142,6 +143,12 @@ try {
   report.corpus=await runCorpus(page,worker,corpus);
   if(!report.corpus.qualityPass||report.corpus.recommendationMisses.length||report.corpus.applyMisses.length)process.exitCode=1;
  }
+ if(process.env.GRAMMAR_GEMMA_REWRITE_UI==='1') {
+  const path=resolve('scripts/mission/gemma-rewrite-corpus.json');
+  report.rewriteCorpusSha256=await hash(path);report.rewriteModuleSha256=await hash(new URL('./gemma-rewrite-browser.mjs',import.meta.url));
+  report.rewrite={qualityStatus:'PENDING_SEPARATE_REVIEW'};await runRewriteUI(page,worker,JSON.parse(await readFile(path)),report.rewrite);
+  if(!report.rewrite.latencyPass)process.exitCode=1;
+ }
  await page.locator('#writing').click();await page.getByRole('button',{name:'Enable this field',exact:true}).click();
  await page.locator('#writing').fill('She have two books.');
  await page.getByRole('button',{name:/Suggestion 1:/}).click();
@@ -163,6 +170,7 @@ try {
  report.latencyPass=report.rows.every(r=>r.recommendMs<=1000&&r.applyMs<=500)&&(!report.corpus||(report.corpus.notRun.length===0&&report.corpus.rows.every(r=>!r.error)&&report.corpus.recommendationMisses.length===0&&report.corpus.applyMisses.length===0));
  const stats=key=>{const v=report.rows.map(r=>r[key]).sort((a,b)=>a-b);return {n:v.length,p50:v[Math.ceil(v.length*.5)-1],p95:v[Math.ceil(v.length*.95)-1],p99:v[Math.ceil(v.length*.99)-1],max:v.at(-1)};};
  report.latency={recommend:stats('recommendMs'),apply:stats('applyMs')};
+ report.latencyPass=report.latencyPass&&(!report.rewrite||report.rewrite.latencyPass);
  if(!report.latencyPass)process.exitCode=1;
 } catch(error) {report.functional='FAIL';report.error=String(error);process.exitCode=1;}
 finally {
@@ -173,6 +181,7 @@ finally {
  if(resolve(profile).startsWith(resolve(run)+sep)){try{await rm(profile,{recursive:true,force:true});report.cleanup.profile=true;}catch(error){report.cleanup.profile=false;report.cleanup.profileError=String(error);process.exitCode=1;}}
  report.cleanupPass=report.cleanup.browser===true&&report.cleanup.broker==='complete'&&report.cleanup.exit?.code===0&&report.cleanup.registration===true&&report.cleanup.profile===true;
  if(!report.cleanupPass)process.exitCode=1;
- report.acceptance=report.functional==='PASS'&&report.qualityPass&&report.latencyPass&&report.cleanupPass&&!report.traceWriteFailed?'PASS':'FAIL';
+ report.acceptance=report.functional==='PASS'&&report.qualityPass&&report.latencyPass&&report.cleanupPass&&!report.traceWriteFailed?
+  (report.rewrite?'FUNCTIONAL_TIMING_PASS_REWRITE_QUALITY_PENDING':'PASS'):'FAIL';
  await writeFile(join(run,'receipt.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({run,...report},null,2));
 }

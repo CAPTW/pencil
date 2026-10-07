@@ -125,6 +125,9 @@ let desktopOwner=null,desktopGeneration=0,desktopDispatchPending=null,desktopCle
 let desktopUnavailableUntil=0;
 const exactKeys=(value,keys)=>value && typeof value==='object' && !Array.isArray(value) &&
   Object.keys(value).length===keys.length && keys.every(key=>Object.hasOwn(value,key));
+const validLocalIntent=i=>exactKeys(i,['mode']) && ['grammar','paraphrase'].includes(i.mode) ||
+  exactKeys(i,['mode','target']) && i.mode==='translate' && ['en','ko'].includes(i.target);
+const sameLocalIntent=(a,b)=>validLocalIntent(a)&&validLocalIntent(b)&&a.mode===b.mode&&a.target===b.target;
 function closeDesktop(owner=desktopOwner) {
   if(!owner || owner.closed)return;
   owner.closed=true;clearTimeout(owner.timer);
@@ -261,7 +264,7 @@ function analyze(s, request) {
   if (!HOST) return Promise.resolve({error: 'native_host_not_configured'});
   if (s.pending) return Promise.resolve({error: 'busy'});
   return new Promise(resolve => {
-    s.pending = {id:request.id,op:request.op,revision:request.revision,provider:request.provider,marker:s.deepMarker,ticket:request.cleanup_ticket,resolve};
+    s.pending = {id:request.id,op:request.op,revision:request.revision,intent:request.intent,provider:request.provider,marker:s.deepMarker,ticket:request.cleanup_ticket,resolve};
     const finish = async (value, id = request.id) => {
       if(s.pending?.id !== id) return;
       clearTimeout(s.timer); const pending = s.pending;
@@ -278,6 +281,9 @@ function analyze(s, request) {
         const port = chrome.runtime.connectNative(HOST); s.port = port;
         port.onMessage.addListener(message => {
           if (s.port !== port) return;
+          if(s.pending?.intent && (!sameLocalIntent(message?.intent,s.pending.intent) || message?.revision!==s.pending.revision)) {
+            finish({error:'invalid_native_response'},s.pending.id);s.port=null;port.disconnect();return;
+          }
           if (message?.id === s.pending?.id && message.epoch === s.epoch && (s.pending.op!=='deep' || (message.revision===s.pending.revision && (message.error || message.provider===s.pending.provider)))) finish(message, message.id);
           else if(s.pending?.op==='deep') {nativeUnsafe=true;cancelDeep(s);s.pending.resolve({error:'cleanup_unconfirmed'});} else { finish({error:'invalid_native_response'},s.pending?.id);s.port=null;port.disconnect(); }
         });
@@ -346,6 +352,10 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (!['analyze','deep'].includes(message.op) || message.version !== 1 || typeof message.text !== 'string' || message.text.length > 8192 ||
         typeof message.id !== 'string' || !message.id || message.id.length > 128 || !Number.isSafeInteger(message.revision) || message.revision < 1) return {error: 'invalid_request'};
     const request={version:1,op:message.op,id:message.id,epoch:s.epoch,revision:message.revision,text:message.text};
+    if(Object.hasOwn(message,'intent')) {
+      if(message.op!=='analyze' || !validLocalIntent(message.intent))return {error:'invalid_request'};
+      request.intent=message.intent;
+    }
     if(message.op==='deep') {
       if(!message.text.trim())return {error:'invalid_request'};
       if(!HOST)return {error:'native_host_not_configured'};

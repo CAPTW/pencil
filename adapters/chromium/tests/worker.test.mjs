@@ -61,6 +61,22 @@ function fixture(initial={deniedOrigins:[]}) {
     fireTimer(){const [id,fn]=timers.entries().next().value;timers.delete(id);fn();}};
 }
 
+test('local rewrite intent is validated and wrong-language response refused',async()=>{
+ const f=fixture();await f.command('enable');
+ for(const intent of [{mode:'translate'},{mode:'translate',target:'xx'},{mode:'paraphrase',target:'ko'},null]) {
+  assert.equal((await f.dispatch({...f.request(),intent},f.sender())).error,'invalid_request');
+ }
+ assert.equal(f.ports.length,0);
+ const intent={mode:'translate',target:'ko'};
+ const response=f.dispatch({...f.request(),intent},f.sender());await tick();
+ const p=f.ports[0],request=p.posted[0];assert.deepEqual({...request.intent},intent);
+ p.onMessage.emit({...request,intent:{mode:'translate',target:'en'},suggestions:[]});
+ assert.equal((await response).error,'invalid_native_response');assert.ok(p.closed);
+ const success=f.dispatch({...f.request('r2'),intent},f.sender());await tick();
+ const p2=f.ports.at(-1);p2.onMessage.emit({...p2.posted[0],suggestions:[]});
+ assert.equal((await success).intent.target,'ko');
+});
+
 test('host commands retain expiry across delayed delivery instead of renewing it',async()=>{
  const f=fixture(),p=await readyReview(f);f.advanceClock(3001);
  reviewCommand(p,'review-capture',1);await tick();
