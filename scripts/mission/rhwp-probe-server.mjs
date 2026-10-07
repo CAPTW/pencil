@@ -16,6 +16,8 @@ const {createServer}=await import(pathToFileURL(join(studio,'node_modules/vite/d
 const wasmPath=join(root,'upstream/pkg/rhwp_bg.wasm');
 const wasm=await readFile(wasmPath);
 const gate=await readFile(new URL('../../adapters/rhwp/accept-gate.mjs',import.meta.url));
+const reviewModules=new Map();
+for(const name of ['accept-gate','review-session','review-panel'])reviewModules.set('/grammar-review/'+name+'.mjs',await readFile(new URL('../../adapters/rhwp/'+name+'.mjs',import.meta.url)));
 const route='/@fs/'+wasmPath.replaceAll('\\','/');
 await writeFile(join(studio,'grammar-owned-harness.html'),'<!doctype html><html><body><div id="host" style="height:95vh"></div></body></html>',{flag:'wx'}).catch(e=>{if(e.code!=='EEXIST')throw e;});
 const server=await createServer({root:studio,server:{host:'127.0.0.1',port:17707,strictPort:true,hmr:false},optimizeDeps:{noDiscovery:true},plugins:[{
@@ -26,6 +28,7 @@ const server=await createServer({root:studio,server:{host:'127.0.0.1',port:17707
 },{
  name:'owned-wasm-route',configureServer(s){s.middlewares.use((req,res,next)=>{
   if(req.url==='/grammar-accept-gate.mjs'){res.setHeader('Content-Type','text/javascript');return res.end(gate);}
+  if(reviewModules.has(req.url)){res.setHeader('Content-Type','text/javascript');return res.end(reviewModules.get(req.url));}
   if(req.url?.split('?')[0]!==route)return next();
   res.setHeader('Content-Type','application/wasm');res.end(wasm);
  });}

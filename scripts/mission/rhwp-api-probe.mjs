@@ -67,7 +67,7 @@ try {
    return {state,selection,evidence,command:{schemaVersion:1,commandId:crypto.randomUUID(),expectedDocumentEpoch:state.documentEpoch,expectedChangeSeq:state.changeSeq,expectedDocumentSha256:state.documentSha256,target,expectedBeforeSha256:evidence.textSha256,expectedFormatSha256:evidence.formatSha256,expectedAdjacentContextSha256:evidence.adjacentContextSha256,replacement}};
   };
  },{sdk,core,origin});
- for(const format of ['hwp','hwpx']){
+ for(const format of (process.argv[6]==='--review-only'?[]:['hwp','hwpx'])){
   const bytes=await page.evaluate(format=>synthetic[format],format);
   const data=Buffer.from(bytes);await writeFile(join(output,'synthetic.'+format),data);
   result[format]={sha256:createHash('sha256').update(data).digest('hex'),bytes:data.length};
@@ -213,6 +213,68 @@ try {
   }
   // This measures an upstream API boundary, not a pass criterion for Grammar.
   // A hash-bound old target may still be accepted after selection moves.
+ }
+ if(process.argv[6]==='--review-only')for(const format of ['hwp','hwpx']){
+  await page.evaluate(async format=>{
+   await editor.loadFile(new Uint8Array(synthetic[format]),'review.'+format,{suppressDialogs:true,skipUnsavedGuard:true});
+   const w=editor.element.contentWindow;
+   const {createReviewSession}=await import('/grammar-review/review-session.mjs');
+   const {mountReviewPanel}=await import('/grammar-review/review-panel.mjs');
+   const {DocumentAgentController,collectTargetEvidence}=await import('/src/document-agent/controller.ts');
+   window.reviewEligible=true;window.reviewReads=0;
+   const wasm=new Proxy(w.__wasm,{get(target,key){const value=target[key];if(typeof value!=='function')return value;return (...args)=>{if(key==='getTextRange'||key==='borrowDocumentHandle')reviewReads++;return value.apply(target,args);};}});
+   window.review=createReviewSession(DocumentAgentController,collectTargetEvidence,{wasm,input:w.__inputHandler,eventBus:w.__eventBus,isDirty:()=>true,render:()=>w.__canvasView.refreshDocumentAgentMutation()},()=>reviewEligible);
+   window.removeReview=mountReviewPanel(document.body,review);
+   await editor.focusTarget({kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(readAll()[1]).length});
+  },format);
+  await page.getByRole('button',{name:'Capture selection',exact:true}).click();
+  assert.equal(await page.evaluate(()=>reviewReads),0);record(format+' disabled review reads no document text');
+  await page.getByRole('button',{name:'Enable review',exact:true}).click();
+  await page.getByRole('button',{name:'Capture selection',exact:true}).click();
+  assert.equal(await page.getByRole('textbox',{name:'Reviewed replacement'}).inputValue(),'Synthetic 한국어 😀 please seperate this.');
+  assert.deepEqual(await page.evaluate(()=>readAll()),['Header','Synthetic 한국어 😀 please seperate this.','Unselected tail']);record(format+' capture returns only selected paragraph and does not mutate');
+  await page.getByRole('textbox',{name:'Reviewed replacement'}).fill('Reviewed UI 한국어 😀');
+  await page.getByRole('button',{name:'Accept',exact:true}).click();
+  await page.getByRole('status').filter({hasText:/^Applied$/}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>readAll()),['Header','Reviewed UI 한국어 😀','Unselected tail']);record(format+' explicit edited UI Accept exact source reread');
+  await page.evaluate(()=>editor.focusTarget({kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(readAll()[1]).length}));
+  await page.getByRole('button',{name:'Capture selection',exact:true}).click();
+  await page.getByRole('textbox',{name:'Reviewed replacement'}).fill('MUST NOT APPLY');
+  await page.evaluate(()=>editor.focusTarget({kind:'body_paragraph',section:0,paragraph:2,charOffset:0,length:Array.from(readAll()[2]).length}));
+  await page.getByRole('button',{name:'Accept',exact:true}).click();
+  await page.getByRole('status').filter({hasText:/^SELECTION_CHANGED$/}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>readAll()),['Header','Reviewed UI 한국어 😀','Unselected tail']);record(format+' moved selection rejects edited UI Accept');
+  await page.getByRole('button',{name:'Disable review',exact:true}).click();
+  assert.equal(await page.getByRole('textbox',{name:'Reviewed replacement'}).inputValue(),'');
+  assert.equal(await page.getByRole('button',{name:'Accept',exact:true}).isDisabled(),true);record(format+' Disable clears visible draft and authority');
+  const refusal=await page.evaluate(async()=>{
+   review.enable();reviewEligible=false;reviewReads=0;
+   let denied;try{review.capture();}catch(e){denied=e.code;}
+   const deniedReads=reviewReads;reviewEligible=true;
+   await editor.focusTarget({kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(readAll()[1]).length});
+   const old=review.capture();const next=review.capture();let stale;
+   try{await review.accept(old.id,'STALE');}catch(e){stale=e.code;}
+   return {denied,deniedReads,stale,keys:Object.keys(next).sort(),text:readAll()};
+  });
+  assert.equal(refusal.denied,'NOT_ENABLED_OR_ELIGIBLE');assert.equal(refusal.deniedReads,0);record(format+' ineligible document refused before text/export');
+  assert.equal(refusal.stale,'STALE_REVIEW');assert.deepEqual(refusal.keys,['id','source']);assert.deepEqual(refusal.text,['Header','Reviewed UI 한국어 😀','Unselected tail']);record(format+' recapture invalidates old review id without mutation');
+  const boundaries=await page.evaluate(async()=>{
+   const w=editor.element.contentWindow;
+   const selected=w.__inputHandler.cursor.selectRange({sectionIndex:0,paragraphIndex:1,charOffset:1},{sectionIndex:0,paragraphIndex:1,charOffset:4});
+   reviewReads=0;let partial;try{review.capture();}catch(e){partial=e.code;}
+   const partialReads=reviewReads;
+   await editor.focusTarget({kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(readAll()[1]).length});
+   const binding=review.capture();reviewEligible=false;let revoked;
+   try{await review.accept(binding.id,'DENIED');}catch(e){revoked=e.code;}
+   review.disable();reviewEligible=true;review.enable();
+   const original=review.capture();const external=await commandFor('New application source');await editor.applyTextCommand(external.command);
+   let changed;try{await review.accept(original.id,'OLD DRAFT');}catch(e){changed=e.code;}
+   return {selected,partial,partialReads,revoked,changed,text:readAll()};
+  });
+  assert.equal(boundaries.selected,true);assert.equal(boundaries.partial,'SELECT_WHOLE_PLAIN_PARAGRAPH');assert.equal(boundaries.partialReads,0);record(format+' partial selection refused without source read');
+  assert.equal(boundaries.revoked,'NOT_ENABLED_OR_ELIGIBLE');record(format+' admission revoked after capture refuses Accept');
+  assert.equal(boundaries.changed,'DOCUMENT_CHANGED');assert.deepEqual(boundaries.text,['Header','New application source','Unselected tail']);record(format+' changed application source preserves new text');
+  await page.evaluate(()=>removeReview());
  }
  result.pageErrors=errors;
  await page.evaluate(()=>editor.destroy());

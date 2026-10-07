@@ -37,12 +37,18 @@ export function createAcceptGate(Controller, deps, now = () => performance.now()
       check(grant);
       const token=crypto.randomUUID();pending={token,grant};return token;
     },
-    async accept(token){
+    async accept(token, reviewedReplacement){
       if(active)fail('BUSY');
       const candidate=pending;pending=null;
       if(!candidate || candidate.token!==token)fail('INVALID_TOKEN');
       active=candidate.grant;
-      try {check(active);return await controller.applyTextCommand(active.command);}
+      try {
+        if(reviewedReplacement!==undefined){
+          if(typeof reviewedReplacement!=='string'||Array.from(reviewedReplacement).length>4000||/[\u0000-\u001f\u007f]/u.test(reviewedReplacement))fail('INVALID_REPLACEMENT');
+          active.command.replacement=reviewedReplacement;
+        }
+        check(active);return await controller.applyTextCommand(active.command);
+      }
       catch(e){if(active.entered)uncertain=true;throw e;}
       finally {
         active=null;closed=true;enabled=false;
