@@ -19,7 +19,10 @@ parser.add_argument('--enable-mixed-surroundings', action='store_true', help='si
 parser.add_argument('--enable-paragraphs', action='store_true', help='one homogeneous selection within a paragraph of a bounded multi-paragraph document; default off')
 parser.add_argument('--enable-cross-format', action='store_true', help='single-paragraph replacement uses first selected style; Undo restores runs; default off')
 parser.add_argument('--enable-paragraph-span', action='store_true', help='preserve paragraph count and empty paragraphs; default off')
+parser.add_argument('--enable-uniform-topology', action='store_true', help='merge/split only identically formatted affected paragraphs; default off')
 args = parser.parse_args()
+if args.enable_uniform_topology and not args.enable_paragraph_span:
+    parser.error('uniform topology requires --enable-paragraph-span')
 if args.enable_paragraph_span and not args.enable_cross_format:
     parser.error('paragraph span requires --enable-cross-format')
 if args.enable_cross_format and not args.enable_paragraphs:
@@ -42,7 +45,7 @@ files['pythonpath/grammar_writer_installation.py'] = (
     f'LIBRARY_PATH = {str(installed)!r}\nLIBRARY_SHA256 = {digest!r}\n'
     f'ALLOW_SAVED_DOCX = {args.enable_saved_docx!r}\nALLOW_UNIFORM_FORMAT = {args.enable_uniform_format!r}\n'
     f'ALLOW_MIXED_FORMAT = {args.enable_mixed_surroundings!r}\nALLOW_PARAGRAPHS = {args.enable_paragraphs!r}\n'
-    f'ALLOW_CROSS_FORMAT = {args.enable_cross_format!r}\nALLOW_SPAN = {args.enable_paragraph_span!r}\n').encode('utf-8')
+    f'ALLOW_CROSS_FORMAT = {args.enable_cross_format!r}\nALLOW_SPAN = {args.enable_paragraph_span!r}\nALLOW_TOPOLOGY = {args.enable_uniform_topology!r}\n').encode('utf-8')
 for name, data in files.items():
     if name.endswith('.py'):
         ast.parse(data.decode('utf-8'))
@@ -52,7 +55,7 @@ with zipfile.ZipFile(args.output, 'x', zipfile.ZIP_DEFLATED) as archive:
 print(json.dumps(dict(classification='PRODUCT_WRITER_CANDIDATE_NOT_ACCEPTANCE',
     savedDocxEnabled=args.enable_saved_docx, uniformFormatEnabled=args.enable_uniform_format,
     mixedSurroundingsEnabled=args.enable_mixed_surroundings,
-    paragraphsEnabled=args.enable_paragraphs, crossFormatEnabled=args.enable_cross_format, paragraphSpanEnabled=args.enable_paragraph_span,
+    paragraphsEnabled=args.enable_paragraphs, crossFormatEnabled=args.enable_cross_format, paragraphSpanEnabled=args.enable_paragraph_span, uniformTopologyEnabled=args.enable_uniform_topology,
     installedLibrary=str(installed), librarySha256=digest,
     files={name: hashlib.sha256(data).hexdigest() for name, data in files.items()},
     output=str(args.output.resolve()), sha256=hashlib.sha256(args.output.read_bytes()).hexdigest()), indent=2))

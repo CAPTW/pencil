@@ -275,6 +275,68 @@ def replaced_layout(layout, start, length, replacement_length, allow_cross=False
     return (tuple(output), paragraph_format, layout[2])
 
 
+def uniform_topology_plan(body, layout, start, length, replacement):
+    """Bounded merge/split model. Every affected whole paragraph must share style.
+
+    Untouched paragraphs retain their exact runs, typing style and alignment.
+    This is separate from the topology-preserving per-part policy.
+    """
+    if (not layout[1] or layout[1][0] != 'paragraphs' or start < 0 or length <= 0
+            or start + length > len(body) or not replacement or len(replacement) > 4096):
+        raise Refused('topology_bounds')
+    if any(c in replacement for c in '\u2028\u2029') or '\r' in replacement.replace('\r\n', ''):
+        raise Refused('topology_separator')
+    rows, runs, offset, begin, separators = [], [], 0, 0, []
+    for size, chars, rgb in layout[0]:
+        if chars:
+            runs.append((size, chars, rgb))
+        else:
+            separator = body[offset:offset+size]
+            if separator not in ('\n', '\r\n') or not runs:
+                raise Refused('topology_separator')
+            rows.append((begin, body[begin:offset], tuple(runs)))
+            separators.append(separator)
+            begin, runs = offset + size, []
+        offset += size
+    if offset != len(body) or not runs:
+        raise Refused('topology_bounds')
+    rows.append((begin, body[begin:], tuple(runs)))
+    paragraphs = layout[1][1]
+    if tuple(p[0] for p in paragraphs) != tuple(row[0] for row in rows):
+        raise Refused('topology_layout')
+    separator = separators[0] if separators else '\r\n'  # qualified Windows Writer
+    if any(value != separator for value in separators):
+        raise Refused('topology_separator')
+    first = next((i for i, (pos, text, _) in enumerate(rows) if pos <= start <= pos+len(text)), None)
+    last = next((i for i, (pos, text, _) in enumerate(rows) if pos <= start+length <= pos+len(text)), None)
+    parts = replacement.replace('\r\n', '\n').split('\n')
+    if first is None or last is None or not 1 <= last-first+1 <= 8 or len(parts) > 8:
+        raise Refused('topology_bounds')
+    chosen = rows[first][2][0][1:]
+    para = paragraphs[first][1]
+    if any(paragraphs[i][1] != para or any(run[1:] != chosen for run in rows[i][2])
+           for i in range(first, last+1)):
+        raise Refused('topology_requires_uniform_affected_paragraphs')
+    parts[0] = rows[first][1][:start-rows[first][0]] + parts[0]
+    parts[-1] += rows[last][1][start+length-rows[last][0]:]
+    changed = [(text, ((len(text), *chosen),), para) for text in parts]
+    output_rows = [(text, rs, paragraphs[i][1]) for i, (_, text, rs) in enumerate(rows[:first])]
+    output_rows += changed
+    output_rows += [(rows[i][1], rows[i][2], paragraphs[i][1]) for i in range(last+1, len(rows))]
+    text = separator.join(row[0] for row in output_rows)
+    if len(text) > 16384 or len(output_rows) > 256:
+        raise Refused('topology_bounds')
+    output, positions, offset = [], [], 0
+    for i, (value, rs, alignment) in enumerate(output_rows):
+        positions.append((offset, alignment))
+        output.extend(rs)
+        offset += len(value)
+        if i+1 < len(output_rows):
+            output.append((len(separator), (), ('paragraph_break', separator)))
+            offset += len(separator)
+    return text, (tuple(output), ('paragraphs', tuple(positions)), layout[2]), (chosen[0], para, layout[2], chosen[1])
+
+
 def paragraph_span_plan(body, layout, start, length, replacement):
     """Keep paragraph topology; map each nonempty selection part to one draft part."""
     if layout[1][0] != 'paragraphs' or length <= 0 or start < 0 or start + length > len(body):
@@ -489,10 +551,11 @@ def movement_to(doc, target):
 class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
     active = 0
     """One qualified range replacement, never whole-document restore."""
-    def __init__(self, document, selected, before, after, start, before_steps, before_hash, after_hash, formatting=None, mixed_format=False, before_runs=None):
+    def __init__(self, document, selected, before, after, start, before_steps, before_hash, after_hash, formatting=None, mixed_format=False, before_runs=None, topology=False):
         self.document = document
         self.formatting = formatting
         self.before_runs = before_runs
+        self.topology = topology
         self.mixed_format = mixed_format
         self.before, self.after = before, after
         self.start = start
@@ -553,7 +616,7 @@ class ReplacementUndo(unohelper.Base, XUndoAction, XComponent):
         try:
             if selected.String != expected:
                 raise UndoFailedException('Grammar range changed', self, None)
-            selected.String = replacement
+            selected.String = replacement.replace("\r\n", "\r").replace("\n", "\r") if self.topology else replacement
             if self.formatting is not None:
                 if self.before_runs is not None and digest == self.after_hash:
                     restore_selected_runs(doc, selected, self.before_runs, self.formatting)
@@ -676,19 +739,29 @@ class Callback(unohelper.Base, XCallback):
                 owner.foreground_document()
                 layout = plain_metadata(owner.document, True, owner.allow_mixed_format) if owner.allow_mixed_format else None
                 span = owner.allow_span and any(c in source for c in '\r\n')
-                if span:
+                topology = False
+                topology_format = None
+                if owner.allow_topology:
+                    prefix=owner.document.Text.createTextCursor()
+                    prefix.gotoStart(False);prefix.gotoRange(selected.Start,True)
+                    try:
+                        _, _, topology_format = uniform_topology_plan(owner.document.Text.String,layout,len(prefix.String),len(source),source)
+                        topology = True
+                    except Refused:
+                        pass  # existing span/single-range admission still applies
+                if span and not topology:
                     prefix=owner.document.Text.createTextCursor()
                     prefix.gotoStart(False);prefix.gotoRange(selected.Start,True)
                     paragraph_span_plan(owner.document.Text.String,layout,len(prefix.String),len(source),source)
-                mixed_range = mixed_selection(owner.document, selected, layout, owner.allow_cross_format) if layout is not None and not span else None
+                mixed_range = mixed_selection(owner.document, selected, layout, owner.allow_cross_format) if layout is not None and not span and not topology else None
                 owner.deadline(self.deadline)
                 owner.permission(self.epoch)
                 owner.review = dict(token=secrets.token_hex(24), source=source,
                     range=owner.document.Text.createTextCursorByRange(selected),
                     revision=owner.revision, selection_revision=owner.selection_revision,
                     expires=time.monotonic() + 30, epoch=self.epoch,
-                    layout=layout, mixed_range=mixed_range, span=span,
-                    formatting=mixed_range[2] if mixed_range else
+                    layout=layout, mixed_range=mixed_range, span=span, topology=topology,
+                    formatting=topology_format if topology else mixed_range[2] if mixed_range else
                         (plain_metadata(owner.document, True) if owner.allow_uniform_format and not span else None))
                 owner.schedule_expiry(owner.review['token'])
                 value = dict(status='CAPTURED', token=owner.review['token'], source=source)
@@ -701,9 +774,9 @@ class Callback(unohelper.Base, XCallback):
                 replacement = self.args.get('Replacement')
                 if not isinstance(replacement, str) or not replacement or len(replacement) > 4096:
                     raise Refused('replacement_bounds')
-                if review['formatting'] is not None and any(c in replacement for c in '\r\n\u2028\u2029'):
+                if not review.get('topology') and review['formatting'] is not None and any(c in replacement for c in '\r\n\u2028\u2029'):
                     raise Refused('formatted_single_paragraph_only')
-                if review.get('span'):
+                if review.get('span') and not review.get('topology'):
                     value,wrote=apply_paragraph_span(owner,review,replacement,self.deadline)
                 else:
                     owner.validate(review, self.deadline)
@@ -722,10 +795,16 @@ class Callback(unohelper.Base, XCallback):
                         before_hash = document_fingerprint(owner.document, owner.allow_uniform_format, owner.allow_mixed_format)
                         expected_after_hash = None
                         if review['layout'] is not None:
-                            offset, length, _ = review['mixed_range']
-                            expected_layout = replaced_layout(review['layout'], offset, length, len(replacement), owner.allow_cross_format)
                             body = body_snapshot(owner.document, True, owner.allow_mixed_format)
-                            expected_body = body[:offset] + replacement + body[offset + length:]
+                            if review.get('topology'):
+                                prefix=owner.document.Text.createTextCursor()
+                                prefix.gotoStart(False);prefix.gotoRange(review['range'].Start,True)
+                                expected_body, expected_layout, _ = uniform_topology_plan(body,review['layout'],len(prefix.String),len(review['source']),replacement)
+                                replacement = replacement.replace('\r\n','\r').replace('\n','\r')
+                            else:
+                                offset, length, _ = review['mixed_range']
+                                expected_layout = replaced_layout(review['layout'], offset, length, len(replacement), owner.allow_cross_format)
+                                expected_body = body[:offset] + replacement + body[offset + length:]
                             expected_after_hash = fingerprint(json.dumps((expected_body, expected_layout),
                                 ensure_ascii=True, separators=(',', ':')))
                         start = movement_to(owner.document, review['range'].Start)
@@ -747,13 +826,16 @@ class Callback(unohelper.Base, XCallback):
                         after_hash = document_fingerprint(owner.document, owner.allow_uniform_format, owner.allow_mixed_format)
                         if expected_after_hash is not None and after_hash != expected_after_hash:
                             raise Refused('postwrite_layout_mismatch')
-                        undo.addUndoAction(ReplacementUndo(owner.document, review['range'], review['source'], replacement,
+                        undo.addUndoAction(ReplacementUndo(owner.document, review['range'], review['source'], owner.read_range(review['range']) if review.get('topology') else replacement,
                             start, before_steps, before_hash, after_hash, review['formatting'], owner.allow_mixed_format,
-                            selected_layout_runs(review['layout'], *review['mixed_range'][:2]) if owner.allow_cross_format else None))
+                            selected_layout_runs(review['layout'], *review['mixed_range'][:2]) if owner.allow_cross_format and not review.get('topology') else None, review.get('topology',False)))
                         owner.document.setModified(True)
                     finally:
-                        undo.leaveUndoContext()
-                    if (owner.read_range(review['range']) != replacement or (owner.allow_mixed_format
+                        try:
+                            if wrote and review.get('topology'): owner.document.setModified(True)
+                        finally:
+                            undo.leaveUndoContext()
+                    if ((owner.read_range(review['range']).replace('\r\n','\n') != replacement.replace('\r','\n') if review.get('topology') else owner.read_range(review['range']) != replacement) or (owner.allow_mixed_format
                             and document_fingerprint(owner.document, True, owner.allow_mixed_format) != expected_after_hash)
                             or (not owner.allow_mixed_format and review['formatting'] is not None
                             and plain_metadata(owner.document, True) != review['formatting'])):
@@ -780,7 +862,7 @@ class Callback(unohelper.Base, XCallback):
 
 
 class WriterCore(unohelper.Base, XJob):
-    def __init__(self, context, *, allow_saved_documents=False, allow_uniform_format=False, allow_mixed_format=False, allow_paragraphs=False, allow_cross_format=False, allow_span=False):
+    def __init__(self, context, *, allow_saved_documents=False, allow_uniform_format=False, allow_mixed_format=False, allow_paragraphs=False, allow_cross_format=False, allow_span=False, allow_topology=False):
         self.context = context
         self.desktop = context.ServiceManager.createInstanceWithContext('com.sun.star.frame.Desktop', context)
         self.document = self.controller = self.listener = self.review = self.result = None
@@ -797,6 +879,9 @@ class WriterCore(unohelper.Base, XJob):
             raise ValueError('cross format requires paragraph mode')
         if allow_span and not allow_cross_format:
             raise ValueError('span requires cross formatting')
+        if allow_topology and not allow_span:
+            raise ValueError("topology requires span mode")
+        self.allow_topology = allow_topology
         self.allow_span = allow_span
         self.allow_cross_format = allow_cross_format
         self.allow_uniform_format = allow_uniform_format

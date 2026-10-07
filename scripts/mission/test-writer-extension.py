@@ -181,4 +181,22 @@ class Tests(unittest.TestCase):
             self.assertTrue(json.loads(enabled.stdout)['paragraphSpanEnabled'])
 
 
+    def test_topology_requires_span_and_defaults_off(self):
+        with tempfile.TemporaryDirectory(prefix='grammar-writer-span-package-') as folder:
+            root=Path(folder);library=root/'target-apply.dll';library.write_bytes(b'synthetic')
+            output=root/'span.oxt'
+            command=[sys.executable,str(builder),'--library-file',str(library),
+                '--installed-library',r'C:\GrammarTrial\target-apply.dll','--output',str(output)]
+            default=subprocess.run(command,capture_output=True,text=True)
+            self.assertEqual(default.returncode,0,default.stderr)
+            self.assertFalse(json.loads(default.stdout)['uniformTopologyEnabled'])
+            output.unlink()
+            failed=subprocess.run(command+['--enable-uniform-topology'],capture_output=True,text=True)
+            self.assertNotEqual(failed.returncode,0);self.assertFalse(output.exists())
+            enabled=subprocess.run(command+['--enable-uniform-topology','--enable-paragraph-span','--enable-cross-format',
+                '--enable-paragraphs','--enable-mixed-surroundings','--enable-uniform-format'],capture_output=True,text=True)
+            self.assertEqual(enabled.returncode,0,enabled.stderr)
+            self.assertTrue(json.loads(enabled.stdout)['uniformTopologyEnabled'])
+
+
 if __name__ == '__main__': unittest.main()
