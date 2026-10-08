@@ -270,6 +270,23 @@ async fn read_json_response(mut response: reqwest::Response) -> Result<Value, St
     serde_json::from_slice(&bytes).map_err(|_| "gemma_invalid_json".into())
 }
 
+// Whitelist numeric counters only: runtime responses can also contain source,
+// completion, model paths and other metadata that must never enter diagnostics.
+fn inference_metrics(response: &Value, http_ms: f64) -> Value {
+    let mut metrics = serde_json::Map::new();
+    for key in ["cache_n", "prompt_n", "prompt_ms", "predicted_n", "predicted_ms"] {
+        if let Some(number) = response["timings"][key].as_f64() {
+            if number.is_finite() && number >= 0.0 {
+                metrics.insert(key.into(), json!(number));
+            }
+        }
+    }
+    if http_ms.is_finite() && http_ms >= 0.0 {
+        metrics.insert("http_ms".into(), json!(http_ms));
+    }
+    Value::Object(metrics)
+}
+
 fn local_prompt(binding: &Binding) -> (String, bool) {
     // Choose one format before inference, never retry or fall back. For short
     // sources, repeating before+after costs more tokens than the full result.
@@ -461,6 +478,7 @@ impl GemmaEngine {
         let body = json!({"messages":[{"role":"user","content":prompt}],"temperature":0,
             "seed":42,"max_tokens":256,"stream":false,"cache_prompt":false,
             "response_format":{"type":"json_object","schema":schema}});
+        let http_started = Instant::now();
         let response = self
             .http
             .post(format!("{}/v1/chat/completions", self.endpoint))
@@ -470,7 +488,12 @@ impl GemmaEngine {
             .send()
             .await
             .map_err(|_| "gemma_transport")?;
-        read_json_response(response).await
+        let response = read_json_response(response).await?;
+        let http_ms = http_started.elapsed().as_secs_f64() * 1000.0;
+        if std::env::var("GRAMMAR_GEMMA_TIMING").as_deref() == Ok("1") {
+            eprintln!("gemma_inference {}", inference_metrics(&response, http_ms));
+        }
+        Ok(response)
     }
 
     async fn confirm_idle(&self) -> Result<(), String> {
@@ -836,6 +859,20 @@ mod tests {
         std::fs::write(&receipt,serde_json::to_vec_pretty(&report).unwrap()).unwrap();
         assert!(cleanup.is_ok()&&!workspace.exists()&&!failed);
     }
+    #[test]
+    fn inference_metrics_do_not_log_content_or_untrusted_metadata() {
+        let response = json!({"choices":[{"message":{"content":"private"}}],
+            "model":"private-path", "timings":{"prompt_n":123,"prompt_ms":12.5,
+            "predicted_n":42,"predicted_ms":456.0,"cache_n":0,
+            "secret":"private","prompt":"private"}});
+        assert_eq!(inference_metrics(&response, 480.0), json!({"prompt_n":123.0,
+            "prompt_ms":12.5,"predicted_n":42.0,"predicted_ms":456.0,"cache_n":0.0,"http_ms":480.0}));
+        let invalid = json!({"timings":{"prompt_n":"private", "predicted_n":-1,
+            "prompt_ms":null,"predicted_ms":{"private":1},"cache_n":true}});
+        assert_eq!(inference_metrics(&invalid, f64::NAN), json!({}));
+        assert_eq!(inference_metrics(&json!({}), 2.0), json!({"http_ms":2.0}));
+    }
+
     #[tokio::test]
     async fn startup_revocation_interrupts_pending_readiness() {
         let active = AtomicBool::new(true);
