@@ -605,11 +605,16 @@ impl GemmaEngine {
                 .cleanup_deadline
                 .get_or_insert_with(|| std::time::Instant::now() + Duration::from_secs(5)),
         );
+        let stopped=Instant::now();
+        let trace=std::env::var("GRAMMAR_GEMMA_TIMING").as_deref()==Ok("1");
+        if trace {eprintln!("gemma_stop phase=terminate remaining_ms={}",end.saturating_duration_since(Instant::now()).as_millis());}
         self.job.terminate()?;
+        if trace {eprintln!("gemma_stop phase=reap elapsed_ms={}",stopped.elapsed().as_millis());}
         timeout_at(end, self.child.wait())
             .await
             .map_err(|_| "gemma_reap_timeout")?
             .map_err(|_| "gemma_reap_failed")?;
+        if trace {eprintln!("gemma_stop phase=descendants elapsed_ms={}",stopped.elapsed().as_millis());}
         while self.job.active_processes()? != 0 {
             if Instant::now() >= end {
                 return Err("gemma_descendants_remain".into());
@@ -617,10 +622,15 @@ impl GemmaEngine {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
         if let Some(workspace) = self.workspace.as_mut() {
-            workspace.try_close_before(end.into_std())?;
+            let before=Instant::now();
+            if trace {eprintln!("gemma_stop phase=workspace remaining_ms={}",end.saturating_duration_since(before).as_millis());}
+            let result=workspace.try_close_before(end.into_std());
+            if trace {eprintln!("gemma_stop phase=workspace_done elapsed_ms={} ok={}",before.elapsed().as_millis(),result.is_ok());}
+            result?;
         }
         self.workspace = None;
         self.lease = None;
+        if trace {eprintln!("gemma_stop phase=complete elapsed_ms={}",stopped.elapsed().as_millis());}
         Ok(())
     }
 }
@@ -689,7 +699,9 @@ mod tests {
             "e4b"=>("gemma-4-E4B_q4_0-it.gguf","676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee"),
             _=>panic!("unknown owned trial model"),
         };
-        let model = root.join(model_name);
+        let storage=std::env::var("GRAMMAR_GEMMA_MODEL_STORAGE").unwrap_or_else(|_|"evidence".into());
+        let model_root=match storage.as_str() {"evidence"=>root,"ssd"=>Path::new("C:/Users/USER/.codex/grammar-owned-models/20261008-io-trial"),_=>panic!("unknown owned storage")};
+        let model = model_root.join(model_name);
         use sha2::{Digest, Sha256};
         use std::io::Read;
         for (path, expected) in [(&exe, "a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1"),
@@ -710,7 +722,7 @@ mod tests {
         let corpus: Value = serde_json::from_str(corpus_text).unwrap();
         let mut report = json!({"scope":"REAL_GPU_SERVICE_PIPE_SYNTHETIC_REWRITE_NOT_UI_ACCEPTANCE",
             "testExecutableSha256":format!("{:x}",Sha256::digest(std::fs::read(std::env::current_exe().unwrap()).unwrap())),
-            "artifactVerificationMs":artifact_ms,"modelId":model_id,"modelSha256":model_sha,"runtimeSha256":"a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1",
+            "storage":storage,"artifactVerificationMs":artifact_ms,"modelId":model_id,"modelSha256":model_sha,"runtimeSha256":"a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1",
             "corpusSha256":format!("{:x}",Sha256::digest(corpus_text.as_bytes())),
             "observationDeadlineMs":10000,"recommendationTargetMs":1000,"quality":"REQUIRES_REVIEW","rows":[]});
         let save = |value:&Value| std::fs::write(&receipt, serde_json::to_vec_pretty(value).unwrap()).unwrap();
