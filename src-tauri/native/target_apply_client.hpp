@@ -1,6 +1,21 @@
 #pragma once
 #include "target_apply_protocol.hpp"
 namespace grammar {
+// A successful return releases this broker's hook ownership; worker termination
+// is checked separately by TargetApplyClient::close before calling this helper.
+inline bool release_target_hook(HHOOK& hook, HANDLE target_process = nullptr) {
+    // A thread-specific hook cannot execute after the retained target process
+    // has terminated. Some teardown paths return false without a useful last
+    // error, so confirm process exit by its owned handle, never by a reused PID.
+    if (hook) {
+        SetLastError(ERROR_SUCCESS);
+        if (!UnhookWindowsHookEx(hook) && GetLastError() != ERROR_INVALID_HOOK_HANDLE &&
+            (!target_process || WaitForSingleObject(target_process, 0) != WAIT_OBJECT_0)) return false;
+    }
+    hook = nullptr;
+    return true;
+}
+
 // Broker-side synchronous operations belong on its blocking worker, never the
 // widget event loop. Keep this owner until close() proves worker termination.
 class TargetApplyClient final {
@@ -81,7 +96,7 @@ public:
         disconnect();
         bool ended = worker_.get() ? WaitForSingleObject(worker_.get(), milliseconds) == WAIT_OBJECT_0 :
             !bootstrap_sent_ || (process_.get() && WaitForSingleObject(process_.get(), 0) == WAIT_OBJECT_0);
-        if (ended && hook_) { if (!UnhookWindowsHookEx(hook_)) return false; hook_ = nullptr; }
+        if (ended && !release_target_hook(hook_, process_.get())) return false;
         return ended;
     }
     bool request(ChannelCommand kind, uint64_t capture, const std::wstring& replacement, TargetReply& reply, std::wstring& text) {
