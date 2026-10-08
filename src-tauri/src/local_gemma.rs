@@ -30,6 +30,31 @@ pub mod service;
 const MAX_RESPONSE: usize = 32768;
 const MAX_TEXT: usize = 8192;
 
+// Startup exercises a single decode step; never used for a user recommendation.
+fn warmup_body() -> Value {
+    json!({"messages":[{"role":"user","content":"Reply with OK."}],
+        "temperature":0,"seed":42,"max_tokens":1,"stream":false,"cache_prompt":false})
+}
+fn validate_warmup(value: &Value) -> Result<(), String> {
+    let choices = value["choices"].as_array().ok_or("gemma_warmup_output")?;
+    if choices.len()!=1 || !matches!(choices[0]["finish_reason"].as_str(),Some("stop" | "length"))
+        || value["usage"]["completion_tokens"].as_u64()!=Some(1)
+        || choices[0]["message"]["content"].as_str().map(|s|s.is_empty()).unwrap_or(true)
+        || choices[0]["message"].get("tool_calls").is_some_and(|v| !v.is_null()) {
+        return Err("gemma_warmup_output".into());
+    }
+    Ok(())
+}
+fn slot_metrics(value: &Value) -> Value {
+    let slot = value.as_array().and_then(|v| if v.len()==1 {v.first()} else {None});
+    match slot {
+        Some(s) => json!({"processing":s["is_processing"].as_bool(),
+            "decoded":s["next_token"]["n_decoded"].as_u64()}),
+        None => json!({"available":false}),
+    }
+}
+
+
 // Only readiness I/O is interruptible here. The caller still owns the engine
 // and must await stop() after an error; dropping this future is not cleanup.
 async fn startup_until_revoked<T>(
@@ -442,11 +467,15 @@ impl GemmaEngine {
             }
             // Warm-up is part of startup, not hidden as a successful user request.
             eprintln!("gemma_engine phase=warmup ms={}", started.elapsed().as_millis());
-            engine
-                .complete(
-                    "Correct grammar only. Return a JSON object with one replacement string: She have two books.",
-                )
-                .await?;
+            let warming = async {
+                let response = engine.post_completion(warmup_body()).await?;
+                validate_warmup(&response)?;
+                engine.confirm_idle().await
+            };
+            tokio::select! {
+                result = warming => result?,
+                _ = engine.observe_warmup() => return Err("gemma_warmup_observer".into()),
+            }
             Ok::<_, String>(())
         })
         .await;
@@ -459,9 +488,25 @@ impl GemmaEngine {
         Ok(engine)
     }
 
-    async fn complete(&self, prompt: &str) -> Result<String, String> {
-        let schema = json!({"type":"object","properties":{"replacement":{"type":"string"}},"required":["replacement"],"additionalProperties":false});
-        replacement(self.complete_json(prompt, schema).await?)
+    // Numeric-only observation; no raw slots payload, model path or text is retained.
+    async fn observe_warmup(&self) {
+        if std::env::var("GRAMMAR_GEMMA_TIMING").as_deref()!=Ok("1") {
+            std::future::pending::<()>().await;
+        }
+        let started = Instant::now();
+        loop {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            let read = async {
+                let response=self.http.get(format!("{}/slots",self.endpoint))
+                    .bearer_auth(&self.token).send().await.map_err(|_| "gemma_slot_transport")?;
+                read_json_response(response).await
+            };
+            let counters = match tokio::time::timeout(Duration::from_millis(500),read).await {
+                Ok(Ok(value)) => slot_metrics(&value),
+                _ => json!({"available":false}),
+            };
+            eprintln!("gemma_warmup elapsed_ms={} counters={}",started.elapsed().as_millis(),counters);
+        }
     }
 
     async fn complete_short(&self, prompt: &str, source: &str) -> Result<String, String> {
@@ -478,6 +523,10 @@ impl GemmaEngine {
         let body = json!({"messages":[{"role":"user","content":prompt}],"temperature":0,
             "seed":42,"max_tokens":256,"stream":false,"cache_prompt":false,
             "response_format":{"type":"json_object","schema":schema}});
+        self.post_completion(body).await
+    }
+
+    async fn post_completion(&self, body: Value) -> Result<Value, String> {
         let http_started = Instant::now();
         let response = self
             .http
@@ -488,6 +537,9 @@ impl GemmaEngine {
             .send()
             .await
             .map_err(|_| "gemma_transport")?;
+        if std::env::var("GRAMMAR_GEMMA_TIMING").as_deref()==Ok("1") {
+            eprintln!("gemma_http phase=headers ms={}",http_started.elapsed().as_millis());
+        }
         let response = read_json_response(response).await?;
         let http_ms = http_started.elapsed().as_secs_f64() * 1000.0;
         if std::env::var("GRAMMAR_GEMMA_TIMING").as_deref() == Ok("1") {
@@ -710,6 +762,23 @@ impl Drop for GemmaEngine {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn warmup_is_not_a_truncated_user_result_and_metrics_are_numeric_only() {
+        let body=super::warmup_body();
+        assert_eq!(body["max_tokens"],1);
+        let reply=serde_json::json!({"choices":[{"finish_reason":"length","message":{"content":"O"}}],"usage":{"completion_tokens":1}});
+        assert!(super::validate_warmup(&reply).is_ok());
+        assert!(super::completion_text(&reply).is_err());
+        let mut missing=reply.clone();missing["choices"][0]["message"]=serde_json::json!({});
+        assert!(super::validate_warmup(&missing).is_err());
+        let mut tools=reply.clone();tools["choices"][0]["message"]["tool_calls"]=serde_json::json!({"hidden":"tool"});
+        assert!(super::validate_warmup(&tools).is_err());
+        assert!(super::validate_warmup(&serde_json::json!({"choices":[],"usage":{"completion_tokens":1}})).is_err());
+        let raw=serde_json::json!([{"is_processing":true,"next_token":{"n_decoded":9},"prompt":"secret","model":"private","token":"credential"}]);
+        assert_eq!(super::slot_metrics(&raw),serde_json::json!({"processing":true,"decoded":9}));
+        assert_eq!(super::slot_metrics(&serde_json::json!([{"is_processing":"secret","next_token":{"n_decoded":-1}}])),serde_json::json!({"processing":null,"decoded":null}));
+    }
+
     use super::*;
     fn pin_owned_runtime(runtime_root: &Path) -> (Vec<std::fs::File>, String) {
         use sha2::{Digest, Sha256};

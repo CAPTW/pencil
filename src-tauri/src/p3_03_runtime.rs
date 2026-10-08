@@ -336,15 +336,18 @@ mod tests {
         let broker = app.parent().unwrap().join("grammar-gemma-broker.exe");
         let hash = |p: &std::path::Path| codex_pencil::instant_selection::sha256_hex(&std::fs::read(p).unwrap());
         let host = root.join("grammar-chromium-host.exe");
+        let model = std::env::var_os("GRAMMAR_GEMMA_DESKTOP_TRIAL_MODEL").map(std::path::PathBuf::from)
+            .unwrap_or_else(||root.join("local/gemma-4-12b-it-qat-q4_0.gguf"));
         let report = std::path::PathBuf::from(std::env::var("GRAMMAR_GEMMA_DESKTOP_TRIAL_RECEIPT").unwrap());
         assert!(!report.exists());
         let diagnostics = std::fs::OpenOptions::new().write(true).create_new(true)
             .open(report.with_extension("broker.log")).unwrap();
+        let startup = Instant::now();
         let mut child = tokio::process::Command::new(&broker)
             .creation_flags(0x08000000)
             .args([root.join("local/runtime/llama-server.exe").to_str().unwrap(),
                 "a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1",
-                root.join("local/gemma-4-12b-it-qat-q4_0.gguf").to_str().unwrap(),
+                model.to_str().unwrap(),
                 "93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b",
                 host.to_str().unwrap(), &hash(&host),
                 "785601b8f32ba6ab10374f8e9ead5d8deadd56e70940883ef65608dbfbb80860",
@@ -366,14 +369,22 @@ mod tests {
             })).unwrap()).unwrap();
             panic!("Owned broker never became ready; inspect the preserved startup receipt and diagnostics");
         }
+        let startup_ms = startup.elapsed().as_millis();
         let ready: serde_json::Value = serde_json::from_str(&line).unwrap();
         assert_eq!(ready["pid"].as_u64().unwrap(), child.id().unwrap() as u64);
         std::env::set_var("GRAMMAR_GEMMA_PIPE", ready["name"].as_str().unwrap());
         std::env::set_var("GRAMMAR_GEMMA_BROKER_SHA256", hash(&broker));
-        let source = "She go to school every day.";
-        let started = Instant::now();
-        let result = analyze_gemma_source(local_identity("owned-desktop",1,1,source,true), source.into(), vec![]).await;
-        let elapsed = started.elapsed().as_millis();
+        let mut rows=Vec::new();
+        for (i,(source,expected)) in [("She go to school every day.","She goes to school every day."),
+            ("They has two books.","They have two books."),("She go to school every day.","She goes to school every day.")].iter().enumerate() {
+            let started = Instant::now();
+            let result = analyze_gemma_source(local_identity("owned-desktop",i as u64+1,1,source,true), (*source).into(), vec![]).await;
+            let elapsed=started.elapsed().as_millis();
+            let passed=result.as_ref().is_ok_and(|r|r.candidate.text==*expected);
+            rows.push(serde_json::json!({"index":i,"elapsedMs":elapsed,"targetMet":elapsed<=1000,"qualityPassed":passed,
+                "result":result.as_ref().map(|r| &r.candidate.text).map_err(|e|e.as_str())}));
+            if result.is_err() { break; }
+        }
         std::env::remove_var("GRAMMAR_GEMMA_PIPE");
         std::env::remove_var("GRAMMAR_GEMMA_BROKER_SHA256");
         drop(child.stdin.take());
@@ -382,13 +393,13 @@ mod tests {
         let exit = tokio::time::timeout(std::time::Duration::from_secs(5), child.wait()).await.unwrap().unwrap();
         std::fs::write(&report, serde_json::to_vec_pretty(&serde_json::json!({
             "scope":"REAL_MODEL_DESKTOP_PRODUCTION_ANALYZER_NOT_WIDGET_APPLY",
-            "elapsedMs":elapsed,"targetMs":1000,"targetMet":elapsed<=1000,
-            "result":result.as_ref().map(|r| &r.candidate.text).map_err(|e|e.as_str()),
+            "startupMs":startup_ms,"modelPath":model,"targetMs":1000,"rows":rows,
             "cleanup":line.trim(),"exitSuccess":exit.success(),"brokerSha256":hash(&broker)
         })).unwrap()).unwrap();
         assert!(exit.success());
         assert_eq!(line.trim(), r#"{"cleanup":"complete"}"#);
-        assert_eq!(result.unwrap().candidate.text, "She goes to school every day.");
+        assert_eq!(rows.len(),3);
+        assert!(rows.iter().all(|r|r["qualityPassed"]==true));
     }
 
     #[test]
