@@ -297,7 +297,7 @@ pub(crate) fn parse_rewrite_payload(
         terminology_suggestions: Vec::new(),
         terminology_match_count: 0,
         terminology_warnings: Vec::new(),
-        provider_used: ProviderKind::Claude,
+        provider_used: ProviderKind::Claude.into(),
     })
 }
 

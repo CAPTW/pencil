@@ -59,8 +59,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function providerDisplayName(kind: ProviderKind): string {
+export function providerDisplayName(kind: ProviderKind | "api"): string {
   switch (kind) {
+    case "api": return "API";
     case "codex":
       return "Codex";
     case "antigravity":

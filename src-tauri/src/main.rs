@@ -37,6 +37,9 @@ mod windows_target;
 #[cfg(test)]
 mod p0_02_contract_tests;
 
+#[cfg(test)]
+mod api_writing_tests;
+
 #[cfg(all(test, windows))]
 mod p0_02_windows_live_tests;
 
@@ -442,7 +445,32 @@ async fn rewrite_selected_text(
     mode: RewriteMode,
     target_language: Option<TranslationTargetLanguage>,
     auto_reference_language: Option<TranslationTargetLanguage>,
+    api_epoch: Option<String>,
+    api_consent: Option<bool>,
     state: State<'_, AppState>,
+) -> Result<RewriteResult, String> {
+    rewrite_selected_text_impl(
+        session_id,
+        generation,
+        mode,
+        target_language,
+        auto_reference_language,
+        api_epoch,
+        api_consent,
+        state.inner(),
+    )
+    .await
+}
+
+async fn rewrite_selected_text_impl(
+    session_id: String,
+    generation: u64,
+    mode: RewriteMode,
+    target_language: Option<TranslationTargetLanguage>,
+    auto_reference_language: Option<TranslationTargetLanguage>,
+    api_epoch: Option<String>,
+    api_consent: Option<bool>,
+    state: &AppState,
 ) -> Result<RewriteResult, String> {
     let token = SessionToken {
         session_id,
@@ -462,7 +490,7 @@ async fn rewrite_selected_text(
         ProviderKind::Antigravity => settings_snapshot.antigravity_cloud_acknowledgement_version,
         ProviderKind::Claude => settings_snapshot.claude_cloud_acknowledgement_version,
     };
-    if disclosure_version < settings::CLOUD_PROCESSING_DISCLOSURE_VERSION {
+    if api_epoch.is_none() && disclosure_version < settings::CLOUD_PROCESSING_DISCLOSURE_VERSION {
         return Err("cloud_processing_disclosure_required".to_string());
     }
     let (selected_text, bound_intent, match_result, request_constraints, attempt) = {
@@ -482,8 +510,11 @@ async fn rewrite_selected_text(
             .map_err(|_| "configuration_unavailable".to_string())?
             .settings
             .clone();
-        if settings.active_provider != settings_snapshot.active_provider
-            || settings::cloud_ack(&settings, settings_snapshot.active_provider) < settings::CLOUD_PROCESSING_DISCLOSURE_VERSION {
+        if api_epoch.is_none()
+            && (settings.active_provider != settings_snapshot.active_provider
+                || settings::cloud_ack(&settings, settings_snapshot.active_provider)
+                    < settings::CLOUD_PROCESSING_DISCLOSURE_VERSION)
+        {
             return Err("cloud_processing_disclosure_required".to_string());
         }
         if settings.rewrite_intent().map_err(str::to_string)? != intent {
@@ -556,26 +587,112 @@ async fn rewrite_selected_text(
     // Reservation and cancellation both acquire capture before provider state.
     // A cancelled capture cannot dispatch a child, and late cancellation cannot
     // select a newer valid capture's operation.
-    let operation = {
+    let mut api_ticket = None;
+    let rewrite = if let Some(epoch) = api_epoch.as_deref() {
         let mut capture = state.capture.lock().await;
-        let mut providers = state.providers.lock().await;
-        reserve_rewrite(
-            &mut capture,
-            &mut providers,
-            settings_snapshot.active_provider,
-            &token,
-            &bound_intent,
-            attempt,
-        )?
+        if state.providers.lock().await.snapshot().busy_kind.is_some() {
+            capture
+                .finish_rewrite_failure_bound(&token, &bound_intent)
+                .map_err(|e| e.code().to_string())?;
+            return Err("provider_busy".into());
+        }
+        let ticket = {
+            let mut session = state
+                .api_session
+                .lock()
+                .map_err(|_| "api_session_unavailable")?;
+            if !capture.owns_rewrite(&token, attempt) {
+                return Err("rewrite_superseded".into());
+            }
+            capture
+                .validate_rewriting_bound_intent(&token, &bound_intent)
+                .map_err(|e| e.code().to_string())?;
+            session.begin_bound(
+                epoch,
+                api_consent == Some(true),
+                token.clone(),
+                bound_intent.clone(),
+                attempt,
+            )
+        };
+        let ticket = match ticket {
+            Ok(ticket) => ticket,
+            Err(error) => {
+                capture
+                    .finish_rewrite_failure_bound(&token, &bound_intent)
+                    .map_err(|e| e.code().to_string())?;
+                return Err(error.into());
+            }
+        };
+        drop(capture);
+        let rewrite =
+            provider::api_writing::rewrite(&ticket, &selected_text, intent, &request_constraints)
+                .await;
+        api_ticket = Some(ticket);
+        rewrite
+    } else {
+        let operation = {
+            let mut capture = state.capture.lock().await;
+            if state
+                .api_session
+                .lock()
+                .map_err(|_| "api_session_unavailable")?
+                .is_busy()
+            {
+                capture
+                    .finish_rewrite_failure_bound(&token, &bound_intent)
+                    .map_err(|e| e.code().to_string())?;
+                return Err("provider_busy".into());
+            }
+            let mut providers = state.providers.lock().await;
+            reserve_rewrite(
+                &mut capture,
+                &mut providers,
+                settings_snapshot.active_provider,
+                &token,
+                &bound_intent,
+                attempt,
+            )?
+        };
+        let rewrite = ProviderManager::execute(
+            &operation,
+            &selected_text,
+            intent,
+            &request_constraints,
+            &state.codex,
+        )
+        .await
+        .map_err(|error| error.to_string());
+        let _capture = state.capture.lock().await;
+        let current = state.providers.lock().await.finish(&operation);
+        if current {
+            rewrite
+        } else {
+            Err("rewrite_interrupted".into())
+        }
     };
-    let rewrite = ProviderManager::execute(&operation, &selected_text, intent, &request_constraints, &state.codex)
-        .await.map_err(|error| error.to_string());
-    // Capture before provider state, as in reservation and cancellation: a
-    // newer Deep request of this capture cannot start until this one has
-    // settled the capture.
+    // Hold capture then API state through publication: revocation cannot race
+    // between API epoch validation and committing this capture's result.
     let mut capture = state.capture.lock().await;
-    let current = state.providers.lock().await.finish(&operation);
-    let rewrite = if current { rewrite } else { Err("rewrite_interrupted".into()) };
+    let mut api_guard = if api_ticket.is_some() {
+        Some(
+            state
+                .api_session
+                .lock()
+                .map_err(|_| "api_session_unavailable")?,
+        )
+    } else {
+        None
+    };
+    let rewrite = if let Some(ticket) = &api_ticket {
+        if api_guard.as_mut().unwrap().finish(ticket) {
+            rewrite
+        } else {
+            Err("rewrite_interrupted".into())
+        }
+    } else {
+        rewrite
+    };
     if !capture.owns_rewrite(&token, attempt) {
         // Cancelled by the user (the capture stays usable), or replaced,
         // invalidated or ended: this request must not change the capture.
@@ -610,10 +727,17 @@ async fn rewrite_selected_text(
                         bound_intent.terminology().store_revision,
                         &selected_text,
                     );
-                    let identity = instant.cache_mut().active_identity()
-                        .filter(|active| active.session_id == token.session_id && active.generation == token.generation
-                            && active.source_sha256 == identity.source_sha256 && active.terminology_revision == identity.terminology_revision)
-                        .cloned().unwrap_or(identity);
+                    let identity = instant
+                        .cache_mut()
+                        .active_identity()
+                        .filter(|active| {
+                            active.session_id == token.session_id
+                                && active.generation == token.generation
+                                && active.source_sha256 == identity.source_sha256
+                                && active.terminology_revision == identity.terminology_revision
+                        })
+                        .cloned()
+                        .unwrap_or(identity);
                     let _ = p3_03_runtime::store_candidate(
                         instant.cache_mut(),
                         p3_03_runtime::deep_candidate_from_text(
@@ -731,7 +855,7 @@ fn logical_line_break_runs(value: &str) -> Vec<usize> {
 }
 
 fn terminology_environment_matches(
-    state: &State<'_, AppState>,
+    state: &AppState,
     bound: &BoundRewriteIntent,
 ) -> Result<bool, String> {
     let settings = state
@@ -1626,6 +1750,7 @@ async fn interrupt_active_turn(state: &AppState, active_turn: Option<ActiveTurn>
 
 async fn cancel_cli_operation(state: &AppState) -> Option<Arc<provider::manager::ProviderOperation>> {
     let capture = state.capture.lock().await;
+    state.api_session.lock().unwrap_or_else(|e|e.into_inner()).cancel_stale(&capture);
     let operation = state.providers.lock().await.cancel_handle();
     if let Some(operation) = &operation {
         if let Some((token, intent, attempt)) = &operation.capture_binding {

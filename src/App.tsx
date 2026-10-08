@@ -461,11 +461,12 @@ export default function App() {
     requestedToken: CaptureToken | null = currentTokenRef.current,
     targetLanguage: TranslationTargetLanguage = targetLanguageRef.current,
     autoReferenceLanguage: TranslationReferenceLanguage = autoReferenceLanguageRef.current,
+    apiEpoch: string | null = null,
   ) => {
     if (!requestedToken || consentRevokingRef.current) {
       return;
     }
-    if (providerAckRef.current < CLOUD_PROCESSING_DISCLOSURE_VERSION) {
+    if (!apiEpoch && providerAckRef.current < CLOUD_PROCESSING_DISCLOSURE_VERSION) {
       setCloudReviewOpen(true);
       setStatus("Cloud processing review required");
       return;
@@ -488,7 +489,7 @@ export default function App() {
     rewritingIntentRef.current = requestedIntent;
     setIsRewriting(true);
     setError(null);
-    setStatus(`Rewriting with ${providerDisplayName(providerRef.current)}`);
+    setStatus(`Rewriting with ${apiEpoch ? "API" : providerDisplayName(providerRef.current)}`);
     try {
       let response: unknown;
       for (let waits = 0; ; waits += 1) {
@@ -499,6 +500,7 @@ export default function App() {
             mode,
             targetLanguage: requestedIntent.targetLanguage,
             autoReferenceLanguage: requestedIntent.autoReferenceLanguage,
+            apiEpoch, apiConsent: apiEpoch ? true : null,
           });
           break;
         } catch (reservationError) {
@@ -2570,6 +2572,18 @@ export default function App() {
                   <RefreshCcw size={16} />
                   Run Deep
                 </button>
+                <button className="secondary-button" type="button" data-testid="run-api" disabled={!selection || isRewriting || isCopying}
+                  onClick={async () => {
+                    const token = currentTokenRef.current;
+                    const mode = modeRef.current, target = targetLanguageRef.current, reference = autoReferenceLanguageRef.current;
+                    if (!token) return;
+                    try {
+                      const api = await invoke<{epoch:string;endpoint:string|null;model:string|null;requestEnabled:boolean}>("api_session_status");
+                      if (!api.requestEnabled) {setError("Configure an API endpoint, model, key and permission in Settings first.");return;}
+                      if (!window.confirm(`Send the current captured selection and matched approved terms to ${api.endpoint} using ${api.model}? Charges and the provider's retention policy may apply.`)) return;
+                      await rewrite(mode,token,target,reference,api.epoch);
+                    } catch {setError("API request unavailable. Check the session setup.");}
+                  }}>Run API Deep</button>
                 <button
                   className="secondary-button"
                   type="button"

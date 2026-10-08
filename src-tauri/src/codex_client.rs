@@ -436,7 +436,7 @@ pub struct RewriteResult {
     pub terminology_match_count: usize,
     pub terminology_warnings: Vec<TerminologyWarning>,
     #[serde(default)]
-    pub provider_used: ProviderKind,
+    pub provider_used: crate::provider::types::ResultProvider,
 }
 
 pub(crate) struct PreparedRewrite {
@@ -1864,7 +1864,7 @@ pub(crate) fn parse_rewrite_result(text: &str, mode: RewriteMode) -> Result<Rewr
         terminology_suggestions,
         terminology_match_count: 0,
         terminology_warnings: Vec::new(),
-        provider_used: ProviderKind::Codex,
+        provider_used: ProviderKind::Codex.into(),
     })
 }
 

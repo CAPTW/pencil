@@ -38,6 +38,31 @@ impl ProviderKind {
     }
 }
 
+/// Result provenance is separate from the three selectable CLI providers.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResultProvider {
+    #[default]
+    Codex,
+    Antigravity,
+    Claude,
+    Api,
+}
+impl From<ProviderKind> for ResultProvider {
+    fn from(kind: ProviderKind) -> Self {
+        match kind {
+            ProviderKind::Codex => Self::Codex,
+            ProviderKind::Antigravity => Self::Antigravity,
+            ProviderKind::Claude => Self::Claude,
+        }
+    }
+}
+impl PartialEq<ProviderKind> for ResultProvider {
+    fn eq(&self, other: &ProviderKind) -> bool {
+        *self == Self::from(*other)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderLifecycleState {
@@ -91,7 +116,11 @@ pub struct ProviderStatus {
 }
 
 impl ProviderStatus {
-    pub fn unavailable(kind: ProviderKind, reason: impl Into<String>, setup: impl Into<String>) -> Self {
+    pub fn unavailable(
+        kind: ProviderKind,
+        reason: impl Into<String>,
+        setup: impl Into<String>,
+    ) -> Self {
         Self {
             kind,
             display_name: kind.display_name(),

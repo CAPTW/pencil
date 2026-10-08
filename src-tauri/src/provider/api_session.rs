@@ -49,6 +49,11 @@ pub(crate) struct ApiSession {
     epoch: Uuid,
     setup: Option<Arc<Prepared>>,
     active: Option<Arc<RequestTicket>>,
+    binding: Option<(
+        crate::capture_session::SessionToken,
+        crate::capture_session::BoundRewriteIntent,
+        u64,
+    )>,
 }
 impl Default for ApiSession {
     fn default() -> Self {
@@ -56,6 +61,7 @@ impl Default for ApiSession {
             epoch: Uuid::new_v4(),
             setup: None,
             active: None,
+            binding: None,
         }
     }
 }
@@ -67,6 +73,9 @@ pub(crate) struct RequestTicket {
     pub cancel: DeepCancellation,
 }
 impl ApiSession {
+    pub fn is_busy(&self) -> bool {
+        self.active.is_some()
+    }
     pub fn status(&self) -> Status {
         Status {
             epoch: self.epoch.to_string(),
@@ -74,11 +83,11 @@ impl ApiSession {
             endpoint: self.setup.as_ref().map(|s| s.endpoint.clone()),
             model: self.setup.as_ref().map(|s| s.model.clone()),
             consent: self.setup.as_ref().is_some_and(|s| s.consent),
-            request_enabled: false,
+            request_enabled: self.setup.as_ref().is_some_and(|s| s.consent),
         }
     }
     pub fn clear(&mut self) -> Status {
-        if let Some(active) = self.active.take() {
+        if let Some(active) = &self.active {
             active.cancel.cancel();
         }
         self.setup = None;
@@ -121,14 +130,59 @@ impl ApiSession {
         self.active = Some(ticket.clone());
         Ok(ticket)
     }
+    #[cfg(test)]
+    pub(crate) fn configure_fixture(&mut self, endpoint: &str) -> String {
+        self.clear();
+        self.setup = Some(Arc::new(Prepared {
+            config: ApiConfig::fixture(endpoint),
+            endpoint: endpoint.into(),
+            model: "fixture".into(),
+            key: Zeroizing::new("dummy-key".into()),
+            consent: true,
+            epoch: self.epoch,
+        }));
+        self.epoch.to_string()
+    }
+    pub fn begin_bound(
+        &mut self,
+        epoch: &str,
+        consent: bool,
+        token: crate::capture_session::SessionToken,
+        intent: crate::capture_session::BoundRewriteIntent,
+        attempt: u64,
+    ) -> Result<Arc<RequestTicket>, &'static str> {
+        if epoch != self.epoch.to_string() {
+            return Err("api_setup_stale");
+        }
+        let ticket = self.begin(consent)?;
+        self.binding = Some((token, intent, attempt));
+        Ok(ticket)
+    }
+    pub fn cancel_stale(&self, capture: &crate::capture_session::CaptureSessionStore) {
+        if let Some(active) = &self.active {
+            let current = self
+                .binding
+                .as_ref()
+                .is_some_and(|(token, intent, attempt)| {
+                    capture.owns_rewrite(token, *attempt)
+                        && capture
+                            .validate_rewriting_bound_intent(token, intent)
+                            .is_ok()
+                });
+            if !current {
+                active.cancel.cancel();
+            }
+        }
+    }
     pub fn finish(&mut self, ticket: &RequestTicket) -> bool {
         let current = self.active.as_ref().is_some_and(|a| a.id == ticket.id)
             && self
                 .setup
                 .as_ref()
                 .is_some_and(|s| s.epoch == ticket.setup.epoch);
-        if current {
+        if self.active.as_ref().is_some_and(|a| a.id == ticket.id) {
             self.active = None;
+            self.binding = None;
         }
         current && !ticket.cancel.is_cancelled()
     }
@@ -175,12 +229,12 @@ mod tests {
         assert!(!s.status().consent);
     }
     #[test]
-    fn status_never_contains_key_and_does_not_claim_request_activation() {
+    fn status_never_contains_key_and_requires_setup_consent() {
         let mut s = ApiSession::default();
         let status = s.configure(setup(&s)).unwrap();
         let json = serde_json::to_string(&status).unwrap();
         assert!(!json.contains("dummy-secret"));
-        assert!(!status.request_enabled);
+        assert!(status.request_enabled);
         assert!(status.configured && status.consent);
         assert!(!ApiSession::default().status().configured);
     }
@@ -204,6 +258,8 @@ mod tests {
         input.model = "different-model".into();
         s.configure(input).unwrap();
         assert!(old.cancel.is_cancelled());
+        assert!(s.begin(true).is_err());
+        assert!(!s.finish(&old));
         let next = s.begin(true).unwrap();
         assert!(!s.finish(&old));
         assert!(s.begin(true).is_err());
@@ -230,6 +286,7 @@ mod tests {
         s.clear();
         assert!(old.cancel.is_cancelled());
         assert!(s.begin(true).is_err());
+        assert!(!s.finish(&old));
         s.configure(setup(&s)).unwrap();
         let next = s.begin(true).unwrap();
         drop(s);

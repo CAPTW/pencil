@@ -263,7 +263,7 @@ pub(crate) async fn execute(
         return Err(ProviderError::Cancelled);
     }
     result.map(|mut value| {
-        value.provider_used = kind;
+        value.provider_used = kind.into();
         value
     })
 }
