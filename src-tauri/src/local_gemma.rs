@@ -711,6 +711,50 @@ impl Drop for GemmaEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn pin_owned_runtime(runtime_root: &Path) -> (Vec<std::fs::File>, String) {
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+        use std::os::windows::fs::OpenOptionsExt;
+        let mut pins = Vec::new();
+        let mut runtime_files: Vec<_> = std::fs::read_dir(runtime_root).unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("dll"))
+                || p.file_name().is_some_and(|n| n == "llama-server.exe"))
+            .collect();
+        runtime_files.sort_by(|a,b| a.file_name().cmp(&b.file_name()));
+        let mut manifest = String::new();
+        for path in runtime_files {
+            let mut file = std::fs::OpenOptions::new().read(true).share_mode(1).open(&path).unwrap();
+            let mut hash = Sha256::new(); let mut buffer = vec![0u8; 1024 * 1024];
+            loop { let n = file.read(&mut buffer).unwrap(); if n == 0 { break; } hash.update(&buffer[..n]); }
+            manifest.push_str(&format!("{}\0{:x}\n", path.file_name().unwrap().to_str().unwrap(), hash.finalize()));
+            pins.push(file);
+        }
+        (pins, format!("{:x}", Sha256::digest(manifest.as_bytes())))
+    }
+
+    #[test]
+    fn runtime_bundle_distinguishes_changed_or_added_dlls_with_same_exe() {
+        let root = std::env::temp_dir().join(format!("grammar-runtime-pin-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&root).unwrap();
+        let exe = root.join("llama-server.exe"); let dll = root.join("ggml-cuda.dll");
+        std::fs::write(&exe, b"same-exe").unwrap();
+        std::fs::write(&dll, b"cuda12").unwrap();
+        let (pins, baseline) = pin_owned_runtime(&root);
+        assert!(std::fs::write(&dll, b"cuda13").is_err());
+        assert!(std::fs::remove_file(&exe).is_err());
+        drop(pins);
+        std::fs::write(&dll, b"cuda13").unwrap();
+        let (pins, changed) = pin_owned_runtime(&root);
+        assert_ne!(baseline, changed); drop(pins);
+        let extra = root.join("extra.dll"); std::fs::write(&extra, b"extra").unwrap();
+        let (pins, added) = pin_owned_runtime(&root);
+        assert_ne!(changed, added); drop(pins);
+        for path in [extra, dll, exe] { std::fs::remove_file(path).unwrap(); }
+        std::fs::remove_dir(root).unwrap();
+    }
+
+
     #[test]
     fn paraphrase_refuses_observed_obligation_to_inability_regression() {
         let source = "We may need more time, but we must not change the deadline.";
@@ -729,7 +773,14 @@ mod tests {
         let receipt = root.join(format!("intent-quality-{label}.json"));
         assert!(!receipt.exists(), "preserve previous evidence");
         let artifact_started=Instant::now();
-        let exe = root.join("runtime/llama-server.exe");
+        let runtime_id = std::env::var("GRAMMAR_GEMMA_TRIAL_RUNTIME").unwrap_or_else(|_| "cuda12".into());
+        let (runtime_dir, runtime_bundle_sha) = match runtime_id.as_str() {
+            "cuda12" => ("runtime", "785601b8f32ba6ab10374f8e9ead5d8deadd56e70940883ef65608dbfbb80860"),
+            "cuda13" => ("runtime-cuda13", "d6ef94c506863a4621a7e8b1c5f37ac255756b28686a3325bbd52785620172ad"),
+            _ => panic!("unknown owned runtime"),
+        };
+        let runtime_root = root.join(runtime_dir);
+        let exe = runtime_root.join("llama-server.exe");
         let model_id=std::env::var("GRAMMAR_GEMMA_TRIAL_MODEL").unwrap_or_else(|_|"12b".into());
         let (model_name,model_sha)=match model_id.as_str() {
             "12b"=>("gemma-4-12b-it-qat-q4_0.gguf","93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b"),
@@ -752,6 +803,11 @@ mod tests {
             assert_eq!(format!("{:x}", hash.finalize()), expected);
             artifact_pins.push(file);
         }
+        // The EXE is identical across CUDA variants; backend and CUDA DLLs are not.
+        // Verify the full owned runtime set and retain deny-write/delete handles.
+        let (runtime_pins, measured_bundle_sha) = pin_owned_runtime(&runtime_root);
+        assert_eq!(measured_bundle_sha, runtime_bundle_sha);
+        artifact_pins.extend(runtime_pins);
         let artifact_ms=artifact_started.elapsed().as_secs_f64()*1000.;
         let corpus_text = match std::env::var("GRAMMAR_GEMMA_REWRITE_CORPUS").as_deref() {
             Ok("holdout") => include_str!("../../scripts/mission/gemma-rewrite-holdout.json"),
@@ -762,7 +818,7 @@ mod tests {
         let corpus: Value = serde_json::from_str(corpus_text).unwrap();
         let mut report = json!({"scope":"REAL_GPU_SERVICE_PIPE_SYNTHETIC_REWRITE_NOT_UI_ACCEPTANCE",
             "testExecutableSha256":format!("{:x}",Sha256::digest(std::fs::read(std::env::current_exe().unwrap()).unwrap())),
-            "artifactPinsHeld":true,"specType":std::env::var("GRAMMAR_GEMMA_TRIAL_SPEC").unwrap_or_else(|_|"none".into()),"storage":storage,"artifactVerificationMs":artifact_ms,"modelId":model_id,"modelSha256":model_sha,"runtimeSha256":"a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1",
+            "runtimeId":runtime_id,"runtimeBundleSha256":runtime_bundle_sha,"artifactPinsHeld":true,"specType":std::env::var("GRAMMAR_GEMMA_TRIAL_SPEC").unwrap_or_else(|_|"none".into()),"storage":storage,"artifactVerificationMs":artifact_ms,"modelId":model_id,"modelSha256":model_sha,"runtimeSha256":"a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1",
             "corpusSha256":format!("{:x}",Sha256::digest(corpus_text.as_bytes())),
             "observationDeadlineMs":10000,"recommendationTargetMs":1000,"quality":"REQUIRES_REVIEW","rows":[]});
         let save = |value:&Value| std::fs::write(&receipt, serde_json::to_vec_pretty(value).unwrap()).unwrap();
