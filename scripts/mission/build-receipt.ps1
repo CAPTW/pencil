@@ -6,6 +6,7 @@ param(
   [string]$ExecutablePath,
   [string]$HostExecutablePath,
   [string]$TargetLibraryPath,
+  [string]$GemmaBrokerPath,
   [string]$WriterExecutablePath,
   [string]$WriterRuntimePath = ''
 )
@@ -52,11 +53,12 @@ function Same-Source($a, $b) {
 }
 $command = 'node_modules/.bin/tauri.cmd build --no-bundle --no-sign -- --locked --offline --bin codex-pencil; CARGO_ENCODED_RUSTFLAGS=-C<US>target-feature=+crt-static cargo build --manifest-path src-tauri/Cargo.toml --release --locked --offline --bin grammar-chromium-host'
 $targetCommand = $command + "; scripts/mission/build-target-apply.ps1 (post-build broker hash binding)"
+$gemmaCommand = $targetCommand + "; cargo build --manifest-path src-tauri/Cargo.toml --release --locked --offline --bin grammar-gemma-broker (static CRT)"
 if ($VerifyOnly) {
   if (-not $ExecutablePath) { throw 'ExecutablePath required for receipt verification' }
   $receipt = Get-Content -LiteralPath $receiptFile -Raw | ConvertFrom-Json
-  if ($receipt.schemaVersion -notin @(1,2) -or $receipt.classification -cne 'LOCAL_EXECUTED_RELEASE_BUILD' -or
-      $receipt.command -cne $(if($receipt.schemaVersion -eq 2){$targetCommand}else{$command}) -or $receipt.exitCode -ne 0 -or $receipt.freshTarget -isnot [bool] -or -not $receipt.freshTarget) {
+  if ($receipt.schemaVersion -notin @(1,2,3) -or $receipt.classification -cne 'LOCAL_EXECUTED_RELEASE_BUILD' -or
+      $receipt.command -cne $(if($receipt.schemaVersion -eq 3){$gemmaCommand}elseif($receipt.schemaVersion -eq 2){$targetCommand}else{$command}) -or $receipt.exitCode -ne 0 -or $receipt.freshTarget -isnot [bool] -or -not $receipt.freshTarget) {
     throw 'Receipt is not an executed release build'
   }
   $measured = Measure-Source
@@ -69,13 +71,19 @@ if ($VerifyOnly) {
     $hostBinary = Get-Item -LiteralPath $hostPath
     if ($hostBinary.Length -ne $receipt.hostExecutableBytes -or (Get-FileHash -LiteralPath $hostBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $receipt.hostExecutableSha256) { throw 'Receipt/host executable mismatch' }
   }
-  if ($receipt.schemaVersion -eq 2) {
+  if ($receipt.schemaVersion -ge 2) {
     $native = $receipt.targetApply
     if ($native.classification -cne 'TARGET_SERVICE_BOUND_TO_BUILT_BROKER_NOT_ACCEPTANCE' -or
         $native.exitCode -ne 0 -or $native.brokerFileName -cne 'codex-pencil.exe' -or
         $native.brokerSha256 -cne $receipt.executableSha256 -or $native.compilerPolicy -cne 'MSVC_X64_CPP17_STATIC_CRT_W4_WX') { throw 'Target service broker binding mismatch' }
     $dll = Get-Item -LiteralPath $(if($TargetLibraryPath){$TargetLibraryPath}else{$native.libraryPath})
     if ($dll.Length -ne $native.libraryBytes -or (Get-FileHash -LiteralPath $dll.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $native.librarySha256) { throw 'Receipt/target service mismatch' }
+  }
+  if ($receipt.schemaVersion -eq 3) {
+    $gemma = $receipt.gemmaBroker
+    if ($gemma.exitCode -ne 0 -or $gemma.compilerPolicy -cne 'MSVC_X64_STATIC_CRT') { throw 'Gemma broker build failed in receipt' }
+    $binary = Get-Item -LiteralPath $(if($GemmaBrokerPath){$GemmaBrokerPath}else{$gemma.executablePath})
+    if ($binary.Length -ne $gemma.executableBytes -or (Get-FileHash -LiteralPath $binary.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $gemma.executableSha256) { throw 'Receipt/Gemma broker mismatch' }
   }
   if ([DateTime]::Parse($receipt.finishedUtc).ToUniversalTime() -lt [DateTime]::Parse($receipt.startedUtc).ToUniversalTime()) { throw 'Receipt timestamps invalid' }
   return $receipt
@@ -108,6 +116,10 @@ try {
     & cargo build --manifest-path src-tauri/Cargo.toml --release --locked --offline --bin grammar-chromium-host 2>&1 | Tee-Object -FilePath (Join-Path $target 'host-build-output.log')
     $hostExit = $LASTEXITCODE
     if ($hostExit -ne 0) { throw "Host build failed with exit $hostExit; no receipt emitted" }
+    & cargo build --manifest-path src-tauri/Cargo.toml --release --locked --offline --bin grammar-gemma-broker 2>&1 | Tee-Object -FilePath (Join-Path $target 'gemma-broker-build-output.log')
+    $gemmaExit = $LASTEXITCODE
+    if ($gemmaExit -ne 0) { throw "Gemma broker build failed with exit $gemmaExit; no receipt emitted" }
+
   } finally { Pop-Location }
 } finally { $env:CARGO_TARGET_DIR = $oldTarget; $env:CARGO_ENCODED_RUSTFLAGS = $oldEncodedFlags }
 if ($buildExit -ne 0) { throw "Build failed with exit $buildExit; no receipt emitted" }
@@ -116,11 +128,19 @@ $after = Measure-Source
 if (-not (Same-Source $before $after)) { throw 'Source changed during build; no receipt emitted' }
 $exe = Get-Item -LiteralPath (Join-Path $target 'release/codex-pencil.exe')
 $hostBinary = Get-Item -LiteralPath (Join-Path $target 'release/grammar-chromium-host.exe')
+$gemmaBinary = Get-Item -LiteralPath (Join-Path $target 'release/grammar-gemma-broker.exe')
 $receipt = [ordered]@{
-  schemaVersion = 2
+  schemaVersion = 3
   targetApply = $targetApply
+  gemmaBroker = [ordered]@{
+    exitCode = $gemmaExit
+    compilerPolicy = 'MSVC_X64_STATIC_CRT'
+    executablePath = $gemmaBinary.FullName
+    executableBytes = $gemmaBinary.Length
+    executableSha256 = (Get-FileHash -LiteralPath $gemmaBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  }
   classification = 'LOCAL_EXECUTED_RELEASE_BUILD'
-  command = $targetCommand
+  command = $gemmaCommand
   exitCode = $buildExit
   freshTarget = $true
   startedUtc = $started

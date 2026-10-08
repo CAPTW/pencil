@@ -1,7 +1,7 @@
 # Grammar repository instructions
 
 Canonical-Contract: docs/control/MULTI_AGENT_CONTRACT.md
-Contract-Version: 1.5.2
-Contract-SHA256: 77755d5e53fa341dd2a4401d86f3a8b18d9d5d836d0a7135e204a7a2fc07fe2a
+Contract-Version: 1.5.3
+Contract-SHA256: aaab282951be610ae7b44121e4455611ae0df86a352e7fcc2f80399377a1bf54
 
 Read and obey the canonical contract before any task. Validate with `python scripts/validate_governance.py --root .`. This wrapper grants no execution authority.

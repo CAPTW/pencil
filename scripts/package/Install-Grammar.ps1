@@ -81,6 +81,9 @@ try {
   foreach ($item in @('codex-pencil.exe', 'grammar-chromium-host.exe', 'MANIFEST.json', 'BUILD_RECEIPT.json', 'PERSONAL_USE.md', 'README.md', 'HANDOFF.md')) {
     Copy-Item -LiteralPath (Join-Path $package $item) -Destination (Join-Path $root $item)
   }
+  if ($listed.Contains('grammar-gemma-broker.exe')) {
+    Copy-Item -LiteralPath (Join-Path $package 'grammar-gemma-broker.exe') -Destination (Join-Path $root 'grammar-gemma-broker.exe')
+  }
   if ($listed.Contains('target-apply.dll')) {
     Copy-Item -LiteralPath (Join-Path $package 'target-apply.dll') -Destination (Join-Path $root 'target-apply.dll')
   }
