@@ -214,9 +214,15 @@ fn remove_owned_session_before(path: &Path, deadline: Instant) -> Result<(), Str
             keep_ownership();
             return Err("runtime_cleanup_deadline".into());
         }
-        match fs::remove_dir_all(path) {
+        let before=Instant::now();
+        let removed=fs::remove_dir_all(path);
+        let finished=Instant::now();
+        if std::env::var("GRAMMAR_GEMMA_TIMING").as_deref()==Ok("1") {
+            eprintln!("runtime_remove attempt={} elapsed_ms={} ok={} deadline_passed={}",attempt+1,finished.duration_since(before).as_millis(),removed.is_ok(),finished>deadline);
+        }
+        match removed {
             Ok(()) => {
-                return if Instant::now() <= deadline {
+                return if finished <= deadline {
                     Ok(())
                 } else {
                     Err("runtime_cleanup_completed_late".into())

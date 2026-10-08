@@ -21,12 +21,15 @@ const models={
 };
 assert.ok(Object.hasOwn(models,modelId),'unknown owned trial model');
 const model=models[modelId];
+const storage=process.env.GRAMMAR_GEMMA_MODEL_STORAGE||'evidence';
+assert.ok(['evidence','ssd'].includes(storage),'unknown owned model storage');
+const modelRoot=storage==='ssd'?'C:/Users/USER/.codex/grammar-owned-models/20261008-io-trial':evidence;
 const run=await mkdtemp(join(evidence,'live-browser-'));
 const hostDir=join(run,'host'),extension=join(run,'extension'),profile=join(run,'profile');
 const hash=async path=>createHash('sha256').update(await readFile(path)).digest('hex');
 const pwsh=(script,args)=>execFileSync('pwsh.exe',['-NoProfile','-File',resolve(script),...args],{encoding:'utf8',windowsHide:true,timeout:20000});
 const report={scope:'MODIFIED_EXTENSION_OWNED_PROFILE_REAL_STDIO_GPU_NOT_INSTALLED_PACKAGE',rows:[],checks:[],cleanup:{}};
-report.model={id:modelId,...model};
+report.model={id:modelId,storage,...model};
 report.scriptSha256=await hash(new URL(import.meta.url));
 report.corpusModuleSha256=await hash(new URL('./gemma-corpus-browser.mjs',import.meta.url));
 let broker,context,registered=false,brokerExit;
@@ -53,7 +56,7 @@ try {
  await cp(join(binaryRoot,'grammar-gemma-broker.exe'),brokerPath);
  report.brokerSha256=await hash(brokerPath);report.hostSha256=await hash(hostPath);
  const start=performance.now();
- broker=spawn(brokerPath,[join(evidence,'runtime/llama-server.exe'),'a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1',join(evidence,model.file),model.sha256,hostPath,report.hostSha256],{windowsHide:true,env:{...process.env,GRAMMAR_GEMMA_TIMING:'1'},stdio:['pipe','pipe','pipe']});
+ broker=spawn(brokerPath,[join(evidence,'runtime/llama-server.exe'),'a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1',join(modelRoot,model.file),model.sha256,hostPath,report.hostSha256],{windowsHide:true,env:{...process.env,GRAMMAR_GEMMA_TIMING:'1'},stdio:['pipe','pipe','pipe']});
  broker.stdin.on('error',error=>{report.controlError=error.code;});
  brokerExit=new Promise(r=>broker.once('exit',(code,signal)=>r({code,signal})));
  let readyResolve,readyReject;const readyPromise=new Promise((r,j)=>{readyResolve=r;readyReject=j;});
