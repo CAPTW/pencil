@@ -169,6 +169,64 @@ pub(crate) async fn analyze_correction_source_off_ui(
     .map_err(|_| "instant_join_failed".to_string())?
 }
 
+pub(crate) fn gemma_configured() -> bool {
+    std::env::var_os("GRAMMAR_GEMMA_PIPE").is_some()
+        || std::env::var_os("GRAMMAR_GEMMA_BROKER_SHA256").is_some()
+}
+
+pub(crate) fn local_identity(session: &str, generation: u64, terminology: u64, source: &str, gemma: bool) -> SourceIdentity {
+    SourceIdentity::from_source(session, generation, 1, terminology, AnalysisMode::Correction,
+        if gemma { "gemma-local" } else { ENGINE_ID },
+        if gemma { "12b-q4_0-v1" } else { ENGINE_VERSION }, source)
+}
+
+// A conservative contiguous edit envelope must not touch a protected term.
+// Separate edits surrounding a protected term may therefore be refused.
+fn validate_local_replacement(source: &str, replacement: &str, spans: &[ProtectedSpan]) -> Result<(), String> {
+    if !crate::rewrite_preserves_line_structure(source, replacement) || replacement.trim().is_empty() || replacement.len() > 8192 || replacement.contains('\0') {
+        return Err("gemma_invalid_replacement".into());
+    }
+    let prefix: usize = source.chars().zip(replacement.chars()).take_while(|(a,b)| a==b).map(|(c,_)|c.len_utf8()).sum();
+    let suffix: usize = source[prefix..].chars().rev().zip(replacement[prefix..].chars().rev())
+        .take_while(|(a,b)|a==b).map(|(c,_)|c.len_utf8()).sum();
+    for span in spans {
+        let range = codex_pencil::instant_selection::utf16_range_to_byte_range(source, span.range)
+            .map_err(|_| "gemma_invalid_protected_span")?;
+        if source != replacement && prefix <= range.end && source.len()-suffix >= range.start {
+            return Err("gemma_protected_edit".into());
+        }
+    }
+    Ok(())
+}
+
+pub(crate) async fn analyze_gemma_source(identity: SourceIdentity, source: String, spans: Vec<ProtectedSpan>) -> Result<InstantRuntimeOutcome, String> {
+    use codex_pencil::local_gemma::{broker::Connection, peer::ImagePin, Binding, Intent};
+    let started = Instant::now();
+    // One operational budget, separate from the 1s recommendation performance target.
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
+    let name = std::env::var("GRAMMAR_GEMMA_PIPE").map_err(|_| "gemma_launcher_config")?;
+    let hash = std::env::var("GRAMMAR_GEMMA_BROKER_SHA256").map_err(|_| "gemma_launcher_config")?;
+    let image = std::env::current_exe().map_err(|_| "gemma_app_path")?
+        .parent().ok_or("gemma_app_path")?.join("grammar-gemma-broker.exe");
+    // The blocking pin keeps its permit even if this async caller is cancelled.
+    // Repeated recapture cannot accumulate unbounded background hash readers.
+    static PIN_GATE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+    let permit = PIN_GATE.try_acquire().map_err(|_| "gemma_image_busy")?;
+    let broker_image = tokio::time::timeout_at(deadline, spawn_blocking(move || {
+        let _permit = permit;
+        ImagePin::verify(&image, &hash)
+    })).await.map_err(|_| "gemma_image_deadline")?
+        .map_err(|_| "gemma_image_join")??;
+    let connection = Connection { name, broker_image };
+    let binding = Binding {intent:Intent::Grammar,epoch:identity.session_id.clone(),revision:identity.generation,source:source.clone()};
+    let result = connection.acquire(&binding.epoch, deadline).await?.recommend(binding.clone(), deadline).await?;
+    if !result.matches(&binding) { return Err("gemma_source_mismatch".into()); }
+    validate_local_replacement(&source, &result.replacement, &spans)?;
+    let no_change = result.replacement == source;
+    let candidate = Candidate::new(identity, CandidateOrigin::Instant, "gemma-grammar", result.replacement);
+    Ok(InstantRuntimeOutcome {no_change,suggestion_count:usize::from(!no_change),candidate,elapsed_ms:started.elapsed().as_millis()})
+}
+
 pub(crate) fn store_candidate(
     cache: &mut SessionCandidateCache,
     candidate: Candidate,
@@ -235,8 +293,8 @@ pub(crate) fn event_from_outcome(
         } else {
             Some(outcome.candidate.text.clone())
         },
-        analyzer_id: ENGINE_ID.to_string(),
-        analyzer_version: ENGINE_VERSION.to_string(),
+        analyzer_id: outcome.candidate.source_identity.analyzer_id.clone(),
+        analyzer_version: outcome.candidate.source_identity.analyzer_version.clone(),
         elapsed_ms: outcome.elapsed_ms,
         network_used: false,
         persistent_cache_used: false,
@@ -247,6 +305,91 @@ pub(crate) fn event_from_outcome(
 mod tests {
     use super::*;
     use crate::terminology_matcher::MatchedTerminology;
+
+    #[test]
+    fn gemma_protected_terms_and_unicode_boundaries_fail_closed() {
+        let source = "😀 Term has error.";
+        let protected = vec![ProtectedSpan::new(Utf16Range::new(3, 7), "term")];
+        assert!(validate_local_replacement(source, "😀 Term has errors.", &protected).is_ok());
+        assert!(validate_local_replacement(source, "😀 Word has error.", &protected).is_err());
+        assert!(validate_local_replacement(source, "", &protected).is_err());
+        assert!(validate_local_replacement(source, source, &[ProtectedSpan::new(Utf16Range::new(1,2), "split")]).is_err());
+    }
+
+    #[test]
+    fn gemma_identity_is_distinct_and_invalidated_result_cannot_reactivate() {
+        let identity = local_identity("capture", 2, 3, "I has a pen.", true);
+        assert_eq!(identity.analyzer_id, "gemma-local");
+        let mut cache = SessionCandidateCache::new();
+        cache.activate(identity.clone());
+        cache.invalidate(InstantInvalidationReason::ModeChange);
+        assert!(cache.store(Candidate::new(identity, CandidateOrigin::Instant, "gemma", "I have a pen.")).is_err());
+    }
+
+    #[tokio::test]
+    #[ignore = "explicit owned real-model desktop analysis trial"]
+    async fn owned_desktop_gemma_analysis() {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        assert_eq!(std::env::var("GRAMMAR_GEMMA_TRIAL").as_deref(), Ok("owned-synthetic"));
+        let root = std::path::Path::new("D:/dev/grammar-evidence/grammar-launcher-20261008");
+        let app = std::env::current_exe().unwrap();
+        let broker = app.parent().unwrap().join("grammar-gemma-broker.exe");
+        let hash = |p: &std::path::Path| codex_pencil::instant_selection::sha256_hex(&std::fs::read(p).unwrap());
+        let host = root.join("grammar-chromium-host.exe");
+        let report = std::path::PathBuf::from(std::env::var("GRAMMAR_GEMMA_DESKTOP_TRIAL_RECEIPT").unwrap());
+        assert!(!report.exists());
+        let diagnostics = std::fs::OpenOptions::new().write(true).create_new(true)
+            .open(report.with_extension("broker.log")).unwrap();
+        let mut child = tokio::process::Command::new(&broker)
+            .creation_flags(0x08000000)
+            .args([root.join("local/runtime/llama-server.exe").to_str().unwrap(),
+                "a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1",
+                root.join("local/gemma-4-12b-it-qat-q4_0.gguf").to_str().unwrap(),
+                "93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b",
+                host.to_str().unwrap(), &hash(&host),
+                "785601b8f32ba6ab10374f8e9ead5d8deadd56e70940883ef65608dbfbb80860",
+                app.to_str().unwrap(), &hash(&app)])
+            .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::from(diagnostics)).kill_on_drop(true).spawn().unwrap();
+        let mut reader = BufReader::new(child.stdout.take().unwrap());
+        let mut line = String::new();
+        let readiness = tokio::time::timeout(std::time::Duration::from_secs(190), reader.read_line(&mut line)).await;
+        if !matches!(readiness, Ok(Ok(n)) if n > 0) {
+            drop(child.stdin.take());
+            let exited = tokio::time::timeout(std::time::Duration::from_secs(12), child.wait()).await;
+            let forced = exited.is_err();
+            if forced { child.kill().await.unwrap(); }
+            std::fs::write(&report, serde_json::to_vec_pretty(&serde_json::json!({
+                "scope":"REAL_MODEL_DESKTOP_STARTUP_FAILED", "userRequest":"NOT_RUN",
+                "startupWarmup":"INSPECT_PHASE_DIAGNOSTICS",
+                "readiness":false,"forcedBrokerTermination":forced,"diagnostics":report.with_extension("broker.log")
+            })).unwrap()).unwrap();
+            panic!("Owned broker never became ready; inspect the preserved startup receipt and diagnostics");
+        }
+        let ready: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(ready["pid"].as_u64().unwrap(), child.id().unwrap() as u64);
+        std::env::set_var("GRAMMAR_GEMMA_PIPE", ready["name"].as_str().unwrap());
+        std::env::set_var("GRAMMAR_GEMMA_BROKER_SHA256", hash(&broker));
+        let source = "She go to school every day.";
+        let started = Instant::now();
+        let result = analyze_gemma_source(local_identity("owned-desktop",1,1,source,true), source.into(), vec![]).await;
+        let elapsed = started.elapsed().as_millis();
+        std::env::remove_var("GRAMMAR_GEMMA_PIPE");
+        std::env::remove_var("GRAMMAR_GEMMA_BROKER_SHA256");
+        drop(child.stdin.take());
+        line.clear();
+        tokio::time::timeout(std::time::Duration::from_secs(15), reader.read_line(&mut line)).await.unwrap().unwrap();
+        let exit = tokio::time::timeout(std::time::Duration::from_secs(5), child.wait()).await.unwrap().unwrap();
+        std::fs::write(&report, serde_json::to_vec_pretty(&serde_json::json!({
+            "scope":"REAL_MODEL_DESKTOP_PRODUCTION_ANALYZER_NOT_WIDGET_APPLY",
+            "elapsedMs":elapsed,"targetMs":1000,"targetMet":elapsed<=1000,
+            "result":result.as_ref().map(|r| &r.candidate.text).map_err(|e|e.as_str()),
+            "cleanup":line.trim(),"exitSuccess":exit.success(),"brokerSha256":hash(&broker)
+        })).unwrap()).unwrap();
+        assert!(exit.success());
+        assert_eq!(line.trim(), r#"{"cleanup":"complete"}"#);
+        assert_eq!(result.unwrap().candidate.text, "She goes to school every day.");
+    }
 
     #[test]
     fn non_grammar_modes_do_not_map_to_correction() {

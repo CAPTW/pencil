@@ -34,7 +34,7 @@ pub struct Connection {
 pub struct Admission {
     pipe: NamedPipeServer,
     name: String,
-    host_image: ImagePin,
+    host_images: Vec<ImagePin>,
 }
 pub struct Grant {
     ticket: Ticket,
@@ -62,11 +62,12 @@ impl Admission {
                         Err(_) => break Err("gemma_broker_renew".into()),
                     };
                     let connected = Admission { pipe: std::mem::replace(&mut self.pipe, next),
-                        name: self.name.clone(), host_image: self.host_image.clone() };
+                        name: self.name.clone(), host_images: self.host_images.clone() };
                     if tasks.len() < 4 {
                         let client = client.clone();
                         let active = active.clone();
-                        let deadline = Instant::now() + std::time::Duration::from_secs(1);
+                        // Operational ceiling, not the 1s/3s user-facing performance target.
+                        let deadline = Instant::now() + std::time::Duration::from_secs(15);
                         tasks.spawn(connected.serve_connected(client, active, deadline));
                     }
                 }
@@ -79,6 +80,12 @@ impl Admission {
         result
     }
     pub fn create(host_image: ImagePin) -> Result<Self, String> {
+        Self::create_for_clients(vec![host_image])
+    }
+    pub fn create_for_clients(host_images: Vec<ImagePin>) -> Result<Self, String> {
+        if host_images.is_empty() || host_images.len() > 2 {
+            return Err("gemma_broker_clients".into());
+        }
         let name = format!(r"\\.\pipe\Grammar.Gemma.Broker.{}", uuid::Uuid::new_v4());
         let pipe = ServerOptions::new()
             .first_pipe_instance(true)
@@ -88,7 +95,7 @@ impl Admission {
         Ok(Self {
             pipe,
             name,
-            host_image,
+            host_images,
         })
     }
     pub fn name(&self) -> String {
@@ -122,7 +129,8 @@ impl Admission {
             if unsafe { GetNamedPipeClientProcessId(self.pipe.as_raw_handle(), &mut pid) } == 0 {
                 return Err("gemma_broker_peer".into());
             }
-            let peer = self.host_image.process(pid)?;
+            let peer = self.host_images.iter().find_map(|image| image.process(pid).ok())
+                .ok_or("gemma_peer_image")?;
             let hello: Hello = serde_json::from_slice(&pipe::read_frame(&mut self.pipe).await?)
                 .map_err(|_| "gemma_broker_hello")?;
             if hello.version != 1
@@ -373,6 +381,21 @@ mod tests {
             assert!(socket.read_u8().await.is_err());
         }
     }
+    #[tokio::test]
+    async fn second_pinned_client_is_admitted_without_allowing_arbitrary_images() {
+        let (path, fake) = fake_image();
+        let own = own_image();
+        let admission = Admission::create_for_clients(vec![fake, own.clone()]).unwrap();
+        let connection = Connection { name: admission.name(), broker_image: own };
+        let server = tokio::spawn(admission.serve(super::super::service::closed_test_client(),
+            Arc::new(AtomicBool::new(true)), Instant::now()+std::time::Duration::from_secs(1)));
+        let grant = connection.acquire("desktop", Instant::now()+std::time::Duration::from_secs(1)).await.unwrap();
+        drop(grant);
+        assert!(server.await.unwrap().is_err());
+        std::fs::remove_file(path).unwrap();
+        assert!(Admission::create_for_clients(vec![]).is_err());
+    }
+
     #[tokio::test]
     async fn wrong_host_image_is_rejected_before_inference() {
         let (path, fake) = fake_image();

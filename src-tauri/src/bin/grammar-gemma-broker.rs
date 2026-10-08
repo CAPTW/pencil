@@ -25,7 +25,7 @@ async fn main() {
 async fn run() -> Result<(), String> {
     // Explicit paths/hashes are supplied by the trusted launcher, never a document.
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.len() != 7 {
+    if args.len() != 7 && args.len() != 9 {
         return Err("gemma_broker_args: runtime runtime-sha model model-sha host host-sha runtime-bundle-sha".into());
     }
     let started = Instant::now();
@@ -44,6 +44,10 @@ async fn run() -> Result<(), String> {
     let _runtime = ImagePin::verify(&runtime_path, &args[1])?;
     let _runtime_bundle = pin_runtime_bundle(&runtime_path, &args[6], &active, startup_deadline)?;
     let host = ImagePin::verify(Path::new(&args[4]), &args[5])?;
+    let mut clients = vec![host];
+    if args.len() == 9 {
+        clients.push(ImagePin::verify(Path::new(&args[7]), &args[8])?);
+    }
     eprintln!("gemma_boot phase=model_hash ms={}", started.elapsed().as_millis());
     let model = Path::new(&args[2]);
     let _model_file=pin_model(model,&args[3],&active,startup_deadline)?;
@@ -56,7 +60,7 @@ async fn run() -> Result<(), String> {
         if !active.load(Ordering::SeqCst) {
             return Err("gemma_broker_revoked".into());
         }
-        let admission = Admission::create(host)?;
+        let admission = Admission::create_for_clients(clients)?;
         writeln!(
             std::io::stdout(),
             "{}",
