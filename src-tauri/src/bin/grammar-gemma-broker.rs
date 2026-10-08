@@ -52,9 +52,19 @@ async fn run() -> Result<(), String> {
     let model = Path::new(&args[2]);
     let _model_file=pin_model(model,&args[3],&active,startup_deadline)?;
     eprintln!("gemma_boot phase=model_verified ms={}", started.elapsed().as_millis());
-    let engine = GemmaEngine::start_cancellable(
+    let engine = match GemmaEngine::start_reported(
         &runtime_path, model, startup_deadline, active.clone(),
-    ).await?;
+    ).await {
+        Ok(engine)=>engine,
+        Err(failure)=>{
+            if failure.cleanup_confirmed {
+                writeln!(std::io::stdout(), "{{\"cleanup\":\"complete\"}}")
+                    .map_err(|_|"gemma_broker_stdout")?;
+                std::io::stdout().flush().map_err(|_|"gemma_broker_stdout")?;
+            }
+            return Err(failure.error);
+        }
+    };
     let (service, client) = Service::own(engine);
     let result = async {
         if !active.load(Ordering::SeqCst) {

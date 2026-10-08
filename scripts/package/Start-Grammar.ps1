@@ -82,6 +82,10 @@ function Start-Broker {
   if ($null -ne $app -and $app.HasExited) { throw 'App closed while Gemma was preparing' }
   if (-not $read.IsCompleted) { throw 'Gemma startup timed out' }
   $line = $read.GetAwaiter().GetResult(); $script:read = $null
+  if ($line -ceq '{"cleanup":"complete"}') {
+    $script:cleanupComplete = $true
+    throw 'Gemma startup failed; cleanup acknowledged'
+  }
   if (-not $line -or $line.Length -gt 1024) { throw 'Gemma did not become ready' }
   $ready = $line | ConvertFrom-Json
   if ($ready.version -ne 1 -or $ready.pid -ne $broker.Id -or $ready.name -notmatch '^\\\\\.\\pipe\\Grammar\.Gemma\.Broker\.[0-9a-f-]{36}$' -or $broker.HasExited) { throw 'Invalid Gemma readiness' }
@@ -104,6 +108,28 @@ function Confirm-Cleanup {
   }
   if ($null -ne $drain -and -not $drain.Wait(1000)) { return $false }
   return $cleanupComplete
+}
+
+function Start-Attempt {
+  try { Start-Broker } catch {
+    if (-not $EnableDesktopGemma -or $null -eq $app -or $app.HasExited) { throw }
+    $script:brokerFailed = $true
+    $script:retryTicket = $null
+    # A marker alone is insufficient: reap the broker and drain its diagnostics.
+    if ($null -ne $broker) {
+      if (-not $broker.HasExited) { $broker.StandardInput.Close() }
+      if (-not $broker.WaitForExit(12000)) {
+        $broker.Kill($true); $null=$broker.WaitForExit(5000)
+        throw 'Gemma cleanup incomplete; owned process tree termination requested'
+      }
+      $script:configConflict = Restore-Config
+      if ((Confirm-Cleanup) -and -not $configConflict) {
+        $script:retryTicket = [Guid]::NewGuid().ToString('N')
+      }
+    }
+    Publish-Session 'failed'
+    Write-Warning 'Gemma preparation failed. Your draft remains open. Retry is available only after confirmed cleanup; no request is replayed.'
+  }
 }
 
 try {
@@ -136,7 +162,7 @@ try {
     Publish-Session 'starting'
     $app = Start-Desktop
   }
-  Start-Broker
+  Start-Attempt
   while (-not $app.WaitForExit(200)) {
     if (-not $brokerFailed -and $broker.HasExited) {
       $brokerFailed = $true
@@ -159,7 +185,7 @@ try {
         if ($app.HasExited) { break }
         if ([IO.File]::ReadAllText($configPath) -cne $original) { throw 'Host configuration changed before retry' }
         $broker.Dispose(); $broker = $null; $read = $null; $drain = $null
-        Start-Broker
+        Start-Attempt
       }
     }
   }
@@ -194,7 +220,8 @@ try {
       $null = Confirm-Cleanup
       if ($null -ne $published -and -not $cleanupComplete) { throw 'Gemma cleanup was not confirmed' }
       if ($null -ne $drain -and -not $drain.Wait(1000)) { throw 'Gemma diagnostic reader did not finish' }
-      if ($null -ne $published -and ($brokerFailed -or $broker.ExitCode -ne 0)) { throw 'Local Gemma stopped; cleanup confirmed. Run Start-Grammar.ps1 again to retry explicitly.' }
+      if ($brokerFailed -or ($null -ne $published -and $broker.ExitCode -ne 0)) { if ($cleanupComplete) { throw 'Local Gemma stopped; cleanup confirmed. Retry explicitly.' }
+        throw 'Local Gemma operation failed; cleanup was not confirmed.' }
     }
   } finally {
     if ($null -ne $broker) { $broker.Dispose() }
