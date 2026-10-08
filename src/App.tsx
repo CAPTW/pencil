@@ -592,6 +592,7 @@ export default function App() {
     let unlistenProcessExited: UnlistenFn | undefined;
     let unlistenOpenSettings: UnlistenFn | undefined;
     let unlistenInstant: UnlistenFn | undefined;
+    let unlistenLocalFailure: UnlistenFn | undefined;
     let unlistenCaptureEnded: UnlistenFn | undefined;
 
     void invoke<unknown>("load_settings")
@@ -646,6 +647,15 @@ export default function App() {
     void refreshAuth();
     void refreshProviders();
     void refreshTerminology();
+
+    void listen<{sessionId: string; generation: number}>("local-analysis-failed", (event) => {
+      setInstantRuntime((current) => {
+        if (current.sessionId === event.payload.sessionId && current.generation === event.payload.generation) {
+          setStatus("Local analysis unavailable — your draft is preserved");
+        }
+        return current;
+      });
+    }).then((unlisten) => { unlistenLocalFailure = unlisten; });
 
     void listen<unknown>("instant-candidate", (event) => {
       const payload = event.payload as {
@@ -808,6 +818,7 @@ export default function App() {
       unlistenProcessExited?.();
       unlistenOpenSettings?.();
       unlistenInstant?.();
+      unlistenLocalFailure?.();
       unlistenCaptureEnded?.();
     };
   }, [clearCapture, refreshAuth, refreshProviders, refreshTerminology, rewrite]);

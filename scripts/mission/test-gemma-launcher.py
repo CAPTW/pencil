@@ -17,7 +17,7 @@ use std::io::{Read, Write};
 fn main() {
  let dir=std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
  std::fs::write(dir.join("broker.pid"),std::process::id().to_string()).unwrap();
- assert_eq!(std::env::args().skip(1).count(),7);
+ assert_eq!(std::env::args().skip(1).count(),9);
  if dir.join("fail-start").exists() { std::process::exit(2); }
  println!(r#"{{"version":1,"pid":{},"name":"\\\\.\\pipe\\Grammar.Gemma.Broker.00000000-0000-0000-0000-000000000001"}}"#,std::process::id());
  std::io::stdout().flush().unwrap();
@@ -29,6 +29,7 @@ APP = r'''
 fn main() {
  let dir=std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
  std::fs::write(dir.join("app-started"),b"yes").unwrap();
+ std::fs::write(dir.join("desktop-configured"), if std::env::var_os("GRAMMAR_GEMMA_PIPE").is_some() && std::env::var_os("GRAMMAR_GEMMA_BROKER_SHA256").is_some() {b"yes".as_slice()} else {b"no".as_slice()}).unwrap();
  if dir.join("external-change").exists() {
    std::fs::write(dir.join("grammar-chromium-host.origin.json"),b"{\"outside\":true}").unwrap();
  }
@@ -88,14 +89,21 @@ class LauncherTests(unittest.TestCase):
                     kernel.CloseHandle(handle)
         self.owned.cleanup()
 
-    def run_launcher(self):
-        return subprocess.run(["pwsh", "-NoProfile", "-File", str(self.root / "Start-Grammar.ps1")], capture_output=True, text=True, encoding="utf-8", timeout=30)
+    def run_launcher(self, *args):
+        return subprocess.run(["pwsh", "-NoProfile", "-File", str(self.root / "Start-Grammar.ps1"), *args], capture_output=True, text=True, encoding="utf-8", timeout=30)
 
     def test_ready_app_exit_revokes_and_restores(self):
         result = self.run_launcher()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Gemma cleanup complete.", result.stdout)
         self.assertTrue((self.root / "app-started").exists())
+        self.assertEqual((self.root / "desktop-configured").read_text(),"no")
+        self.assertEqual(self.sidecar.read_text(), self.original)
+
+    def test_desktop_configuration_requires_explicit_trial_option(self):
+        result = self.run_launcher("-EnableDesktopGemma")
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual((self.root / "desktop-configured").read_text(),"yes")
         self.assertEqual(self.sidecar.read_text(), self.original)
 
     def test_missing_cleanup_receipt_is_failure(self):

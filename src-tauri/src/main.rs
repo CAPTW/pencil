@@ -586,6 +586,10 @@ async fn rewrite_selected_text(
                         bound_intent.terminology().store_revision,
                         &selected_text,
                     );
+                    let identity = instant.cache_mut().active_identity()
+                        .filter(|active| active.session_id == token.session_id && active.generation == token.generation
+                            && active.source_sha256 == identity.source_sha256 && active.terminology_revision == identity.terminology_revision)
+                        .cloned().unwrap_or(identity);
                     let _ = p3_03_runtime::store_candidate(
                         instant.cache_mut(),
                         p3_03_runtime::deep_candidate_from_text(
@@ -2306,37 +2310,61 @@ fn spawn_instant_for_capture(app: AppHandle, token: SessionToken, source: String
                         terminology_matcher::MatchResult::default(),
                     )
                 };
-            let spans = p3_03_runtime::protected_spans_from_matches(&source, &match_result.matches)
-                .unwrap_or_default();
+            let spans = match p3_03_runtime::protected_spans_from_matches(&source, &match_result.matches) {
+                Ok(spans) => spans,
+                Err(_) => return,
+            };
             (revision, spans)
         };
-        if let Ok(instant) = state.instant.lock() {
-            instant.note_instant_invocation();
-        }
-        let outcome = match p3_03_runtime::analyze_correction_source_off_ui(
-            token.session_id.clone(),
-            token.generation,
-            1,
-            terminology_revision,
-            source.clone(),
-            spans,
-        )
-        .await
-        {
-            Ok(outcome) => outcome,
-            Err(_) => return,
-        };
-        {
-            // Deep may already be running (auto rewrite): the Instant draft
-            // still belongs to the capture while it is open.
-            let capture = state.capture.lock().await;
-            if capture.open_source(&token) != Some(source.as_str()) {
-                return;
-            }
-        }
+        let gemma = p3_03_runtime::gemma_configured();
+        let identity = p3_03_runtime::local_identity(&token.session_id, token.generation, terminology_revision, &source, gemma);
+        let admission = state.capture.lock().await;
+        if admission.open_source(&token) != Some(source.as_str()) { return; }
+        if state.configuration.lock().map(|c| c.settings.mode != mode).unwrap_or(true) { return; }
         if let Ok(mut instant) = state.instant.lock() {
-            let _ = p3_03_runtime::store_candidate(instant.cache_mut(), outcome.candidate.clone());
-        }
+            instant.note_instant_invocation();
+            instant.cache_mut().activate(identity.clone());
+        } else { return; }
+        drop(admission);
+        let analyze = async {
+            if gemma {
+                p3_03_runtime::analyze_gemma_source(identity.clone(), source.clone(), spans).await
+            } else {
+                p3_03_runtime::analyze_correction_source_off_ui(token.session_id.clone(), token.generation,
+                    1, terminology_revision, source.clone(), spans).await
+            }
+        };
+        let outcome = tokio::select! {
+            result = analyze => match result {
+                Ok(outcome) => outcome,
+                Err(_) => {
+                    // No silent rule-engine/cloud replay and no draft replacement on failure.
+                    if state.capture.lock().await.open_source(&token) == Some(source.as_str())
+                        && state.instant.lock().map(|mut i| i.cache_mut().active_identity() == Some(&identity)).unwrap_or(false) {
+                        let _ = app.emit("local-analysis-failed", serde_json::json!({"sessionId":token.session_id,"generation":token.generation}));
+                    }
+                    return;
+                }
+            },
+            _ = async {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                    if state.capture.lock().await.open_source(&token) != Some(source.as_str()) { break; }
+                    let valid = state.instant.lock().map(|mut i| i.cache_mut().active_identity() == Some(&identity)).unwrap_or(false);
+                    if !valid { break; }
+                }
+            } => return,
+        };
+        // Hold capture admission through cache publication; an invalidation cannot
+        // resurrect this result by activating an obsolete identity after completion.
+        let capture = state.capture.lock().await;
+        if capture.open_source(&token) != Some(source.as_str()) { return; }
+        if state.configuration.lock().map(|c| c.settings.mode != mode).unwrap_or(true) { return; }
+        let current_terms = state.terminology.lock().ok().map(|terms| terms.store().map(|store| store.revision).unwrap_or(0));
+        if current_terms != Some(terminology_revision) { return; }
+        if let Ok(mut instant) = state.instant.lock() {
+            if instant.cache_mut().store(outcome.candidate.clone()).is_err() { return; }
+        } else { return; }
         let _ = app.emit(
             "instant-candidate",
             p3_03_runtime::event_from_outcome(token.session_id, token.generation, &outcome),

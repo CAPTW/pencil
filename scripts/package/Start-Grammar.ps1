@@ -3,7 +3,9 @@
 [CmdletBinding()]
 param(
   [string]$RuntimeDirectory = (Join-Path $PSScriptRoot 'local/runtime'),
-  [string]$ModelPath = (Join-Path $PSScriptRoot 'local/gemma-4-12b-it-qat-q4_0.gguf')
+  [string]$ModelPath = (Join-Path $PSScriptRoot 'local/gemma-4-12b-it-qat-q4_0.gguf'),
+  # Owned synthetic qualification only until installed widget acceptance.
+  [switch]$EnableDesktopGemma
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
@@ -37,7 +39,7 @@ try {
   $manifest = Get-Content -LiteralPath (Join-Path $root 'MANIFEST.json') -Raw | ConvertFrom-Json
   $installation = Get-Content -LiteralPath (Join-Path $root 'install-receipt.json') -Raw | ConvertFrom-Json
   if ($installation.schema -cne 'grammar-personal-install/v1' -or $installation.state -cne 'installed' -or [IO.Path]::GetFullPath($installation.installRoot).TrimEnd('\','/') -ine $root.TrimEnd('\','/') -or $installation.sourceCommit -cne $manifest.sourceCommit) { throw 'Installation is incomplete or being removed' }
-  $null = Pin-File 'codex-pencil.exe'
+  $appHash = Pin-File 'codex-pencil.exe'
   $hostHash = Pin-File 'grammar-chromium-host.exe'
   $brokerHash = Pin-File 'grammar-gemma-broker.exe'
   $null = Pin-File 'Gemma-Assets.json'
@@ -54,7 +56,7 @@ try {
   $start = [Diagnostics.ProcessStartInfo]::new((Join-Path $root 'grammar-gemma-broker.exe'))
   $start.UseShellExecute = $false; $start.CreateNoWindow = $true
   $start.RedirectStandardInput = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
-  foreach ($arg in @($runtime, $assets.runtimeSha256, [IO.Path]::GetFullPath($ModelPath), $assets.model.sha256, (Join-Path $root 'grammar-chromium-host.exe'), $hostHash, $assets.runtimeBundleSha256)) { $start.ArgumentList.Add($arg) }
+  foreach ($arg in @($runtime, $assets.runtimeSha256, [IO.Path]::GetFullPath($ModelPath), $assets.model.sha256, (Join-Path $root 'grammar-chromium-host.exe'), $hostHash, $assets.runtimeBundleSha256, (Join-Path $root 'codex-pencil.exe'), $appHash)) { $start.ArgumentList.Add($arg) }
   Write-Host 'Starting local Gemma. The first model load can take longer than a recommendation.'
   $broker = [Diagnostics.Process]::Start($start)
   # Drain without retaining diagnostics or allowing the child pipe to fill.
@@ -76,8 +78,15 @@ try {
   $read = $broker.StandardOutput.ReadLineAsync()
   $appStart = [Diagnostics.ProcessStartInfo]::new((Join-Path $root 'codex-pencil.exe'))
   $appStart.UseShellExecute = $false; $appStart.WorkingDirectory = $root
+  if ($EnableDesktopGemma) {
+    $appStart.Environment['GRAMMAR_GEMMA_PIPE'] = $ready.name
+    $appStart.Environment['GRAMMAR_GEMMA_BROKER_SHA256'] = $brokerHash
+  } else {
+    $null = $appStart.Environment.Remove('GRAMMAR_GEMMA_PIPE')
+    $null = $appStart.Environment.Remove('GRAMMAR_GEMMA_BROKER_SHA256')
+  }
   $app = [Diagnostics.Process]::Start($appStart)
-  Write-Host 'Local Gemma is ready for enabled Chromium fields. Desktop model routing is not yet enabled.'
+  Write-Host 'Local Gemma is ready for enabled Chromium fields. Desktop Gemma is enabled only when explicitly selected for qualification.'
   while (-not $app.WaitForExit(200)) {
     if ($broker.HasExited) { throw 'Local Gemma stopped. No automatic restart or cloud fallback was attempted.' }
   }
