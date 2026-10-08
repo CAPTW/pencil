@@ -137,11 +137,27 @@ fn retry_local_model() -> Result<(),String> { local_model_session::retry() }
 #[tauri::command]
 fn local_model_status() -> local_model_session::Status { local_model_session::status() }
 
+#[tauri::command]
+fn api_session_status(state: State<'_, AppState>) -> Result<provider::api_session::Status, String> {
+    Ok(state.api_session.lock().map_err(|_| "api_session_unavailable")?.status())
+}
+#[tauri::command]
+fn configure_api_session(setup: provider::api_session::Setup, state: State<'_, AppState>) -> Result<provider::api_session::Status, String> {
+    let mut session = state.api_session.lock().map_err(|_| "api_session_unavailable")?;
+    if state.shutdown_started.load(Ordering::SeqCst) { return Err("app_shutting_down".into()); }
+    session.configure(setup).map_err(str::to_owned)
+}
+#[tauri::command]
+fn clear_api_session(state: State<'_, AppState>) -> Result<provider::api_session::Status, String> {
+    Ok(state.api_session.lock().map_err(|_| "api_session_unavailable")?.clear())
+}
+
 #[cfg(test)]
 #[path = "../tests/runtime_mission/mod.rs"]
 mod runtime_mission;
 
 struct AppState {
+    api_session: StdMutex<provider::api_session::ApiSession>,
     codex: CodexClientCache,
     capture: Mutex<CaptureSessionStore>,
     target_apply: Arc<target_apply::TargetApplyRuntime>,
@@ -160,6 +176,7 @@ struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
+            api_session: StdMutex::new(provider::api_session::ApiSession::default()),
             codex: CodexClientCache::default(),
             capture: Mutex::new(CaptureSessionStore::default()),
             target_apply: Arc::new(target_apply::TargetApplyRuntime::default()),
@@ -1623,6 +1640,9 @@ async fn cancel_cli_operation(state: &AppState) -> Option<Arc<provider::manager:
 }
 
 async fn shutdown_providers(state: &AppState) -> Result<(), &'static str> {
+    // Revocation is safe even after a poisoned setup lock; it must not prevent
+    // the remaining native/CLI owners from completing shutdown.
+    state.api_session.lock().unwrap_or_else(|error| error.into_inner()).clear();
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(8);
     // Only work retained before this explicit request is a retry. A new failure
     // must be reported first; do not silently renew its cleanup budget.
@@ -1705,6 +1725,9 @@ fn main() {
             export_terminology,
             load_settings,
             local_model_status,
+            api_session_status,
+            configure_api_session,
+            clear_api_session,
             retry_local_model,
             open_device_login_page,
             provider_snapshot,

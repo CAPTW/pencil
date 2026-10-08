@@ -16,6 +16,7 @@ const DEADLINE: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiError {
+    RequestAlreadyUsed,
     Configuration,
     ConsentRequired,
     InvalidKey,
@@ -107,9 +108,7 @@ async fn run(
     if prompt.trim().is_empty() || prompt.len() > MAX_REQUEST {
         return Err(ApiError::InputLimit);
     }
-    if key.is_empty() || key.len() > 4096 || !key.bytes().all(|c| (33..=126).contains(&c)) {
-        return Err(ApiError::InvalidKey);
-    }
+    validate_key(key)?;
     let mut authorization =
         HeaderValue::from_str(&format!("Bearer {key}")).map_err(|_| ApiError::InvalidKey)?;
     authorization.set_sensitive(true);
@@ -160,6 +159,12 @@ async fn run(
             if cancel.is_cancelled(){Err(ApiError::Cancelled)} else {result.map_err(|_|ApiError::Timeout)?}
         }
     }
+}
+pub(crate) fn validate_key(key: &str) -> Result<(), ApiError> {
+    if key.is_empty() || key.len() > 4096 || !key.bytes().all(|c| (33..=126).contains(&c)) {
+        return Err(ApiError::InvalidKey);
+    }
+    Ok(())
 }
 fn http_error(error: reqwest::Error) -> ApiError {
     if error.is_timeout() {

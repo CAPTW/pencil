@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { ApiSettings } from "./ApiSettings";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -968,11 +969,14 @@ export default function App() {
     rewriteCallRef.current += 1;
     rewritingIntentRef.current = null;
     setCloudReviewOpen(false);
+    let apiCleared = false;
+    try { await invoke("clear_api_session"); apiCleared = true; window.dispatchEvent(new Event("grammar-api-cleared")); }
+    catch { /* Report incomplete revocation below; still revoke existing CLI grants. */ }
     const saved = await saveSettings({ ...settings, autoRewrite: false,
       cloudProcessingAcknowledgementVersion: 0,
       antigravityCloudAcknowledgementVersion: 0,
       claudeCloudAcknowledgementVersion: 0 });
-    if (saved) {
+    if (saved && apiCleared) {
       setError(null);
       setIsRewriting(false);
       setStatus("Deep consent revoked — Instant draft kept");
@@ -980,7 +984,7 @@ export default function App() {
       // Persistence failure is not successful revocation. Still stop this request.
       try { await invoke("cancel_rewrite"); setIsRewriting(false); }
       catch (nextError) { setError(toErrorMessage(nextError)); }
-      setStatus("Consent was not saved. Previous permissions remain; Deep cancellation requested. Retry revocation.");
+      setStatus("Could not confirm all consent revocations. Deep cancellation requested. Retry revocation.");
     }
     consentRevokingRef.current = false;
     setRevokingConsent(false);
@@ -1790,6 +1794,7 @@ export default function App() {
                 onClick={() => void revokeCloudConsent()}>Revoke all Deep consent</button>
               <p>Revocation stops the current Deep request and turns off Auto rewrite. Already sent text cannot be recalled. Your draft stays available.</p>
             </section>
+            <ApiSettings />
             <section className="provider-settings" aria-label="Providers">
               <div className="translation-settings-heading">
                 <div>
