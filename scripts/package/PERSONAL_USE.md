@@ -17,6 +17,14 @@
 | Chromium 확장: textarea / 단순 contenteditable | 문서·필드 opt-in 후 로컬 inline 제안. 선택 후 Ctrl+Shift+G로 데스크톱 위젯의 검토·편집·Accept도 가능. 일반 사이트 전체의 호환성을 뜻하지 않음 |
 | Deep (클라우드 Provider) | 선택한 Provider 하나와 명시적 동의가 있을 때만. 실제 Provider 호출은 검증되지 않음(NOT_RUN) |
 
+## Gemma 시작 연결 후보
+
+`Prepare-GrammarLocal.ps1`은 고정된 Gemma 12B Q4_0 모델(약 7GB)과 llama.cpp CUDA 12.4 런타임을 `local` 폴더에 준비합니다. 첫 실행은 다운로드와 SHA-256 검증 때문에 오래 걸릴 수 있습니다. 공식 파일을 이미 보관했다면 `-AssetCache <폴더>`로 네트워크 없이 복사·검증합니다. 이 모드에서 파일이 없으면 다운로드로 전환하지 않습니다. GPU 드라이버를 설치하거나 변경하지 않습니다.
+
+준비 후 `pwsh -NoProfile -File .\Start-Grammar.ps1`로 실행합니다. 검증된 브로커가 준비된 뒤 앱을 열고, 사용자가 켠 Chromium 필드에만 로컬 Gemma 연결을 제공합니다. 앱을 트레이에서 종료하면 연결 정보를 회수하고 브로커 정리 완료를 기다립니다. 실행 중에는 제거를 거부합니다. 강제로 실행기를 종료해 연결 정보가 남았다면 자동으로 덮어쓰지 않고 오류를 표시합니다.
+
+**현재 한계:** 이 실행기는 데스크톱 Instant의 Gemma 전환까지 구현하지 않습니다. 모델 준비·기동 검증과 실제 설치 앱/브라우저 사용자 흐름 수용은 별개입니다. 기존 UI의 API endpoint/key 설정도 아직 없습니다. 이 중간 패키지를 완성된 Gemma 기본 프로토타입으로 배포하지 않습니다.
+
 ## 설치
 
 Microsoft WebView2 Runtime이 필요합니다. 설치기는 패키지 앱의 실제 런타임 검색을 먼저 실행하며, 검색 실패·비정상 종료·시간 초과 시 폴더나 등록을 만들지 않습니다. 런타임을 자동 설치하지 않습니다. [Microsoft 공식 WebView2 안내](https://developer.microsoft.com/microsoft-edge/webview2/)에서 설치한 후 다시 시도하세요. 이 검색 성공만으로 UI 동작 전체가 검증되는 것은 아닙니다. Chromium 호스트는 MSVC CRT를 정적으로 연결합니다.
