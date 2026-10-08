@@ -85,6 +85,9 @@ impl Service {
                     result
                 };
                 let _ = request.reply.send(result);
+                // A stopped model is terminal for this owner. Close the queue so
+                // admission/launcher observes failure instead of advertising readiness.
+                if !engine.ready { break; }
             }
             receiver.close();
             while let Ok(request) = receiver.try_recv() {
@@ -116,6 +119,9 @@ async fn revoked(flag: &AtomicBool) {
     }
 }
 impl Client {
+    pub async fn closed(&self) {
+        self.queue.closed().await;
+    }
     pub async fn recommend(
         &self,
         binding: Binding,
@@ -176,6 +182,25 @@ pub(super) fn closed_test_client() -> Client {
     let (queue, receiver) = mpsc::channel(1);
     drop(receiver);
     Client { queue }
+}
+
+#[cfg(test)]
+pub(super) fn rejecting_test_client() -> Client {
+    let (queue, mut receiver) = mpsc::channel::<Request>(4);
+    tokio::spawn(async move {
+        while let Some(request) = receiver.recv().await {
+            let _ = request.reply.send(Err("synthetic_rejection".into()));
+        }
+    });
+    Client { queue }
+}
+
+#[cfg(test)]
+pub(super) fn closable_test_client() -> (Client, oneshot::Sender<()>) {
+    let (queue, receiver) = mpsc::channel::<Request>(1);
+    let (close, closed) = oneshot::channel();
+    tokio::spawn(async move { let _ = closed.await; drop(receiver); });
+    (Client { queue }, close)
 }
 
 #[cfg(test)]

@@ -74,10 +74,10 @@ async fn run() -> Result<(), String> {
     }
     .await;
     service.close().await?;
-    result?;
+    // Cleanup acknowledgement is independent of the operation outcome/exit code.
     writeln!(std::io::stdout(), "{{\"cleanup\":\"complete\"}}")
         .map_err(|_| "gemma_broker_stdout")?;
-    Ok(())
+    result
 }
 
 // Trusted launcher supplies this digest, never extension/document data.
