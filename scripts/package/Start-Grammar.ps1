@@ -14,7 +14,7 @@ $pins = [Collections.Generic.List[IO.FileStream]]::new()
 $lock = $null; $broker = $null; $app = $null; $published = $null; $original = $null
 $read = $null; $drain = $null; $cleanupComplete = $false
 $configConflict = $false; $brokerFailed = $false
-$session = $null; $sessionPath = $null; $sessionBytes = $null
+$session = $null; $sessionPath = $null; $sessionBytes = $null; $retryTicket = $null
 $configPath = Join-Path $root 'grammar-chromium-host.origin.json'
 $utf8 = [Text.UTF8Encoding]::new($false)
 function Pin-File([string]$Name) {
@@ -37,7 +37,7 @@ function Write-Config([string]$Text) {
 }
 function Publish-Session([string]$Phase, $PipeName = $null) {
   if ($null -eq $sessionPath) { return }
-  $text = @{version=1;session=$session;phase=$Phase;pipe=$PipeName} | ConvertTo-Json -Compress
+  $text = @{version=1;session=$session;phase=$Phase;pipe=$PipeName;retryTicket=$retryTicket} | ConvertTo-Json -Compress
   $temp = $sessionPath + '.tmp'
   try {
     [IO.File]::WriteAllText($temp,$text,$utf8)
@@ -64,6 +64,48 @@ function Restore-Config {
     return $current -cne $original
   } catch { return $true }
 }
+function Start-Broker {
+  $script:retryTicket = $null
+  $script:cleanupComplete = $false
+  $script:brokerFailed = $false
+  Publish-Session 'starting'
+  Write-Host 'Starting local Gemma. The first model load can take longer than a recommendation.'
+  $script:broker = [Diagnostics.Process]::Start($start)
+  # Drain without retaining diagnostics or allowing the child pipe to fill.
+  $script:drain = $broker.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+  $script:read = $broker.StandardOutput.ReadLineAsync()
+  $clock = [Diagnostics.Stopwatch]::StartNew()
+  while (-not $read.IsCompleted -and $clock.Elapsed.TotalSeconds -lt 190) {
+    if ($null -ne $app -and $app.HasExited) { throw 'App closed while Gemma was preparing' }
+    Start-Sleep -Milliseconds 50
+  }
+  if ($null -ne $app -and $app.HasExited) { throw 'App closed while Gemma was preparing' }
+  if (-not $read.IsCompleted) { throw 'Gemma startup timed out' }
+  $line = $read.GetAwaiter().GetResult(); $script:read = $null
+  if (-not $line -or $line.Length -gt 1024) { throw 'Gemma did not become ready' }
+  $ready = $line | ConvertFrom-Json
+  if ($ready.version -ne 1 -or $ready.pid -ne $broker.Id -or $ready.name -notmatch '^\\\\\.\\pipe\\Grammar\.Gemma\.Broker\.[0-9a-f-]{36}$' -or $broker.HasExited) { throw 'Invalid Gemma readiness' }
+  $config = $original | ConvertFrom-Json
+  $config | Add-Member -NotePropertyName gemma -NotePropertyValue @{pipe=$ready.name;broker_sha256=$brokerHash}
+  $candidateConfig = $config | ConvertTo-Json -Depth 6 -Compress
+  # Publish only if the installer sidecar has not changed during model startup.
+  if ([IO.File]::ReadAllText($configPath) -cne $original) { throw 'Host configuration changed during startup' }
+  Write-Config $candidateConfig
+  $script:published = $candidateConfig
+  $script:read = $broker.StandardOutput.ReadLineAsync()
+  Publish-Session 'ready' $ready.name
+  if ($null -eq $app) { $script:app = Start-Desktop }
+  Write-Host 'Local Gemma is ready for enabled Chromium fields. Desktop Gemma is enabled only when explicitly selected for qualification.'
+ }
+function Confirm-Cleanup {
+  if ($null -ne $read -and $read.Wait(1000)) {
+    $script:cleanupComplete = $read.GetAwaiter().GetResult() -ceq '{"cleanup":"complete"}'
+    $script:read = $null
+  }
+  if ($null -ne $drain -and -not $drain.Wait(1000)) { return $false }
+  return $cleanupComplete
+}
+
 try {
   # The retained exclusive handle prevents two launchers publishing different brokers.
   $lock = [IO.File]::Open((Join-Path $root 'gemma-session.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
@@ -94,43 +136,35 @@ try {
     Publish-Session 'starting'
     $app = Start-Desktop
   }
-  Write-Host 'Starting local Gemma. The first model load can take longer than a recommendation.'
-  $broker = [Diagnostics.Process]::Start($start)
-  # Drain without retaining diagnostics or allowing the child pipe to fill.
-  $drain = $broker.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
-  $read = $broker.StandardOutput.ReadLineAsync()
-  $clock = [Diagnostics.Stopwatch]::StartNew()
-  while (-not $read.IsCompleted -and $clock.Elapsed.TotalSeconds -lt 190) {
-    if ($null -ne $app -and $app.HasExited) { throw 'App closed while Gemma was preparing' }
-    Start-Sleep -Milliseconds 50
-  }
-  if ($null -ne $app -and $app.HasExited) { throw 'App closed while Gemma was preparing' }
-  if (-not $read.IsCompleted) { throw 'Gemma startup timed out' }
-  $line = $read.GetAwaiter().GetResult(); $read = $null
-  if (-not $line -or $line.Length -gt 1024) { throw 'Gemma did not become ready' }
-  $ready = $line | ConvertFrom-Json
-  if ($ready.version -ne 1 -or $ready.pid -ne $broker.Id -or $ready.name -notmatch '^\\\\\.\\pipe\\Grammar\.Gemma\.Broker\.[0-9a-f-]{36}$' -or $broker.HasExited) { throw 'Invalid Gemma readiness' }
-  $config | Add-Member -NotePropertyName gemma -NotePropertyValue @{pipe=$ready.name;broker_sha256=$brokerHash}
-  $candidateConfig = $config | ConvertTo-Json -Depth 6 -Compress
-  # Publish only if the installer sidecar has not changed during model startup.
-  if ([IO.File]::ReadAllText($configPath) -cne $original) { throw 'Host configuration changed during startup' }
-  Write-Config $candidateConfig
-  $published = $candidateConfig
-  $read = $broker.StandardOutput.ReadLineAsync()
-  Publish-Session 'ready' $ready.name
-  if ($null -eq $app) { $app = Start-Desktop }
-  Write-Host 'Local Gemma is ready for enabled Chromium fields. Desktop Gemma is enabled only when explicitly selected for qualification.'
+  Start-Broker
   while (-not $app.WaitForExit(200)) {
     if (-not $brokerFailed -and $broker.HasExited) {
       $brokerFailed = $true
-      Publish-Session 'failed'
       $configConflict = Restore-Config
-      Write-Warning 'Local Gemma stopped. Your app remains open. Close Grammar from the tray, then run Start-Grammar.ps1 to retry. No automatic restart or request replay occurred.'
+      if ((Confirm-Cleanup) -and -not $configConflict -and $EnableDesktopGemma) {
+        $retryTicket = [Guid]::NewGuid().ToString('N')
+      }
+      Publish-Session 'failed'
+      Write-Warning 'Local Gemma stopped. Your draft remains open. In-app retry is available only after confirmed cleanup. No request is replayed. Close Grammar from the tray and relaunch if retry is unavailable.'
       # Keep image pins and installation ownership until the user closes the app.
       # Exiting here would permit uninstall or a duplicate launcher over its draft.
     }
+    if ($null -ne $retryTicket) {
+      $requestPath = $sessionPath + '.retry'
+      if ((Test-Path -LiteralPath $requestPath -PathType Leaf) -and (Get-Item -LiteralPath $requestPath).Length -eq 32 -and [IO.File]::ReadAllText($requestPath) -ceq $retryTicket) {
+        # Consume a single explicit generation-bound request before starting anything.
+        Remove-Item -LiteralPath $requestPath
+        $retryTicket = $null
+        Publish-Session 'starting'
+        if ($app.HasExited) { break }
+        if ([IO.File]::ReadAllText($configPath) -cne $original) { throw 'Host configuration changed before retry' }
+        $broker.Dispose(); $broker = $null; $read = $null; $drain = $null
+        Start-Broker
+      }
+    }
   }
 } catch {
+  $retryTicket = $null
   try { Publish-Session 'failed' } catch { Write-Warning 'Local Gemma status could not be updated.' }
   # A failed startup must revoke the broker promptly, while retaining the app draft.
   try {
@@ -157,10 +191,7 @@ try {
         $null = $broker.WaitForExit(5000)
         throw 'Gemma cleanup incomplete; owned process tree termination requested'
       }
-      if ($null -ne $read -and $read.Wait(1000)) {
-        $cleanupLine = $read.GetAwaiter().GetResult()
-        $cleanupComplete = $cleanupLine -ceq '{"cleanup":"complete"}'
-      }
+      $null = Confirm-Cleanup
       if ($null -ne $published -and -not $cleanupComplete) { throw 'Gemma cleanup was not confirmed' }
       if ($null -ne $drain -and -not $drain.Wait(1000)) { throw 'Gemma diagnostic reader did not finish' }
       if ($null -ne $published -and ($brokerFailed -or $broker.ExitCode -ne 0)) { throw 'Local Gemma stopped; cleanup confirmed. Run Start-Grammar.ps1 again to retry explicitly.' }
@@ -168,6 +199,10 @@ try {
   } finally {
     if ($null -ne $broker) { $broker.Dispose() }
     if ($null -ne $app) { $app.Dispose() }
+    if ($null -ne $sessionPath -and $null -ne $retryTicket) {
+      $requestPath = $sessionPath + '.retry'
+      if ((Test-Path -LiteralPath $requestPath -PathType Leaf) -and (Get-Item -LiteralPath $requestPath).Length -eq 32 -and [IO.File]::ReadAllText($requestPath) -ceq $retryTicket) { Remove-Item -LiteralPath $requestPath }
+    }
     if ($null -ne $sessionPath -and (Test-Path -LiteralPath $sessionPath)) {
       if ([IO.File]::ReadAllText($sessionPath) -ceq $sessionBytes) { Remove-Item -LiteralPath $sessionPath }
     }

@@ -4,10 +4,10 @@ use std::io::Read;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Snapshot { version:u32, session:String, phase:String, pipe:Option<String> }
+struct Snapshot { version:u32, session:String, phase:String, pipe:Option<String>, #[serde(default, rename="retryTicket")] retry_ticket:Option<String> }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
-pub(crate) struct Status { pub phase:String }
+pub(crate) struct Status { pub phase:String, pub can_retry:bool, pub retry_generation:Option<String> }
 fn nonce_valid(n:&str)->bool { n.len()==32 && n.bytes().all(|b|b.is_ascii_hexdigit()) }
 fn parse(bytes:&[u8],nonce:&str)->Result<Snapshot,String> {
     if !nonce_valid(nonce) || bytes.len()>4096 { return Err("gemma_session_invalid".into()); }
@@ -22,6 +22,7 @@ fn parse(bytes:&[u8],nonce:&str)->Result<Snapshot,String> {
             return Err("gemma_session_invalid".into());
         }
     } else if state.pipe.is_some() { return Err("gemma_session_invalid".into()); }
+    if state.retry_ticket.as_ref().is_some_and(|t| state.phase!="failed" || !nonce_valid(t)) { return Err("gemma_session_invalid".into()); }
     Ok(state)
 }
 // Retain one launcher process handle: a reused PID cannot revive a stale session.
@@ -48,10 +49,28 @@ fn snapshot()->Result<Snapshot,String> {
     parse(&bytes,&nonce)
 }
 pub(crate) fn status()->Status {
-    let phase=if std::env::var_os("GRAMMAR_GEMMA_SESSION").is_some() {
-        snapshot().map(|s|s.phase).unwrap_or_else(|_|"failed".into())
-    } else { "unmanaged".into() };
-    Status{phase}
+    match std::env::var_os("GRAMMAR_GEMMA_SESSION") {
+        None => Status{phase:"unmanaged".into(),can_retry:false,retry_generation:None},
+        Some(_) => match snapshot() {
+            Ok(s)=>Status{phase:s.phase,can_retry:s.retry_ticket.is_some(),retry_generation:s.retry_ticket},
+            Err(_)=>Status{phase:"failed".into(),can_retry:false,retry_generation:None},
+        }
+    }
+}
+// Only a fresh launcher-issued failure ticket can request model preparation.
+// No capture, draft, text, endpoint or executable is accepted from the caller.
+pub(crate) fn retry()->Result<(),String> {
+    let state=snapshot()?;
+    let ticket=state.retry_ticket.ok_or("gemma_retry_unavailable")?;
+    let app=std::env::current_exe().map_err(|_|"gemma_app_path")?;
+    let path=app.parent().ok_or("gemma_app_path")?.join(format!("gemma-session-{}.json.retry",state.session));
+    write_retry(&path,&ticket)
+}
+fn write_retry(path:&std::path::Path,ticket:&str)->Result<(),String> {
+    use std::io::Write;
+    // create_new prevents duplicate clicks from replacing an outstanding request.
+    let mut file=std::fs::OpenOptions::new().write(true).create_new(true).open(path).map_err(|_|"gemma_retry_pending")?;
+    file.write_all(ticket.as_bytes()).map_err(|_|"gemma_retry_write".into())
 }
 pub(crate) fn endpoint()->Result<String,String> {
     if std::env::var_os("GRAMMAR_GEMMA_SESSION").is_some() {
@@ -62,6 +81,20 @@ pub(crate) fn endpoint()->Result<String,String> {
 }
 #[cfg(test)] mod tests {
     use super::*;
+    #[test] fn retry_ticket_is_failure_only_and_requests_are_exclusive() {
+        let n="a".repeat(32);
+        let mut v=serde_json::json!({"version":1,"session":n,"phase":"failed","pipe":null,"retryTicket":n});
+        assert!(parse(&serde_json::to_vec(&v).unwrap(),&n).is_ok());
+        v["phase"]=serde_json::json!("starting");
+        assert!(parse(&serde_json::to_vec(&v).unwrap(),&n).is_err());
+        v["phase"]=serde_json::json!("failed");v["retryTicket"]=serde_json::json!("../bad");
+        assert!(parse(&serde_json::to_vec(&v).unwrap(),&n).is_err());
+        let path=std::env::temp_dir().join(format!("grammar-retry-test-{}",uuid::Uuid::new_v4()));
+        write_retry(&path,&n).unwrap();
+        assert!(write_retry(&path,&"b".repeat(32)).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(),n);
+        std::fs::remove_file(path).unwrap();
+    }
     #[test] fn session_is_scoped_bounded_and_never_supplies_binary_hash() {
         let n="a".repeat(32);
         for phase in ["starting","failed"] {

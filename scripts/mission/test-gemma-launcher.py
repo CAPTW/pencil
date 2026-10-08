@@ -25,6 +25,7 @@ fn main() {
  println!(r#"{{"version":1,"pid":{},"name":"\\\\.\\pipe\\Grammar.Gemma.Broker.00000000-0000-0000-0000-000000000001"}}"#,std::process::id());
  std::io::stdout().flush().unwrap();
  if dir.join("crash-after-app").exists() {
+   std::thread::sleep(std::time::Duration::from_millis(500));
    for _ in 0..500 { if dir.join("app-started").exists() { break; } std::thread::sleep(std::time::Duration::from_millis(10)); }
    if dir.join("confirmed-failure").exists() { println!("{{\"cleanup\":\"complete\"}}"); std::io::stdout().flush().unwrap(); }
    std::process::exit(3);
@@ -37,6 +38,7 @@ APP = r'''
 fn main() {
  let dir=std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
  std::fs::write(dir.join("app-started"),b"yes").unwrap();
+ std::fs::write(dir.join("app.pid"),std::process::id().to_string()).unwrap();
  std::fs::write(dir.join("desktop-configured"), if std::env::var_os("GRAMMAR_GEMMA_SESSION").is_some() && std::env::var_os("GRAMMAR_GEMMA_LAUNCHER_PID").is_some() && std::env::var_os("GRAMMAR_GEMMA_BROKER_SHA256").is_some() {b"yes".as_slice()} else {b"no".as_slice()}).unwrap();
  if dir.join("external-change").exists() {
    std::fs::write(dir.join("grammar-chromium-host.origin.json"),b"{\"outside\":true}").unwrap();
@@ -111,6 +113,72 @@ class LauncherTests(unittest.TestCase):
         self.assertTrue((self.root / "app-started").exists())
         self.assertEqual((self.root / "desktop-configured").read_text(),"no")
         self.assertEqual(self.sidecar.read_text(), self.original)
+
+    def wait_phase(self, phase):
+        deadline=time.monotonic()+10
+        while time.monotonic()<deadline:
+            files=list(self.root.glob("gemma-session-*.json"))
+            if files:
+                state=json.loads(files[0].read_text())
+                if state["phase"]==phase: return files[0],state
+            time.sleep(.02)
+        self.fail("missing phase: "+phase)
+
+    def test_explicit_retry_keeps_app_and_rejects_stale_ticket(self):
+        (self.root / "crash-after-app").touch()
+        (self.root / "confirmed-failure").touch()
+        (self.root / "wait-release").touch()
+        first=subprocess.Popen(["pwsh","-NoProfile","-File",str(self.root / "Start-Grammar.ps1"),"-EnableDesktopGemma"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding="utf-8")
+        try:
+            path,state=self.wait_phase("failed")
+            self.assertIsNotNone(state["retryTicket"])
+            pid=(self.root / "broker.pid").read_text()
+            app_pid=(self.root / "app.pid").read_text()
+            request=path.with_suffix(".json.retry")
+            request.write_text("0"*32)
+            time.sleep(.5)
+            self.assertEqual((self.root / "broker.pid").read_text(),pid)
+            self.assertEqual(json.loads(path.read_text())["phase"],"failed")
+            # A second failure issues a different ticket; old clicks cannot replay.
+            request.write_text(state["retryTicket"])
+            deadline=time.monotonic()+10
+            while (self.root / "broker.pid").read_text()==pid and time.monotonic()<deadline:
+                time.sleep(.02)
+            _,second=self.wait_phase("failed")
+            self.assertNotEqual(second["retryTicket"],state["retryTicket"])
+            second_pid=(self.root / "broker.pid").read_text()
+            request.write_text(state["retryTicket"])
+            time.sleep(.5)
+            self.assertEqual((self.root / "broker.pid").read_text(),second_pid)
+            # User explicitly retries the new failure; app remains the same process.
+            (self.root / "crash-after-app").unlink()
+            request.write_text(second["retryTicket"])
+            self.wait_phase("ready")
+            self.assertNotEqual((self.root / "broker.pid").read_text(),pid)
+            self.assertEqual((self.root / "app.pid").read_text(),app_pid)
+            self.assertFalse(request.exists())
+            self.assertFalse((self.root / "app-exited").exists())
+            self.assertIsNone(json.loads(path.read_text())["retryTicket"])
+        finally:
+            (self.root / "release-app").touch()
+            out,err=first.communicate(timeout=20)
+        self.assertEqual(first.returncode,0,err)
+        self.assertEqual(self.sidecar.read_text(),self.original)
+        self.assertFalse(list(self.root.glob("gemma-session-*.json")))
+
+    def test_unconfirmed_cleanup_never_offers_retry(self):
+        (self.root / "crash-after-app").touch()
+        (self.root / "wait-release").touch()
+        first=subprocess.Popen(["pwsh","-NoProfile","-File",str(self.root / "Start-Grammar.ps1"),"-EnableDesktopGemma"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding="utf-8")
+        try:
+            _,state=self.wait_phase("failed")
+            self.assertIsNone(state["retryTicket"])
+            self.assertFalse((self.root / "app-exited").exists())
+        finally:
+            (self.root / "release-app").touch()
+            out,err=first.communicate(timeout=20)
+        self.assertNotEqual(first.returncode,0)
+        self.assertIn("cleanup was not confirmed",err)
 
     def test_desktop_configuration_requires_explicit_trial_option(self):
         result = self.run_launcher("-EnableDesktopGemma")

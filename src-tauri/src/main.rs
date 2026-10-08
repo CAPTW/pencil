@@ -132,6 +132,9 @@ impl Default for ConfigurationState {
 }
 
 #[tauri::command]
+fn retry_local_model() -> Result<(),String> { local_model_session::retry() }
+
+#[tauri::command]
 fn local_model_status() -> local_model_session::Status { local_model_session::status() }
 
 #[cfg(test)]
@@ -1702,6 +1705,7 @@ fn main() {
             export_terminology,
             load_settings,
             local_model_status,
+            retry_local_model,
             open_device_login_page,
             provider_snapshot,
             query_terminology_entries,
