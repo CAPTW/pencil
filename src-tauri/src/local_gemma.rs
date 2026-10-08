@@ -681,30 +681,54 @@ mod tests {
         assert!(!label.is_empty() && label.bytes().all(|b|b.is_ascii_alphanumeric() || b == b'-'));
         let receipt = root.join(format!("intent-quality-{label}.json"));
         assert!(!receipt.exists(), "preserve previous evidence");
+        let artifact_started=Instant::now();
         let exe = root.join("runtime/llama-server.exe");
-        let model = root.join("gemma-4-12b-it-qat-q4_0.gguf");
+        let model_id=std::env::var("GRAMMAR_GEMMA_TRIAL_MODEL").unwrap_or_else(|_|"12b".into());
+        let (model_name,model_sha)=match model_id.as_str() {
+            "12b"=>("gemma-4-12b-it-qat-q4_0.gguf","93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b"),
+            "e4b"=>("gemma-4-E4B_q4_0-it.gguf","676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee"),
+            _=>panic!("unknown owned trial model"),
+        };
+        let model = root.join(model_name);
         use sha2::{Digest, Sha256};
         use std::io::Read;
         for (path, expected) in [(&exe, "a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1"),
-            (&model, "93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b")] {
+            (&model, model_sha)] {
             let mut file = std::fs::File::open(path).unwrap();
             let mut hash = Sha256::new();
             let mut buffer = vec![0u8; 1024 * 1024];
             loop { let n = file.read(&mut buffer).unwrap(); if n == 0 { break; } hash.update(&buffer[..n]); }
             assert_eq!(format!("{:x}", hash.finalize()), expected);
         }
+        let artifact_ms=artifact_started.elapsed().as_secs_f64()*1000.;
         let corpus_text = match std::env::var("GRAMMAR_GEMMA_REWRITE_CORPUS").as_deref() {
             Ok("holdout") => include_str!("../../scripts/mission/gemma-rewrite-holdout.json"),
+            Ok("fresh") => include_str!("../../scripts/mission/gemma-rewrite-fresh.json"),
             Err(_) | Ok("regression") => include_str!("../../scripts/mission/gemma-rewrite-corpus.json"),
             _ => panic!("unknown owned corpus"),
         };
         let corpus: Value = serde_json::from_str(corpus_text).unwrap();
         let mut report = json!({"scope":"REAL_GPU_SERVICE_PIPE_SYNTHETIC_REWRITE_NOT_UI_ACCEPTANCE",
+            "testExecutableSha256":format!("{:x}",Sha256::digest(std::fs::read(std::env::current_exe().unwrap()).unwrap())),
+            "artifactVerificationMs":artifact_ms,"modelId":model_id,"modelSha256":model_sha,"runtimeSha256":"a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1",
             "corpusSha256":format!("{:x}",Sha256::digest(corpus_text.as_bytes())),
             "observationDeadlineMs":10000,"recommendationTargetMs":1000,"quality":"REQUIRES_REVIEW","rows":[]});
         let save = |value:&Value| std::fs::write(&receipt, serde_json::to_vec_pretty(value).unwrap()).unwrap();
         save(&report);
-        let engine = GemmaEngine::start(&exe, &model, Instant::now() + Duration::from_secs(180)).await.unwrap();
+        let startup_started=Instant::now();
+        let started=GemmaEngine::start(&exe, &model, startup_started + Duration::from_secs(180)).await;
+        report["startupMs"]=json!(startup_started.elapsed().as_secs_f64()*1000.);
+        let engine=match started {
+            Ok(engine)=>engine,
+            Err(error)=>{
+                report["startupError"]=json!(error);
+                report["notRun"]=json!(corpus.as_array().unwrap().len());
+                report["cleanup"]=json!({"status":"NOT_SEPARATELY_OBSERVED_STARTUP_FAILURE"});
+                save(&report);
+                panic!("owned trial startup failed; see receipt");
+            }
+        };
+        save(&report);
         let workspace = engine.workspace.as_ref().unwrap().cwd().parent().unwrap().to_owned();
         let (owner, client) = service::Service::own(engine);
         for (index, case) in corpus.as_array().unwrap().iter().enumerate() {
