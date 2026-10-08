@@ -2282,3 +2282,28 @@ Real modified Chromium/native/GPU SSD12B run live-browser-23rFuR: startup8657.72
 
 Validation: full library117 PASS/19 ignored, broker boundary test1 PASS/profile1 ignored in normal suite, actual HDD+SSD profile trials PASS; release broker/host build PASS with existing warnings; browser syntax/unknown-storage negative/governance/diff PASS. Same-integrator review only. No main/push/release, other-process termination, security/driver settings, user documents or profiles. Evidence D:/dev/grammar-evidence/grammar-gemma-20261007/STORAGE_PHASE_RESULT.md and storage-phase-source-final.json. Mission INCOMPLETE.
 Next: use explicit SSD trial profile for further quality/tail work; diagnose E4B unchanged paraphrase/ambiguous entities and prior English guard rejection before any model switch. Long translation target remains unmet for12B. Preserve cold-start/shared-load and late-cleanup uncertainty, installed integration and global editor work; CUDA-specific tuning remains deferred.
+
+
+# Gemma paraphrase diagnosis and speculative decoding trial — 2026-10-08
+
+Base d6041a45954a2334c3ffd2ea24d427d505468559. Candidate only; mission INCOMPLETE. No model/prompt/decoding default change, no main adoption, push, release or installed acceptance.
+
+## Quality diagnosis
+E4B baseline English professional paraphrase returned Spanish. Existing English modality guard refused publication. Two other diagnostic baseline paraphrases were unchanged. Raw outputs belong exclusively to fixed synthetic fixtures, not user documents. This explains the observed regression case, not every E4B failure.
+Three rejected test-only instructions: r1 explicitly demanded rewording but added Could / changed does not to cannot; r2 forbade adding modal verbs but still changed does not to cannot; r3 restricted rewriting to lexical substitutions and passed guards, but produced overformal unnatural wording and broadened discount to reduction and cause to reason. Guard success is not semantic quality success. No guard weakened and no prompt promoted. r3 English professional1140.6ms, Korean1392.8ms, English caveat884.6ms; quality failures remain even where speed is below1s.
+Receipts paraphrase-prompt-diagnostic-r1/r2/r3.json and matching logs preserve outputs. r1 is exploratory and did not itself retain artifact pins. r2/r3 verify and retain runtime/model handles; each records its test executable SHA. Final ignored diagnostic retains r3 rejected instruction explicitly; earlier variants remain in this session's evidence, not the production prompt. Diagnostic completion means requests/cleanup completed, NOT quality acceptance.
+
+## Speed experiment
+Pinned llama b11461 CUDA12.4 help exposes --spec-type ngram-simple. Test-only cfg(test) selector GRAMMAR_GEMMA_TRIAL_SPEC allows none or owned-synthetic ngram-simple; invalid values fail before lease/workspace creation. Defaults for ngram remain untouched. Production builds contain no selector and preserve existing invocation. No custom CUDA kernel, assistant-model download, driver change or extra inference provider.
+Measured same six-case service/pipe corpus, observation allowance10s separate from unchanged product1s. First pair uses identical test executable, second pair uses identical newer executable adding retained artifact pins. Executable/model/runtime/corpus hashes in receipts.
+- ngram r1: first8411.4ms; second10006.3ms deadline;4 NOT_RUN.
+- none r2:6 valid,3 target misses,max1383.7ms.
+- ngram r2:2529.2ms,3783.9ms,then10011.2ms deadline;3 NOT_RUN.
+- none r3:6 valid,6 target misses,max5557.7ms.
+All completed outputs byte-match prior12B baseline on corresponding cases. Missing outputs are not parity evidence. All four cleanup results OK and actual workspace removal confirmed. spec-comparison-summary.json; spec-pair-r2-monitor.jsonl captures shared GPU context. High variable GPU utilization/memory occurred; sequential order and uncontrolled external load prevent causal speedup/slowdown attribution. Nevertheless no useful speedup was demonstrated and ngram is NOT activated. Previous deadline/cleanup failures remain failures.
+
+## Retained changes and validation
+Pure production prompt builder extracted without content/expression change; whitespace-normalized comparison against base confirms equivalence. Raw diagnostic calls actual generation and existing guards but bypasses publication: NOT product acceptance. Service/pipe fixture now retains verified deny-write/delete artifact handles for its lifetime. No UI, Apply or product privacy boundary changed.
+Full library117 PASS/20 ignored. Production broker/host release build PASS, recorded in diagnostic-build-r2.log; first attempt used wrong host target name, preserved diagnostic-build.log, not a product build failure. Governance and diff checks PASS. Existing compiler warnings retained. Same-integrator review only, not independent review.
+
+Next: keep12B baseline. Investigate output-generation work for long translations with a held-out quality corpus and resource-aware measurements, without shortening away source meaning or raising1s/0.5s targets. Shared-load availability/tail costs remain unresolved; installed Gemma/Sandbox/physicalIME/global-editor integration remains unqualified. Do not retry rejected E4B prompts or ngram blindly.
