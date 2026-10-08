@@ -18,6 +18,9 @@ fn main() {
  let dir=std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
  std::fs::write(dir.join("broker.pid"),std::process::id().to_string()).unwrap();
  assert_eq!(std::env::args().skip(1).count(),9);
+ if dir.join("wait-broker").exists() {
+   for _ in 0..500 { if dir.join("release-broker").exists() {break;} std::thread::sleep(std::time::Duration::from_millis(10)); }
+ }
  if dir.join("fail-start").exists() { std::process::exit(2); }
  println!(r#"{{"version":1,"pid":{},"name":"\\\\.\\pipe\\Grammar.Gemma.Broker.00000000-0000-0000-0000-000000000001"}}"#,std::process::id());
  std::io::stdout().flush().unwrap();
@@ -34,7 +37,7 @@ APP = r'''
 fn main() {
  let dir=std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
  std::fs::write(dir.join("app-started"),b"yes").unwrap();
- std::fs::write(dir.join("desktop-configured"), if std::env::var_os("GRAMMAR_GEMMA_PIPE").is_some() && std::env::var_os("GRAMMAR_GEMMA_BROKER_SHA256").is_some() {b"yes".as_slice()} else {b"no".as_slice()}).unwrap();
+ std::fs::write(dir.join("desktop-configured"), if std::env::var_os("GRAMMAR_GEMMA_SESSION").is_some() && std::env::var_os("GRAMMAR_GEMMA_LAUNCHER_PID").is_some() && std::env::var_os("GRAMMAR_GEMMA_BROKER_SHA256").is_some() {b"yes".as_slice()} else {b"no".as_slice()}).unwrap();
  if dir.join("external-change").exists() {
    std::fs::write(dir.join("grammar-chromium-host.origin.json"),b"{\"outside\":true}").unwrap();
  }
@@ -156,6 +159,60 @@ class LauncherTests(unittest.TestCase):
         self.assertNotIn("cleanup was not confirmed",result.stderr)
         self.assertTrue((self.root / "app-exited").exists())
         self.assertEqual(self.sidecar.read_text(),self.original)
+
+    def test_desktop_opens_while_preparing_and_publishes_ready_without_relaunch(self):
+        (self.root / "wait-broker").touch()
+        (self.root / "wait-release").touch()
+        first=subprocess.Popen(["pwsh","-NoProfile","-File",str(self.root / "Start-Grammar.ps1"),"-EnableDesktopGemma"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding="utf-8")
+        try:
+            deadline=time.monotonic()+10
+            while not (self.root / "app-started").exists() and time.monotonic()<deadline: time.sleep(.02)
+            self.assertTrue((self.root / "app-started").exists())
+            files=list(self.root.glob("gemma-session-*.json")); self.assertEqual(len(files),1)
+            self.assertEqual(json.loads(files[0].read_text())["phase"],"starting")
+            self.assertEqual(self.sidecar.read_text(),self.original)
+            (self.root / "release-broker").touch()
+            while json.loads(files[0].read_text())["phase"]!="ready" and time.monotonic()<deadline: time.sleep(.02)
+            ready=json.loads(files[0].read_text());self.assertEqual(ready["phase"],"ready")
+            self.assertTrue(ready["pipe"].startswith(r"\\.\pipe\Grammar.Gemma.Broker."))
+            self.assertIsNone(first.poll())
+            self.assertFalse((self.root / "app-exited").exists())
+        finally:
+            (self.root / "release-broker").touch();(self.root / "release-app").touch()
+            out,err=first.communicate(timeout=20)
+        self.assertEqual(first.returncode,0,err)
+        self.assertFalse(list(self.root.glob("gemma-session-*.json")))
+        self.assertEqual(self.sidecar.read_text(),self.original)
+
+    def test_desktop_start_failure_preserves_app_until_explicit_exit(self):
+        (self.root / "fail-start").touch();(self.root / "wait-release").touch()
+        first=subprocess.Popen(["pwsh","-NoProfile","-File",str(self.root / "Start-Grammar.ps1"),"-EnableDesktopGemma"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding="utf-8")
+        try:
+            deadline=time.monotonic()+10
+            phase=None
+            while time.monotonic()<deadline:
+                files=list(self.root.glob("gemma-session-*.json"))
+                if files: phase=json.loads(files[0].read_text())["phase"]
+                if phase=="failed": break
+                time.sleep(.02)
+            self.assertEqual(phase,"failed")
+            self.assertTrue((self.root / "app-started").exists())
+            self.assertIsNone(first.poll())
+            self.assertNotEqual(self.run_launcher().returncode,0)
+            self.assertEqual(self.sidecar.read_text(),self.original)
+        finally:
+            (self.root / "release-app").touch();out,err=first.communicate(timeout=20)
+        self.assertNotEqual(first.returncode,0)
+        self.assertFalse(list(self.root.glob("gemma-session-*.json")))
+
+    def test_desktop_exit_during_startup_does_not_publish_endpoint(self):
+        (self.root / "wait-broker").touch()
+        result=self.run_launcher("-EnableDesktopGemma")
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn("App closed while Gemma was preparing",result.stderr)
+        self.assertTrue((self.root / "app-exited").exists())
+        self.assertEqual(self.sidecar.read_text(),self.original)
+        self.assertFalse(list(self.root.glob("gemma-session-*.json")))
 
     def test_missing_cleanup_receipt_is_failure(self):
         (self.root / "no-cleanup").touch()

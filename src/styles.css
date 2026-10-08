@@ -1084,3 +1084,13 @@ h1 {
     grid-column: 1;
   }
 }
+
+.local-model-status {
+  flex-shrink: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #edf3ee;
+  color: #263d2e;
+  font-size: 12px;
+  line-height: 1.45;
+}
