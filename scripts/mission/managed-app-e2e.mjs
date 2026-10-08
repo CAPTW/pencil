@@ -15,6 +15,8 @@ const hashes={};for(const name of ['codex-pencil.exe','target-apply.dll','gramma
 }
 const editorKind=process.env.GRAMMAR_TEST_EDITOR_KIND??'richedit';assert.ok(['standard','multiline','richedit'].includes(editorKind));
 const report={status:'FAIL',sourceCommit:manifest.sourceCommit,hashes,checks:[],providerLive:'NOT_RUN',classification:'INSTALLED_UNMODIFIED_APP_BROKER_SYNTHETIC_ASSET_CATALOG_UI_NOT_GPU_OR_APPLY'};
+const statusOnly=process.argv.includes('--status-only');
+report.scope=statusOnly?'STARTUP_RETRY_CLEANUP_ONLY_CAPTURE_DRAFT_NOT_RUN':'CAPTURE_DRAFT_STARTUP_RETRY_CLEANUP';
 const pass=name=>{report.checks.push(name);console.log('PASS '+name);};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(name,probe,ms=15000){const end=Date.now()+ms;while(Date.now()<end){const result=await probe();if(result)return result;await sleep(100);}throw new Error('timeout: '+name);}
@@ -23,7 +25,7 @@ try{
  pass('installed package hashes verified');
  launcher=spawn('C:/GrammarPayload/pwsh/pwsh.exe',['-NoProfile','-File','C:/GrammarTrial/Start-Grammar.ps1','-EnableDesktopGemma'],{windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9481'}});
  launcher.stdout.on('data',data=>process.stdout.write(data));launcher.stderr.on('data',data=>process.stderr.write(data));
- await until('WebView endpoint',async()=>{try{return (await fetch('http://127.0.0.1:9481/json/version')).ok;}catch{return false;}},90000);
+ await until('WebView endpoint',async()=>{if(launcher.exitCode!==null)throw Error('Launcher exited before WebView: '+launcher.exitCode);try{return (await fetch('http://127.0.0.1:9481/json/version')).ok;}catch{return false;}},90000);
  browser=await chromium.connectOverCDP('http://127.0.0.1:9481');
  page=await until('widget page',async()=>browser.contexts().flatMap(x=>x.pages()).find(x=>/^(https?:\/\/tauri\.localhost|tauri:\/\/localhost)\//.test(x.url())),60000);
  await page.waitForFunction(()=>typeof window.__TAURI_INTERNALS__?.invoke==='function',null,{polling:100,timeout:60000});
@@ -49,8 +51,11 @@ try{
  const hide=async()=>{if(await visible()){await page.getByRole('button',{name:'Close',exact:true}).click();await until('widget hidden',async()=>!(await visible()));}};
  const draft=page.getByLabel('Editable rewrite result text',{exact:true});const apply=page.getByTestId('apply-result');const status=page.locator('.status-pill');
  async function capture(prefix='',suffix=''){
-  await hide();await command('PASSWORD 0');await set(prefix+'please seperate this.'+suffix);await command(`SELECT ${prefix.length} ${prefix.length+21}`);
+  await command('PASSWORD 0');await set(prefix+'please seperate this.'+suffix);await command(`SELECT ${prefix.length} ${prefix.length+21}`);
+  execFileSync('C:/GrammarPayload/managed-target-focus.exe',[String(report.targetPid)],{windowsHide:true});
   await until('owned target foreground',async()=>await command('FOCUS')==='FOCUS True');
+  await hide();
+  await until('owned target remains foreground',async()=>await command('FOCUS')==='FOCUS True');
   const count=await page.evaluate(()=>window.__captures.length);
   assert.equal(await command('HOTKEY'),'SENT 6');
   const token=await until('captured',()=>page.evaluate(i=>window.__captures[i],count));
@@ -58,24 +63,24 @@ try{
   await draft.waitFor({state:'visible'});return token;
  }
 
- const first=await capture();
+ if(!statusOnly)await capture();
  const reviewed='검토한 초안을 유지합니다. Keep this edited draft.';
- await draft.fill(reviewed);pass('synthetic capture and edited draft while preparing');
+ if(!statusOnly){await draft.fill(reviewed);pass('synthetic capture and edited draft while preparing');}
  await writeFile('C:/GrammarTrial/local/phase-control','fail');
  const retry=page.getByRole('button',{name:'Retry local model',exact:true});
  await retry.waitFor({state:'visible',timeout:20000});
- assert.equal(await draft.inputValue(),reviewed);
+ if(!statusOnly)assert.equal(await draft.inputValue(),reviewed);
  const oldState=await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('local_model_status'));
- assert.equal(oldState.phase,'failed');assert.ok(oldState.canRetry);pass('warmup failure leaves draft and offers explicit retry');
+ assert.equal(oldState.phase,'failed');assert.ok(oldState.canRetry);pass(statusOnly?'warmup failure offers explicit retry':'warmup failure leaves draft and offers explicit retry');
  await writeFile('C:/GrammarTrial/local/phase-control','ready');
  await retry.click();
  await until('ready banner',()=>page.locator('.local-model-status').textContent().then(s=>s.includes('Local Gemma ready')),20000);
- assert.equal(await draft.inputValue(),reviewed);
+ if(!statusOnly)assert.equal(await draft.inputValue(),reviewed);
  const newState=await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('local_model_status'));
  assert.equal(newState.phase,'ready');assert.equal(newState.canRetry,false);
- assert.equal(await text(),'please seperate this.');pass('retry becomes ready without changing draft or source');
+ if(!statusOnly)assert.equal(await text(),'please seperate this.');pass(statusOnly?'explicit retry becomes ready':'retry becomes ready without changing draft or source');
  const userCount=await readFile('C:/GrammarTrial/local/user-requests','utf8').catch(()=> '0');
- assert.equal(userCount,'0');assert.equal(await readFile('C:/GrammarTrial/local/warmups','utf8'),'2');pass('only two warmups, no capture replay or user inference');
+ assert.equal(userCount,'0');assert.equal(await readFile('C:/GrammarTrial/local/warmups','utf8'),'2');pass(statusOnly?'only two warmups, zero user inference':'only two warmups, no capture replay or user inference');
  await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});
  await until('launcher natural cleanup',async()=>launcher.exitCode!==null,20000);assert.equal(launcher.exitCode,0);appNatural=true;
  const cwd=await readFile('C:/GrammarTrial/local/runtime.cwd','utf8');
