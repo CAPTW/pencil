@@ -37,6 +37,8 @@ pub struct ApiConfig {
     model: String,
 }
 impl ApiConfig {
+    #[cfg(test)]
+    pub(crate) fn fixture(endpoint:&str)->Self {Self::validate(endpoint,"fixture",true).unwrap()}
     pub fn new(endpoint: &str, model: &str) -> Result<Self, ApiError> {
         Self::validate(endpoint, model, false)
     }

@@ -225,7 +225,7 @@ fn parse_payload(text: &str, mode: RewriteMode) -> Result<RewriteResult, Provide
         terminology_suggestions: Vec::new(),
         terminology_match_count: 0,
         terminology_warnings: Vec::new(),
-        provider_used: ProviderKind::Antigravity,
+        provider_used: ProviderKind::Antigravity.into(),
     })
 }
 

@@ -105,7 +105,7 @@ export type TerminologyRewriteResult = Readonly<{
   terminologySuggestions: TerminologySuggestion[];
   terminologyMatchCount: number;
   terminologyWarnings: TerminologyWarning[];
-  providerUsed: "codex" | "antigravity" | "claude";
+  providerUsed: "codex" | "antigravity" | "claude" | "api";
 }>;
 
 export type ImportConflict = Readonly<{
@@ -347,7 +347,7 @@ export function parseTerminologyRewriteResult(value: unknown): TerminologyRewrit
     !Array.isArray(value.terminologySuggestions) || value.terminologySuggestions.length > 5 ||
     !isCount(value.terminologyMatchCount) || value.terminologyMatchCount > 50 ||
     !Array.isArray(value.terminologyWarnings) || value.terminologyWarnings.length > 128 ||
-    (value.providerUsed !== "codex" && value.providerUsed !== "antigravity" && value.providerUsed !== "claude")
+    (value.providerUsed !== "codex" && value.providerUsed !== "antigravity" && value.providerUsed !== "claude" && value.providerUsed !== "api")
   ) return null;
   const suggestions = value.terminologySuggestions.map(parseSuggestion);
   const warnings = value.terminologyWarnings.map((warning): TerminologyWarning | null => {

@@ -52,7 +52,7 @@ export function ApiSettings() {
   }
   return <section className="provider-settings" aria-label="Optional API setup">
     <h3>Optional API setup</h3>
-    <p>OpenAI-compatible Chat Completions. API rewriting is not enabled in this build; this form prepares settings only.</p>
+    <p>OpenAI-compatible Chat Completions. Use Run API Deep on a captured selection to send one explicit request. Automatic rewriting does not use this API.</p>
     <p>The key stays in app memory for this session and is not saved to settings. Re-enter it after restarting. Saving does not contact the provider.</p>
     <label className="settings-field">HTTPS chat/completions endpoint
       <input type="url" value={endpoint} autoComplete="off" spellCheck={false} disabled={pending} onChange={event => { setEndpoint(event.target.value); setConsent(false); }} placeholder="https://api.example.com/v1/chat/completions" />
