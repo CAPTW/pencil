@@ -2362,3 +2362,13 @@ Same-integrator review: digest supplied by trusted launcher; no document/extensi
 
 GPU preflight13% and10414MiB already occupied; did not repeat a saturated model benchmark. No GPU inference this round. Current user throughput target remains unmet. Next: owned startup-cancel/ready/service/cleanup integration when GPU resources permit, then installed launcher with reviewed bundle manifest. Continue independent packaging work without touching other apps. Candidate only,missionINCOMPLETE,no main/push/release or Project UI update.
 Evidence:broker-bundle-tests-final.log,broker-bundle-build-final.log,broker-bundle-binary-receipt-r2.json,check-broker-bundle.py and corrected check-broker-bundle-r2.py. Source/build linkage:broker-bundle-source-final.json.
+
+# Prototype completion priority and Gemma package prerequisite — 2026-10-08
+
+Owner now prioritizes finishing installation/startup/API configuration and the first prototype without reducing current quality, even when latency goals are missed. Retain Gemma12B, existing inference and mutation guards. Short recommendation1s, paragraph3-4 sentences3s, Accept0.5s are targets, not current universal performance claims. This supersedes the previous next action of waiting for an idle GPU comparator run.
+
+Build receipt schema3 builds and hashes grammar-gemma-broker with static CRT alongside the app/host/target DLL. Package generation requires schema3 and verifies the relocated broker again; installer includes the manifest-verified broker. Legacy receipt1/2 verification remains available for historical artifacts. No model/prompt/decoding/default-runtime changes. The package explicitly marks Gemma default startup pending.
+
+Production receipt verification regression:14 checks PASS using task-owned synthetic source/binary bytes, including wrong broker hash/size, failed build, wrong CRT, valid relocation and relocated tampering. This is verifier coverage, not actual release build or installed acceptance. Governance+self-test PASS. Same-integrator diff review only.
+
+Remaining: verified model/runtime setup; app-owned broker startup/revocation and desktop/default local analysis connection; API endpoint/model configuration and protected key storage with synthetic API tests; owned install/start/exit validation; scoped publication policy reconciliation and GitHub prototype delivery. Existing prototype publication request is recorded in Contract1.5.3 but has not been executed. Main adoption, user profile/data access and paid API calls are not inferred. Project Source requires later regeneration; mission INCOMPLETE.

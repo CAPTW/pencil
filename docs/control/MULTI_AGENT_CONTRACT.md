@@ -1,6 +1,6 @@
 # Grammar Tool-neutral Multi-Agent Development Contract
 
-Contract-Version: 1.5.2
+Contract-Version: 1.5.3
 
 ## Active mission override (Owner authorization, 2026-09-25)
 For GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1, the Owner explicitly authorizes investigation, implementation, tests, local commits, reviewed safe local main integration and continuation through P3-A stabilization and the first Chromium textarea/simple-contenteditable adapter for personal use. This section supersedes conflicting historical one-step gates below, fixed file/iteration/commit budgets, per-step new-worktree requirements and fresh Source UI upload prerequisites. Use one dedicated mission worktree; preserve historical failed candidates and unrelated work. Historical failures remain failures. Review changed main before integration; no history rewrite or forced conflict resolution.
@@ -58,6 +58,24 @@ codex/claude/antigravity as optional consent-bound Deep; no silent fallback/repl
 No main adoption, remote push, release, credential access or general-profile work.
 This priority is within the existing global adapter mission, not broader editor
 acceptance. Current source packages become stale until regenerated and uploaded.
+
+## Quality-preserving prototype completion priority (Owner decision, 2026-10-08)
+Prioritize an installable prototype with default local Gemma and optional API
+Provider connectivity over further latency experiments. Keep the current 12B
+baseline and meaning, source-binding, privacy and safe Accept protections; do not
+switch to a weaker model, truncate output or lower quality to meet timing goals.
+The short-recommendation target remains 1s, explicit Accept remains 0.5s, and a
+3-4 sentence paragraph translation/paraphrase has a 3s complete-result target.
+Record misses honestly. They do not block work on packaging, startup, settings,
+API connectivity or prototype preparation, and are not retrospectively passes.
+Existing inference benchmarks are not installed default-path qualification.
+The first common API integration is OpenAI-compatible endpoint/model configuration;
+other protocols require explicit implementations, not a universal support claim.
+The Owner has requested synchronization with the existing GitHub repository and
+first prototype distribution. Before those actions, reconcile the scoped publication
+state and validators with that request and validate the concrete release payload;
+do not infer main adoption, force push, credentials, user documents, new paid calls,
+system changes or broad public services from prototype preparation authority.
 
 ## Historical task defaults (except active mission override)
 

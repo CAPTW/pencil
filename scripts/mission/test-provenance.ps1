@@ -62,9 +62,44 @@ Reject 'source-snapshot-mismatch' { param($r) $r.after.trackedBytesSha256 = '0' 
 Reject 'false-caller-metadata' { param($r) } 'Caller metadata'
 Reject 'false-clean-claim' { param($r) $r.after.clean = $false } 'Receipt/source mismatch'
 Reject 'string-clean-claim' { param($r) $r.after.clean = 'true' } 'Receipt/source mismatch'
+# Version 3 must bind the Gemma broker as well as the existing target service.
+$template.schemaVersion = 3
+$template.command += '; scripts/mission/build-target-apply.ps1 (post-build broker hash binding); cargo build --manifest-path src-tauri/Cargo.toml --release --locked --offline --bin grammar-gemma-broker (static CRT)'
+$template.targetApply = [ordered]@{
+  classification='TARGET_SERVICE_BOUND_TO_BUILT_BROKER_NOT_ACCEPTANCE'
+  exitCode=0; brokerFileName='codex-pencil.exe'; brokerSha256=$template.executableSha256
+  compilerPolicy='MSVC_X64_CPP17_STATIC_CRT_W4_WX'
+  libraryPath=$exe; libraryBytes=$template.executableBytes; librarySha256=$template.executableSha256
+}
+$template.gemmaBroker = [ordered]@{
+  exitCode=0; compilerPolicy='MSVC_X64_STATIC_CRT'
+  executablePath=$exe; executableBytes=$template.executableBytes; executableSha256=$template.executableSha256
+}
+Reject 'wrong-gemma-broker' { param($r) $r.gemmaBroker.executableSha256 = '0' * 64 } 'Receipt/Gemma broker mismatch'
+Reject 'wrong-gemma-broker-length' { param($r) $r.gemmaBroker.executableBytes += 1 } 'Receipt/Gemma broker mismatch'
+Reject 'failed-gemma-build' { param($r) $r.gemmaBroker.exitCode = 1 } 'Gemma broker build failed'
+Reject 'wrong-gemma-crt' { param($r) $r.gemmaBroker.compilerPolicy = 'DYNAMIC_CRT' } 'Gemma broker build failed'
+# Exercise relocation through the same override used by package.ps1. These
+# synthetic bytes validate receipt verification only, never an executed build.
+$relocated = Join-Path $EvidenceRoot 'relocated-gemma-broker.exe'
+Copy-Item -LiteralPath $exe -Destination $relocated
+$validReceipt = Join-Path $EvidenceRoot 'synthetic-v3-verification.json'
+[IO.File]::WriteAllText($validReceipt, ($template | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+$null = & (Join-Path $root 'scripts/mission/build-receipt.ps1') -SourceRoot $root -ReceiptPath $validReceipt -ExecutablePath $exe -GemmaBrokerPath $relocated -VerifyOnly
+$passes.Add('relocated-gemma-verification-only')
+[IO.File]::WriteAllText($relocated, 'TAMPERED', [Text.UTF8Encoding]::new($false))
+$rejected = $false
+try {
+  $null = & (Join-Path $root 'scripts/mission/build-receipt.ps1') -SourceRoot $root -ReceiptPath $validReceipt -ExecutablePath $exe -GemmaBrokerPath $relocated -VerifyOnly
+} catch {
+  if ($_.Exception.Message -notlike '*Receipt/Gemma broker mismatch*') { throw }
+  $rejected = $true
+}
+if (-not $rejected) { throw 'Relocated Gemma broker tampering was accepted' }
+$passes.Add('relocated-gemma-tamper-refused')
 [IO.File]::WriteAllText((Join-Path $root 'synthetic.txt'), 'changed synthetic source', [Text.UTF8Encoding]::new($false))
 Reject 'dirty-source' { param($r) } 'Source must be clean'
-$result = [ordered]@{classification='SYNTHETIC_NEGATIVE_TESTS_ONLY'; passed=@($passes); realReleaseBuild='NOT_RUN'; outputCreated=$false}
+$result = [ordered]@{classification='SYNTHETIC_RECEIPT_VERIFICATION_ONLY'; passed=@($passes); realReleaseBuild='NOT_RUN'; outputCreated=$false}
 $json = $result | ConvertTo-Json -Depth 4
 [IO.File]::WriteAllText((Join-Path $EvidenceRoot 'result.json'), $json, [Text.UTF8Encoding]::new($false))
 $json
