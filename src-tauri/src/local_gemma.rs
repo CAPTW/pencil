@@ -693,8 +693,14 @@ mod tests {
             loop { let n = file.read(&mut buffer).unwrap(); if n == 0 { break; } hash.update(&buffer[..n]); }
             assert_eq!(format!("{:x}", hash.finalize()), expected);
         }
-        let corpus: Value = serde_json::from_str(include_str!("../../scripts/mission/gemma-rewrite-corpus.json")).unwrap();
+        let corpus_text = match std::env::var("GRAMMAR_GEMMA_REWRITE_CORPUS").as_deref() {
+            Ok("holdout") => include_str!("../../scripts/mission/gemma-rewrite-holdout.json"),
+            Err(_) | Ok("regression") => include_str!("../../scripts/mission/gemma-rewrite-corpus.json"),
+            _ => panic!("unknown owned corpus"),
+        };
+        let corpus: Value = serde_json::from_str(corpus_text).unwrap();
         let mut report = json!({"scope":"REAL_GPU_SERVICE_PIPE_SYNTHETIC_REWRITE_NOT_UI_ACCEPTANCE",
+            "corpusSha256":format!("{:x}",Sha256::digest(corpus_text.as_bytes())),
             "observationDeadlineMs":10000,"recommendationTargetMs":1000,"quality":"REQUIRES_REVIEW","rows":[]});
         let save = |value:&Value| std::fs::write(&receipt, serde_json::to_vec_pretty(value).unwrap()).unwrap();
         save(&report);

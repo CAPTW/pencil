@@ -144,7 +144,7 @@ try {
   if(!report.corpus.qualityPass||report.corpus.recommendationMisses.length||report.corpus.applyMisses.length)process.exitCode=1;
  }
  if(process.env.GRAMMAR_GEMMA_REWRITE_UI==='1') {
-  const path=resolve('scripts/mission/gemma-rewrite-corpus.json');
+  const path=resolve('scripts/mission/'+(process.env.GRAMMAR_GEMMA_REWRITE_CORPUS==='holdout'?'gemma-rewrite-holdout.json':'gemma-rewrite-corpus.json'));
   report.rewriteCorpusSha256=await hash(path);report.rewriteModuleSha256=await hash(new URL('./gemma-rewrite-browser.mjs',import.meta.url));
   report.rewrite={qualityStatus:'PENDING_SEPARATE_REVIEW'};await runRewriteUI(page,worker,JSON.parse(await readFile(path)),report.rewrite);
   if(!report.rewrite.latencyPass)process.exitCode=1;

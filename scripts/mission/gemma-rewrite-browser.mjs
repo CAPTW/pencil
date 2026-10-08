@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 // Real UI gestures and document rereads; only timing observers are injected.
 export async function runRewriteUI(page,worker,cases,evidence={}) {
  const rows=evidence.rows=[];
+ evidence.notRun=cases.map(row=>row.id);
  const selectMode=async value=>{
   const select=page.getByLabel('Local review mode',{exact:true});
   await select.focus();await select.press('Home');
@@ -14,6 +15,8 @@ export async function runRewriteUI(page,worker,cases,evidence={}) {
   throw Error('local response unavailable');
  };
  for(const [index,row] of cases.entries()) {
+  evidence.activeCase=row.id;
+  evidence.notRun.shift();
   const field=index%2?'editable':'writing',el=page.locator('#'+field);
   await page.getByRole('button',{name:'Pause field',exact:true}).click();
   await el.fill(row.source);await el.click();
@@ -31,12 +34,21 @@ export async function runRewriteUI(page,worker,cases,evidence={}) {
     const observer=new MutationObserver(()=>{
      if(shadow.querySelector('[aria-label="Cached suggestions"] button')){
       window.rewriteTiming.recommendMs=performance.now()-start;observer.disconnect();
+     } else if(shadow.querySelector('[role="status"]')?.textContent.includes('unavailable')) {
+      window.rewriteTiming.failureMs=performance.now()-start;observer.disconnect();
      }
     });observer.observe(shadow,{subtree:true,childList:true});
     setTimeout(()=>observer.disconnect(),5000);
    },{capture:true,once:true});
   });
   await page.getByRole('button',{name:'Review locally',exact:true}).click();
+  await page.waitForFunction(()=>window.rewriteTiming.recommendMs!==undefined||window.rewriteTiming.failureMs!==undefined);
+  const failed=await page.evaluate(()=>window.rewriteTiming.failureMs);
+  if(failed!==undefined) {
+   const actual=await el.evaluate(e=>e.tagName==='TEXTAREA'?e.value:e.textContent);
+   rows.push({id:row.id,field,intent:row.intent,failureMs:failed,status:await page.locator('[role=status]').allTextContents(),error:'local_review_unavailable',sourceUnchanged:actual===row.source});
+   assert.equal(actual,row.source);throw Error('Local review unavailable: '+row.id);
+  }
   await page.getByRole('button',{name:/Suggestion 1:/}).click();
   const edit=page.getByRole('textbox',{name:'Edit replacement',exact:true});
   const replacement=await edit.inputValue();
@@ -71,6 +83,7 @@ export async function runRewriteUI(page,worker,cases,evidence={}) {
   assert.equal(await worker.evaluate(()=>gemmaMetrics.requests),count,'cache/Accept cannot infer');
   rows.push({id:row.id,field,intent:row.intent,source:row.source,replacement,action,appliedText,...timing});
  }
+ evidence.activeCase=null;
  // Switch target while inference is running: late response cannot repopulate cache.
  await page.locator('#writing').fill('Do not approve the release yet.');await page.locator('#writing').click();
  const before=await worker.evaluate(()=>gemmaMetrics.responses);
