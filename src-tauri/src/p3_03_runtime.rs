@@ -170,7 +170,8 @@ pub(crate) async fn analyze_correction_source_off_ui(
 }
 
 pub(crate) fn gemma_configured() -> bool {
-    std::env::var_os("GRAMMAR_GEMMA_PIPE").is_some()
+    std::env::var_os("GRAMMAR_GEMMA_SESSION").is_some()
+        || std::env::var_os("GRAMMAR_GEMMA_PIPE").is_some()
         || std::env::var_os("GRAMMAR_GEMMA_BROKER_SHA256").is_some()
 }
 
@@ -204,7 +205,7 @@ pub(crate) async fn analyze_gemma_source(identity: SourceIdentity, source: Strin
     let started = Instant::now();
     // One operational budget, separate from the 1s recommendation performance target.
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
-    let name = std::env::var("GRAMMAR_GEMMA_PIPE").map_err(|_| "gemma_launcher_config")?;
+    let name = crate::local_model_session::endpoint()?;
     let hash = std::env::var("GRAMMAR_GEMMA_BROKER_SHA256").map_err(|_| "gemma_launcher_config")?;
     let image = std::env::current_exe().map_err(|_| "gemma_app_path")?
         .parent().ok_or("gemma_app_path")?.join("grammar-gemma-broker.exe");

@@ -15,6 +15,7 @@ mod diagnostics;
 mod native_edit;
 mod target_apply;
 mod p3_03_runtime;
+mod local_model_session;
 mod prerequisites;
 mod provider;
 #[cfg(windows)]
@@ -129,6 +130,9 @@ impl Default for ConfigurationState {
         }
     }
 }
+
+#[tauri::command]
+fn local_model_status() -> local_model_session::Status { local_model_session::status() }
 
 #[cfg(test)]
 #[path = "../tests/runtime_mission/mod.rs"]
@@ -1697,6 +1701,7 @@ fn main() {
             dry_run_terminology_import,
             export_terminology,
             load_settings,
+            local_model_status,
             open_device_login_page,
             provider_snapshot,
             query_terminology_entries,
@@ -1737,7 +1742,8 @@ fn main() {
                         .ok()
                         .map(|configuration| configuration.settings.clone());
                     if let Some(settings) = settings {
-                        if settings.needs_onboarding() || !settings.start_hidden_to_tray {
+                        if settings.needs_onboarding() || !settings.start_hidden_to_tray
+                            || std::env::var_os("GRAMMAR_GEMMA_SESSION").is_some() {
                             let _ = show_main_window(app.handle(), None);
                             if settings.needs_onboarding() {
                                 let _ = app.handle().emit("open-onboarding", ());

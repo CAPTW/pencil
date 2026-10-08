@@ -291,6 +291,21 @@ function draftFromEntry(entry: TerminologyEntry): TerminologyEntryDraft {
 }
 
 export default function App() {
+  const [localModelPhase, setLocalModelPhase] = useState("unmanaged");
+  useEffect(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      try {
+        const result = await invoke<{phase: string}>("local_model_status");
+        if (!stopped) setLocalModelPhase(result.phase);
+      } catch { if (!stopped) setLocalModelPhase((current) => current === "unmanaged" ? "unmanaged" : "failed"); }
+      if (!stopped) timer = setTimeout(refresh, 1000);
+    };
+    void refresh();
+    return () => { stopped = true; clearTimeout(timer); };
+  }, []);
+
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [terminology, setTerminology] = useState<TerminologyRuntimeSnapshot | null>(null);
   const [terminologyQuery, setTerminologyQuery] = useState("");
@@ -1655,6 +1670,12 @@ export default function App() {
             </button>
           </div>
         </header>
+
+      {localModelPhase !== "unmanaged" && <div role="status" aria-live="polite" className="local-model-status">
+        {localModelPhase === "starting" ? "Preparing local Gemma — you can keep your draft open." :
+          localModelPhase === "ready" ? "Local Gemma ready — capture text to analyze." :
+          "Local Gemma unavailable. Keep or copy your draft, then exit from the tray and restart Grammar."}
+      </div>}
 
         {onboardingOpen ? (
           <div className="settings-pane" aria-label="First run">

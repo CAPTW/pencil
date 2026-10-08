@@ -14,6 +14,7 @@ $pins = [Collections.Generic.List[IO.FileStream]]::new()
 $lock = $null; $broker = $null; $app = $null; $published = $null; $original = $null
 $read = $null; $drain = $null; $cleanupComplete = $false
 $configConflict = $false; $brokerFailed = $false
+$session = $null; $sessionPath = $null; $sessionBytes = $null
 $configPath = Join-Path $root 'grammar-chromium-host.origin.json'
 $utf8 = [Text.UTF8Encoding]::new($false)
 function Pin-File([string]$Name) {
@@ -33,6 +34,27 @@ function Write-Config([string]$Text) {
     [IO.File]::WriteAllText($temp, $Text, $utf8)
     [IO.File]::Move($temp, $configPath, $true)
   } finally { if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp } }
+}
+function Publish-Session([string]$Phase, $PipeName = $null) {
+  if ($null -eq $sessionPath) { return }
+  $text = @{version=1;session=$session;phase=$Phase;pipe=$PipeName} | ConvertTo-Json -Compress
+  $temp = $sessionPath + '.tmp'
+  try {
+    [IO.File]::WriteAllText($temp,$text,$utf8)
+    [IO.File]::Move($temp,$sessionPath,$true)
+    $script:sessionBytes = $text
+  } finally { if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp } }
+}
+function Start-Desktop {
+  $appStart = [Diagnostics.ProcessStartInfo]::new((Join-Path $root 'codex-pencil.exe'))
+  $appStart.UseShellExecute = $false; $appStart.WorkingDirectory = $root
+  foreach ($name in @('GRAMMAR_GEMMA_PIPE','GRAMMAR_GEMMA_BROKER_SHA256','GRAMMAR_GEMMA_SESSION','GRAMMAR_GEMMA_LAUNCHER_PID')) { $null = $appStart.Environment.Remove($name) }
+  if ($EnableDesktopGemma) {
+    $appStart.Environment['GRAMMAR_GEMMA_SESSION'] = $session
+    $appStart.Environment['GRAMMAR_GEMMA_LAUNCHER_PID'] = [string]$PID
+    $appStart.Environment['GRAMMAR_GEMMA_BROKER_SHA256'] = $brokerHash
+  }
+  return [Diagnostics.Process]::Start($appStart)
 }
 function Restore-Config {
   if ($null -eq $published) { return $false }
@@ -66,13 +88,23 @@ try {
   $start.UseShellExecute = $false; $start.CreateNoWindow = $true
   $start.RedirectStandardInput = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
   foreach ($arg in @($runtime, $assets.runtimeSha256, [IO.Path]::GetFullPath($ModelPath), $assets.model.sha256, (Join-Path $root 'grammar-chromium-host.exe'), $hostHash, $assets.runtimeBundleSha256, (Join-Path $root 'codex-pencil.exe'), $appHash)) { $start.ArgumentList.Add($arg) }
+  if ($EnableDesktopGemma) {
+    $session = [Guid]::NewGuid().ToString('N')
+    $sessionPath = Join-Path $root ("gemma-session-" + $session + '.json')
+    Publish-Session 'starting'
+    $app = Start-Desktop
+  }
   Write-Host 'Starting local Gemma. The first model load can take longer than a recommendation.'
   $broker = [Diagnostics.Process]::Start($start)
   # Drain without retaining diagnostics or allowing the child pipe to fill.
   $drain = $broker.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
   $read = $broker.StandardOutput.ReadLineAsync()
   $clock = [Diagnostics.Stopwatch]::StartNew()
-  while (-not $read.IsCompleted -and $clock.Elapsed.TotalSeconds -lt 190) { Start-Sleep -Milliseconds 50 }
+  while (-not $read.IsCompleted -and $clock.Elapsed.TotalSeconds -lt 190) {
+    if ($null -ne $app -and $app.HasExited) { throw 'App closed while Gemma was preparing' }
+    Start-Sleep -Milliseconds 50
+  }
+  if ($null -ne $app -and $app.HasExited) { throw 'App closed while Gemma was preparing' }
   if (-not $read.IsCompleted) { throw 'Gemma startup timed out' }
   $line = $read.GetAwaiter().GetResult(); $read = $null
   if (-not $line -or $line.Length -gt 1024) { throw 'Gemma did not become ready' }
@@ -85,26 +117,34 @@ try {
   Write-Config $candidateConfig
   $published = $candidateConfig
   $read = $broker.StandardOutput.ReadLineAsync()
-  $appStart = [Diagnostics.ProcessStartInfo]::new((Join-Path $root 'codex-pencil.exe'))
-  $appStart.UseShellExecute = $false; $appStart.WorkingDirectory = $root
-  if ($EnableDesktopGemma) {
-    $appStart.Environment['GRAMMAR_GEMMA_PIPE'] = $ready.name
-    $appStart.Environment['GRAMMAR_GEMMA_BROKER_SHA256'] = $brokerHash
-  } else {
-    $null = $appStart.Environment.Remove('GRAMMAR_GEMMA_PIPE')
-    $null = $appStart.Environment.Remove('GRAMMAR_GEMMA_BROKER_SHA256')
-  }
-  $app = [Diagnostics.Process]::Start($appStart)
+  Publish-Session 'ready' $ready.name
+  if ($null -eq $app) { $app = Start-Desktop }
   Write-Host 'Local Gemma is ready for enabled Chromium fields. Desktop Gemma is enabled only when explicitly selected for qualification.'
   while (-not $app.WaitForExit(200)) {
     if (-not $brokerFailed -and $broker.HasExited) {
       $brokerFailed = $true
+      Publish-Session 'failed'
       $configConflict = Restore-Config
       Write-Warning 'Local Gemma stopped. Your app remains open. Close Grammar from the tray, then run Start-Grammar.ps1 to retry. No automatic restart or request replay occurred.'
       # Keep image pins and installation ownership until the user closes the app.
       # Exiting here would permit uninstall or a duplicate launcher over its draft.
     }
   }
+} catch {
+  try { Publish-Session 'failed' } catch { Write-Warning 'Local Gemma status could not be updated.' }
+  # A failed startup must revoke the broker promptly, while retaining the app draft.
+  try {
+    if ($null -ne $broker -and -not $broker.HasExited) {
+      $broker.StandardInput.Close()
+      if (-not $broker.WaitForExit(12000)) { $broker.Kill($true); $null=$broker.WaitForExit(5000) }
+    }
+  } finally {
+    if ($null -ne $app) {
+      Write-Warning 'Local Gemma unavailable. Close Grammar from the tray, then relaunch to retry.'
+      $app.WaitForExit()
+    }
+  }
+  throw
 } finally {
   # Restore only the bytes this invocation published; preserve outside changes.
   $restoreConflict = Restore-Config
@@ -128,6 +168,9 @@ try {
   } finally {
     if ($null -ne $broker) { $broker.Dispose() }
     if ($null -ne $app) { $app.Dispose() }
+    if ($null -ne $sessionPath -and (Test-Path -LiteralPath $sessionPath)) {
+      if ([IO.File]::ReadAllText($sessionPath) -ceq $sessionBytes) { Remove-Item -LiteralPath $sessionPath }
+    }
     foreach ($pin in $pins) { $pin.Dispose() }
     if ($null -ne $lock) { $lock.Dispose() }
   }
