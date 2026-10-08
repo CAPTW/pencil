@@ -56,7 +56,7 @@ try {
  await cp(join(binaryRoot,'grammar-gemma-broker.exe'),brokerPath);
  report.brokerSha256=await hash(brokerPath);report.hostSha256=await hash(hostPath);
  const start=performance.now();
- broker=spawn(brokerPath,[join(evidence,'runtime/llama-server.exe'),'a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1',join(modelRoot,model.file),model.sha256,hostPath,report.hostSha256],{windowsHide:true,env:{...process.env,GRAMMAR_GEMMA_TIMING:'1'},stdio:['pipe','pipe','pipe']});
+ broker=spawn(brokerPath,[join(evidence,'runtime/llama-server.exe'),'a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1',join(modelRoot,model.file),model.sha256,hostPath,report.hostSha256,'785601b8f32ba6ab10374f8e9ead5d8deadd56e70940883ef65608dbfbb80860'],{windowsHide:true,env:{...process.env,GRAMMAR_GEMMA_TIMING:'1'},stdio:['pipe','pipe','pipe']});
  broker.stdin.on('error',error=>{report.controlError=error.code;});
  brokerExit=new Promise(r=>broker.once('exit',(code,signal)=>r({code,signal})));
  let readyResolve,readyReject;const readyPromise=new Promise((r,j)=>{readyResolve=r;readyReject=j;});

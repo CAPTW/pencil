@@ -25,7 +25,7 @@ args = [str(broker), str(root/'runtime/llama-server.exe'),
         'a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1',
         str(root/'gemma-4-12b-it-qat-q4_0.gguf'),
         '93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b',
-        str(host), report['hostSha256']]
+        str(host), report['hostSha256'], '785601b8f32ba6ab10374f8e9ead5d8deadd56e70940883ef65608dbfbb80860']
 p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                      stderr=subprocess.PIPE, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
 cancelled = []
