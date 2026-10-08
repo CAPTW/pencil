@@ -25,8 +25,8 @@ async fn main() {
 async fn run() -> Result<(), String> {
     // Explicit paths/hashes are supplied by the trusted launcher, never a document.
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.len() != 6 {
-        return Err("gemma_broker_args: runtime runtime-sha model model-sha host host-sha".into());
+    if args.len() != 7 {
+        return Err("gemma_broker_args: runtime runtime-sha model model-sha host host-sha runtime-bundle-sha".into());
     }
     let started = Instant::now();
     let startup_deadline = started + Duration::from_secs(180);
@@ -40,14 +40,16 @@ async fn run() -> Result<(), String> {
         let _ = std::io::stdin().read(&mut byte);
         closing.store(false, Ordering::SeqCst);
     });
-    let _runtime = ImagePin::verify(Path::new(&args[0]), &args[1])?;
+    let runtime_path = std::fs::canonicalize(&args[0]).map_err(|_| "gemma_runtime_path")?;
+    let _runtime = ImagePin::verify(&runtime_path, &args[1])?;
+    let _runtime_bundle = pin_runtime_bundle(&runtime_path, &args[6], &active, startup_deadline)?;
     let host = ImagePin::verify(Path::new(&args[4]), &args[5])?;
     eprintln!("gemma_boot phase=model_hash ms={}", started.elapsed().as_millis());
     let model = Path::new(&args[2]);
     let _model_file=pin_model(model,&args[3],&active,startup_deadline)?;
     eprintln!("gemma_boot phase=model_verified ms={}", started.elapsed().as_millis());
     let engine = GemmaEngine::start_cancellable(
-        Path::new(&args[0]), model, startup_deadline, active.clone(),
+        &runtime_path, model, startup_deadline, active.clone(),
     ).await?;
     let (service, client) = Service::own(engine);
     let result = async {
@@ -72,6 +74,58 @@ async fn run() -> Result<(), String> {
     writeln!(std::io::stdout(), "{{\"cleanup\":\"complete\"}}")
         .map_err(|_| "gemma_broker_stdout")?;
     Ok(())
+}
+
+// Trusted launcher supplies this digest, never extension/document data.
+// Pins cover the adjacent runtime EXE/DLL set, not Windows system dependencies.
+fn pin_runtime_bundle(executable: &Path, expected: &str, active: &AtomicBool, deadline: Instant)
+    -> Result<Vec<std::fs::File>, String> {
+    if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("gemma_runtime_bundle_config".into());
+    }
+    let root = executable.parent().ok_or("gemma_runtime_bundle_path")?;
+    let mut paths = Vec::new();
+    for entry in std::fs::read_dir(root).map_err(|_| "gemma_runtime_bundle_directory")? {
+        if !active.load(Ordering::SeqCst) || Instant::now() >= deadline {
+            return Err("gemma_broker_startup_revoked_or_deadline".into());
+        }
+        let path = entry.map_err(|_| "gemma_runtime_bundle_directory")?.path();
+        if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("dll")) || path == executable {
+            if paths.len() >= 128 { return Err("gemma_runtime_bundle_limit".into()); }
+            paths.push(path);
+        }
+    }
+    paths.sort_by(|a,b| a.file_name().cmp(&b.file_name()));
+    let mut manifest = String::new(); let mut pins = Vec::new(); let mut total = 0u64;
+    for path in paths {
+        if !active.load(Ordering::SeqCst) || Instant::now() >= deadline {
+            return Err("gemma_broker_startup_revoked_or_deadline".into());
+        }
+        let resolved = std::fs::canonicalize(&path).map_err(|_| "gemma_runtime_bundle_path")?;
+        if resolved.parent() != Some(root) { return Err("gemma_runtime_bundle_path".into()); }
+        let name = path.file_name().and_then(|n| n.to_str()).ok_or("gemma_runtime_bundle_name")?;
+        if !name.is_ascii() || name.bytes().any(|b| b.is_ascii_control()) { return Err("gemma_runtime_bundle_name".into()); }
+        let mut file = OpenOptions::new().read(true).share_mode(1).open(&path).map_err(|_| "gemma_runtime_bundle_open")?;
+        let mut hash = Sha256::new(); let mut buffer = vec![0u8; 1024 * 1024];
+        loop {
+            if !active.load(Ordering::SeqCst) || Instant::now() >= deadline {
+                return Err("gemma_broker_startup_revoked_or_deadline".into());
+            }
+            let n = file.read(&mut buffer).map_err(|_| "gemma_runtime_bundle_read")?;
+            if n == 0 { break; }
+            total += n as u64;
+            if total > 8 * 1024 * 1024 * 1024 { return Err("gemma_runtime_bundle_limit".into()); }
+            hash.update(&buffer[..n]);
+        }
+        manifest.push_str(&format!("{name}\0{:x}\n", hash.finalize())); pins.push(file);
+    }
+    if format!("{:x}", Sha256::digest(manifest.as_bytes())) != expected.to_ascii_lowercase() {
+        return Err("gemma_runtime_bundle_hash".into());
+    }
+    if !active.load(Ordering::SeqCst) || Instant::now() >= deadline {
+        return Err("gemma_broker_startup_revoked_or_deadline".into());
+    }
+    Ok(pins)
 }
 
 struct ModelPinTimings {
@@ -143,6 +197,32 @@ fn pin_model(model:&Path,expected:&str,active:&AtomicBool,deadline:Instant)->Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn bundle_pin_rejects_changes_and_holds_files_until_release() {
+        let dir = std::env::temp_dir().join(format!("grammar-broker-bundle-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&dir).unwrap();
+        let root = std::fs::canonicalize(&dir).unwrap();
+        let exe = root.join("llama-server.exe"); let dll = root.join("ggml-cuda.dll");
+        std::fs::write(&exe,b"exe").unwrap(); std::fs::write(&dll,b"dll").unwrap();
+        let manifest = format!("ggml-cuda.dll\0{:x}\nllama-server.exe\0{:x}\n",Sha256::digest(b"dll"),Sha256::digest(b"exe"));
+        let expected = format!("{:x}",Sha256::digest(manifest.as_bytes()));
+        let active = AtomicBool::new(true); let deadline = Instant::now()+Duration::from_secs(5);
+        let pins = pin_runtime_bundle(&exe,&expected,&active,deadline).unwrap();
+        assert!(std::fs::write(&dll,b"changed").is_err());
+        assert!(std::fs::remove_file(&exe).is_err()); drop(pins);
+        assert!(pin_runtime_bundle(&exe,&expected,&active,Instant::now()).is_err());
+        active.store(false,Ordering::SeqCst);
+        assert!(pin_runtime_bundle(&exe,&expected,&active,deadline).is_err()); active.store(true,Ordering::SeqCst);
+        std::fs::write(&dll,b"changed").unwrap();
+        assert_eq!(pin_runtime_bundle(&exe,&expected,&active,deadline).err().as_deref(),Some("gemma_runtime_bundle_hash"));
+        std::fs::write(&dll,b"dll").unwrap();
+        let extra=root.join("extra.dll");std::fs::write(&extra,b"extra").unwrap();
+        assert!(pin_runtime_bundle(&exe,&expected,&active,deadline).is_err());
+        std::fs::remove_file(extra).unwrap();std::fs::remove_file(&dll).unwrap();
+        assert!(pin_runtime_bundle(&exe,&expected,&active,deadline).is_err());
+        std::fs::remove_file(exe).unwrap();std::fs::remove_dir(root).unwrap();
+    }
+
     #[test]
     fn model_pin_rejects_wrong_hash_revocation_and_deadline_and_retains_lock() {
         let path=std::env::temp_dir().join(format!("grammar-pin-{}.bin",uuid::Uuid::new_v4()));

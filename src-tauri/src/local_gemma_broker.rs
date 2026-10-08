@@ -266,6 +266,7 @@ mod tests {
                 "93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b",
                 host.to_str().unwrap(),
                 &host_hash,
+                "785601b8f32ba6ab10374f8e9ead5d8deadd56e70940883ef65608dbfbb80860",
             ])
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())

@@ -42,3 +42,17 @@ unique temporary native host. It is not installed-package or toolbar qualificati
 The personal installer does not enable this option. Never point a normal profile
 at the test registration. The launcher owns broker readiness and stdin lifetime;
 EOF ends admission and awaits model cleanup. No automatic restart or fallback.
+
+The trusted broker launcher requires seven arguments, in order:
+`runtime runtime-sha model model-sha host host-sha runtime-bundle-sha`.
+The last digest must come from the reviewed runtime manifest, not from blindly
+hashing whatever is installed at launch. It covers the adjacent runtime EXE and
+DLL files: sort filenames, concatenate `filename + NUL + lowercase-file-SHA256 + LF`,
+then SHA256 that UTF-8 byte sequence. The broker retains deny-write/delete handles
+for verified files until service cleanup. Missing/changed/extra adjacent DLLs at
+verification fail admission; six-argument callers fail closed. Verification shares
+the existing 180s startup deadline and revocation signal, with 128-file/8GiB limits.
+This identifies the supplied adjacent bundle, not Windows system libraries or a
+sandbox against a malicious same-account process adding files after verification.
+Current owned launch scripts retain the reviewed CUDA12 bundle; CUDA13 remains an
+unpromoted comparator. Personal installer integration remains pending.
