@@ -13,7 +13,7 @@ const manifest=JSON.parse(await readFile('C:/GrammarTrial/MANIFEST.json','utf8')
 const hash=createHash('sha256').update(await readFile('C:/GrammarTrial/codex-pencil.exe')).digest('hex');
 assert.equal(hash,manifest.files.find(x=>x.path==='codex-pencil.exe').sha256);
 const targetHash=createHash('sha256').update(await readFile('C:/GrammarTrial/target-apply.dll')).digest('hex');assert.equal(targetHash,manifest.files.find(x=>x.path==='target-apply.dll').sha256);
-const report={targetSha256:targetHash,fixtureOverrides:manifest.fixtureOverrides??null,status:'FAIL',classification:manifest.fixtureOverrides?'MODIFIED_TARGET_DLL_FIXTURE_API_CANCEL_NOT_SUCCESSFUL_API':'INSTALLED_UNMODIFIED_APP_API_SETUP_AND_LOCAL_TLS_CANCEL_NOT_SUCCESSFUL_API',sourceCommit:manifest.sourceCommit,appSha256:hash,checks:[],liveProvider:'NOT_RUN',successfulApiReply:'NOT_RUN'};
+const report={targetSha256:targetHash,fixtureOverrides:manifest.fixtureOverrides??null,status:'FAIL',classification:manifest.fixtureOverrides?'MODIFIED_TARGET_DLL_FIXTURE_API_CANCEL_NOT_SUCCESSFUL_API':'INSTALLED_UNMODIFIED_APP_API_SETUP_AND_LOCAL_TLS_CANCEL_NOT_SUCCESSFUL_API',sourceCommit:manifest.sourceCommit,appSha256:hash,checks:[],appExitCodes:[],liveProvider:'NOT_RUN',successfulApiReply:'NOT_RUN'};
 const pass=s=>{report.checks.push(s);console.log('PASS '+s);};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(name,probe,ms=15000){const end=Date.now()+ms;while(Date.now()<end){const value=await probe();if(value)return value;await sleep(100);}throw Error('timeout: '+name);}
@@ -87,9 +87,9 @@ try{
  await until('socket closed',()=>sockets.size===0);pass('explicit API request cancellation closes local connection and preserves draft/source');
  await page.getByTestId('copy-result').click();await until('copy feedback',async()=>/Copied/.test(await status.textContent()));assert.equal(await text(),'please seperate this.');assert.equal(Buffer.from((await command('CLIPBOARD')).slice(5),'base64').toString('utf8'),reviewed);pass('retained edited draft Copy exact clipboard reread without source mutation');
  assert.equal(await command('EXIT'),'EXIT 0');await until('editor exit',()=>editor.exitCode!==null);
- await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});await until('app exit',()=>app.exitCode!==null);await browser.close();browser=null;
+ await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});await until('app exit',()=>app.exitCode!==null);assert.equal(app.exitCode,0);report.appExitCodes.push(app.exitCode);await browser.close();browser=null;
  await launch();assert.equal((await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('api_session_status'))).configured,false);pass('API setup absent after actual process restart');
- await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});await until('app exit',()=>app.exitCode!==null);report.status='PASS';
+ await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});await until('app exit',()=>app.exitCode!==null);assert.equal(app.exitCode,0);report.appExitCodes.push(app.exitCode);report.status='PASS';
 }catch(error){report.error=String(error.stack??error);report.errorEvents=await page?.evaluate(()=>window.__errors).catch(()=>[]);console.error(report.error,report.errorEvents);}
 finally{
  if(page&&app?.exitCode===null)await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});
