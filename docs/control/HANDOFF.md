@@ -2307,3 +2307,21 @@ Pure production prompt builder extracted without content/expression change; whit
 Full library117 PASS/20 ignored. Production broker/host release build PASS, recorded in diagnostic-build-r2.log; first attempt used wrong host target name, preserved diagnostic-build.log, not a product build failure. Governance and diff checks PASS. Existing compiler warnings retained. Same-integrator review only, not independent review.
 
 Next: keep12B baseline. Investigate output-generation work for long translations with a held-out quality corpus and resource-aware measurements, without shortening away source meaning or raising1s/0.5s targets. Shared-load availability/tail costs remain unresolved; installed Gemma/Sandbox/physicalIME/global-editor integration remains unqualified. Do not retry rejected E4B prompts or ngram blindly.
+
+
+# Gemma inference phase diagnosis — 2026-10-08
+
+Base 5be6475a5ec0070ccadc17c443ca3b3385178400. Candidate only, mission INCOMPLETE.
+
+Added opt-in GRAMMAR_GEMMA_TIMING numeric metrics for runtime-reported prompt processing, prediction, token counts/cache count and local HTTP elapsed time. Missing/invalid counters are omitted, never reported as zero. Source text, completion, model paths, identifiers and arbitrary response metadata are excluded by a strict numeric allowlist. Default generation request, prompt, model, cache_prompt=false, output guards and deadlines are unchanged. The original complete response still reaches existing validation. Metrics describe completed HTTP responses only; timeout has no final per-phase breakdown and is NOT inferred from the warmup.
+Pinned upstream field documentation: https://raw.githubusercontent.com/ggml-org/llama.cpp/b11461/tools/server/README.md (Timings and context usage). Counters are runtime-reported timings, not an independent GPU profiler.
+
+## Actual synthetic GPU trial
+Original eight-case long regression corpus, pinned12B SSD model/runtime, spec none, artifact handles retained. Startup24911.9232ms. Warmup completed:31 prompt tokens,3880.005ms prompt processing;20 generated tokens,1039.336ms prediction;HTTP4922.715ms;cache_n=0. This is a warmup prompt, NOT a user recommendation benchmark.
+First long request exceeded unchanged10000ms observation allowance with gemma_pipe_deadline;7 NOT_RUN. No generated output, so no quality judgement or successful recommendation. The separate production1000ms target remains unchanged. Receipt retains exact attempt elapsed value; a single failed attempt cannot provide a representative latency distribution. No threshold increased or difficult row omitted to claim acceptance.
+GPU samples remained high/variable; owned engine exit was followed by97..98% GPU utilization and about9.2GB used. Other workload was not inspected/stopped. This cannot isolate the model's idle performance or prove the cause of every delay. Do not repeat blind trials while saturated. Actual stop/descendant/workspace cleanup succeeded, with workspaceRemoved=true. Original failures stay FAIL.
+
+## Validation and next work
+Full release library118 PASS,20 ignored. New counter-sanitization regression covers valid data, hidden source/content/path fields, negative/boolean/string/object/null counter values, missing fields and nonfinite elapsed time. Production broker/Chromium host release build PASS with existing warnings. Governance self-test and diff checks PASS. Same-integrator code/boundary review only; no independent review.
+Evidence:12b-inference-phase-r1.log, intent-quality-12b-inference-phase-r1.json, inference-phase-monitor.jsonl, inference-phase-library.log, inference-phase-build.log. Source/build identity in inference-phase-source-final.json.
+Next: use these numeric phase counters in a lower-load owned12B long-corpus run to distinguish prefill vs output cost before changing decoding/model. Shared-load availability remains an unresolved product issue; lack of an idle benchmark does not excuse missed1s targets. No new installed/Sandbox/UI/Apply qualification this round. Existing Apply evidence is unchanged;0.5s target remains. No main/push/release/Project UI update.
