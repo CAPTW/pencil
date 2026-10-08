@@ -52,7 +52,7 @@ try{
  const draft=page.getByLabel('Editable rewrite result text',{exact:true});const apply=page.getByTestId('apply-result');const status=page.locator('.status-pill');
  async function capture(prefix='',suffix=''){
   await command('PASSWORD 0');await set(prefix+'please seperate this.'+suffix);await command(`SELECT ${prefix.length} ${prefix.length+21}`);
-  execFileSync('C:/GrammarPayload/managed-target-focus.exe',[String(report.targetPid)],{windowsHide:true});
+  console.log(execFileSync('C:/GrammarPayload/managed-target-focus.exe',[String(report.targetPid)],{windowsHide:true,encoding:'utf8',timeout:10000}));
   await until('owned target foreground',async()=>await command('FOCUS')==='FOCUS True');
   await hide();
   await until('owned target remains foreground',async()=>await command('FOCUS')==='FOCUS True');
