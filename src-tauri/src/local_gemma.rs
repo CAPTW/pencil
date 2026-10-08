@@ -349,6 +349,17 @@ pub struct GemmaEngine {
     cleanup_deadline: Option<std::time::Instant>,
 }
 
+/// Cleanup evidence is separate from startup failure. Unknown early failures
+/// never grant retry authority, even when Drop may subsequently clean up.
+#[derive(Debug)]
+pub struct StartupFailure { pub error:String, pub cleanup_confirmed:bool }
+impl From<String> for StartupFailure {
+    fn from(error:String)->Self { Self{error,cleanup_confirmed:false} }
+}
+impl From<&str> for StartupFailure {
+    fn from(error:&str)->Self { Self::from(error.to_owned()) }
+}
+
 impl GemmaEngine {
     /// Local verified artifacts only. Never resolves PATH, downloads or reads account config.
     pub async fn start(executable: &Path, model: &Path, deadline: Instant) -> Result<Self, String> {
@@ -362,6 +373,13 @@ impl GemmaEngine {
         deadline: Instant,
         active: Arc<AtomicBool>,
     ) -> Result<Self, String> {
+        Self::start_reported(executable,model,deadline,active).await.map_err(|failure|failure.error)
+    }
+
+    /// Returns explicit cleanup evidence only after awaited process/workspace teardown.
+    pub async fn start_reported(
+        executable:&Path, model:&Path, deadline:Instant, active:Arc<AtomicBool>,
+    )->Result<Self,StartupFailure> {
         if !active.load(Ordering::SeqCst) {
             return Err("gemma_start_revoked".into());
         }
@@ -480,8 +498,10 @@ impl GemmaEngine {
         })
         .await;
         if let Err(error) = load {
-            engine.stop().await.map_err(|e| format!("{error};{e}"))?;
-            return Err(error);
+            return Err(match engine.stop().await {
+                Ok(())=>StartupFailure{error,cleanup_confirmed:true},
+                Err(cleanup)=>StartupFailure{error:format!("{error};{cleanup}"),cleanup_confirmed:false},
+            });
         }
         engine.ready = true;
         eprintln!("gemma_engine phase=ready ms={}", started.elapsed().as_millis());
@@ -780,6 +800,35 @@ mod tests {
     }
 
     use super::*;
+    #[tokio::test]
+    async fn startup_failure_receipt_requires_actual_native_cleanup() {
+        use std::os::windows::process::CommandExt;
+        let root=std::env::temp_dir().join(format!("grammar-startup-fixture-{}",uuid::Uuid::new_v4()));
+        std::fs::create_dir(&root).unwrap();
+        let source=root.join("server.rs");let exe=root.join("server.exe");
+        std::fs::write(&source,include_str!("../../scripts/mission/fixtures/gemma-startup-runtime.rs")).unwrap();
+        let build=std::process::Command::new("rustc").arg(&source).arg("-o").arg(&exe).creation_flags(0x08000000).output().unwrap();
+        assert!(build.status.success(),"{}",String::from_utf8_lossy(&build.stderr));
+        for mode in ["invalid","timeout"] {
+            let model=root.join(format!("{mode}.gguf"));std::fs::write(&model,mode).unwrap();
+            let failure=GemmaEngine::start_reported(&exe,&model,Instant::now()+Duration::from_secs(3),Arc::new(AtomicBool::new(true))).await.err().unwrap();
+            assert!(model.with_extension("warmup").exists(),"warmup was not reached: {}",failure.error);
+            assert!(failure.cleanup_confirmed,"{}",failure.error);
+            assert_eq!(failure.error,if mode=="timeout" {"gemma_start_timeout"} else {"gemma_warmup_output"});
+            let cwd=std::path::PathBuf::from(std::fs::read_to_string(model.with_extension("cwd")).unwrap());
+            assert!(!cwd.exists() && !cwd.parent().unwrap().exists());
+            let pid=std::fs::read_to_string(model.with_extension("pid")).unwrap().parse::<u32>().unwrap();
+            unsafe {
+                use windows_sys::Win32::{System::Threading::{OpenProcess,WaitForSingleObject,PROCESS_SYNCHRONIZE},Foundation::CloseHandle};
+                let handle=OpenProcess(PROCESS_SYNCHRONIZE,0,pid);
+                if !handle.is_null() {assert_eq!(WaitForSingleObject(handle,0),0);CloseHandle(handle);}
+            }
+        }
+        let failure=GemmaEngine::start_reported(&exe,&root.join("missing"),Instant::now()+Duration::from_secs(1),Arc::new(AtomicBool::new(true))).await.err().unwrap();
+        assert!(!failure.cleanup_confirmed); // Absence of a runtime is not a stop receipt.
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     fn pin_owned_runtime(runtime_root: &Path) -> (Vec<std::fs::File>, String) {
         use sha2::{Digest, Sha256};
         use std::io::Read;

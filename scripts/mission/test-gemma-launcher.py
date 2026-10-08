@@ -21,7 +21,10 @@ fn main() {
  if dir.join("wait-broker").exists() {
    for _ in 0..500 { if dir.join("release-broker").exists() {break;} std::thread::sleep(std::time::Duration::from_millis(10)); }
  }
- if dir.join("fail-start").exists() { std::process::exit(2); }
+ if dir.join("fail-start").exists() {
+   if dir.join("confirmed-failure").exists() { println!("{{\"cleanup\":\"complete\"}}"); std::io::stdout().flush().unwrap(); }
+   std::process::exit(2);
+ }
  println!(r#"{{"version":1,"pid":{},"name":"\\\\.\\pipe\\Grammar.Gemma.Broker.00000000-0000-0000-0000-000000000001"}}"#,std::process::id());
  std::io::stdout().flush().unwrap();
  if dir.join("crash-after-app").exists() {
@@ -180,6 +183,31 @@ class LauncherTests(unittest.TestCase):
         self.assertNotEqual(first.returncode,0)
         self.assertIn("cleanup was not confirmed",err)
 
+    def test_confirmed_startup_failure_retries_without_restarting_app(self):
+        (self.root / "fail-start").touch()
+        (self.root / "confirmed-failure").touch()
+        (self.root / "wait-release").touch()
+        first=subprocess.Popen(["pwsh","-NoProfile","-File",str(self.root / "Start-Grammar.ps1"),"-EnableDesktopGemma"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding="utf-8")
+        try:
+            path,state=self.wait_phase("failed")
+            self.assertIsNotNone(state["retryTicket"])
+            pid=(self.root / "broker.pid").read_text()
+            app_pid=(self.root / "app.pid").read_text()
+            time.sleep(.4)
+            self.assertEqual((self.root / "broker.pid").read_text(),pid)
+            self.assertEqual(self.sidecar.read_text(),self.original)
+            (self.root / "fail-start").unlink()
+            path.with_suffix(".json.retry").write_text(state["retryTicket"])
+            self.wait_phase("ready")
+            self.assertEqual((self.root / "app.pid").read_text(),app_pid)
+            self.assertNotEqual((self.root / "broker.pid").read_text(),pid)
+        finally:
+            (self.root / "release-app").touch()
+            out,err=first.communicate(timeout=20)
+        self.assertEqual(first.returncode,0,err)
+        self.assertFalse(list(self.root.glob("gemma-session-*.json*")))
+        self.assertEqual(self.sidecar.read_text(),self.original)
+
     def test_desktop_configuration_requires_explicit_trial_option(self):
         result = self.run_launcher("-EnableDesktopGemma")
         self.assertEqual(result.returncode,0,result.stderr)
@@ -264,6 +292,7 @@ class LauncherTests(unittest.TestCase):
                 if phase=="failed": break
                 time.sleep(.02)
             self.assertEqual(phase,"failed")
+            self.assertIsNone(json.loads(files[0].read_text())["retryTicket"])
             self.assertTrue((self.root / "app-started").exists())
             self.assertIsNone(first.poll())
             self.assertNotEqual(self.run_launcher().returncode,0)
