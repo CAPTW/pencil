@@ -13,6 +13,7 @@ $root = $PSScriptRoot
 $pins = [Collections.Generic.List[IO.FileStream]]::new()
 $lock = $null; $broker = $null; $app = $null; $published = $null; $original = $null
 $read = $null; $drain = $null; $cleanupComplete = $false
+$configConflict = $false; $brokerFailed = $false
 $configPath = Join-Path $root 'grammar-chromium-host.origin.json'
 $utf8 = [Text.UTF8Encoding]::new($false)
 function Pin-File([string]$Name) {
@@ -32,6 +33,14 @@ function Write-Config([string]$Text) {
     [IO.File]::WriteAllText($temp, $Text, $utf8)
     [IO.File]::Move($temp, $configPath, $true)
   } finally { if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp } }
+}
+function Restore-Config {
+  if ($null -eq $published) { return $false }
+  try {
+    $current = [IO.File]::ReadAllText($configPath)
+    if ($current -ceq $published) { Write-Config $original; return $false }
+    return $current -cne $original
+  } catch { return $true }
 }
 try {
   # The retained exclusive handle prevents two launchers publishing different brokers.
@@ -88,20 +97,21 @@ try {
   $app = [Diagnostics.Process]::Start($appStart)
   Write-Host 'Local Gemma is ready for enabled Chromium fields. Desktop Gemma is enabled only when explicitly selected for qualification.'
   while (-not $app.WaitForExit(200)) {
-    if ($broker.HasExited) { throw 'Local Gemma stopped. No automatic restart or cloud fallback was attempted.' }
+    if (-not $brokerFailed -and $broker.HasExited) {
+      $brokerFailed = $true
+      $configConflict = Restore-Config
+      Write-Warning 'Local Gemma stopped. Your app remains open. Close Grammar from the tray, then run Start-Grammar.ps1 to retry. No automatic restart or request replay occurred.'
+      # Keep image pins and installation ownership until the user closes the app.
+      # Exiting here would permit uninstall or a duplicate launcher over its draft.
+    }
   }
 } finally {
   # Restore only the bytes this invocation published; preserve outside changes.
-  $configConflict = $false
-  if ($null -ne $published) {
-    try {
-      if ([IO.File]::ReadAllText($configPath) -ceq $published) { Write-Config $original }
-      elseif ([IO.File]::ReadAllText($configPath) -cne $original) { $configConflict = $true }
-    } catch { $configConflict = $true }
-  }
+  $restoreConflict = Restore-Config
+  $configConflict = $configConflict -or $restoreConflict
   try {
     if ($null -ne $broker) {
-      $broker.StandardInput.Close()
+      if (-not $broker.HasExited) { $broker.StandardInput.Close() }
       if (-not $broker.WaitForExit(12000)) {
         $broker.Kill($true)
         $null = $broker.WaitForExit(5000)
@@ -109,10 +119,11 @@ try {
       }
       if ($null -ne $read -and $read.Wait(1000)) {
         $cleanupLine = $read.GetAwaiter().GetResult()
-        $cleanupComplete = $cleanupLine -ceq '{"cleanup":"complete"}' -and $broker.ExitCode -eq 0
+        $cleanupComplete = $cleanupLine -ceq '{"cleanup":"complete"}'
       }
       if ($null -ne $published -and -not $cleanupComplete) { throw 'Gemma cleanup was not confirmed' }
       if ($null -ne $drain -and -not $drain.Wait(1000)) { throw 'Gemma diagnostic reader did not finish' }
+      if ($null -ne $published -and ($brokerFailed -or $broker.ExitCode -ne 0)) { throw 'Local Gemma stopped; cleanup confirmed. Run Start-Grammar.ps1 again to retry explicitly.' }
     }
   } finally {
     if ($null -ne $broker) { $broker.Dispose() }

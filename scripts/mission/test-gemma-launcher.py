@@ -21,6 +21,11 @@ fn main() {
  if dir.join("fail-start").exists() { std::process::exit(2); }
  println!(r#"{{"version":1,"pid":{},"name":"\\\\.\\pipe\\Grammar.Gemma.Broker.00000000-0000-0000-0000-000000000001"}}"#,std::process::id());
  std::io::stdout().flush().unwrap();
+ if dir.join("crash-after-app").exists() {
+   for _ in 0..500 { if dir.join("app-started").exists() { break; } std::thread::sleep(std::time::Duration::from_millis(10)); }
+   if dir.join("confirmed-failure").exists() { println!("{{\"cleanup\":\"complete\"}}"); std::io::stdout().flush().unwrap(); }
+   std::process::exit(3);
+ }
  let mut byte=[0]; let _=std::io::stdin().read(&mut byte);
  if !dir.join("no-cleanup").exists() { println!("{{\"cleanup\":\"complete\"}}"); }
 }
@@ -33,7 +38,11 @@ fn main() {
  if dir.join("external-change").exists() {
    std::fs::write(dir.join("grammar-chromium-host.origin.json"),b"{\"outside\":true}").unwrap();
  }
+ if dir.join("wait-release").exists() {
+   for _ in 0..1500 { if dir.join("release-app").exists() { break; } std::thread::sleep(std::time::Duration::from_millis(10)); }
+ }
  std::thread::sleep(std::time::Duration::from_millis(if dir.join("hold-app").exists() {3000} else {400}));
+ std::fs::write(dir.join("app-exited"),b"yes").unwrap();
 }
 '''
 
@@ -105,6 +114,48 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual((self.root / "desktop-configured").read_text(),"yes")
         self.assertEqual(self.sidecar.read_text(), self.original)
+
+    def test_broker_crash_preserves_app_and_lock_until_explicit_exit_then_relaunch(self):
+        (self.root / "crash-after-app").touch()
+        (self.root / "wait-release").touch()
+        first = subprocess.Popen(["pwsh", "-NoProfile", "-File", str(self.root / "Start-Grammar.ps1")], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+        try:
+            deadline = time.monotonic() + 10
+            while not (self.root / "app-started").exists() and time.monotonic() < deadline:
+                time.sleep(.02)
+            self.assertTrue((self.root / "app-started").exists())
+            time.sleep(.8)
+            self.assertIsNone(first.poll(), "launcher released ownership while app still open")
+            self.assertFalse((self.root / "app-exited").exists())
+            self.assertEqual(self.sidecar.read_text(), self.original)
+            second = self.run_launcher()
+            self.assertNotEqual(second.returncode, 0)
+            removal = subprocess.run(["pwsh","-NoProfile","-File",str(self.root / "Uninstall-Grammar.ps1")],capture_output=True,text=True,encoding="utf-8",timeout=10)
+            self.assertNotEqual(removal.returncode,0)
+            self.assertIn("wait for its Gemma launcher",removal.stderr)
+        finally:
+            (self.root / "release-app").touch()
+            out, err = first.communicate(timeout=20)
+            deadline=time.monotonic()+5
+            while not (self.root / "app-exited").exists() and time.monotonic()<deadline:
+                time.sleep(.02)
+        self.assertNotEqual(first.returncode,0)
+        self.assertIn("Close Grammar from the tray",out)
+        self.assertTrue((self.root / "app-exited").exists())
+        (self.root / "crash-after-app").unlink()
+        retry=self.run_launcher()
+        self.assertEqual(retry.returncode,0,retry.stderr)
+        self.assertEqual(self.sidecar.read_text(),self.original)
+
+    def test_confirmed_cleanup_does_not_turn_broker_failure_into_success(self):
+        (self.root / "crash-after-app").touch()
+        (self.root / "confirmed-failure").touch()
+        result=self.run_launcher()
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn("cleanup confirmed",result.stderr)
+        self.assertNotIn("cleanup was not confirmed",result.stderr)
+        self.assertTrue((self.root / "app-exited").exists())
+        self.assertEqual(self.sidecar.read_text(),self.original)
 
     def test_missing_cleanup_receipt_is_failure(self):
         (self.root / "no-cleanup").touch()

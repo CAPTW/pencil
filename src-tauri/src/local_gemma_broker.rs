@@ -52,6 +52,7 @@ impl Admission {
                 _ = async { while active.load(Ordering::SeqCst) {
                     tokio::time::sleep(std::time::Duration::from_millis(5)).await;
                 }} => break Ok(()),
+                _ = client.closed() => break Err("gemma_service_closed".into()),
                 finished = tasks.join_next(), if !tasks.is_empty() => {
                     if finished.is_some_and(|r| r.is_err()) { break Err("gemma_broker_task".into()); }
                 },
@@ -324,7 +325,7 @@ mod tests {
         };
         let active = Arc::new(AtomicBool::new(true));
         let server = tokio::spawn(
-            admission.run(super::super::service::closed_test_client(), active.clone()),
+            admission.run(super::super::service::rejecting_test_client(), active.clone()),
         );
         let mut names = std::collections::HashSet::new();
         for revision in 1..=8 {
@@ -356,12 +357,41 @@ mod tests {
         assert!(ClientOptions::new().open(&connection.name).is_err());
     }
     #[tokio::test]
+    async fn closed_service_revokes_admission_without_waiting_for_another_request() {
+        let admission = Admission::create(own_image()).unwrap();
+        let name = admission.name();
+        let active = Arc::new(AtomicBool::new(true));
+        let result = tokio::time::timeout(std::time::Duration::from_millis(250),
+            admission.run(super::super::service::closed_test_client(), active.clone())).await.unwrap();
+        assert_eq!(result.unwrap_err(), "gemma_service_closed");
+        assert!(!active.load(Ordering::SeqCst));
+        assert!(ClientOptions::new().open(&name).is_err());
+    }
+
+    #[tokio::test]
+    async fn service_failure_disconnects_an_already_connected_idle_peer() {
+        let admission = Admission::create(own_image()).unwrap();
+        let name = admission.name();
+        let active = Arc::new(AtomicBool::new(true));
+        let (client, close) = super::super::service::closable_test_client();
+        let server = tokio::spawn(admission.run(client, active.clone()));
+        let mut socket = ClientOptions::new().open(&name).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        close.send(()).unwrap();
+        let result = tokio::time::timeout(std::time::Duration::from_millis(250),server).await.unwrap().unwrap();
+        assert_eq!(result.unwrap_err(),"gemma_service_closed");
+        assert!(!active.load(Ordering::SeqCst));
+        assert!(socket.read_u8().await.is_err());
+        assert!(ClientOptions::new().open(&name).is_err());
+    }
+
+    #[tokio::test]
     async fn resident_caps_stalled_connections() {
         let admission = Admission::create(own_image()).unwrap();
         let name = admission.name();
         let active = Arc::new(AtomicBool::new(true));
         let server = tokio::spawn(
-            admission.run(super::super::service::closed_test_client(), active.clone()),
+            admission.run(super::super::service::rejecting_test_client(), active.clone()),
         );
         let mut held = Vec::new();
         for _ in 0..4 {
