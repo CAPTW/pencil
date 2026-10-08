@@ -3,6 +3,7 @@ pub(crate) mod claude;
 pub(crate) mod cli;
 pub mod executor;
 pub mod http_api;
+pub(crate) mod api_session;
 pub(crate) mod manager;
 pub(crate) mod types;
 
