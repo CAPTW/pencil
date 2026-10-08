@@ -364,7 +364,9 @@
     try {
       const result=await chrome.runtime.sendMessage(request);
       if(localRewrite!==request || session!==owner || editor!==target || generation!==localGeneration)return;
-      if(result?.error){announce('Local Gemma review unavailable. No retry or cloud fallback.');return;}
+      if(result?.error){announce(result.error==='analysis_deadline'?
+        'Local Gemma review unavailable: time limit exceeded. No changes applied.':
+        'Local Gemma review unavailable. No retry or cloud fallback.');return;}
       if(read()!==text || owner.revision!==request.revision || draftVersion!==draft || result?.epoch!==epoch ||
         result.revision!==request.revision || result.intent?.mode!==intent.mode || result.intent?.target!==intent.target) {
         announce('Local result stale or invalid. No changes applied.');return;

@@ -239,6 +239,9 @@ fn analyze(body: &[u8]) -> Result<Response, &'static str> {
 
 // Trusted launcher ticket only; never accepted from extension JSON, environment
 // or origin config. No production ticket provisioning is activated yet.
+fn gemma_failure(deadline: tokio::time::Instant) -> &'static str {
+    if tokio::time::Instant::now() >= deadline { "analysis_deadline" } else { "analysis_unavailable" }
+}
 async fn analyze_gemma(body: &[u8], ticket: &codex_pencil::local_gemma::pipe::Ticket, deadline: tokio::time::Instant) -> Result<Response, &'static str> {
     let request = parse_request(body)?;
     if request.op != "analyze" || request.provider.is_some() || request.consent.is_some()
@@ -246,7 +249,7 @@ async fn analyze_gemma(body: &[u8], ticket: &codex_pencil::local_gemma::pipe::Ti
         return Err("invalid_request");
     }
     let binding = codex_pencil::local_gemma::Binding {intent: request.intent.clone().unwrap_or(codex_pencil::local_gemma::Intent::Grammar),epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
-    let result = codex_pencil::local_gemma::pipe::recommend(ticket,binding.clone(),deadline).await.map_err(|_| "analysis_unavailable")?;
+    let result = codex_pencil::local_gemma::pipe::recommend(ticket,binding.clone(),deadline).await.map_err(|_| gemma_failure(deadline))?;
     gemma_response(request,result)
 }
 fn gemma_response(request:Request,result:codex_pencil::local_gemma::Recommendation)->Result<Response,&'static str>{
@@ -263,8 +266,8 @@ async fn analyze_gemma_broker(body:&[u8],broker:&codex_pencil::local_gemma::brok
     let request=parse_request(body)?;
     if request.op!="analyze" || request.provider.is_some() || request.consent.is_some() || request.cleanup_token.is_some() || request.cleanup_ticket.is_some(){return Err("invalid_request");}
     let binding=codex_pencil::local_gemma::Binding{intent:request.intent.clone().unwrap_or(codex_pencil::local_gemma::Intent::Grammar),epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
-    let grant=broker.acquire(&request.epoch,deadline).await.map_err(|_|"analysis_unavailable")?;
-    let result=grant.recommend(binding,deadline).await.map_err(|_|"analysis_unavailable")?;
+    let grant=broker.acquire(&request.epoch,deadline).await.map_err(|_|gemma_failure(deadline))?;
+    let result=grant.recommend(binding,deadline).await.map_err(|_|gemma_failure(deadline))?;
     gemma_response(request,result)
 }
 
@@ -561,6 +564,7 @@ async fn run_actor<S: DeepService>(
                     _ = input.recv() => break Err(()),
                     response = service.local(body) => match response {
                         Ok(response) => response,
+                        Err(error) if request.intent.is_some() => response_for(&request,Some(error)),
                         Err(_) => break Err(()),
                     },
                 };
@@ -781,6 +785,40 @@ mod tests {
         let actor=tokio::spawn(async move {run_actor(rx,&output,&service).await});
         tx.send(Ok(request("seperate"))).await.unwrap();
         assert!(actor.await.unwrap().is_err());drop(tx);assert!(replies.try_recv().is_err());
+    }
+    #[tokio::test]
+    async fn explicit_local_deadline_keeps_binding_without_replay() {
+        struct FailedLocal(Arc<AtomicUsize>);
+        impl DeepService for FailedLocal {
+            fn local(&self, _: Vec<u8>) -> LocalFuture {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Box::pin(async { Err("analysis_deadline") })
+            }
+            fn start(&self, _: Request, _: DeepCancellation) -> DeepFuture { panic!("no Deep fallback") }
+            fn shutdown(&self) -> CleanupFuture { Box::pin(async { true }) }
+        }
+        let calls=Arc::new(AtomicUsize::new(0));
+        let service=FailedLocal(calls.clone());
+        let (tx,rx)=channel::channel(2);
+        let (output,replies)=actor_output(Duration::from_secs(1));
+        let actor=tokio::spawn(async move { run_actor(rx,&output,&service).await });
+        let mut body:serde_json::Value=serde_json::from_slice(&request("synthetic")).unwrap();
+        body["intent"]=serde_json::json!({"mode":"paraphrase"});
+        tx.send(Ok(serde_json::to_vec(&body).unwrap())).await.unwrap();
+        let response=receipt(&replies).await;
+        assert_eq!(response["error"],"analysis_deadline");
+        for key in ["id","epoch","revision","intent"] { assert_eq!(response[key],body[key]); }
+        assert_eq!(response["suggestions"],serde_json::json!([]));
+        drop(tx);
+        assert!(actor.await.unwrap().is_ok());
+        assert_eq!(calls.load(Ordering::SeqCst),1);
+        assert!(replies.try_recv().is_err());
+    }
+    #[test]
+    fn local_failure_classifies_only_elapsed_deadlines() {
+        let now=tokio::time::Instant::now();
+        assert_eq!(gemma_failure(now),"analysis_deadline");
+        assert_eq!(gemma_failure(now+Duration::from_secs(10)),"analysis_unavailable");
     }
     #[tokio::test]
     async fn gemma_rejects_deep_fields_before_opening_pipe() {
