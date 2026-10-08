@@ -26,6 +26,16 @@ if ($receipt.schema -cne 'grammar-personal-install/v1' -or [IO.Path]::GetFullPat
   throw 'Install receipt does not describe this directory.'
 }
 
+# Never terminate an app while its resident broker launcher still owns a session.
+$sessionLock = Join-Path $root 'gemma-session.lock'
+try { $probeLock = [IO.File]::Open($sessionLock, 'OpenOrCreate', 'ReadWrite', 'None') }
+catch { throw 'Quit Grammar and wait for its Gemma launcher to finish before uninstalling.' }
+try {
+  # Persist before releasing the lock so a new launcher cannot race removal.
+  $receipt | Add-Member -NotePropertyName state -NotePropertyValue 'uninstalling' -Force
+  [IO.File]::WriteAllText($receiptPath, ($receipt | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+} finally { $probeLock.Dispose() }
+
 $prefix = $root + [IO.Path]::DirectorySeparatorChar
 function Test-Owned($Process) { $Process.Path -and $Process.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) }
 $userData = if ($UserDataDirectory) { $UserDataDirectory } else { @(
