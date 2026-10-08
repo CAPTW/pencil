@@ -14,11 +14,19 @@ const require=createRequire(import.meta.url);
 const {chromium}=require('C:/Users/USER/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const evidence='D:/dev/grammar-evidence/grammar-gemma-20261007';
 const binaryRoot=resolve(process.env.GRAMMAR_GEMMA_BIN_DIR || 'src-tauri/target/debug');
+const modelId=process.env.GRAMMAR_GEMMA_TRIAL_MODEL||'12b';
+const models={
+ '12b':{file:'gemma-4-12b-it-qat-q4_0.gguf',sha256:'93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b'},
+ 'e4b':{file:'gemma-4-E4B_q4_0-it.gguf',sha256:'676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee'}
+};
+assert.ok(Object.hasOwn(models,modelId),'unknown owned trial model');
+const model=models[modelId];
 const run=await mkdtemp(join(evidence,'live-browser-'));
 const hostDir=join(run,'host'),extension=join(run,'extension'),profile=join(run,'profile');
 const hash=async path=>createHash('sha256').update(await readFile(path)).digest('hex');
 const pwsh=(script,args)=>execFileSync('pwsh.exe',['-NoProfile','-File',resolve(script),...args],{encoding:'utf8',windowsHide:true,timeout:20000});
 const report={scope:'MODIFIED_EXTENSION_OWNED_PROFILE_REAL_STDIO_GPU_NOT_INSTALLED_PACKAGE',rows:[],checks:[],cleanup:{}};
+report.model={id:modelId,...model};
 report.scriptSha256=await hash(new URL(import.meta.url));
 report.corpusModuleSha256=await hash(new URL('./gemma-corpus-browser.mjs',import.meta.url));
 let broker,context,registered=false,brokerExit;
@@ -45,7 +53,7 @@ try {
  await cp(join(binaryRoot,'grammar-gemma-broker.exe'),brokerPath);
  report.brokerSha256=await hash(brokerPath);report.hostSha256=await hash(hostPath);
  const start=performance.now();
- broker=spawn(brokerPath,[join(evidence,'runtime/llama-server.exe'),'a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1',join(evidence,'gemma-4-12b-it-qat-q4_0.gguf'),'93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b',hostPath,report.hostSha256],{windowsHide:true,env:{...process.env,GRAMMAR_GEMMA_TIMING:'1'},stdio:['pipe','pipe','pipe']});
+ broker=spawn(brokerPath,[join(evidence,'runtime/llama-server.exe'),'a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1',join(evidence,model.file),model.sha256,hostPath,report.hostSha256],{windowsHide:true,env:{...process.env,GRAMMAR_GEMMA_TIMING:'1'},stdio:['pipe','pipe','pipe']});
  broker.stdin.on('error',error=>{report.controlError=error.code;});
  brokerExit=new Promise(r=>broker.once('exit',(code,signal)=>r({code,signal})));
  let readyResolve,readyReject;const readyPromise=new Promise((r,j)=>{readyResolve=r;readyReject=j;});

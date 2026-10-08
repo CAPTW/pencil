@@ -1,0 +1,54 @@
+[
+  {
+    "id": "fresh-ko-en-neutral",
+    "intent": {
+      "mode": "translate",
+      "target": "en"
+    },
+    "source": "지원은 금요일까지 초안을 보낼 예정이지만 최종 승인은 아직 받지 못했습니다. 검토자가 답변하기 전에는 완료된 작업으로 표시하지 마세요.",
+    "check": "No invented gender; planned Friday draft, final approval not received, no completion label before reviewer response."
+  },
+  {
+    "id": "fresh-en-ko-comparison",
+    "intent": {
+      "mode": "translate",
+      "target": "ko"
+    },
+    "source": "The revised estimate is 12.5% lower, but delivery is two days later. Keep the original order open until the client explicitly accepts both changes.",
+    "check": "Both cost reduction and later delivery; original order stays open until explicit acceptance of both."
+  },
+  {
+    "id": "fresh-en-paraphrase-caveat",
+    "intent": {
+      "mode": "paraphrase"
+    },
+    "source": "The smaller sample suggests an improvement, but it does not establish the cause. Please include the unsuccessful trials in the summary and avoid describing this result as a guarantee.",
+    "check": "Retain limited evidence, unknown cause, inclusion of failures, no guarantee; useful rewording."
+  },
+  {
+    "id": "fresh-ko-paraphrase-polite",
+    "intent": {
+      "mode": "paraphrase"
+    },
+    "source": "제안해 주신 일정은 확인했습니다. 다만 목요일 오후에는 참석하기 어려우니, 가능하시다면 금요일 오전으로 조정해 주시면 감사하겠습니다.",
+    "check": "Polite conditional request; Thursday afternoon unavailable, Friday morning preferred; no claim of agreement."
+  },
+  {
+    "id": "fresh-en-ko-exact",
+    "intent": {
+      "mode": "translate",
+      "target": "ko"
+    },
+    "source": "The flag `review_only` must remain enabled. Do not change the stored value from 0.75 to 75, even when the interface displays a percentage.",
+    "check": "Exact flag, enabled obligation, numbers 0.75 and 75 and prohibition retained."
+  },
+  {
+    "id": "fresh-ko-en-uncertain",
+    "intent": {
+      "mode": "translate",
+      "target": "en"
+    },
+    "source": "문제가 해결됐을 수도 있지만 아직 재현 시험을 완료하지 않았습니다. 오늘 오후 3시까지 오류가 다시 나타나지 않더라도 최종 성공으로 보고하지 마세요.",
+    "check": "Possible resolution not certainty; reproduction test incomplete; no final success even absent error through 3pm today."
+  }
+]
