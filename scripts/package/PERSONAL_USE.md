@@ -19,15 +19,15 @@
 
 ## Gemma 시작 연결 후보
 
-`Prepare-GrammarLocal.ps1`은 고정된 Gemma 12B Q4_0 모델(약 7GB)과 llama.cpp CUDA 12.4 런타임을 `local` 폴더에 준비합니다. 첫 실행은 다운로드와 SHA-256 검증 때문에 오래 걸릴 수 있습니다. 공식 파일을 이미 보관했다면 `-AssetCache <폴더>`로 네트워크 없이 복사·검증합니다. 이 모드에서 파일이 없으면 다운로드로 전환하지 않습니다. GPU 드라이버를 설치하거나 변경하지 않습니다.
+`Prepare-GrammarLocal.ps1`은 고정된 Gemma 12B Q4_0 모델(약 7GB)과 선택된 llama.cpp 런타임(개인 패키지 기본값: CUDA 13.4)을 `local` 폴더에 준비합니다. 첫 실행은 다운로드와 SHA-256 검증 때문에 오래 걸릴 수 있습니다. 공식 파일을 이미 보관했다면 `-AssetCache <폴더>`로 네트워크 없이 복사·검증합니다. 이 모드에서 파일이 없으면 다운로드로 전환하지 않습니다. GPU 드라이버를 설치하거나 변경하지 않습니다.
 
 배치 시간을 점검하려면 `-TimingReceiptPath <설치 폴더 밖의 새 JSON 경로>`를 함께 지정하십시오. 모델 복사·검증, 런타임 압축 해제·검증 시간이 기록됩니다. 이는 다운로드 완료 후의 배치 시간과 앱의 모델 준비 시간을 구분하기 위한 선택적 진단이며, 기록 실패가 자산 검증을 생략하지 않습니다. SSD의 명시적 캐시와 SSD 설치 위치를 사용한 격리 시험은 느린 공유 저장소 시험보다 빨랐지만, 이 차이를 코드 개선 효과나 모든 PC의 보장 시간으로 해석하지 않습니다. 기존 `local` 폴더가 준비되어 있으면 다시 배치하지 말고 `Start-Grammar.ps1`을 실행하십시오. 앱 재시작 시 모델의 전체 무결성 검증은 계속 수행합니다.
 
-패키지를 만들 때 `scripts/mission/package.ps1`에 `-LocalRuntimeProfile cuda13.4-blackwell`을 지정하면 같은 llama.cpp b11461의 공식 CUDA 13.4 런타임을 선택합니다. 기본값은 기존 `cuda12.4`입니다. 선택 결과는 `MANIFEST.json`의 `localRuntimeProfile`에 기록되고, 실행 중 자동 변경이나 다른 런타임으로의 재시도는 하지 않습니다. Gemma 12B Q4_0 모델과 생성 설정은 두 프로필에서 같습니다. CUDA 13 프로필의 시험 범위는 RTX 5070 Ti·드라이버 596.49·격리 Windows Sandbox이며 다른 GPU/드라이버의 호환성은 별도 검증이 필요합니다. 드라이버 설치나 변경을 수행하는 옵션은 아닙니다. 이미 준비한 `local` 자산을 다른 프로필로 덮어쓰지 말고, 선택한 프로필의 새 패키지를 별도 위치에 설치하십시오.
+패키지를 만들 때 `scripts/mission/package.ps1`에 `-LocalRuntimeProfile cuda13.4-blackwell`을 지정하면 같은 llama.cpp b11461의 공식 CUDA 13.4 런타임을 선택합니다. 이번 개인 패키지의 기본값은 검증한 `cuda13.4-blackwell`입니다. 기존 CUDA 12.4 구성은 패키지 생성 시 `-LocalRuntimeProfile cuda12.4`로 명시적으로 선택할 수 있습니다. 다른 GPU/드라이버용 범용 기본값으로 검증한 것은 아닙니다. 선택 결과는 `MANIFEST.json`의 `localRuntimeProfile`에 기록되고, 실행 중 자동 변경이나 다른 런타임으로의 재시도는 하지 않습니다. Gemma 12B Q4_0 모델과 생성 설정은 두 프로필에서 같습니다. CUDA 13 프로필의 시험 범위는 RTX 5070 Ti·드라이버 596.49·격리 Windows Sandbox이며 다른 GPU/드라이버의 호환성은 별도 검증이 필요합니다. 드라이버 설치나 변경을 수행하는 옵션은 아닙니다. 이미 준비한 `local` 자산을 다른 프로필로 덮어쓰지 말고, 선택한 프로필의 새 패키지를 별도 위치에 설치하십시오.
 
-**실제 모델 실행 전제조건:** 이 llama.cpp 배포본은 Microsoft Visual C++ 런타임 DLL도 필요합니다. 깨끗한 Windows Sandbox에서 DLL이 없으면 모델 실행 전 `0xC0000135`로 종료되는 것을 확인했습니다. 현재 패키지는 이 의존성을 자동 설치하거나 사전에 구체적으로 진단하지 않습니다. 실제 모델 Sandbox 시험에서는 서명을 확인한 Visual Studio redistributable DLL을 시험 프로세스에만 제공했으며 시스템 설정은 변경하지 않았습니다. 이 시험 조건은 일반 설치 패키지에 의존성이 포함됐다는 뜻이 아닙니다. [Microsoft의 배포 방식 안내](https://learn.microsoft.com/en-us/cpp/windows/choosing-a-deployment-method?view=msvc-170)를 참고하십시오.
+**실제 모델 실행 전제조건:** 패키지의 `vc-runtime` 폴더에는 빌드 시 서명·해시를 검증한 Microsoft Visual C++ 런타임 DLL이 포함됩니다. 설치기는 파일 해시를 검증하고, 실행기는 해당 DLL을 모델 프로세스의 검색 경로에만 추가합니다. 시스템 런타임이나 드라이버를 설치하지 않습니다. DLL 또는 해시가 잘못되면 실행을 거부합니다. 런타임 보안 업데이트는 새 패키지로 받아야 합니다. Microsoft WebView2와 PowerShell 7은 별도 전제조건입니다.
 
-준비 후 `pwsh -NoProfile -File .\Start-Grammar.ps1`로 실행합니다. 앱을 먼저 열고 모델 준비 상태를 표시하며, 사용자가 켠 Chromium 필드에만 로컬 Gemma 연결을 제공합니다. 앱을 트레이에서 종료하면 연결 정보를 회수하고 브로커 정리 완료를 기다립니다. 실행 중에는 제거를 거부합니다. 강제로 실행기를 종료해 연결 정보가 남았다면 자동으로 덮어쓰지 않고 오류를 표시합니다.
+준비 후 `pwsh -NoProfile -File .\Start-Grammar.ps1`로 실행합니다. 앱을 먼저 열고 모델 준비 상태를 표시하며, 데스크톱 위젯 및 사용자가 켠 Chromium 필드에 로컬 Gemma 연결을 제공합니다. 앱을 트레이에서 종료하면 연결 정보를 회수하고 브로커 정리 완료를 기다립니다. 실행 중에는 제거를 거부합니다. 강제로 실행기를 종료해 연결 정보가 남았다면 자동으로 덮어쓰지 않고 오류를 표시합니다.
 
 **현재 범위:** `Start-Grammar.ps1`은 데스크톱 문법 모드의 Gemma 연결을 기본으로 켭니다. 명시적 `-EnableDesktopGemma:$false`로 브라우저 전용 연결을 사용할 수 있습니다. 데스크톱 로컬 연결은 문법, 자연스럽게, 간결하게, 공손하게 및 영어·한국어 번역을 지원합니다. 자동 대상 언어·일본어·중국어 번역은 로컬에서 거부하고 안내합니다. 필요한 경우 지원하는 언어를 선택하거나 별도로 동의한 Deep을 사용합니다. 모델 준비·기동 검증과 실제 설치 앱/브라우저 사용자 흐름 수용은 별개입니다. API endpoint/model/key의 세션 전용 설정과 명시적 API Deep은 구현돼 있습니다. 실제 외부 API 성공 응답은 별도 검증 대상입니다. 이 중간 패키지를 완성된 Gemma 기본 프로토타입으로 배포하지 않습니다. 현재 로컬 추론의 강제 취소·시간 초과는 모델 프로세스를 종료할 수 있습니다. 모델 종료 시 브로커는 새 요청을 받지 않고 종료합니다. 실행기는 앱을 강제 종료하지 않으며, 앱이 열려 있는 동안 설치 잠금과 중복 실행·제거 차단을 유지합니다. 자동 재시작하지 않습니다. 정리 완료가 확인되면 Retry local model로 다시 준비할 수 있으며, 버튼이 제공되지 않으면 초안을 확인한 뒤 트레이에서 종료하고 실행기로 다시 시작합니다. 작업 실패와 정리 완료는 별도로 보고합니다. 편집 초안은 분석 실패로 덮어쓰지 않습니다.
 
@@ -115,7 +115,7 @@ Chromium에서는 데스크톱 앱을 실행한 상태로 위의 문서·필드 
 파일이 아직 없을 때 Retry를 눌러도 런타임을 생성하지 않고 다시 실패 상태로 돌아갑니다. 준비하지 않고 앱을 종료하면 실행기는 모델 사용 불가를 오류로 보고하고 세션을 정리합니다. 패키지 무결성 실패는 이 복구 경로로 우회되지 않습니다. 실제 모델 품질·속도 수용은 실행기 시험과 별개입니다.
 
 
-## Private CRT packaging candidate (2026-10-11; installed verification pending)
+## Historical private CRT implementation checkpoint (2026-10-11; later installed result below)
 
 The package builder now locates the x64 release Visual Studio Redist CRT (or
 accepts an explicit `-VCRuntimeDirectory`), verifies Microsoft signatures before
@@ -138,3 +138,13 @@ the earlier process-PATH workaround as qualification of this packaging change.
 The clean ceb1f7c package was installed unmodified in an offline GPU-capable Windows Sandbox without system vcruntime140.dll. Private CRT installation, actual local Gemma translation/rewriting and explicit Accept into the owned RichEdit fixture passed seven cases. General-editor acceptance remains incomplete.
 
 Asset preparation took 381.93 seconds and startup to ready took 23.86 seconds. Short recommendations took 0.80–1.12 seconds, four-sentence outputs took 1.11–1.24 seconds, and Accept took 0.12–0.17 seconds. First-request variability persists (14.21 seconds in the earlier trial). See docs/control/HANDOFF.md and external grammar-gpu-writing-20261011 evidence for failures and scope. No system runtime installation is required by this tested package; private CRT security updates require an updated package.
+
+
+## Chromium 로컬 번역·재작성
+
+1. `Start-Grammar.ps1`로 앱을 실행하고 모델이 준비될 때까지 기다립니다. 첫 모델 배치, 모델 준비, 실제 문장 응답 시간은 서로 다릅니다. 이미 준비한 모델을 다시 다운로드하거나 배치할 필요는 없습니다.
+2. 확장을 로드한 Chromium에서 확장 버튼을 툴바에 고정합니다. 검증한 활성화 경로는 새 시험 프로필의 키보드 툴바 조작입니다. 문서에서 **Enable this document**, 지원 필드에서 **Enable this field**를 선택합니다.
+3. **Local review mode**에서 재작성 또는 영어·한국어 번역을 고르고 **Review locally**를 누릅니다. 계산된 제안을 검토한 뒤 **Accept**, 또는 직접 고친 뒤 **Apply edit**를 선택합니다. 캐시를 열거나 적용하는 동작은 새 추론을 요청하지 않습니다.
+4. **Pause field** 또는 **Disable document**로 중지합니다. 이 로컬 흐름은 외부 Provider 동의를 요구하지 않습니다. 외부 Deep은 별도 동의와 설정이 필요한 기능입니다.
+
+시험 범위는 작업용 새 프로필의 textarea와 단순 contenteditable입니다. 일반 사용자 프로필·Edge·물리 IME·복잡한 웹 편집기 전체를 검증했다는 뜻이 아닙니다. 설치 패키지에 실제 모델 파일은 포함하지 않으며, 고정 해시의 모델을 최초 준비합니다. 네트워크 없이 준비하려면 검증된 파일의 `-AssetCache`를 지정합니다.

@@ -2,7 +2,7 @@ param(
   [Parameter(Mandatory)][string]$ReceiptPath,
   [Parameter(Mandatory)][string]$OutputRoot,
   [string]$VCRuntimeDirectory,
-  [ValidateSet('cuda12.4','cuda13.4-blackwell')][string]$LocalRuntimeProfile='cuda12.4'
+  [ValidateSet('cuda12.4','cuda13.4-blackwell')][string]$LocalRuntimeProfile='cuda13.4-blackwell'
 )
 $ErrorActionPreference='Stop'
 $LocalRuntimeProfile=$LocalRuntimeProfile.ToLowerInvariant()
@@ -89,7 +89,7 @@ $null=& (Join-Path $PSScriptRoot 'build-receipt.ps1') -SourceRoot $source -Recei
 $files=@(Get-ChildItem -LiteralPath $destination -File -Recurse -Force | Sort-Object FullName | ForEach-Object {
   [ordered]@{path=[IO.Path]::GetRelativePath($destination,$_.FullName).Replace('\','/');sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower();bytes=$_.Length}
 })
-$manifest=[ordered]@{classification='PERSONAL_USE_CANDIDATE_SYNTHETIC_QUALIFIED_SCOPE';sourceCommit=$verified.after.commit;sourceTree=$verified.after.tree;sourcePhysicalDigest=$verified.after.trackedBytesSha256;extensionId=$extensionId;nativeCapture='SCOPE_QUALIFIED_SINGLELINE_AUTOVSCROLL_MULTILINE_EDIT_AND_RICHEDIT_CANDIDATE';nativeApply='TARGET_SIDE_EDIT_RICHEDIT_ACCEPT_AUTOVSCROLL_MULTILINE_INSTALLED_ACCEPTANCE_PENDING';gemmaIntegration='EXPLICIT_LAUNCHER_CHROMIUM_ONLY_DESKTOP_ROUTING_PENDING';chromiumInstant='TEXTAREA_SIMPLE_CONTENTEDITABLE_SYNTHETIC_QUALIFIED';chromiumDeep='CONSENT_BOUND_SYNTHETIC_PROVIDER_ONLY';antigravityDeep='PRIVACY_UNQUALIFIED';claudeOAuth='UNAVAILABLE_WITH_BARE';providerLive='NOT_RUN';physicalKeyboardIme='NOT_RUN';files=$files}
+$manifest=[ordered]@{classification='PERSONAL_USE_CANDIDATE_SYNTHETIC_QUALIFIED_SCOPE';sourceCommit=$verified.after.commit;sourceTree=$verified.after.tree;sourcePhysicalDigest=$verified.after.trackedBytesSha256;extensionId=$extensionId;nativeCapture='SCOPE_QUALIFIED_SINGLELINE_AUTOVSCROLL_MULTILINE_EDIT_AND_RICHEDIT_CANDIDATE';nativeApply='TARGET_SIDE_EDIT_RICHEDIT_ACCEPT_AUTOVSCROLL_MULTILINE_INSTALLED_ACCEPTANCE_PENDING';gemmaIntegration='MANAGED_LAUNCHER_DESKTOP_AND_CHROMIUM_LOCAL_WRITING_SCOPED_CANDIDATE';chromiumInstant='TEXTAREA_SIMPLE_CONTENTEDITABLE_SYNTHETIC_QUALIFIED';chromiumDeep='CONSENT_BOUND_SYNTHETIC_PROVIDER_ONLY';antigravityDeep='PRIVACY_UNQUALIFIED';claudeOAuth='UNAVAILABLE_WITH_BARE';providerLive='NOT_RUN';physicalKeyboardIme='NOT_RUN';files=$files}
 $manifest.vcRuntime = [ordered]@{deployment='PRIVATE_PROCESS_PATH';version=$crtFiles[0].VersionInfo.FileVersion;files=@($crtFiles | ForEach-Object { 'vc-runtime/' + $_.Name })}
 $manifest.localRuntimeProfile = $LocalRuntimeProfile
 [IO.File]::WriteAllText((Join-Path $destination 'MANIFEST.json'),($manifest|ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false))
