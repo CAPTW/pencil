@@ -13,7 +13,7 @@ $root = $PSScriptRoot
 $pins = [Collections.Generic.List[IO.FileStream]]::new()
 $lock = $null; $broker = $null; $app = $null; $published = $null; $original = $null
 $read = $null; $drain = $null; $cleanupComplete = $false
-$configConflict = $false; $brokerFailed = $false
+$configConflict = $false; $brokerFailed = $false; $missingAssets = $false
 $session = $null; $sessionPath = $null; $sessionBytes = $null; $retryTicket = $null
 $configPath = Join-Path $root 'grammar-chromium-host.origin.json'
 $utf8 = [Text.UTF8Encoding]::new($false)
@@ -68,7 +68,14 @@ function Start-Broker {
   $script:retryTicket = $null
   $script:cleanupComplete = $false
   $script:brokerFailed = $false
+  $script:missingAssets = $false
   Publish-Session 'starting'
+  # Repeat this admission check on every explicit attempt. Missing files allocate
+  # no process, so the managed app can stay open and offer a new retry ticket.
+  if (-not (Test-Path -LiteralPath $runtime -PathType Leaf) -or -not (Test-Path -LiteralPath $ModelPath -PathType Leaf)) {
+    $script:missingAssets = $true
+    throw 'Local Gemma assets are missing. Run Prepare-GrammarLocal.ps1 explicitly, then Retry local model.'
+  }
   Write-Host 'Starting local Gemma. The first model load can take longer than a recommendation.'
   $script:broker = [Diagnostics.Process]::Start($start)
   # Drain without retaining diagnostics or allowing the child pipe to fill.
@@ -127,8 +134,13 @@ function Start-Attempt {
         $script:retryTicket = [Guid]::NewGuid().ToString('N')
       }
     }
+    if ($missingAssets -and $null -eq $broker) {
+      # No process was created; this is not a claim of runtime cleanup completion.
+      $script:retryTicket = [Guid]::NewGuid().ToString('N')
+      Write-Warning 'Local model files are missing. Complete Prepare-GrammarLocal.ps1, then choose Retry local model. No automatic download or request is started.'
+    }
     Publish-Session 'failed'
-    Write-Warning 'Gemma preparation failed. Your draft remains open. Retry is available only after confirmed cleanup; no request is replayed.'
+    Write-Warning 'Gemma preparation failed. Your draft remains open. Retry is available after confirmed cleanup or when no runtime was started; no request is replayed.'
   }
 }
 
@@ -145,9 +157,6 @@ try {
   $assets = Get-Content -LiteralPath (Join-Path $root 'Gemma-Assets.json') -Raw | ConvertFrom-Json
   if ($assets.schema -cne 'grammar-local-assets/v1') { throw 'Unsupported local assets catalog' }
   $runtime = Join-Path ([IO.Path]::GetFullPath($RuntimeDirectory)) 'llama-server.exe'
-  if (-not (Test-Path -LiteralPath $runtime -PathType Leaf) -or -not (Test-Path -LiteralPath $ModelPath -PathType Leaf)) {
-    throw 'Local Gemma assets are missing. Prepare the pinned model and runtime before starting.'
-  }
   $original = [IO.File]::ReadAllText($configPath)
   $config = $original | ConvertFrom-Json
   if ($config.PSObject.Properties['gemma']) { throw 'An existing Gemma endpoint is present; refusing to replace it.' }
@@ -184,7 +193,7 @@ try {
         Publish-Session 'starting'
         if ($app.HasExited) { break }
         if ([IO.File]::ReadAllText($configPath) -cne $original) { throw 'Host configuration changed before retry' }
-        $broker.Dispose(); $broker = $null; $read = $null; $drain = $null
+        if ($null -ne $broker) { $broker.Dispose() }; $broker = $null; $read = $null; $drain = $null
         Start-Attempt
       }
     }
@@ -210,6 +219,7 @@ try {
   $restoreConflict = Restore-Config
   $configConflict = $configConflict -or $restoreConflict
   try {
+    if ($brokerFailed -and $null -eq $broker) { throw 'Local Gemma remains unavailable; no runtime was started.' }
     if ($null -ne $broker) {
       if (-not $broker.HasExited) { $broker.StandardInput.Close() }
       if (-not $broker.WaitForExit(12000)) {
