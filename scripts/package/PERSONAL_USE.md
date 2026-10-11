@@ -122,7 +122,15 @@ The upstream llama runtime bundle digest is unchanged. Older packages without th
 metadata retain their existing system-runtime prerequisite; they are not upgraded
 by these source changes. Private CRT security updates require rebuilding the package.
 
-This is currently a source candidate, not a newly qualified installation: local
+Historical pre-verification status (superseded by the checkpoint below): this was
+a source candidate, not a newly qualified installation. Local
 PowerShell startup and the Windows test linker stalled before execution. The new
 launcher regressions and clean Sandbox package test still need to run. Do not treat
 the earlier process-PATH workaround as qualification of this packaging change.
+
+
+### 2026-10-11 private CRT / actual Gemma checkpoint
+
+The clean ceb1f7c package was installed unmodified in an offline GPU-capable Windows Sandbox without system vcruntime140.dll. Private CRT installation, actual local Gemma translation/rewriting and explicit Accept into the owned RichEdit fixture passed seven cases. General-editor acceptance remains incomplete.
+
+Asset preparation took 381.93 seconds and startup to ready took 23.86 seconds. Short recommendations took 0.80–1.12 seconds, four-sentence outputs took 1.11–1.24 seconds, and Accept took 0.12–0.17 seconds. First-request variability persists (14.21 seconds in the earlier trial). See docs/control/HANDOFF.md and external grammar-gpu-writing-20261011 evidence for failures and scope. No system runtime installation is required by this tested package; private CRT security updates require an updated package.
