@@ -1,4 +1,5 @@
-// Owned synthetic startup server, never a model or linguistic quality oracle.
+// Owned synthetic writing server, never a model or linguistic quality oracle.
+// Build for clean Sandbox with: rustc -C target-feature=+crt-static
 use std::io::{Read,Write};
 fn main(){
  let args:Vec<String>=std::env::args().collect();
@@ -29,7 +30,7 @@ fn main(){
     response=if prompt.contains("Translate the complete text into Korean") {r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"replacement\":\"이것을 분리해 주세요.\"}"}}]}"#}
      else if prompt.contains("Translate the complete text into English") {r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"replacement\":\"Please separate this.\"}"}}]}"#}
      else if prompt.contains("more concisely") {r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"replacement\":\"Separate this.\"}"}}]}"#}
-     else if prompt.contains("courteously") {r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"replacement\":\"Would you please separate this?\"}"}}]}"#}
+     else if prompt.contains("courteously") {r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"replacement\":\"Please separate this. Thank you.\"}"}}]}"#}
      else if prompt.contains("Paraphrase naturally") {r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"replacement\":\"Please split this.\"}"}}]}"#}
      else {r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"replacement\":\"Please separate this.\"}"}}]}"#};
    }
