@@ -1410,8 +1410,8 @@ async fn save_settings(
         let next_intent = settings.rewrite_intent().map_err(str::to_string)?;
         let terminology_changed = configuration.settings.terminology != settings.terminology;
         // A language change that matters (Translate) changes the intent and
-        // is handled with it. Instant runs only in Grammar, which no language
-        // setting affects, so its draft stays valid.
+        // is handled with it, including local Gemma translation. Non-translation
+        // modes do not interpret the target language setting.
         let provider_changed = configuration.settings.active_provider != settings.active_provider;
         settings::save(&app, &settings)?;
         configuration.settings = settings.clone();
@@ -2424,11 +2424,12 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
 fn spawn_instant_for_capture(app: AppHandle, token: SessionToken, source: String) {
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();
-        let mode = match state.configuration.lock() {
-            Ok(configuration) => configuration.settings.mode,
+        let (mode, target_language) = match state.configuration.lock() {
+            Ok(configuration) => (configuration.settings.mode, configuration.settings.translation.target_language),
             Err(_) => return,
         };
-        if p3_03_runtime::analysis_mode_for_rewrite(mode).is_none() {
+        let gemma = p3_03_runtime::gemma_configured();
+        if !gemma && p3_03_runtime::analysis_mode_for_rewrite(mode).is_none() {
             return;
         }
         let (terminology_revision, spans) = {
@@ -2474,11 +2475,20 @@ fn spawn_instant_for_capture(app: AppHandle, token: SessionToken, source: String
             };
             (revision, spans)
         };
-        let gemma = p3_03_runtime::gemma_configured();
-        let identity = p3_03_runtime::local_identity(&token.session_id, token.generation, terminology_revision, &source, gemma);
+        let mut identity = p3_03_runtime::local_identity(&token.session_id, token.generation, terminology_revision, &source, gemma);
+        if gemma {
+            identity.mode = match mode {
+                RewriteMode::Grammar => codex_pencil::instant_selection::AnalysisMode::Correction,
+                RewriteMode::Natural => codex_pencil::instant_selection::AnalysisMode::Natural,
+                RewriteMode::Concise => codex_pencil::instant_selection::AnalysisMode::Concise,
+                RewriteMode::Polite => codex_pencil::instant_selection::AnalysisMode::Professional,
+                RewriteMode::Translate => codex_pencil::instant_selection::AnalysisMode::Translation,
+            };
+            identity.analyzer_version = format!("12b-q4_0-v1:{}:{}", mode.label(), target_language.code());
+        }
         let admission = state.capture.lock().await;
         if admission.open_source(&token) != Some(source.as_str()) { return; }
-        if state.configuration.lock().map(|c| c.settings.mode != mode).unwrap_or(true) { return; }
+        if state.configuration.lock().map(|c| c.settings.mode != mode || c.settings.translation.target_language != target_language).unwrap_or(true) { return; }
         if let Ok(mut instant) = state.instant.lock() {
             instant.note_instant_invocation();
             instant.cache_mut().activate(identity.clone());
@@ -2486,7 +2496,10 @@ fn spawn_instant_for_capture(app: AppHandle, token: SessionToken, source: String
         drop(admission);
         let analyze = async {
             if gemma {
-                p3_03_runtime::analyze_gemma_source(identity.clone(), source.clone(), spans).await
+                match p3_03_runtime::gemma_intent(mode, target_language) {
+                    Ok(intent) => p3_03_runtime::analyze_gemma_source(identity.clone(), source.clone(), spans, intent).await,
+                    Err(error) => Err(error),
+                }
             } else {
                 p3_03_runtime::analyze_correction_source_off_ui(token.session_id.clone(), token.generation,
                     1, terminology_revision, source.clone(), spans).await
@@ -2495,11 +2508,11 @@ fn spawn_instant_for_capture(app: AppHandle, token: SessionToken, source: String
         let outcome = tokio::select! {
             result = analyze => match result {
                 Ok(outcome) => outcome,
-                Err(_) => {
+                Err(error) => {
                     // No silent rule-engine/cloud replay and no draft replacement on failure.
                     if state.capture.lock().await.open_source(&token) == Some(source.as_str())
                         && state.instant.lock().map(|mut i| i.cache_mut().active_identity() == Some(&identity)).unwrap_or(false) {
-                        let _ = app.emit("local-analysis-failed", serde_json::json!({"sessionId":token.session_id,"generation":token.generation}));
+                        let _ = app.emit("local-analysis-failed", serde_json::json!({"sessionId":token.session_id,"generation":token.generation,"unsupportedLanguage":error == "gemma_target_language_unsupported"}));
                     }
                     return;
                 }
@@ -2517,7 +2530,7 @@ fn spawn_instant_for_capture(app: AppHandle, token: SessionToken, source: String
         // resurrect this result by activating an obsolete identity after completion.
         let capture = state.capture.lock().await;
         if capture.open_source(&token) != Some(source.as_str()) { return; }
-        if state.configuration.lock().map(|c| c.settings.mode != mode).unwrap_or(true) { return; }
+        if state.configuration.lock().map(|c| c.settings.mode != mode || c.settings.translation.target_language != target_language).unwrap_or(true) { return; }
         let current_terms = state.terminology.lock().ok().map(|terms| terms.store().map(|store| store.revision).unwrap_or(0));
         if current_terms != Some(terminology_revision) { return; }
         if let Ok(mut instant) = state.instant.lock() {

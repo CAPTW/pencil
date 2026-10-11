@@ -94,6 +94,21 @@ try{
  if(!statusOnly)assert.equal(await text(),'please seperate this.');pass(statusOnly?'explicit retry becomes ready':'retry becomes ready without changing draft or source');
  const userCount=await readFile('C:/GrammarTrial/local/user-requests','utf8').catch(()=> '0');
  assert.equal(userCount,'0');assert.equal(await readFile('C:/GrammarTrial/local/warmups','utf8'),missingAssets?'1':'2');pass(missingAssets?'one explicit warmup, zero replay or user inference':(statusOnly?'only two warmups, zero user inference':'only two warmups, no capture replay or user inference'));
+ if(process.argv.includes('--writing-modes')) {
+  assert.equal(statusOnly,false);
+  for(const [mode,target,expected] of [['natural','en','Please split this.'],['concise','en','Separate this.'],['polite','en','Would you please separate this?'],['translate','ko','이것을 분리해 주세요.'],['translate','en','Please separate this.']]) {
+   await page.evaluate(async({mode,target})=>{const s=await window.__TAURI_INTERNALS__.invoke('load_settings');await window.__TAURI_INTERNALS__.invoke('save_settings',{settings:{...s,mode,autoRewrite:false,translation:{...s.translation,targetLanguage:target,applyFormat:'translation_only'}}});},{mode,target});
+   await page.reload();await page.waitForFunction(()=>typeof window.__TAURI_INTERNALS__?.transformCallback==='function',null,{polling:100});
+   await page.evaluate(()=>{window.__captures=[];window.__errors=[];const t=window.__TAURI_INTERNALS__;return Promise.all(['selection-captured','capture-error'].map((event,i)=>t.invoke('plugin:event|listen',{event,target:{kind:'Any'},handler:t.transformCallback(e=>(i?window.__errors:window.__captures).push(e.payload))})));});
+   await capture();
+   await until('local writing candidate '+mode+target,async()=>await draft.inputValue()===expected,20000);
+   const before=await readFile('C:/GrammarTrial/local/user-requests','utf8');
+   const edited=expected+' Edited.';await draft.fill(edited);await apply.click();
+   await until('exact applied text '+mode+target,async()=>await text()===edited);
+   assert.equal(await readFile('C:/GrammarTrial/local/user-requests','utf8'),before);
+   pass(mode+'/'+target+' local candidate, edited Accept exact reread, zero Apply inference');
+  }
+ }
  await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});
  await until('launcher natural cleanup',async()=>launcher.exitCode!==null,20000);assert.equal(launcher.exitCode,0);appNatural=true;
  const cwd=await readFile('C:/GrammarTrial/local/runtime.cwd','utf8');
