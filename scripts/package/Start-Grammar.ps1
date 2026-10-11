@@ -4,8 +4,8 @@
 param(
   [string]$RuntimeDirectory = (Join-Path $PSScriptRoot 'local/runtime'),
   [string]$ModelPath = (Join-Path $PSScriptRoot 'local/gemma-4-12b-it-qat-q4_0.gguf'),
-  # Owned synthetic qualification only until installed widget acceptance.
-  [switch]$EnableDesktopGemma
+  # Managed desktop grammar is the default; explicit false preserves browser-only mode.
+  [switch]$EnableDesktopGemma = $true
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
@@ -106,7 +106,7 @@ function Start-Broker {
   $script:read = $broker.StandardOutput.ReadLineAsync()
   Publish-Session 'ready' $ready.name
   if ($null -eq $app) { $script:app = Start-Desktop }
-  Write-Host 'Local Gemma is ready for enabled Chromium fields. Desktop Gemma is enabled only when explicitly selected for qualification.'
+  Write-Host 'Local Gemma is ready for enabled Chromium fields. Desktop grammar uses the managed local connection unless explicitly disabled.'
  }
 function Confirm-Cleanup {
   if ($null -ne $read -and $read.Wait(1000)) {
