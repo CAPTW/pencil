@@ -90,6 +90,18 @@ try {
   if ($listed.Contains('target-apply.dll')) {
     Copy-Item -LiteralPath (Join-Path $package 'target-apply.dll') -Destination (Join-Path $root 'target-apply.dll')
   }
+  if ($manifest.PSObject.Properties['vcRuntime']) {
+    $crtRoot = Join-Path $root 'vc-runtime'
+    New-Item -ItemType Directory -Path $crtRoot | Out-Null
+    foreach ($relative in @($manifest.vcRuntime.files)) {
+      if ($relative -cnotmatch '^vc-runtime/[A-Za-z0-9_]+\.dll$' -or -not $listed.Contains($relative)) { throw 'Invalid CRT manifest entry' }
+      $installed = Join-Path $root $relative
+      Copy-Item -LiteralPath (Join-Path $package $relative) -Destination $installed
+      $entry = @($manifest.files | Where-Object path -CEQ $relative)
+      if ($entry.Count -ne 1 -or (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash.ToLowerInvariant() -cne $entry[0].sha256) { throw 'Installed CRT hash mismatch' }
+    }
+    Copy-Item -LiteralPath (Join-Path $package 'VC_RUNTIME_NOTICE.md') -Destination (Join-Path $root 'VC_RUNTIME_NOTICE.md')
+  }
   Copy-Item -LiteralPath (Join-Path $package 'extension') -Destination (Join-Path $root 'extension') -Recurse
   Copy-Item -LiteralPath (Join-Path $package 'host-tools') -Destination (Join-Path $root 'host-tools') -Recurse
 

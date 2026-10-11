@@ -134,10 +134,16 @@ class LauncherTests(unittest.TestCase):
         import os
         before = os.environ["PATH"]
         folder = self.private_crt_fixture()
-        result = self.run_launcher()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.root / "broker-path").read_text().split(";")[0], str(folder))
-        self.assertEqual(os.environ["PATH"], before)
+        (self.root / "wait-release").touch()
+        process = subprocess.Popen(["pwsh", "-NoProfile", "-File", str(self.root / "Start-Grammar.ps1")], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+        try:
+            self.wait_phase("ready")
+            self.assertEqual((self.root / "broker-path").read_text().split(";")[0], str(folder))
+            self.assertEqual(os.environ["PATH"], before)
+        finally:
+            (self.root / "release-app").touch()
+            out, err = process.communicate(timeout=30)
+        self.assertEqual(process.returncode, 0, out + err)
 
     def test_private_crt_tamper_prevents_model_and_app_start(self):
         folder = self.private_crt_fixture()
@@ -169,7 +175,13 @@ class LauncherTests(unittest.TestCase):
         while time.monotonic()<deadline:
             files=list(self.root.glob("gemma-session-*.json"))
             if files:
-                state=json.loads(files[0].read_text())
+                try:
+                    state=json.loads(files[0].read_text())
+                except (PermissionError, FileNotFoundError):
+                    # A Windows open can race the launcher's atomic replacement.
+                    # Keep the original deadline and every phase assertion.
+                    time.sleep(.02)
+                    continue
                 if state["phase"]==phase: return files[0],state
             time.sleep(.02)
         self.fail("missing phase: "+phase)
