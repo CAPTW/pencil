@@ -142,6 +142,10 @@ Asset preparation took 381.93 seconds and startup to ready took 23.86 seconds. S
 
 ## Chromium 로컬 번역·재작성
 
+GPU가 부족한 PC에서는 `pwsh -File Start-Grammar.ps1 -WithoutLocalModel`로 실행할 수 있습니다. 이 모드는 모델을 다운로드하거나 GPU에 로드하지 않습니다. 기본 규칙 기반 Instant는 유지하지만 Gemma 번역·재작성은 제공하지 않습니다. 필요한 경우 별도로 설정하고 동의한 외부 Provider 또는 OpenAI-compatible API의 Deep을 명시적으로 실행합니다. 외부 호출의 비용·네트워크·개인정보 조건은 해당 Provider에 따르며 자동 전환은 없습니다. 작은 모델로 몰래 바꾸거나 CPU에서도 같은 속도·품질이라고 주장하지 않습니다. 기본 실행은 기존 12B Gemma입니다.
+
+합성 시험 등 별도 설정이 필요하면 빈 폴더를 만든 뒤 `-ProfileDirectory <절대경로>`를 추가합니다. 설정·용어사전·앱 소유 Codex home·WebView 저장소는 그 폴더에 분리됩니다. 기본 개인 프로필은 변경하지 않습니다. 잘못된 경로는 기존 프로필로 되돌아가지 않고 거부합니다.
+
 1. `Start-Grammar.ps1`로 앱을 실행하고 모델이 준비될 때까지 기다립니다. 첫 모델 배치, 모델 준비, 실제 문장 응답 시간은 서로 다릅니다. 이미 준비한 모델을 다시 다운로드하거나 배치할 필요는 없습니다.
 2. 확장을 로드한 Chromium에서 확장 버튼을 툴바에 고정합니다. 검증한 활성화 경로는 새 시험 프로필의 키보드 툴바 조작입니다. 문서에서 **Enable this document**, 지원 필드에서 **Enable this field**를 선택합니다.
 3. **Local review mode**에서 재작성 또는 영어·한국어 번역을 고르고 **Review locally**를 누릅니다. 계산된 제안을 검토한 뒤 **Accept**, 또는 직접 고친 뒤 **Apply edit**를 선택합니다. 캐시를 열거나 적용하는 동작은 새 추론을 요청하지 않습니다.

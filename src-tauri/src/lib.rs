@@ -1,4 +1,5 @@
 mod content_limits;
+mod local_profile;
 
 // Shared production runtime sources. Loading this library does not initialize the
 // desktop settings, probe providers, or open any credential/account state.
