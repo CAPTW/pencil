@@ -17,6 +17,7 @@ use std::io::{Read, Write};
 fn main() {
  let dir=std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
  std::fs::write(dir.join("broker.pid"),std::process::id().to_string()).unwrap();
+ std::fs::write(dir.join("broker-path"),std::env::var("PATH").unwrap()).unwrap();
  assert_eq!(std::env::args().skip(1).count(),9);
  if dir.join("wait-broker").exists() {
    for _ in 0..500 { if dir.join("release-broker").exists() {break;} std::thread::sleep(std::time::Duration::from_millis(10)); }
@@ -116,6 +117,52 @@ class LauncherTests(unittest.TestCase):
         self.assertTrue((self.root / "app-started").exists())
         self.assertEqual((self.root / "desktop-configured").read_text(),"yes")
         self.assertEqual(self.sidecar.read_text(), self.original)
+
+    def private_crt_fixture(self):
+        folder = self.root / "vc-runtime"
+        folder.mkdir()
+        names = ["vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"]
+        for name in names:
+            path = folder / name
+            path.write_bytes(b"fixture: never loaded by stub broker")
+            self.manifest["files"].append({"path":"vc-runtime/"+name,"sha256":digest(path),"bytes":path.stat().st_size})
+        self.manifest["vcRuntime"] = {"deployment":"PRIVATE_PROCESS_PATH","files":["vc-runtime/"+n for n in names]}
+        (self.root / "MANIFEST.json").write_text(json.dumps(self.manifest))
+        return folder
+
+    def test_private_crt_is_pinned_and_only_child_path_changes(self):
+        import os
+        before = os.environ["PATH"]
+        folder = self.private_crt_fixture()
+        result = self.run_launcher()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "broker-path").read_text().split(";")[0], str(folder))
+        self.assertEqual(os.environ["PATH"], before)
+
+    def test_private_crt_tamper_prevents_model_and_app_start(self):
+        folder = self.private_crt_fixture()
+        (folder / "vcruntime140.dll").write_bytes(b"changed")
+        result = self.run_launcher()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Package file changed", result.stderr)
+        self.assertFalse((self.root / "broker.pid").exists())
+        self.assertFalse((self.root / "app-started").exists())
+
+    def test_private_crt_unlisted_dependency_is_refused(self):
+        folder = self.private_crt_fixture()
+        (folder / "unexpected.dll").write_bytes(b"unlisted")
+        result = self.run_launcher()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Unexpected private CRT file", result.stderr)
+        self.assertFalse((self.root / "broker.pid").exists())
+
+    def test_private_crt_missing_file_never_starts(self):
+        folder = self.private_crt_fixture()
+        (folder / "vcruntime140_1.dll").unlink()
+        result = self.run_launcher()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.root / "broker.pid").exists())
+        self.assertFalse((self.root / "app-started").exists())
 
     def wait_phase(self, phase):
         deadline=time.monotonic()+10

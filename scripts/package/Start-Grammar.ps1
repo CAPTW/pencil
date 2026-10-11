@@ -153,6 +153,22 @@ try {
   $appHash = Pin-File 'codex-pencil.exe'
   $hostHash = Pin-File 'grammar-chromium-host.exe'
   $brokerHash = Pin-File 'grammar-gemma-broker.exe'
+  $crtPath = $null
+  if ($manifest.PSObject.Properties['vcRuntime']) {
+    if ($manifest.vcRuntime.deployment -cne 'PRIVATE_PROCESS_PATH') { throw 'Unsupported CRT deployment' }
+    $crtEntries = @($manifest.vcRuntime.files)
+    if ($crtEntries.Count -lt 3 -or @($crtEntries | Select-Object -Unique).Count -ne $crtEntries.Count) { throw 'Missing or duplicate CRT entries' }
+    foreach ($required in @('vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll')) {
+      if (('vc-runtime/' + $required) -cnotin $crtEntries) { throw 'Required private CRT missing' }
+    }
+    foreach ($entry in $crtEntries) {
+      if ($entry -cnotmatch '^vc-runtime/[A-Za-z0-9_]+\.dll$') { throw 'Invalid private CRT path' }
+      $null = Pin-File $entry
+    }
+    $crtPath = Join-Path $root 'vc-runtime'
+    $present = @(Get-ChildItem -LiteralPath $crtPath -Force | ForEach-Object { 'vc-runtime/' + $_.Name })
+    if ($present.Count -ne $crtEntries.Count -or @($present | Where-Object { $_ -cnotin $crtEntries }).Count) { throw 'Unexpected private CRT file' }
+  }
   $null = Pin-File 'Gemma-Assets.json'
   $assets = Get-Content -LiteralPath (Join-Path $root 'Gemma-Assets.json') -Raw | ConvertFrom-Json
   if ($assets.schema -cne 'grammar-local-assets/v1') { throw 'Unsupported local assets catalog' }
@@ -163,6 +179,9 @@ try {
   if ($config.origin -cne ('chrome-extension://' + $manifest.extensionId + '/') -or -not $config.installation_id) { throw 'Installed host origin mismatch' }
   $start = [Diagnostics.ProcessStartInfo]::new((Join-Path $root 'grammar-gemma-broker.exe'))
   $start.UseShellExecute = $false; $start.CreateNoWindow = $true
+  # Only the owned broker and its model child inherit this path. Never modify
+  # machine/user PATH or the caller environment. Pins stay held until shutdown.
+  if ($null -ne $crtPath) { $start.Environment['PATH'] = $crtPath + [IO.Path]::PathSeparator + $start.Environment['PATH'] }
   $start.RedirectStandardInput = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
   foreach ($arg in @($runtime, $assets.runtimeSha256, [IO.Path]::GetFullPath($ModelPath), $assets.model.sha256, (Join-Path $root 'grammar-chromium-host.exe'), $hostHash, $assets.runtimeBundleSha256, (Join-Path $root 'codex-pencil.exe'), $appHash)) { $start.ArgumentList.Add($arg) }
   if ($EnableDesktopGemma) {

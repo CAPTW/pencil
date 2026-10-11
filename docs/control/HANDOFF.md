@@ -2643,3 +2643,33 @@ Realmodel ready observed26-38s. Runs3-6 failed owned foreground/cursor fixture (
 Separate raw diagnostic, same production prompts/JSON schema/seed/temp/max256, declared120s wait only for observing complete outputs: Natural78.43s, Concise44.83s, Polite73.41s, EN-KO81.90s, KO-EN69.07s, four-sentence translation81.23s, four-sentence Natural76.85s. All7 outputs finish stop/validJSON. n7 nearest-rank p50=76.85s,p95=p99=max81.90s; all1s/3stargetsmissed. HTTP timing excludes app capture/publication, not end-to-end product timing. No productdeadline/guard/model change. Same-integrator manual review finds facts/negation/numbers/deadlines preserved on these cases, mild register drift in Natural; Polite adds Could and conflicts with existing modal guard. Raw outputs bypass product postvalidation and are not product acceptance or broad quality proof.
 
 Diagnostic artifact reports runtimeExited=false because old helper checked exitCode after signal termination; preserve it. Source helper now observes exit event. Independent final check provesprocesses0/installrootabsent/registrationchildren0/taskassetsabsent; guests stopped and finalwsb inventory0. Existing tray/WebView stderr warnings not repaired. No live externalProvider, main, push, release or Project Source regeneration. Evidence D:/dev/grammar-evidence/grammar-real-writing-20261011/{RESULT.md,CHECKPOINT.json,CRT-PROVENANCE.json,output2/raw-quality.json,output2/run8/app-result.json,output2/independent-cleanup.json}; exact executable/harness hashes included. Next: CRT provisioning/admission, GPU-capable isolated actual-inference qualification, polite prompt/guard alignment without weakening protection, then installed realcandidate Accept. MissionINCOMPLETE.
+
+
+## GPU writing / CRT follow-up, 2026-10-11 — candidate, execution blocked
+
+Entry e1b64ae; current changes are not an adopted or newly installed package.
+Private Microsoft CRT packaging verifies release-toolchain signatures and adds
+manifest-bound DLLs only to the owned broker PATH. Missing/changed/extra-file
+regressions were added. The polite prompt now requests an imperative Please form
+without new modal verbs; the old Could response and lost obligation/negation remain
+rejected. No safety guard or performance target was relaxed.
+
+PASS: cargo check --locked --offline --lib and --tests, Python test-file syntax, governance
+self-test, diff whitespace. BLOCKED: Rust unit execution at native link, launcher
+regression setup, PowerShell trivial output, Sandbox inventory. These commands
+stalled without a test assertion outcome. The common cause is unknown. No security,
+driver, account, user-profile or machine-wide runtime change was made.
+
+GPU hardware is RTX5070Ti16GB; the entire 12B file was hashed and matched the pinned
+93567e57...538b value. The raw task-owned host probe is not an isolated guest or
+installed Accept test. Read its terminal evidence before claiming any inference
+or cleanup result: D:/dev/grammar-evidence/grammar-gpu-writing-20261011/RESULT.md.
+No new source-to-package chain or Gemma-generated Accept is qualified.
+
+Resume after the Windows execution environment responds: run the four new private
+CRT launcher tests and full relevant launcher suite; run local_gemma Rust tests;
+build from a clean committed source and package with release CRT; verify CRT-free
+guest launch, actual GPU offload, all writing modes and exact source reread after
+explicit Accept. Keep host-only inference and guest integration evidence separate.
+Do not repeat a blocked process start indefinitely or kill unrelated workloads.
+Main/push/release and Project Source are unchanged; mission remains INCOMPLETE.
