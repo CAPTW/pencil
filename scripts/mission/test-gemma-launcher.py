@@ -114,7 +114,7 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Gemma cleanup complete.", result.stdout)
         self.assertTrue((self.root / "app-started").exists())
-        self.assertEqual((self.root / "desktop-configured").read_text(),"no")
+        self.assertEqual((self.root / "desktop-configured").read_text(),"yes")
         self.assertEqual(self.sidecar.read_text(), self.original)
 
     def wait_phase(self, phase):
@@ -208,10 +208,10 @@ class LauncherTests(unittest.TestCase):
         self.assertFalse(list(self.root.glob("gemma-session-*.json*")))
         self.assertEqual(self.sidecar.read_text(),self.original)
 
-    def test_desktop_configuration_requires_explicit_trial_option(self):
-        result = self.run_launcher("-EnableDesktopGemma")
+    def test_desktop_configuration_can_be_explicitly_disabled(self):
+        result = self.run_launcher("-EnableDesktopGemma:$false")
         self.assertEqual(result.returncode,0,result.stderr)
-        self.assertEqual((self.root / "desktop-configured").read_text(),"yes")
+        self.assertEqual((self.root / "desktop-configured").read_text(),"no")
         self.assertEqual(self.sidecar.read_text(), self.original)
 
     def test_broker_crash_preserves_app_and_lock_until_explicit_exit_then_relaunch(self):
@@ -223,7 +223,7 @@ class LauncherTests(unittest.TestCase):
             while not (self.root / "app-started").exists() and time.monotonic() < deadline:
                 time.sleep(.02)
             self.assertTrue((self.root / "app-started").exists())
-            time.sleep(.8)
+            self.wait_phase("failed")
             self.assertIsNone(first.poll(), "launcher released ownership while app still open")
             self.assertFalse((self.root / "app-exited").exists())
             self.assertEqual(self.sidecar.read_text(), self.original)
@@ -409,14 +409,14 @@ class LauncherTests(unittest.TestCase):
 
     def test_missing_model_never_starts(self):
         (self.root / "local/gemma-4-12b-it-qat-q4_0.gguf").unlink()
-        result = self.run_launcher()
+        result = self.run_launcher("-EnableDesktopGemma:$false")
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse((self.root / "broker.pid").exists())
 
     def test_managed_missing_assets_keep_app_and_allow_explicit_retry(self):
         cache = self.prepare_fixture(run=False)
         (self.root / "wait-release").touch()
-        process = subprocess.Popen(["pwsh", "-NoProfile", "-File", str(self.root / "Start-Grammar.ps1"), "-EnableDesktopGemma"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+        process = subprocess.Popen(["pwsh", "-NoProfile", "-File", str(self.root / "Start-Grammar.ps1")], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
         try:
             path, state = self.wait_phase("failed")
             self.assertTrue((self.root / "app-started").exists())
@@ -477,7 +477,7 @@ class LauncherTests(unittest.TestCase):
 
     def test_start_failure_never_opens_app(self):
         (self.root / "fail-start").touch()
-        result = self.run_launcher()
+        result = self.run_launcher("-EnableDesktopGemma:$false")
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse((self.root / "app-started").exists())
         self.assertEqual(self.sidecar.read_text(), self.original)
@@ -494,7 +494,7 @@ class LauncherTests(unittest.TestCase):
 
     def test_external_config_change_preserved_broker_closed(self):
         (self.root / "external-change").touch()
-        result = self.run_launcher()
+        result = self.run_launcher("-EnableDesktopGemma:$false")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Host configuration changed externally", result.stderr)
         self.assertEqual(json.loads(self.sidecar.read_text()), {"outside": True})

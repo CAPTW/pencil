@@ -27,7 +27,7 @@ async function until(name,probe,ms=15000){const end=Date.now()+ms;while(Date.now
 let app,editor,browser,page,launcher;let editorNatural=false,appNatural=false;
 try{
  pass('installed package hashes verified');
- launcher=spawn('C:/GrammarPayload/pwsh/pwsh.exe',['-NoProfile','-File','C:/GrammarTrial/Start-Grammar.ps1','-EnableDesktopGemma'],{windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9481'}});
+ launcher=spawn('C:/GrammarPayload/pwsh/pwsh.exe',['-NoProfile','-File','C:/GrammarTrial/Start-Grammar.ps1'],{windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9481'}});
  launcher.stdout.on('data',data=>process.stdout.write(data));launcher.stderr.on('data',data=>process.stderr.write(data));
  await until('WebView endpoint',async()=>{if(launcher.exitCode!==null)throw Error('Launcher exited before WebView: '+launcher.exitCode);try{return (await fetch('http://127.0.0.1:9481/json/version')).ok;}catch{return false;}},90000);
  browser=await chromium.connectOverCDP('http://127.0.0.1:9481');
