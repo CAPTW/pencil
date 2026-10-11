@@ -2748,3 +2748,59 @@ Preserved first-run FAIL: Windows PowerShell5.1 blocked the fixture .ps1 by its 
 
 
 Personal ZIP source4e28924 has default CUDA13 profile and corrected guide. The record commit follows the tested package; do not label the ZIP with that later documentation commit. VALIDATION.md and ZIP.sha256 sit beside the archive. Preserve one-VM/one-viewer policy with stop/close before replacement. No Sandbox or test remains running. Full Rust suite not rerun (no Rust/browser product implementation changed); clean release build, real installed UI and governance checks are separate evidence. Current Project Source is stale, not regenerated/uploaded this turn.
+
+
+## 2026-10-11 — Personal host installation and explicit low-GPU option
+
+2026-10-11 Owner-authorized personal host installation: source dffcf8a at C:/Users/USER/GrammarPersonal; unchanged12B Gemma default plus explicit model-free startup and isolated profiles. Rust146+273 and launcher28+2 PASS; clean build/package/installed hashes verified. Actual host Chromium14 cases PASS with real model, pinned toolbar mouse and trusted actual-popup input, exact Accept/edited Apply reread and privacy boundaries. Desktop PARTIAL:5/7 PASS; first capture timeout and paragraph Accept refusal/source unchanged remain unproved; later foreground refusal and bounded Owner-focus wait expired, normal cleanup. MSIX-redirected initial install removed, unpackaged same-user install verified; personal settings/dictionary unchanged. Low-GPU no-model startup PASS, live Deep/CPU/smaller-model quality NOT_RUN. No main/push/release; mission INCOMPLETE; Project Source stale. Evidence D:/dev/grammar-evidence/grammar-host-personal-20261011/RESULT.md.
+
+
+
+Unmodified installed extension/host; fresh dedicated profile, browser sandbox on.
+Real toolbar mouse click grants activeTab; real action popup's Enable button receives
+CDP trusted mouse input. The popup is not exposed as an ordinary Playwright page.
+No programmatic permission grant, injected host permission or synthetic model response.
+Raw receipt's legacy `extensions-menu` path label is inaccurate for this run: the helper
+clicked the pinned action button directly. Keyboard and menu paths remain unqualified.
+
+14 cases:textarea7/simple contenteditable7,13 Accept +1 edited Apply, exact DOM reread.
+All14 replacement strings equal the previously individually reviewed finite corpus;
+this is primary-agent bounded semantic review, not independent human/general language acceptance.
+Short12:355.6–644.6ms (median454.4,p95/p99644.6); paragraph2:739.4–786.4ms;
+Accept14:14.4–15.3ms. No fixed1s/3s/0.5s misses. Review-click to complete suggestion is
+measured, not arbitrary whole-document scanning or typing/debounce performance.
+Dirty draft, stale source, in-flight mode, sensitive focus, cached-no-inference, Disable,
+navigation/reload and storage checks PASS. Browser/host/profile cleanup complete,
+extension unchanged, managed launcher exit0.
+
+## Desktop PARTIAL — do not call this all-green
+
+Original unpackaged-host run7 cases:5 PASS with real Gemma and exact native RichEdit reread.
+Successful recommendation573.5–977.7ms; Accept119.7–145.4ms. First shortcut capture timed
+out. Paragraph translation was semantically approved (1092.3ms), but Accept left original
+source unchanged and the exact reread wait timed out. No wrong replacement was observed.
+The reason for those two failures was not proved; do not attribute them retrospectively
+to focus alone. Later trials actually observed Windows foreground refusal before input.
+An owned-review activation check and capture diagnostics were added to the external fixture.
+The final180s user-activation wait expired; no input was sent, app/editor/model exited
+naturally and their remaining process count is0. UI reactivation is needed to finish this
+qualification; no automated continuation remains running.
+Shutdown logs include WebView class-unregistration/tray warnings; exits and ownership
+cleanup were separately checked. No claim that the warning root cause was repaired.
+
+## Preserved environment/fixture failures
+
+First light test read the WebView page before creation; bounded page discovery fixed it.
+Sandbox portable PowerShell timed out before desktop app creation; host PS7 was used.
+Exact image guard exposed MSIX AppData redirection to Codex LocalCache. The earlier
+installation was removed without RemoveUserData. New installation used an unpackaged
+same-user process (GetCurrentPackageFullName=15700), at C:/Users/USER/GrammarPersonal.
+Windows documented process-tree policy was used; no elevation, token/credential copying
+or global policy change. Initial keyboard/UIA toolbar failures, then missing normal-page
+popup failures, are retained. The successful popup-target method is classified separately.
+
+Existing personal settings/dictionary hashes unchanged; no user documents, ordinary browser
+profile, clipboard contents, credentials or real Provider texts were used as test data.
+No Sandbox was started. Fresh personal profile and two launch shortcuts contain no test corpus.
+Low-GPU startup is verified; equal-quality offline CPU/smaller-model execution remains NOT_RUN.
+Mission INCOMPLETE; no push/release/main adoption. Current Project Source is stale.

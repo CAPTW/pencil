@@ -118,6 +118,21 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual((self.root / "desktop-configured").read_text(),"yes")
         self.assertEqual(self.sidecar.read_text(), self.original)
 
+    def test_model_free_mode_needs_no_model_and_publishes_no_endpoint(self):
+        (self.root / "local/runtime/llama-server.exe").unlink()
+        (self.root / "local/gemma-4-12b-it-qat-q4_0.gguf").unlink()
+        result = self.run_launcher("-WithoutLocalModel")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / "broker.pid").exists())
+        self.assertEqual((self.root / "desktop-configured").read_text(), "no")
+        self.assertEqual(self.sidecar.read_text(), self.original)
+
+    def test_missing_explicit_profile_refuses_before_model_or_app(self):
+        result = self.run_launcher("-ProfileDirectory", str(self.root / "absent"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.root / "broker.pid").exists())
+        self.assertFalse((self.root / "app-started").exists())
+
     def private_crt_fixture(self):
         folder = self.root / "vc-runtime"
         folder.mkdir()
