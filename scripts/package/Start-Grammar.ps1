@@ -5,7 +5,10 @@ param(
   [string]$RuntimeDirectory = (Join-Path $PSScriptRoot 'local/runtime'),
   [string]$ModelPath = (Join-Path $PSScriptRoot 'local/gemma-4-12b-it-qat-q4_0.gguf'),
   # Managed desktop grammar is the default; explicit false preserves browser-only mode.
-  [switch]$EnableDesktopGemma = $true
+  [switch]$EnableDesktopGemma = $true,
+  # Explicit portable mode: no model load/download and no automatic cloud request.
+  [switch]$WithoutLocalModel,
+  [string]$ProfileDirectory
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
@@ -48,8 +51,9 @@ function Publish-Session([string]$Phase, $PipeName = $null) {
 function Start-Desktop {
   $appStart = [Diagnostics.ProcessStartInfo]::new((Join-Path $root 'codex-pencil.exe'))
   $appStart.UseShellExecute = $false; $appStart.WorkingDirectory = $root
+  if ($ProfileDirectory) { $appStart.Environment['GRAMMAR_PROFILE_DIRECTORY'] = $ProfileDirectory }
   foreach ($name in @('GRAMMAR_GEMMA_PIPE','GRAMMAR_GEMMA_BROKER_SHA256','GRAMMAR_GEMMA_SESSION','GRAMMAR_GEMMA_LAUNCHER_PID')) { $null = $appStart.Environment.Remove($name) }
-  if ($EnableDesktopGemma) {
+  if ($EnableDesktopGemma -and -not $WithoutLocalModel) {
     $appStart.Environment['GRAMMAR_GEMMA_SESSION'] = $session
     $appStart.Environment['GRAMMAR_GEMMA_LAUNCHER_PID'] = [string]$PID
     $appStart.Environment['GRAMMAR_GEMMA_BROKER_SHA256'] = $brokerHash
@@ -145,6 +149,10 @@ function Start-Attempt {
 }
 
 try {
+  if ($ProfileDirectory) {
+    if (-not [IO.Path]::IsPathFullyQualified($ProfileDirectory) -or -not (Test-Path -LiteralPath $ProfileDirectory -PathType Container)) { throw 'ProfileDirectory must be an existing absolute directory.' }
+    $ProfileDirectory = [IO.Path]::GetFullPath($ProfileDirectory)
+  }
   # The retained exclusive handle prevents two launchers publishing different brokers.
   $lock = [IO.File]::Open((Join-Path $root 'gemma-session.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
   $manifest = Get-Content -LiteralPath (Join-Path $root 'MANIFEST.json') -Raw | ConvertFrom-Json
@@ -177,6 +185,13 @@ try {
   $config = $original | ConvertFrom-Json
   if ($config.PSObject.Properties['gemma']) { throw 'An existing Gemma endpoint is present; refusing to replace it.' }
   if ($config.origin -cne ('chrome-extension://' + $manifest.extensionId + '/') -or -not $config.installation_id) { throw 'Installed host origin mismatch' }
+  if ($WithoutLocalModel) {
+    Write-Host 'Local model disabled explicitly. Basic local rules remain available. External Deep requires your provider setup and consent; no automatic fallback.'
+    $app = Start-Desktop
+    $app.WaitForExit()
+    if ($app.ExitCode -ne 0) { throw 'Grammar exited unsuccessfully.' }
+    return
+  }
   $start = [Diagnostics.ProcessStartInfo]::new((Join-Path $root 'grammar-gemma-broker.exe'))
   $start.UseShellExecute = $false; $start.CreateNoWindow = $true
   # Only the owned broker and its model child inherit this path. Never modify

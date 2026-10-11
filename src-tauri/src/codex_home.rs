@@ -20,6 +20,9 @@ pub(crate) struct CodexHome {
 
 impl CodexHome {
     pub(crate) fn prepare() -> Result<Self, String> {
+        if let Some(directory) = crate::local_profile::directory()? {
+            return Self::prepare_under(&directory);
+        }
         let local_app_data = std::env::var_os("LOCALAPPDATA")
             .map(PathBuf::from)
             .ok_or_else(|| "codex_home_local_app_data_unavailable".to_string())?;

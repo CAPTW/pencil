@@ -630,6 +630,9 @@ fn backup_path(path: &Path) -> PathBuf {
 }
 
 fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Some(directory) = crate::local_profile::directory()? {
+        return Ok(directory.join("settings.json"));
+    }
     let dir = app
         .path()
         .app_config_dir()

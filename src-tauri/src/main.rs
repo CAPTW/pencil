@@ -16,6 +16,7 @@ mod native_edit;
 mod target_apply;
 mod p3_03_runtime;
 mod local_model_session;
+mod local_profile;
 mod prerequisites;
 mod provider;
 #[cfg(windows)]
@@ -1826,6 +1827,14 @@ fn main() {
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--check-webview2")) {
         let available = tauri::webview_version().is_ok_and(|version| !version.trim().is_empty());
         std::process::exit(if available { 0 } else { 78 });
+    }
+    match local_profile::directory() {
+        Ok(Some(path)) => {
+            // Process-local WebView storage follows the explicitly selected profile.
+            std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", path.join("webview"));
+        }
+        Ok(None) => {}
+        Err(error) => { eprintln!("{error}"); std::process::exit(78); }
     }
     let app = tauri::Builder::default()
         .manage(AppState::default())

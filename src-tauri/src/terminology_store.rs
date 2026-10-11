@@ -28,6 +28,9 @@ pub(crate) enum StoreFailurePoint {
 }
 
 pub(crate) fn terminology_path(app: &AppHandle) -> Result<PathBuf, TerminologyError> {
+    if let Some(directory) = crate::local_profile::directory().map_err(|_| TerminologyError::StoreIo)? {
+        return Ok(directory.join("terminology.v1.json"));
+    }
     app.path()
         .app_data_dir()
         .map(|directory| directory.join("terminology.v1.json"))
