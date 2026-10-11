@@ -23,6 +23,8 @@
 
 배치 시간을 점검하려면 `-TimingReceiptPath <설치 폴더 밖의 새 JSON 경로>`를 함께 지정하십시오. 모델 복사·검증, 런타임 압축 해제·검증 시간이 기록됩니다. 이는 다운로드 완료 후의 배치 시간과 앱의 모델 준비 시간을 구분하기 위한 선택적 진단이며, 기록 실패가 자산 검증을 생략하지 않습니다. SSD의 명시적 캐시와 SSD 설치 위치를 사용한 격리 시험은 느린 공유 저장소 시험보다 빨랐지만, 이 차이를 코드 개선 효과나 모든 PC의 보장 시간으로 해석하지 않습니다. 기존 `local` 폴더가 준비되어 있으면 다시 배치하지 말고 `Start-Grammar.ps1`을 실행하십시오. 앱 재시작 시 모델의 전체 무결성 검증은 계속 수행합니다.
 
+패키지를 만들 때 `scripts/mission/package.ps1`에 `-LocalRuntimeProfile cuda13.4-blackwell`을 지정하면 같은 llama.cpp b11461의 공식 CUDA 13.4 런타임을 선택합니다. 기본값은 기존 `cuda12.4`입니다. 선택 결과는 `MANIFEST.json`의 `localRuntimeProfile`에 기록되고, 실행 중 자동 변경이나 다른 런타임으로의 재시도는 하지 않습니다. Gemma 12B Q4_0 모델과 생성 설정은 두 프로필에서 같습니다. CUDA 13 프로필의 시험 범위는 RTX 5070 Ti·드라이버 596.49·격리 Windows Sandbox이며 다른 GPU/드라이버의 호환성은 별도 검증이 필요합니다. 드라이버 설치나 변경을 수행하는 옵션은 아닙니다. 이미 준비한 `local` 자산을 다른 프로필로 덮어쓰지 말고, 선택한 프로필의 새 패키지를 별도 위치에 설치하십시오.
+
 **실제 모델 실행 전제조건:** 이 llama.cpp 배포본은 Microsoft Visual C++ 런타임 DLL도 필요합니다. 깨끗한 Windows Sandbox에서 DLL이 없으면 모델 실행 전 `0xC0000135`로 종료되는 것을 확인했습니다. 현재 패키지는 이 의존성을 자동 설치하거나 사전에 구체적으로 진단하지 않습니다. 실제 모델 Sandbox 시험에서는 서명을 확인한 Visual Studio redistributable DLL을 시험 프로세스에만 제공했으며 시스템 설정은 변경하지 않았습니다. 이 시험 조건은 일반 설치 패키지에 의존성이 포함됐다는 뜻이 아닙니다. [Microsoft의 배포 방식 안내](https://learn.microsoft.com/en-us/cpp/windows/choosing-a-deployment-method?view=msvc-170)를 참고하십시오.
 
 준비 후 `pwsh -NoProfile -File .\Start-Grammar.ps1`로 실행합니다. 앱을 먼저 열고 모델 준비 상태를 표시하며, 사용자가 켠 Chromium 필드에만 로컬 Gemma 연결을 제공합니다. 앱을 트레이에서 종료하면 연결 정보를 회수하고 브로커 정리 완료를 기다립니다. 실행 중에는 제거를 거부합니다. 강제로 실행기를 종료해 연결 정보가 남았다면 자동으로 덮어쓰지 않고 오류를 표시합니다.

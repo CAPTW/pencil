@@ -1,9 +1,11 @@
 param(
   [Parameter(Mandatory)][string]$ReceiptPath,
   [Parameter(Mandatory)][string]$OutputRoot,
-  [string]$VCRuntimeDirectory
+  [string]$VCRuntimeDirectory,
+  [ValidateSet('cuda12.4','cuda13.4-blackwell')][string]$LocalRuntimeProfile='cuda12.4'
 )
 $ErrorActionPreference='Stop'
+$LocalRuntimeProfile=$LocalRuntimeProfile.ToLowerInvariant()
 $source=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $receipt=Get-Content -LiteralPath $ReceiptPath -Raw | ConvertFrom-Json
 $verified=& (Join-Path $PSScriptRoot 'build-receipt.ps1') -SourceRoot $source -ReceiptPath $ReceiptPath -VerifyOnly -ExecutablePath $receipt.executablePath -HostExecutablePath $receipt.hostExecutablePath
@@ -73,9 +75,12 @@ $extensionManifestPath=Join-Path $destination 'extension/manifest.json'
 $extensionManifest=Get-Content -LiteralPath $extensionManifestPath -Raw | ConvertFrom-Json
 $extensionManifest | Add-Member -NotePropertyName key -NotePropertyValue ([Convert]::ToBase64String($der))
 [IO.File]::WriteAllText($extensionManifestPath,($extensionManifest | ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false))
-foreach($item in @('Install-Grammar.ps1','Uninstall-Grammar.ps1','PERSONAL_USE.md','Start-Grammar.ps1','Prepare-GrammarLocal.ps1','Gemma-Assets.json')){
+foreach($item in @('Install-Grammar.ps1','Uninstall-Grammar.ps1','PERSONAL_USE.md','Start-Grammar.ps1','Prepare-GrammarLocal.ps1')){
   Copy-Item -LiteralPath (Join-Path $source ('scripts/package/'+$item)) -Destination (Join-Path $destination $item)
 }
+$catalogName = if ($LocalRuntimeProfile -ceq 'cuda13.4-blackwell') { 'Gemma-Assets-CUDA13.json' } else { 'Gemma-Assets.json' }
+# Package one explicit, source-bound runtime. Do not switch or fall back at launch.
+Copy-Item -LiteralPath (Join-Path $source ('scripts/package/'+$catalogName)) -Destination (Join-Path $destination 'Gemma-Assets.json')
 Copy-Item -LiteralPath (Join-Path $source 'adapters/chromium/host') -Destination (Join-Path $destination 'host-tools') -Recurse
 Copy-Item -LiteralPath (Join-Path $source 'adapters/chromium/README.md') -Destination (Join-Path $destination 'README.md')
 Copy-Item -LiteralPath (Join-Path $source 'docs/control/HANDOFF.md') -Destination (Join-Path $destination 'HANDOFF.md')
@@ -86,9 +91,10 @@ $files=@(Get-ChildItem -LiteralPath $destination -File -Recurse -Force | Sort-Ob
 })
 $manifest=[ordered]@{classification='PERSONAL_USE_CANDIDATE_SYNTHETIC_QUALIFIED_SCOPE';sourceCommit=$verified.after.commit;sourceTree=$verified.after.tree;sourcePhysicalDigest=$verified.after.trackedBytesSha256;extensionId=$extensionId;nativeCapture='SCOPE_QUALIFIED_SINGLELINE_AUTOVSCROLL_MULTILINE_EDIT_AND_RICHEDIT_CANDIDATE';nativeApply='TARGET_SIDE_EDIT_RICHEDIT_ACCEPT_AUTOVSCROLL_MULTILINE_INSTALLED_ACCEPTANCE_PENDING';gemmaIntegration='EXPLICIT_LAUNCHER_CHROMIUM_ONLY_DESKTOP_ROUTING_PENDING';chromiumInstant='TEXTAREA_SIMPLE_CONTENTEDITABLE_SYNTHETIC_QUALIFIED';chromiumDeep='CONSENT_BOUND_SYNTHETIC_PROVIDER_ONLY';antigravityDeep='PRIVACY_UNQUALIFIED';claudeOAuth='UNAVAILABLE_WITH_BARE';providerLive='NOT_RUN';physicalKeyboardIme='NOT_RUN';files=$files}
 $manifest.vcRuntime = [ordered]@{deployment='PRIVATE_PROCESS_PATH';version=$crtFiles[0].VersionInfo.FileVersion;files=@($crtFiles | ForEach-Object { 'vc-runtime/' + $_.Name })}
+$manifest.localRuntimeProfile = $LocalRuntimeProfile
 [IO.File]::WriteAllText((Join-Path $destination 'MANIFEST.json'),($manifest|ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false))
 $zip=$destination+'.zip'
 if(Test-Path -LiteralPath $zip){throw 'ZIP already exists'}
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($destination,$zip)
-[ordered]@{classification=$manifest.classification;directory=$destination;zip=$zip;zipSha256=(Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLower();sourceCommit=$verified.after.commit;extensionId=$extensionId}|ConvertTo-Json
+[ordered]@{classification=$manifest.classification;directory=$destination;zip=$zip;zipSha256=(Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLower();sourceCommit=$verified.after.commit;extensionId=$extensionId;localRuntimeProfile=$LocalRuntimeProfile}|ConvertTo-Json

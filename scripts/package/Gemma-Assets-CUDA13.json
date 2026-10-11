@@ -1,0 +1,25 @@
+{
+  "schema": "grammar-local-assets/v1",
+  "model": {
+    "name": "gemma-4-12b-it-qat-q4_0.gguf",
+    "url": "https://huggingface.co/google/gemma-4-12B-it-qat-q4_0-gguf/resolve/29d097773436b69ff9feafd636ab4cf873786537/gemma-4-12b-it-qat-q4_0.gguf",
+    "sha256": "93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b",
+    "size": 6975879296
+  },
+  "runtimeSha256": "a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1",
+  "runtimeBundleSha256": "d6ef94c506863a4621a7e8b1c5f37ac255756b28686a3325bbd52785620172ad",
+  "runtimeArchives": [
+    {
+      "name": "cudart-llama-bin-win-cuda-13.4-x64.zip",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11461/cudart-llama-bin-win-cuda-13.4-x64.zip",
+      "size": 423535356,
+      "sha256": "738f8c251ac22b70c3ae6f83a10cf222725df0395246a2cf58f32bdb85fbe668"
+    },
+    {
+      "name": "llama-b11461-bin-win-cuda-13.4-x64.zip",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11461/llama-b11461-bin-win-cuda-13.4-x64.zip",
+      "size": 153137923,
+      "sha256": "62c91b76abe5a704304eb1d2a5041944953d438c1b1d9f6b56261ea36b0461cf"
+    }
+  ]
+}
