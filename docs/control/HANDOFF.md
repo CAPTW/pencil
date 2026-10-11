@@ -2673,3 +2673,43 @@ guest launch, actual GPU offload, all writing modes and exact source reread afte
 explicit Accept. Keep host-only inference and guest integration evidence separate.
 Do not repeat a blocked process start indefinitely or kill unrelated workloads.
 Main/push/release and Project Source are unchanged; mission remains INCOMPLETE.
+
+
+## Recovered GPU-capable Sandbox actual writing / Accept checkpoint, 2026-10-11
+
+
+Candidate source ceb1f7c970b1a6a4961f7ec9d2d668e41c0fc81b; clean build receipt build-receipt-r2.json.
+Package payload/package-final.zip SHA256 5baac902b0f7b15ab8647d15b67c60af975b451e055242eec764fd78905644bd. Unmodified installed package; no fixtureOverrides. Main/push/release not performed; mission INCOMPLETE.
+
+## Final installed trial
+Windows Sandbox vGPU Enable, networking/clipboard disabled, task-owned RichEdit synthetic editor. CUDA0 RTX5070Ti was enumerated by the guest runtime (guest/devices2.txt). Actual pinned Gemma4 12B IT QAT Q4_0; no synthetic model response or cloud call. Runtime and model catalog pins unchanged.
+All seven native shortcut -> actual candidate -> explicit Accept -> exact editor reread cases passed. Output was accepted unedited. App and editor exited naturally. No extra analysis event during Accept; this is not a new server-request-count measurement.
+
+| Case | Shortcut-to-candidate ms | Accept-to-reread ms | Result |
+|---|---:|---:|---|
+| 1 natural -> en | 1115.1 | 149.0 | PASS |
+| 2 concise -> en | 898.0 | 149.6 | PASS |
+| 3 polite -> en | 802.7 | 132.8 | PASS |
+| 4 translate -> ko | 986.7 | 152.1 | PASS |
+| 5 translate -> en | 803.4 | 170.5 | PASS |
+| 6 translate -> ko | 1235.8 | 122.9 | PASS |
+| 7 natural -> en | 1113.7 | 167.1 | PASS |
+
+Recommendation target1s: short Natural1115.1ms misses; other four short cases pass. Four-sentence translation1235.8ms and Natural1113.7ms meet3s. All Accept times meet500ms. n7, one sample per case, not robust percentile or broad performance acceptance. Sources/outputs/events in guest/app3/app-result.json.
+Fresh local asset preparation 381.93s; app-start-to-ready 23.86s, measured separately. Not cold-boot measurements. Startup/preparation remain material usability issues. This repeat ran after the host build; the earlier loaded trial is preserved, not discarded.
+
+## GPU and quality evidence boundaries
+Host run3 proves49/49 layers offloaded to RTX5070Ti,7 actual responses438-813ms (HTTP only; p50=578ms, nearest-rank p95/p99=813ms), runtime exit and port closure. This is separate from guest/UI evidence. Guest GPU-memory counter returned no matching instances (GPU_ALLOCATION_NOT_OBSERVED); do not claim this measured process GPU utilization or guest offload count. GPU-capable guest device enumeration and actual installed timings are confirmed; host offload diagnostics must not be relabeled guest diagnostics.
+All seven installed outputs equal the host outputs. Manual review in QUALITY-REVIEW.md preserves facts, numbers, prohibitions, obligations and deadlines on this small fixed set; Natural has slight formal-register drift. Same-integrator review, no independent human quality review or broad language guarantee.
+
+## Repairs and checks
+9fa23cf: signed Microsoft release CRT privately packaged, manifest hashed and pinned, broker-only child PATH. No system install or global PATH change. Polite prompt requests Please for imperatives; modal/negation/obligation guards unchanged and old Could result still rejected.
+ceb1f7c: installer copies and verifies private CRT files. Launcher fixture retries transient atomic-read access errors within its existing deadline and keeps positive-test app alive until readiness. Assertions/product deadlines unchanged.
+PASS: Rust local_gemma35 (10ignored); cargo check lib/tests; launcher28; installer prerequisite4 (including private CRT copy); PowerShell syntax; governance/self-test; clean release build/package. Existing library warnings remain. Final guest system vcruntime140.dll absent before/after yet model and app work using private files. Uninstall and independent check: owned processes0, install root absent, registry children0, user data0. Owned Sandbox stopped; final inventory empty.
+
+## Preserved failures / limits
+Initial host load timeout and Windows process-start stalls; run2 diagnostics insufficient to prove offload; old package app1 omitted private CRT during installation (repaired). App2 declared installer-only fixture:3 Accept passes,3 pre-capture focus-helper timeouts,1 reconnection timeout; stale failureMs in that harness is NOT inference latency. First recommendation14.212s and ready141.991s remain recorded. App3 resets capture timing each case and records pre-capture phase separately; all7 pass. Environment-stall root cause remains unknown; no reboot/security/driver relaxation used.
+NOT_RUN: general profiles/documents, other editors/adapters, physical keyboard/IME, live external Providers, broad quality/endurance and reproducible binary builds. The requested seven-case isolated actual-model flow is verified; whole product and1s-all-cases acceptance are not.
+Next: diagnose preparation/startup/first-request variability without weakening quality or safety; broaden bounded actual-model corpus and latency repetitions. Existing wider mission tasks remain.
+
+Evidence: D:/dev/grammar-evidence/grammar-gpu-writing-20261011/{RESULT.md,CHECKPOINT.json,QUALITY-REVIEW.md}. Initial blocked reports retained as *-initial; this checkpoint supersedes their current-status summary only.
