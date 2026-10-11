@@ -257,7 +257,7 @@ fn gemma_response(request:Request,result:codex_pencil::local_gemma::Recommendati
     if !result.matches(&binding) {return Err("analysis_binding_changed");}
     let mut response=response_for(&request,None);
     if result.replacement!=request.text {
-        response.suggestions.push(Suggestion {start:0,end:request.text.encode_utf16().count(),replacement:result.replacement,rule:format!("gemma:{}", match binding.intent { codex_pencil::local_gemma::Intent::Grammar => "grammar", codex_pencil::local_gemma::Intent::Paraphrase => "paraphrase", codex_pencil::local_gemma::Intent::Translate {..} => "translation" }),message:"Local Gemma review".into()});
+        response.suggestions.push(Suggestion {start:0,end:request.text.encode_utf16().count(),replacement:result.replacement,rule:format!("gemma:{}", match binding.intent { codex_pencil::local_gemma::Intent::Grammar => "grammar", codex_pencil::local_gemma::Intent::Paraphrase => "paraphrase", codex_pencil::local_gemma::Intent::Concise => "concise", codex_pencil::local_gemma::Intent::Polite => "polite", codex_pencil::local_gemma::Intent::Translate {..} => "translation" }),message:"Local Gemma review".into()});
     }
     Ok(response)
 }
