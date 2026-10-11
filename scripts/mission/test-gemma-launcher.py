@@ -337,7 +337,7 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(first.returncode, 0, err)
         self.assertEqual(self.sidecar.read_text(), self.original)
 
-    def prepare_fixture(self, corrupt=False):
+    def prepare_fixture(self, corrupt=False, run=True):
         # All paths belong to this test's newly allocated temporary directory.
         shutil.rmtree(self.root / "local")
         cache = self.root / "cache"
@@ -345,7 +345,7 @@ class LauncherTests(unittest.TestCase):
         with zipfile.ZipFile(cache / "runtime.zip", "w") as z:
             z.writestr("llama-server.exe", b"synthetic runtime never executed")
             z.writestr("llama-bench.exe", b"unneeded upstream tool")
-        model = cache / "model.gguf"
+        model = cache / "gemma-4-12b-it-qat-q4_0.gguf"
         model.write_bytes(b"synthetic model never executed")
         runtime_hash = hashlib.sha256(b"synthetic runtime never executed").hexdigest()
         bundle_hash = hashlib.sha256(("llama-server.exe\0" + runtime_hash + "\n").encode()).hexdigest()
@@ -361,6 +361,11 @@ class LauncherTests(unittest.TestCase):
         shutil.copyfile(ROOT / "scripts/package/Prepare-GrammarLocal.ps1", self.root / "Prepare-GrammarLocal.ps1")
         if corrupt:
             model.write_bytes(b"corrupted")
+        if not run:
+            return cache
+        return self.run_prepare(cache)
+
+    def run_prepare(self, cache):
         return subprocess.run(["pwsh", "-NoProfile", "-File",str(self.root / "Prepare-GrammarLocal.ps1"),"-AssetCache",str(cache)],capture_output=True,text=True,encoding="utf-8",timeout=30)
 
     def test_offline_asset_preparation(self):
@@ -406,6 +411,68 @@ class LauncherTests(unittest.TestCase):
         (self.root / "local/gemma-4-12b-it-qat-q4_0.gguf").unlink()
         result = self.run_launcher()
         self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.root / "broker.pid").exists())
+
+    def test_managed_missing_assets_keep_app_and_allow_explicit_retry(self):
+        cache = self.prepare_fixture(run=False)
+        (self.root / "wait-release").touch()
+        process = subprocess.Popen(["pwsh", "-NoProfile", "-File", str(self.root / "Start-Grammar.ps1"), "-EnableDesktopGemma"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+        try:
+            path, state = self.wait_phase("failed")
+            self.assertTrue((self.root / "app-started").exists())
+            app_pid = (self.root / "app.pid").read_text()
+            self.assertFalse((self.root / "broker.pid").exists())
+            self.assertIsNotNone(state["retryTicket"])
+            self.assertEqual(self.sidecar.read_text(), self.original)
+            # A premature click fails again without allocating a broker.
+            path.with_suffix(".json.retry").write_text(state["retryTicket"])
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                current = json.loads(path.read_text())
+                if current["phase"] == "failed" and current["retryTicket"] != state["retryTicket"]:
+                    break
+                time.sleep(.02)
+            else:
+                self.fail("missing-assets retry did not issue a fresh ticket")
+            self.assertFalse((self.root / "broker.pid").exists())
+            # Preparing files alone does not start inference.
+            prepared = self.run_prepare(cache)
+            self.assertEqual(prepared.returncode, 0, prepared.stderr)
+            self.assertTrue((self.root / "local/assets-receipt.json").exists())
+            time.sleep(.3)
+            self.assertFalse((self.root / "broker.pid").exists())
+            path.with_suffix(".json.retry").write_text(current["retryTicket"])
+            self.wait_phase("ready")
+            self.assertEqual((self.root / "app.pid").read_text(), app_pid)
+        finally:
+            (self.root / "release-app").touch()
+            out, err = process.communicate(timeout=25)
+        self.assertEqual(process.returncode, 0, out + err)
+        self.assertFalse(list(self.root.glob("gemma-session-*.json")))
+        self.assertEqual(self.sidecar.read_text(), self.original)
+
+    def test_managed_missing_assets_exit_reports_unavailable_and_releases_session(self):
+        (self.root / "local/gemma-4-12b-it-qat-q4_0.gguf").unlink()
+        result = self.run_launcher("-EnableDesktopGemma")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue((self.root / "app-started").exists())
+        self.assertFalse((self.root / "broker.pid").exists())
+        self.assertIn("no runtime was started", result.stderr)
+        self.assertNotIn("Gemma cleanup complete.", result.stdout)
+        self.assertFalse(list(self.root.glob("gemma-session-*.json")))
+        self.assertEqual(self.sidecar.read_text(), self.original)
+        # Exclusive ownership was released even on this failure path.
+        result = self.run_launcher("-EnableDesktopGemma")
+        self.assertIn("no runtime was started", result.stderr)
+
+    def test_managed_missing_assets_do_not_bypass_package_integrity(self):
+        (self.root / "local/gemma-4-12b-it-qat-q4_0.gguf").unlink()
+        with (self.root / "grammar-gemma-broker.exe").open("ab") as f:
+            f.write(b"changed")
+        result = self.run_launcher("-EnableDesktopGemma")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Package file changed", result.stderr)
+        self.assertFalse((self.root / "app-started").exists())
         self.assertFalse((self.root / "broker.pid").exists())
 
     def test_start_failure_never_opens_app(self):
