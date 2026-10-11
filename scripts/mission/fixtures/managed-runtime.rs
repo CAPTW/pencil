@@ -24,6 +24,16 @@ fn main(){
    let path=root.join(name);let n=std::fs::read_to_string(&path).ok().and_then(|v|v.parse::<u32>().ok()).unwrap_or(0);
    std::fs::write(path,(n+1).to_string()).unwrap();
    if mode=="ready" {response="{\"choices\":[{\"finish_reason\":\"length\",\"message\":{\"content\":\"O\"}}],\"usage\":{\"completion_tokens\":1}}";}
+   if mode=="ready" && name=="user-requests" {
+    let prompt=String::from_utf8_lossy(&body);
+    response=if prompt.contains("Translate the complete text into Korean") {r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"replacement\":\"이것을 분리해 주세요.\"}"}}]}"#}
+     else if prompt.contains("Translate the complete text into English") {r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"replacement\":\"Please separate this.\"}"}}]}"#}
+     else if prompt.contains("more concisely") {r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"replacement\":\"Separate this.\"}"}}]}"#}
+     else if prompt.contains("courteously") {r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"replacement\":\"Would you please separate this?\"}"}}]}"#}
+     else if prompt.contains("Paraphrase naturally") {r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"replacement\":\"Please split this.\"}"}}]}"#}
+     else {r#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"replacement\":\"Please separate this.\"}"}}]}"#};
+   }
+
   }
   let reply=format!("HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}",response.len());
   stream.write_all(reply.as_bytes())?;

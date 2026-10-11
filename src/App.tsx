@@ -675,10 +675,10 @@ export default function App() {
     void refreshProviders();
     void refreshTerminology();
 
-    void listen<{sessionId: string; generation: number}>("local-analysis-failed", (event) => {
+    void listen<{sessionId: string; generation: number; unsupportedLanguage?: boolean}>("local-analysis-failed", (event) => {
       setInstantRuntime((current) => {
         if (current.sessionId === event.payload.sessionId && current.generation === event.payload.generation) {
-          setStatus("Local analysis unavailable — your draft is preserved");
+          setStatus(event.payload.unsupportedLanguage ? "Local Gemma supports English or Korean translation. Select a supported language; your draft is preserved." : "Local analysis unavailable — your draft is preserved");
         }
         return current;
       });

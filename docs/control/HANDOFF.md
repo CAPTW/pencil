@@ -2612,3 +2612,10 @@ Nested mappings initially returned E_ACCESSDENIED; flat read-only payload + writ
 Artifact D:/dev/grammar-evidence/grammar-default-package-20261011/payload/package-pristine.zip; ZIP24097b8a72d0f8479dcecec4530b1f78a1d6f8713b0ab1d58185ed3b5ff391b7. Evidence CHECKPOINT.json/build-receipt.json/package-result.json/FIXTURE_OVERRIDES.json and run-pristine,run-fixture-focus-fail,run-fixture-pass. No current source or launcher overrides in the product package. Docs evidence commit may follow this exact product source; do not mislabel that docs HEAD as binary source.
 
 Default grammar wiring/package checkpoint complete. Remaining prototype work includes desktop Gemma translation/paraphrase integration, successful installed HTTPS API-response qualification, and actual-model installed use/quality/latency limits; broad editor acceptance remains incomplete. MissionINCOMPLETE; no main/push/release. Project Source not regenerated; prior defaultoff claims are historical after540d666.
+
+
+# Desktop local writing intent integration candidate — 2026-10-11
+
+Default Gemma capture now dispatches exact Grammar/Natural/Concise/Polite/Translate intent. English/Korean translation supported; Auto/Japanese/Chinese explicitly unavailable, with draft-preserving UI guidance. Concise/Polite have strict broker protocol variants and purpose-specific prompts; literal/modality protection retained. Mode/target language are captured and checked at admission/publication, encoded in cache identity; existing settings invalidation and source/term binding retained. No fallback, replay or automatic mutation. Conservative protected-span envelope may refuse transformation spanning protected terms; not a claim of unrestricted translation coverage.
+
+Desktop full271PASS/31ignored; local Gemma34PASS/10ignored; focused desktop11PASS/1ignored. Installed five-intent fixture and fresh source package pending. New runtime fixture uses fixed synthetic replies, not linguistic quality evidence. Same-integrator review only; no new real-model quality/latency or external Provider acceptance, no main/push/release. Project Source not regenerated.

@@ -200,8 +200,23 @@ fn validate_local_replacement(source: &str, replacement: &str, spans: &[Protecte
     Ok(())
 }
 
-pub(crate) async fn analyze_gemma_source(identity: SourceIdentity, source: String, spans: Vec<ProtectedSpan>) -> Result<InstantRuntimeOutcome, String> {
-    use codex_pencil::local_gemma::{broker::Connection, peer::ImagePin, Binding, Intent};
+pub(crate) fn gemma_intent(mode: RewriteMode, target: crate::translation::TranslationTargetLanguage) -> Result<codex_pencil::local_gemma::Intent, String> {
+    use codex_pencil::local_gemma::{Intent, Language};
+    use crate::translation::TranslationTargetLanguage as T;
+    Ok(match mode {
+        RewriteMode::Grammar => Intent::Grammar,
+        RewriteMode::Natural => Intent::Paraphrase,
+        RewriteMode::Concise => Intent::Concise,
+        RewriteMode::Polite => Intent::Polite,
+        RewriteMode::Translate => Intent::Translate { target: match target {
+            T::En => Language::English, T::Ko => Language::Korean,
+            _ => return Err("gemma_target_language_unsupported".into()),
+        } },
+    })
+}
+
+pub(crate) async fn analyze_gemma_source(identity: SourceIdentity, source: String, spans: Vec<ProtectedSpan>, intent: codex_pencil::local_gemma::Intent) -> Result<InstantRuntimeOutcome, String> {
+    use codex_pencil::local_gemma::{broker::Connection, peer::ImagePin, Binding};
     let started = Instant::now();
     // One operational budget, separate from the 1s recommendation performance target.
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
@@ -219,12 +234,12 @@ pub(crate) async fn analyze_gemma_source(identity: SourceIdentity, source: Strin
     })).await.map_err(|_| "gemma_image_deadline")?
         .map_err(|_| "gemma_image_join")??;
     let connection = Connection { name, broker_image };
-    let binding = Binding {intent:Intent::Grammar,epoch:identity.session_id.clone(),revision:identity.generation,source:source.clone()};
+    let binding = Binding {intent,epoch:identity.session_id.clone(),revision:identity.generation,source:source.clone()};
     let result = connection.acquire(&binding.epoch, deadline).await?.recommend(binding.clone(), deadline).await?;
     if !result.matches(&binding) { return Err("gemma_source_mismatch".into()); }
     validate_local_replacement(&source, &result.replacement, &spans)?;
     let no_change = result.replacement == source;
-    let candidate = Candidate::new(identity, CandidateOrigin::Instant, "gemma-grammar", result.replacement);
+    let candidate = Candidate::new(identity, CandidateOrigin::Instant, "gemma-writing", result.replacement);
     Ok(InstantRuntimeOutcome {no_change,suggestion_count:usize::from(!no_change),candidate,elapsed_ms:started.elapsed().as_millis()})
 }
 
@@ -379,7 +394,7 @@ mod tests {
         for (i,(source,expected)) in [("She go to school every day.","She goes to school every day."),
             ("They has two books.","They have two books."),("She go to school every day.","She goes to school every day.")].iter().enumerate() {
             let started = Instant::now();
-            let result = analyze_gemma_source(local_identity("owned-desktop",i as u64+1,1,source,true), (*source).into(), vec![]).await;
+            let result = analyze_gemma_source(local_identity("owned-desktop",i as u64+1,1,source,true), (*source).into(), vec![], codex_pencil::local_gemma::Intent::Grammar).await;
             let elapsed=started.elapsed().as_millis();
             let passed=result.as_ref().is_ok_and(|r|r.candidate.text==*expected);
             rows.push(serde_json::json!({"index":i,"elapsedMs":elapsed,"targetMet":elapsed<=1000,"qualityPassed":passed,
@@ -401,6 +416,20 @@ mod tests {
         assert_eq!(line.trim(), r#"{"cleanup":"complete"}"#);
         assert_eq!(rows.len(),3);
         assert!(rows.iter().all(|r|r["qualityPassed"]==true));
+    }
+
+    #[test]
+    fn desktop_gemma_intents_preserve_mode_and_language() {
+        use codex_pencil::local_gemma::{Intent, Language};
+        use crate::translation::TranslationTargetLanguage as T;
+        assert_eq!(gemma_intent(RewriteMode::Natural, T::En).unwrap(), Intent::Paraphrase);
+        assert_eq!(gemma_intent(RewriteMode::Concise, T::En).unwrap(), Intent::Concise);
+        assert_eq!(gemma_intent(RewriteMode::Polite, T::En).unwrap(), Intent::Polite);
+        assert_eq!(gemma_intent(RewriteMode::Translate, T::En).unwrap(), Intent::Translate {target:Language::English});
+        assert_eq!(gemma_intent(RewriteMode::Translate, T::Ko).unwrap(), Intent::Translate {target:Language::Korean});
+        for target in [T::Auto,T::Ja,T::ZhHans,T::ZhHant] {
+            assert_eq!(gemma_intent(RewriteMode::Translate,target).unwrap_err(),"gemma_target_language_unsupported");
+        }
     }
 
     #[test]
