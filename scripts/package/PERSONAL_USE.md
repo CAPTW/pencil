@@ -109,3 +109,20 @@ Chromium에서는 데스크톱 앱을 실행한 상태로 위의 문서·필드 
 기본 실행에서는 패키지 무결성 확인 후 모델·런타임 파일이 없어도 앱을 엽니다. 모델은 실패 상태로 표시되며 초안은 열린 앱에 유지됩니다. 별도의 PowerShell 7 창에서 설치 폴더의 `Prepare-GrammarLocal.ps1`을 명시적으로 실행하고, 성공한 뒤 앱의 **Retry local model**을 누르십시오. 기존 `local` 폴더가 일부만 남아 준비 스크립트가 거부하면 임의 삭제하지 말고 설치 상태를 점검하십시오. 파일 준비나 Retry는 이전 캡처를 자동으로 전송하지 않습니다. 모델 준비 완료 후 새로 캡처합니다.
 
 파일이 아직 없을 때 Retry를 눌러도 런타임을 생성하지 않고 다시 실패 상태로 돌아갑니다. 준비하지 않고 앱을 종료하면 실행기는 모델 사용 불가를 오류로 보고하고 세션을 정리합니다. 패키지 무결성 실패는 이 복구 경로로 우회되지 않습니다. 실제 모델 품질·속도 수용은 실행기 시험과 별개입니다.
+
+
+## Private CRT packaging candidate (2026-10-11; installed verification pending)
+
+The package builder now locates the x64 release Visual Studio Redist CRT (or
+accepts an explicit `-VCRuntimeDirectory`), verifies Microsoft signatures before
+and after copying, and includes the DLLs plus their manifest hashes. Start-Grammar
+pins the declared DLLs, refuses missing/changed/extra files, and adds this directory
+only to the owned broker's process PATH. No global PATH or runtime installer is used.
+The upstream llama runtime bundle digest is unchanged. Older packages without this
+metadata retain their existing system-runtime prerequisite; they are not upgraded
+by these source changes. Private CRT security updates require rebuilding the package.
+
+This is currently a source candidate, not a newly qualified installation: local
+PowerShell startup and the Windows test linker stalled before execution. The new
+launcher regressions and clean Sandbox package test still need to run. Do not treat
+the earlier process-PATH workaround as qualification of this packaging change.
