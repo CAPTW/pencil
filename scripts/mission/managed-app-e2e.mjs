@@ -16,6 +16,10 @@ const hashes={};for(const name of ['codex-pencil.exe','target-apply.dll','gramma
 const editorKind=process.env.GRAMMAR_TEST_EDITOR_KIND??'richedit';assert.ok(['standard','multiline','richedit'].includes(editorKind));
 const report={status:'FAIL',sourceCommit:manifest.sourceCommit,hashes,checks:[],providerLive:'NOT_RUN',classification:'INSTALLED_UNMODIFIED_APP_BROKER_SYNTHETIC_ASSET_CATALOG_UI_NOT_GPU_OR_APPLY'};
 const statusOnly=process.argv.includes('--status-only');
+const missingAssets=process.argv.includes('--missing-assets');
+report.fixtureOverrides=manifest.fixtureOverrides??null;
+report.missingAssets=missingAssets;
+if(report.fixtureOverrides)report.classification='INSTALLED_FIXTURE_WITH_DECLARED_OVERRIDES_NOT_UNMODIFIED_PACKAGE';
 report.scope=statusOnly?'STARTUP_RETRY_CLEANUP_ONLY_CAPTURE_DRAFT_NOT_RUN':'CAPTURE_DRAFT_STARTUP_RETRY_CLEANUP';
 const pass=name=>{report.checks.push(name);console.log('PASS '+name);};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -31,8 +35,8 @@ try{
  await page.waitForFunction(()=>typeof window.__TAURI_INTERNALS__?.invoke==='function',null,{polling:100,timeout:60000});
  app={pid:Number(execFileSync('powershell.exe',['-NoProfile','-Command',"(Get-Process codex-pencil | Where-Object Path -eq 'C:\\GrammarTrial\\codex-pencil.exe').Id"],{encoding:'utf8',windowsHide:true}).trim())};
  assert.ok(Number.isInteger(app.pid)&&app.pid>0);report.appPid=app.pid;
- await until('preparing banner',()=>page.locator('.local-model-status').textContent().then(s=>s.includes('Preparing local Gemma')));
- pass('installed widget visible during model preparation');
+ await until('initial model banner',()=>page.locator('.local-model-status').textContent().then(s=>s.includes(missingAssets?'Local Gemma stopped':'Preparing local Gemma')));
+ pass(missingAssets?'installed widget visible with missing assets':'installed widget visible during model preparation');
  const settings=await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('load_settings'));
  if(settings.onboardingVersion<1){await page.getByRole('button',{name:'Continue',exact:true}).click();}
  await page.evaluate(async()=>{const s=await window.__TAURI_INTERNALS__.invoke('load_settings');for(const k of ['cloudProcessingAcknowledgementVersion','claudeCloudAcknowledgementVersion','antigravityCloudAcknowledgementVersion'])if(s[k]!==0)throw Error('unexpected cloud grant');await window.__TAURI_INTERNALS__.invoke('save_settings',{settings:{...s,mode:'grammar',autoRewrite:false}});});
@@ -65,13 +69,22 @@ try{
 
  if(!statusOnly)await capture();
  const reviewed='검토한 초안을 유지합니다. Keep this edited draft.';
- if(!statusOnly){await draft.fill(reviewed);pass('synthetic capture and edited draft while preparing');}
- await writeFile('C:/GrammarTrial/local/phase-control','fail');
+ if(!statusOnly){await draft.fill(reviewed);pass(missingAssets?'synthetic capture and edited draft with missing assets':'synthetic capture and edited draft while preparing');}
+ if(!missingAssets)await writeFile('C:/GrammarTrial/local/phase-control','fail');
  const retry=page.getByRole('button',{name:'Retry local model',exact:true});
  await retry.waitFor({state:'visible',timeout:20000});
  if(!statusOnly)assert.equal(await draft.inputValue(),reviewed);
  const oldState=await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('local_model_status'));
- assert.equal(oldState.phase,'failed');assert.ok(oldState.canRetry);pass(statusOnly?'warmup failure offers explicit retry':'warmup failure leaves draft and offers explicit retry');
+ assert.equal(oldState.phase,'failed');assert.ok(oldState.canRetry);pass(missingAssets?'missing assets offer explicit retry':(statusOnly?'warmup failure offers explicit retry':'warmup failure leaves draft and offers explicit retry'));
+ if(missingAssets){
+  assert.equal((await import('node:fs')).existsSync('C:/GrammarTrial/local'),false);
+  execFileSync('C:/GrammarPayload/pwsh/pwsh.exe',['-NoProfile','-File','C:/GrammarTrial/Prepare-GrammarLocal.ps1','-AssetCache','C:/GrammarPayload/asset-cache'],{windowsHide:true,timeout:30000});
+  await sleep(300);
+  assert.equal((await import('node:fs')).existsSync('C:/GrammarTrial/local/runtime.pid'),false);
+  assert.equal((await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('local_model_status'))).phase,'failed');
+  if(!statusOnly)assert.equal(await draft.inputValue(),reviewed);
+  pass('explicit offline preparation leaves draft and does not start runtime');
+ }
  await writeFile('C:/GrammarTrial/local/phase-control','ready');
  await retry.click();
  await until('ready banner',()=>page.locator('.local-model-status').textContent().then(s=>s.includes('Local Gemma ready')),20000);
@@ -80,7 +93,7 @@ try{
  assert.equal(newState.phase,'ready');assert.equal(newState.canRetry,false);
  if(!statusOnly)assert.equal(await text(),'please seperate this.');pass(statusOnly?'explicit retry becomes ready':'retry becomes ready without changing draft or source');
  const userCount=await readFile('C:/GrammarTrial/local/user-requests','utf8').catch(()=> '0');
- assert.equal(userCount,'0');assert.equal(await readFile('C:/GrammarTrial/local/warmups','utf8'),'2');pass(statusOnly?'only two warmups, zero user inference':'only two warmups, no capture replay or user inference');
+ assert.equal(userCount,'0');assert.equal(await readFile('C:/GrammarTrial/local/warmups','utf8'),missingAssets?'1':'2');pass(missingAssets?'one explicit warmup, zero replay or user inference':(statusOnly?'only two warmups, zero user inference':'only two warmups, no capture replay or user inference'));
  await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});
  await until('launcher natural cleanup',async()=>launcher.exitCode!==null,20000);assert.equal(launcher.exitCode,0);appNatural=true;
  const cwd=await readFile('C:/GrammarTrial/local/runtime.cwd','utf8');
