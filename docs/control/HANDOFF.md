@@ -2863,3 +2863,40 @@ build, with redirected target numeric diagnostics, to resolve the still-open fir
 capture and intermittent Accept failures. Do not weaken target/revision guards.
 No main/push/release. Evidence:
 D:/dev/grammar-evidence/grammar-host-personal-20261011/resume-20261014/RESULT.md
+
+### Follow-up: actual desktop success after Owner activation (2026-10-14)
+
+Supersedes the preceding activation-blocked outcome only for the following trials.
+The corrected diagnostic app5796a8e ran7 cases, then a separate serial session ran
+7 cases twice (14). Both sessions had first-capture success; all21 actual Gemma
+outputs matched the previously reviewed finite corpus and all21 explicit Accepts
+passed exact RichEdit reread. Natural/concise/polite, EN/KO translation, and two
+four-sentence samples are covered. No target/source/revision guard was relaxed.
+Numeric target diagnostics show successful capture and applied status. The external
+activation helper now checks observed foreground identity even if SetForegroundWindow
+returns false; this is fixture behavior, not a product security bypass.
+
+Known window-thread blocking prerequisite probe is repaired and did not recur.
+The original intermittent native capture/Accept failure mechanisms are not separately
+proven repaired:21 successes establish bounded diagnostic regression evidence, not
+all-editor/long-run qualification. Installed personal dffcf8a remains unchanged.
+No claim of unmodified personal-package acceptance from this mixed diagnostic copy.
+
+Short recommendations15:697.49-1873.43ms (p50 1086.15),9 misses of1s. Paragraphs6:
+1361.56-1617.35ms,0 misses of3s. Accept21:189.22-2143.55ms (p50 382.90,p95 949.40),
+6 misses of0.5s. Startup ready13.515/16.928s separate. No quality/model downgrade.
+Primary-agent comparison to reviewed corpus only; no new independent human review.
+
+Both successful app flows exited0 with natural app/editor shutdown. Supervisor
+correctly reports FAIL_LEFTOVER_CHILDREN, not PASS:2 descendants per run needed
+forced Job cleanup. Final Job0, independent app/model/editor inventory0, diagnostic
+Gemma endpoint removed, session JSON count0. No trial or automatic continuation is
+running; outside entry restored. WebView unregister1412 warning remains unexplained.
+Final supervisor5 native tests PASS after process-handle completion reporting fix;
+basic governance/diff checks PASS. Full product suites not rerun for scripts/docs.
+
+Next: clean package of the repaired app and unmodified installed regression; retain
+initial native-intermittency causality and latency misses as open qualification
+limits. Do not restart trials without the one-session supervisor and complete cleanup.
+Evidence: resume-20261014/FINAL-SUMMARY.json, diagnostic-results/app-result.json,
+repeat-results/app-result.json, run/supervisor-result.json, repeat-run/supervisor-result.json.

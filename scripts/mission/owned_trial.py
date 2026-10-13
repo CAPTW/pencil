@@ -98,8 +98,10 @@ def run(command, output, timeout, mutex_name=MUTEX):
                 win32job.TerminateJobObject(job, 1)
                 if result["status"] == "PASS":
                     result["status"] = "FAIL_LEFTOVER_CHILDREN"
+            processes_signalled = True
             for handle in waits:
-                win32event.WaitForSingleObject(handle, max(0, int((cleanup_end - time.monotonic()) * 1000)))
+                state = win32event.WaitForSingleObject(handle, max(0, int((cleanup_end - time.monotonic()) * 1000)))
+                processes_signalled = processes_signalled and state == win32con.WAIT_OBJECT_0
                 handle.Close()
             while time.monotonic() < cleanup_end:
                 active = win32job.QueryInformationJobObject(job, win32job.JobObjectBasicAccountingInformation)["ActiveProcesses"]
@@ -107,16 +109,21 @@ def run(command, output, timeout, mutex_name=MUTEX):
                     break
                 time.sleep(0.05)
             result["remainingAfterCleanup"] = active
-            result["cleanup"] = "COMPLETE" if active == 0 else "INCOMPLETE"
+            result["processHandlesSignalled"] = processes_signalled
+            result["cleanup"] = "COMPLETE" if active == 0 and processes_signalled else "INCOMPLETE"
             job.Close()
         for handle in (thread, process, log):
             if handle is not None:
                 handle.Close()
         result["elapsedSeconds"] = round(time.monotonic() - started, 3)
         if acquired:
-            (output / "supervisor-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-            win32event.ReleaseMutex(mutex)
-        mutex.Close()
+            try:
+                (output / "supervisor-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+            finally:
+                win32event.ReleaseMutex(mutex)
+                mutex.Close()
+        else:
+            mutex.Close()
     return result
 
 
