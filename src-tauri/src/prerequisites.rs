@@ -3,6 +3,7 @@ use crate::codex_binary::{
     SUPPORTED_CODEX_VERSION,
 };
 use serde::Serialize;
+#[cfg(not(windows))]
 use std::process::Command;
 
 #[derive(Clone, Debug, Serialize)]
@@ -93,41 +94,37 @@ fn check_command(name: &str, required_at_runtime: bool, required_for_build: bool
 }
 
 fn command_version(path: &str) -> Option<String> {
-    let output = Command::new(path).arg("--version").output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if stdout.is_empty() {
-        None
-    } else {
-        Some(stdout)
-    }
+    // Share the existing bounded output, deadline, Job and drain ownership
+    // used for Provider version probes, including hung cargo/rustup shims.
+    crate::provider::cli::version_sync(std::path::Path::new(path)).ok()
 }
 
 #[cfg(windows)]
 fn find_command_path(name: &str) -> Option<String> {
-    let output = Command::new("where.exe").arg(name).output().ok()?;
-    if !output.status.success() {
-        return None;
+    crate::provider::cli::executable_candidates(name)
+        .into_iter()
+        .next()
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    #[test]
+    fn hung_version_probe_is_bounded() {
+        let root = std::env::temp_dir().join(format!("grammar-prerequisite-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&root).unwrap();
+        let script = root.join("hung.cmd");
+        std::fs::write(&script, "@echo off\r\nping -n 60 127.0.0.1 >nul\r\n").unwrap();
+        let start = std::time::Instant::now();
+        let result = super::command_version(script.to_str().unwrap());
+        let elapsed = start.elapsed();
+        std::fs::remove_file(script).unwrap();
+        std::fs::remove_dir(root).unwrap();
+        assert!(result.is_none());
+        // Existing eight-second probe + five-second cleanup budgets; no new
+        // per-phase deadline or unbounded Command::output is allowed here.
+        assert!(elapsed < std::time::Duration::from_secs(15), "{elapsed:?}");
     }
-
-    let candidates = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
-
-    candidates
-        .iter()
-        .find(|path| {
-            let lower = path.to_ascii_lowercase();
-            lower.ends_with(".cmd") || lower.ends_with(".exe")
-        })
-        .cloned()
-        .or_else(|| candidates.first().cloned())
 }
 
 #[cfg(not(windows))]

@@ -2804,3 +2804,27 @@ profile, clipboard contents, credentials or real Provider texts were used as tes
 No Sandbox was started. Fresh personal profile and two launch shortcuts contain no test corpus.
 Low-GPU startup is verified; equal-quality offline CPU/smaller-model execution remains NOT_RUN.
 Mission INCOMPLETE; no push/release/main adoption. Current Project Source is stale.
+
+## 2026-10-13 host desktop diagnostic repair (acceptance pending)
+
+Owner requested one trial session at a time. Diagnostic copy reproduced an app UI hang:
+owned rustc.exe --version remained under the app for minutes; terminating only that
+verified version-only child changed Responding from false to true. The synchronous
+check_prerequisites handler called unbounded Command::output on the window thread.
+Managed CLI processes also lacked CREATE_NO_WINDOW; console descendants were observed,
+but their causal link to every earlier capture/Accept refusal is not yet proved.
+
+Move prerequisite discovery off the UI thread, reuse bounded version probe/Job/drain
+lifecycle, resolve Windows commands without spawning where.exe, and prevent managed
+CLI console creation. New native child-console test and hung-version test pass; the
+existing native timeout/cancel cleanup test passes in task-owned TEMP. First console
+test failed on an immediate Job accounting assertion; bounded exit observation fixed
+the test without changing production cleanup budgets. No new dependencies.
+
+Initial capture and intermittent Apply acceptance remain OPEN. Diagnostic run began
+with two successful real-model native Accepts, then foreground refusal and UI hang;
+it is not all-green. Runner timed out; owned hung probe was terminated, app was quit
+through its command and remaining synthetic target closed by WM_CLOSE. Subsequent
+inventory found no trial app/model/editor processes. Personal installation unchanged.
+Release candidate build/retest pending; no main adoption, push or release.
+Evidence: D:/dev/grammar-evidence/grammar-host-personal-20261011/resume-20261013.

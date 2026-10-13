@@ -1490,8 +1490,12 @@ fn reset_primary_shortcut(
 }
 
 #[tauri::command]
-fn check_prerequisites() -> PrerequisiteReport {
-    prerequisites::check()
+async fn check_prerequisites() -> Result<PrerequisiteReport, String> {
+    // Version discovery may wait for external processes. Never run it on the
+    // window thread: a slow tool must not block capture, Accept or shutdown.
+    tauri::async_runtime::spawn_blocking(prerequisites::check)
+        .await
+        .map_err(|_| "prerequisite_check_failed".to_string())
 }
 
 #[tauri::command]
