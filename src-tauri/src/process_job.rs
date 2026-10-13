@@ -10,7 +10,7 @@ use windows_sys::Win32::{
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     },
     System::Threading::{
-        GetProcessIdOfThread, OpenThread, ResumeThread, CREATE_SUSPENDED,
+        GetProcessIdOfThread, OpenThread, ResumeThread, CREATE_SUSPENDED, CREATE_NO_WINDOW,
         THREAD_QUERY_LIMITED_INFORMATION, THREAD_SUSPEND_RESUME,
     },
 };
@@ -133,7 +133,9 @@ impl ProcessJob {
         if tokio::time::Instant::now() >= deadline {
             return Err("provider_spawn_deadline".into());
         }
-        command.creation_flags(CREATE_SUSPENDED).kill_on_drop(true);
+        // GUI callers must not create console windows that steal foreground
+        // while a captured field or review widget is active.
+        command.creation_flags(CREATE_SUSPENDED | CREATE_NO_WINDOW).kill_on_drop(true);
         let mut child = command
             .spawn()
             .map_err(|_| "provider_spawn_failed".to_string())?;
@@ -276,6 +278,31 @@ mod tests {
     use super::*;
     use std::{fs, process::Stdio, time::Duration};
     use tokio::process::Command;
+
+    #[test]
+    #[ignore = "child fixture invoked only by managed_spawn_has_no_console"]
+    fn console_identity_child() {
+        assert_eq!(std::env::var("GRAMMAR_CONSOLE_CHILD").as_deref(), Ok("owned"));
+        #[link(name = "kernel32")]
+        extern "system" { fn GetConsoleWindow() -> isize; }
+        assert_eq!(unsafe { GetConsoleWindow() }, 0, "managed GUI child must have no console");
+    }
+
+    #[tokio::test]
+    async fn managed_spawn_has_no_console() {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command.args(["--exact", "process_job::tests::console_identity_child", "--ignored"])
+            .env("GRAMMAR_CONSOLE_CHILD", "owned")
+            .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let (child, job) = ProcessJob::spawn(&mut command).await.unwrap();
+        let output = tokio::time::timeout(Duration::from_secs(10), child.wait_with_output()).await.unwrap().unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while job.active_processes().unwrap() != 0 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await.expect("Job must observe complete child exit");
+    }
 
     #[tokio::test]
     async fn terminating_job_releases_descendant_runtime_directory() {
