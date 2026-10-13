@@ -2828,3 +2828,38 @@ through its command and remaining synthetic target closed by WM_CLOSE. Subsequen
 inventory found no trial app/model/editor processes. Personal installation unchanged.
 Release candidate build/retest pending; no main adoption, push or release.
 Evidence: D:/dev/grammar-evidence/grammar-host-personal-20261011/resume-20261013.
+
+## 2026-10-14 — owned desktop trial cleanup, capture acceptance still blocked
+
+Added scripts/mission/owned_trial.py: one named mutex, suspended child assigned to
+non-breakaway kill-on-close Job before resume, hidden console startup, bounded
+execution and 10-second cleanup, process-handle completion plus Job accounting0.
+Forced cleanup is reported separately and never upgrades a failing trial. Five
+native supervisor tests PASS (normal/no-console, timeout descendant, abandoned
+child, competing session, supervisor termination). Developer-only installed
+pywin32/psutil are used; no product dependency or provider/model change.
+
+The previous direct Cargo diagnostic build exited0 but left a child and used the
+development URL. It was not accepted as an installed UI test. Corrected to the
+repository Tauri build path: exit0, natural cleanup/Job0, 88.343s. Diagnostic app
+source5796a8e, SHA25646317c56cea9eabca7dc4617992a35b8280e0bcdbfe44924dad9bb371ddb77f4.
+This is an incremental mixed diagnostic copy with explicit overrides, not a clean
+package receipt. Personal dffcf8a install remains unchanged. Metadata mismatch,
+stale copied diagnostic endpoint and wrong build-mode failures are preserved.
+No concurrent desktop trials: prior process trees stopped before each attempt.
+
+Final trial: actual Gemma ready13.317s, app responsive, exactly one synthetic editor.
+Owned visible-window metadata showed app/editor only, no visible Command window.
+Windows denied automatic foreground; 180s Owner activation wait expired before
+hotkey/capture. No new capture or Accept acceptance. App/editor exited normally;
+launcher reported model cleanup. Supervisor caught/reaped remaining conhost and
+two WebView processes, confirmed Job0. Independent app/model/editor inventory0.
+Supervisor result FAIL (test exit1), cleanup COMPLETE, total207.906s. This verifies
+aborted-session cleanup, not the first-capture or intermittent Accept repairs.
+
+Outside launcher entry restored; no session or background continuation left active.
+Next: one Owner-activated synthetic editor session on this corrected diagnostic
+build, with redirected target numeric diagnostics, to resolve the still-open first
+capture and intermittent Accept failures. Do not weaken target/revision guards.
+No main/push/release. Evidence:
+D:/dev/grammar-evidence/grammar-host-personal-20261011/resume-20261014/RESULT.md
