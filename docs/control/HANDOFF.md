@@ -2900,3 +2900,10 @@ initial native-intermittency causality and latency misses as open qualification
 limits. Do not restart trials without the one-session supervisor and complete cleanup.
 Evidence: resume-20261014/FINAL-SUMMARY.json, diagnostic-results/app-result.json,
 repeat-results/app-result.json, run/supervisor-result.json, repeat-run/supervisor-result.json.
+
+
+## 2026-10-14 — clean personal package installed; foreground-blocked requalification
+
+2026-10-14 clean a0ae323 schema3 release/package installed at C:/Users/USER/GrammarPersonal, previous installation backed up, model preserved, settings/dictionary hashes unchanged. One supervised installed actual-Gemma session reached ready in26.851s, but180s foreground activation wait expired BEFORE_CAPTURE: translation/rewrite/Accept NOT_RUN, no source mutation; diagnostic21/21 not promoted. App/editor natural exit;3 owned conhost/WebView descendants forced-cleaned, final Job0/process0/sessionJSON0/endpoint absent. Build exit0 with1 leftover cleaned; package/install supervisors PASS. No further session running, no main/push/release;mission INCOMPLETE;Source stale. Evidence D:/dev/grammar-evidence/grammar-personal-candidate-20261014/RESULT.md.
+
+Package product source stays a0ae323; subsequent evidence-only commit is not a rebuilt binary. No diagnostic-app files were copied into this package. ZIP c6d2cebfcbe847af080cb056ffc8fddd86e9bdba5e46ec98c9fa2a3ea790ffb0; extension ID lgbocafnjihoapddngogkmjfenhhppmd. Normal browser profiles untouched; reload/requalification is separate. New installed RichEdit capture/quality/Accept remain NOT_RUN, not PASS. The same retained seven-case fixture can resume only through owned_trial.py after confirming no active session; do not reuse an expired PID or create overlapping retries.
