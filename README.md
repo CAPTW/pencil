@@ -1,6 +1,8 @@
 # Codex Pencil
 
-## Public prototype source — October 2026
+## Prototype 1 — October 2026
+
+[Download the Windows x64 prerelease](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.1). Verify SHA256SUMS.txt and follow START_HERE.md inside the ZIP. PowerShell 7 and WebView2 are required. The model is downloaded separately.
 
 Start with the [current prototype guide](docs/PROTOTYPE.md) for build/install steps, Gemma hardware requirements and measured limitations. The first unsigned Windows x64 prototype ZIP is prepared under GitHub Releases; read its START_HERE.md before installation. Latest installed desktop qualification: product `792032b`, 14/14 synthetic actual-Gemma capture/review/Accept checks; other editor support remains scoped. Older setup notes below do not override this guide.
 
