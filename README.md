@@ -4,9 +4,9 @@
 
 Local writing assistance · Translation · Explicit Accept
 
-[**Prototype 1 다운로드**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.1) · [설치부터 첫 사용까지](docs/GETTING_STARTED.ko.md) · [English](docs/README.en.md) · [문제 신고](https://github.com/CAPTW/pencil/issues/new?template=bug_report.md)
+[**Prototype 2 다운로드**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.2) · [설치부터 첫 사용까지](docs/GETTING_STARTED.ko.md) · [English](docs/README.en.md) · [문제 신고](https://github.com/CAPTW/pencil/issues/new?template=bug_report.md)
 
-> **현재 버전: 0.1.0 Prototype 1 · Windows x64 · 서명되지 않은 사전 릴리스**
+> **현재 버전: 0.1.0 Prototype 2 · Windows x64 · 서명되지 않은 사전 릴리스**
 >
 > 개인 시험 사용 단계입니다. 지원 범위를 먼저 확인하고 짧은 비민감 문장으로 시작하세요.
 
@@ -38,11 +38,11 @@ Gemma의 기본 모델은 **Gemma4 12B IT QAT Q4_0**입니다. 속도를 위해 
 
 ### 1. 릴리스 파일 받기
 
-[릴리스 페이지](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.1)의 **Assets**에서 다음을 받으세요.
+[릴리스 페이지](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.2)의 **Assets**에서 다음을 받으세요.
 
 | 파일 | 용도 |
 | --- | --- |
-| `Pencil-0.1.0-prototype.1-windows-x64.zip` | 실행 프로그램과 설치 스크립트, 약 9.4 MB |
+| `Pencil-0.1.0-prototype.2-windows-x64.zip` | 실행 프로그램과 설치 스크립트, 약 9.4 MB |
 | `SHA256SUMS.txt` | 다운로드 파일 무결성 확인 |
 | `VALIDATION.json` | 이번 패키지의 검증 범위와 남은 제한 |
 
@@ -84,7 +84,7 @@ Set-Location "$env:LOCALAPPDATA\PencilPrototype1"
 
 ## 어디에서 사용할 수 있나요?
 
-| 대상 | Prototype 1 범위 |
+| 대상 | Prototype 2 범위 |
 | --- | --- |
 | Windows 표준 Edit / RichEdit | 검증 조건을 충족하는 특정 컨트롤에서 캡처·Accept. 모든 앱의 입력칸을 뜻하지 않음 |
 | Chromium textarea / 단순 contenteditable | 명시적으로 켠 문서·필드에서 제안·Accept. 모든 웹사이트 호환 보장 아님 |
@@ -104,7 +104,7 @@ Set-Location "$env:LOCALAPPDATA\PencilPrototype1"
 | 4문장 단락 응답 | 987–1090 ms, 4건 |
 | 모델 준비 | 16.164초 |
 
-릴리스 바이너리는 `49fb641`에서 새로 빌드했습니다. 제품 코드는 위 실측 버전과 같지만, **새 바이너리의 Gemma 전체 시험이나 다른 물리 PC 시험을 다시 수행한 것은 아닙니다.** 이번 ZIP에서는 설치·해시·native host·모델 없는 시작·제거를 확인했습니다. 종료 후 남은 자식 프로세스 5개는 시험 감독기가 정리했으며, 자연 종료 문제는 아직 남아 있습니다. [검증·개발 안내](docs/PROTOTYPE.md)
+Prototype 2는 WebView 종료를 요청하고 런타임을 해제한 뒤 실제 브라우저 프로세스 종료를 기다립니다. 화면이 닫혀도 내부 정리는 이어질 수 있으며 WebView 정리 한도는 30초입니다. Prototype 1의 자식 프로세스 잔류 기록은 보존했습니다. 최신 패키지의 소스·검사 결과는 릴리스의 `VALIDATION.json`을 확인하세요. 이번 수리는 번역 품질이나 응답 속도를 새로 보증하는 변경이 아닙니다. [검증·개발 안내](docs/PROTOTYPE.md)
 
 ## 개인정보와 클라우드 사용
 

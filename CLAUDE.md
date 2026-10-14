@@ -2,6 +2,6 @@
 
 Canonical-Contract: docs/control/MULTI_AGENT_CONTRACT.md
 Contract-Version: 1.5.6
-Contract-SHA256: a08d1a2343bb4be87751603fdf08456a83ab90b9fe45394661a40f9d6652e672
+Contract-SHA256: 9297a92cbeb5f976353e5e0c8722a4e55392c6449130cbad73f43867e78881c8
 
 Read and obey the canonical contract before any task. Validate with `python scripts/validate_governance.py --root .`. This wrapper grants no execution authority.

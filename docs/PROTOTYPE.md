@@ -1,8 +1,8 @@
 # Pencil — build and qualification reference
 
 For installation, start with the [Korean guide](GETTING_STARTED.ko.md) or
-[English overview](README.en.md). [Prototype 1 is published](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.1).
-The package is pinned to `49fb641`; main contains later documentation.
+[English overview](README.en.md). [Prototype 2 is published](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.2).
+The exact package source and checks are recorded in MANIFEST.json and the release VALIDATION.json; main may contain later documentation.
 This is not a production release or a claim of Grammarly-equivalent language quality.
 
 ## What works within the tested scope
@@ -93,6 +93,22 @@ historical evidence references are in [HANDOFF](control/HANDOFF.md); referenced
 local evidence files are not public artifacts. Later documentation commits are
 not new measurements of rebuilt binaries. Mission acceptance remains incomplete.
 
-Prototype 1 has been adopted into main and published as an unsigned Windows x64 ZIP
+Prototype 2 has been adopted into main and published as an unsigned Windows x64 ZIP
 prerelease. It excludes model weights and downloaded GPU runtime binaries. No new source license is granted
 by this preparation; a project-wide license decision remains with the owner.
+
+## Prototype 2 shutdown repair
+
+WebView controllers close before the event loop returns. The application then
+waits for its browser process handles, pumping pending STA messages, within one
+30-second deadline started before closure. A timeout exits with failure, not
+confirmed cleanup. No process-name sweep or external process termination is used.
+The owned trial Job remains an independent backstop; forced trial cleanup is FAIL.
+Earlier 10-second candidates failed. Separate causal observations of prototype.1
+and a candidate took about 22 seconds to drain naturally, motivating a documented
+shutdown budget rather than a claim of faster inference or instant shutdown.
+The first bounded candidate completed in 12.4 seconds with no forced cleanup;
+use the release receipts for the final packaged binary measurements.
+
+Historical prototype.1 and 792032b failures above remain valid historical evidence.
+This repair does not add general editor support or live cloud-provider acceptance.

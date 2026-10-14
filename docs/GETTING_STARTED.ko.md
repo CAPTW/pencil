@@ -1,8 +1,8 @@
 # Pencil 설치부터 첫 사용까지
 
-[소개로 돌아가기](../README.md) · [Prototype 1 릴리스](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.1)
+[소개로 돌아가기](../README.md) · [Prototype 2 릴리스](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.2)
 
-이 안내는 **Windows x64 Prototype 1**용입니다. 개발 환경을 설치하거나 소스를 빌드하지 않아도 실행 ZIP으로 시작할 수 있습니다. 아직 모든 PC·편집기에 대한 호환성이 검증된 제품은 아닙니다.
+이 안내는 **Windows x64 Prototype 2**용입니다. 개발 환경을 설치하거나 소스를 빌드하지 않아도 실행 ZIP으로 시작할 수 있습니다. 아직 모든 PC·편집기에 대한 호환성이 검증된 제품은 아닙니다.
 
 ## 1. 실행 환경 준비
 
@@ -20,7 +20,7 @@ PowerShell에서 다운로드한 폴더로 이동한 뒤 확인합니다. 저장
 
 ```powershell
 Set-Location "$env:USERPROFILE\Downloads"
-Get-FileHash .\Pencil-0.1.0-prototype.1-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\Pencil-0.1.0-prototype.2-windows-x64.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS.txt
 ```
 
@@ -120,7 +120,7 @@ Windows 11의 새 메모장, Word, Excel, PowerPoint, Hancom을 일반 지원 �
 | 단축키가 반응하지 않음 | 앱 실행, 지원 컨트롤, 비어 있지 않은 선택, 단축키 충돌 확인 |
 | Accept 거부 | 원문·커서·선택 변경이나 권한 만료 확인. 다시 선택해 검토. 지원되지 않는 앱에서는 강제 Apply 불가 |
 | 확장이 host에 연결되지 않음 | 설치된 extension인지, 설치가 성공했는지 확인. 다른 버전의 확장·host를 섞지 않기 |
-| 종료 후 다시 시작이 막힘 | 이번 릴리스에 자식 종료 문제가 남아 있음. 여러 번 실행하거나 무관한 프로세스를 종료하지 말고 재현 상황 보고 |
+| 종료 후 다시 시작이 막힘 | 화면이 닫힌 뒤 WebView 정리는 최대 30초 기다립니다. launcher가 끝나기 전 재실행하지 마세요. 정리 오류가 나면 여러 번 실행하거나 무관한 프로세스를 종료하지 말고 보고 |
 
 ## 9. 종료·업데이트·제거
 

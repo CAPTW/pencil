@@ -2958,3 +2958,28 @@ Owner authorizes safe main fast-forward and executable GitHub prerelease v0.1.0-
 2026-10-14 Prototype1 published: main safely fast-forwarded to49fb641, unrelated canonical untracked files3 hash-preserved; v0.1.0-prototype.1 prerelease ZIP source49fb641 SHA256 ddfd38d3dbd8e88f250b9d20327bf4d43b3a799f43c29c5eecd69ed039c45788. Fresh build/package PASS;652file hashes, fresh install/nativehost/model-free-start/remove PASS. Two fixture failures retained. Supervisor FAIL_LEFTOVER_CHILDREN(5) with complete owned cleanup and finalproduct0; different physicalPC and newbinary Gemma NOT_RUN, product code unchanged from792032b. Three published assets re-downloaded and hash-matched. No weights/runtime uploaded;unsigned prototype, mission INCOMPLETE. Release https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.1; external evidence grammar-prototype-release-20261014.
 
 Release tag and package stay pinned to49fb641; this later documentation/state commit is not another binary build. Current personal installation792032b and its model remain untouched. Existing main untracked audit/export files are preserved. New packaging session never loaded Gemma or used user documents; it used an owned empty profile and registry key, both removed. App/launcher exited naturally, but the supervisor had to terminate five owned descendants, so natural shutdown is not PASS. Remaining work: natural descendant shutdown, broader hardware/editor/IME testing and quality/latency coverage. No claim of all-PC compatibility. Release assets: ZIP, SHA256SUMS.txt, VALIDATION.json. Source Project UI package is stale.
+
+
+## 2026-10-14 — bounded WebView shutdown candidate
+
+Owner requests child-process repair, one serial trial session and a replacement
+GitHub prerelease. Prototype.1 remains immutable. Source base f873c24; first
+local repair commit 3b01b6e did not qualify. Controller close alone, window destroy,
+run_return and STA pumping with a 10-second deadline all failed. No-Job diagnostic
+observations took about 22 seconds; they are not package acceptance. The 30-second
+bounded shutdown candidate passed an actual WebView trial in 12.421 seconds with
+app exit 0 and supervisor remainingBeforeCleanup=0. Diagnostic auto-quit and trace
+code were removed; final fresh build/install/repeated shutdown/Gemma readiness and
+shutdown are pending. Existing unit suite: 282 PASS,32 ignored; supervisor serial
+5 PASS (earlier concurrent build contention caused 3 SESSION_ALREADY_RUNNING failures).
+Evidence: D:/dev/grammar-evidence/grammar-shutdown-20261014. Prototype2 publication
+is authorized but not yet performed. Mission remains INCOMPLETE. No new language
+quality, Apply, cloud inference or different-PC acceptance is claimed.
+
+Final source check before packaging: serial Rust suite 282 PASS/32 ignored. Two
+parallel reruns each had one failure in unchanged filesystem cleanup tests
+(startup stale removal and cleanup_completed_late); keep these as load-sensitive
+FAIL observations, not a parallel full-suite PASS. The first focused filter ran
+zero tests; corrected fully-qualified filter ran one and passed. No thresholds
+or assertions in those tests were changed. Shutdown code was reviewed in a
+separate pass by the same agent; no independent reviewer is claimed.

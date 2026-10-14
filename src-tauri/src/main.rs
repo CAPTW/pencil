@@ -1842,6 +1842,8 @@ fn main() {
         Ok(None) => {}
         Err(error) => { eprintln!("{error}"); std::process::exit(78); }
     }
+    let webview_shutdown = Arc::new(StdMutex::new(None));
+    let shutdown_for_run = Arc::clone(&webview_shutdown);
     let app = tauri::Builder::default()
         .manage(AppState::default())
         .plugin(tauri_plugin_opener::init())
@@ -1933,13 +1935,14 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("error while building Codex Pencil");
-    app.run(|app, event| {
+    let exit_code = app.run_return(move |app, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             let state = app.state::<AppState>();
             if state.shutdown_complete.load(Ordering::SeqCst) { return; }
             api.prevent_exit();
             if !state.shutdown_started.swap(true, Ordering::SeqCst) {
                 let app = app.clone();
+                let shutdown = Arc::clone(&shutdown_for_run);
                 tauri::async_runtime::spawn(async move {
                     let state = app.state::<AppState>();
                     let active_turn = {
@@ -1959,15 +1962,18 @@ fn main() {
                         Ok(()) => {
                             // Close controllers before leaving the UI event loop;
                             // do not mistake process exit for WebView cleanup.
-                            let webview_result = webview_shutdown::close(&app).await;
-                            state.shutdown_complete.store(true, Ordering::SeqCst);
+                            let webview_result = webview_shutdown::prepare(&app).await;
                             let exit_code = match webview_result {
-                                Ok(()) => 0,
+                                Ok(pending) => {
+                                    *shutdown.lock().unwrap_or_else(|e| e.into_inner()) = Some(pending);
+                                    0
+                                },
                                 Err(code) => {
                                     eprintln!("Shutdown incomplete ({code}); WebView exit unconfirmed.");
                                     1
                                 }
                             };
+                            state.shutdown_complete.store(true, Ordering::SeqCst);
                             app.exit(exit_code);
                         }
                         Err(code) => {
@@ -1982,6 +1988,10 @@ fn main() {
             }
         }
     });
+    let pending = webview_shutdown.lock().unwrap_or_else(|e| e.into_inner()).take();
+    let confirmed = pending.is_some_and(|pending| pending.finish().is_ok());
+    if !confirmed { eprintln!("Shutdown incomplete: WebView exit was not confirmed."); }
+    std::process::exit(if confirmed { exit_code } else { 1 });
 }
 
 fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
