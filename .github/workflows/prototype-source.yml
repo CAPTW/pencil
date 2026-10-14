@@ -1,0 +1,31 @@
+name: Prototype source checks
+on:
+  push:
+    branches: [codex/grammar-local-trial-ba58b7d]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: prototype-source-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  source:
+    if: github.repository == 'CAPTW/pencil' && github.ref == 'refs/heads/codex/grammar-local-trial-ba58b7d'
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Governance and negative checks
+        run: python scripts/validate_governance.py --root . --self-test
+      - name: Install locked frontend dependencies
+        run: npm ci --ignore-scripts
+      - name: Typecheck and frontend build
+        run: npm run build:frontend
+      - name: Scope
+        run: Write-Output 'Source checks only. No native desktop, GPU, model download, account access or Provider inference.'

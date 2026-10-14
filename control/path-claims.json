@@ -181,7 +181,7 @@
       "expires_at": null,
       "release_state": "active",
       "conflicting_claim": null,
-      "owner_override": "Owner requested next local fixes after isolated trial; sole integrator on codex/grammar-local-trial-ba58b7d; no main adoption, push, release or live Provider calls"
+      "owner_override": "Owner requested next local fixes after isolated trial; sole integrator on codex/grammar-local-trial-ba58b7d; no main adoption, push, release or live Provider calls; Owner 2026-10-14 now authorizes source push on this exact branch to CAPTW/pencil; main adoption/release remain excluded"
     }
   ]
 }

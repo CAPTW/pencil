@@ -197,7 +197,7 @@ def base_check(task, identity):
 
 
 # Owner-authorized push/CI destinations (contract 1.2.0 and 1.3.0 amendments).
-GITHUB_VALIDATION_BRANCHES = ("codex/grammar-autonomous-r1", "claude/eloquent-faraday-hh62qc")
+GITHUB_VALIDATION_BRANCHES = ("codex/grammar-autonomous-r1", "claude/eloquent-faraday-hh62qc", "codex/grammar-local-trial-ba58b7d")
 
 
 def mission_check(value):
@@ -344,7 +344,9 @@ def self_test(root):
     rejects('GitHub boolean type', lambda: mission_check(invalid))
     session = copy.deepcopy(cloud); session['github_validation']['branch'] = 'claude/eloquent-faraday-hh62qc'
     mission_check(session)
-    for branch in ('main', 'claude/other-session', 'codex/grammar-autonomous-r1/extra'):
+    prototype = copy.deepcopy(cloud); prototype['github_validation']['branch'] = 'codex/grammar-local-trial-ba58b7d'
+    mission_check(prototype)
+    for branch in ('codex/grammar-local-trial-ba58b7d/extra', 'main', 'claude/other-session', 'codex/grammar-autonomous-r1/extra'):
         invalid = copy.deepcopy(cloud); invalid['github_validation']['branch'] = branch
         rejects('GitHub branch ' + branch, lambda invalid=invalid: mission_check(invalid))
     for field in ('release', 'live_provider'):

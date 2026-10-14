@@ -1,6 +1,6 @@
 # Grammar Tool-neutral Multi-Agent Development Contract
 
-Contract-Version: 1.5.3
+Contract-Version: 1.5.4
 
 ## Active mission override (Owner authorization, 2026-09-25)
 For GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1, the Owner explicitly authorizes investigation, implementation, tests, local commits, reviewed safe local main integration and continuation through P3-A stabilization and the first Chromium textarea/simple-contenteditable adapter for personal use. This section supersedes conflicting historical one-step gates below, fixed file/iteration/commit budgets, per-step new-worktree requirements and fresh Source UI upload prerequisites. Use one dedicated mission worktree; preserve historical failed candidates and unrelated work. Historical failures remain failures. Review changed main before integration; no history rewrite or forced conflict resolution.
@@ -76,6 +76,20 @@ first prototype distribution. Before those actions, reconcile the scoped publica
 state and validators with that request and validate the concrete release payload;
 do not infer main adoption, force push, credentials, user documents, new paid calls,
 system changes or broad public services from prototype preparation authority.
+
+## Public prototype source push (Owner authorization, 2026-10-14)
+The Owner explicitly requests committing and pushing the verified prototype to the
+existing public CAPTW/pencil repository. Publish source history on
+codex/grammar-local-trial-ba58b7d, preserving existing remote main and cloud branches.
+This supersedes local no-push restrictions only for this exact destination/branch.
+Standard hosted source checks are allowed; they are not local GPU/native acceptance.
+Scan all outgoing Git objects for credentials, user data and accidental binary/model
+payloads. External evidence, user profiles, model weights and runtime binaries are
+excluded. Local absolute evidence references are historical provenance, not bundled
+files. No force push, main adoption, tag, executable release, visibility change or
+new Provider/account operation is authorized by this source publication. Keep
+mission_completion INCOMPLETE and document measured limitations. Existing historical
+push permissions remain; remote_publication=false excludes general releases.
 
 ## Historical task defaults (except active mission override)
 

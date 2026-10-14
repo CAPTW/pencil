@@ -1,8 +1,12 @@
 # Codex Pencil
 
+## Public prototype source — October 2026
+
+Start with the [current prototype guide](docs/PROTOTYPE.md) for build/install steps, Gemma hardware requirements and measured limitations. This branch publishes source, not a signed executable release. Latest installed desktop qualification: product `792032b`, 14/14 synthetic actual-Gemma capture/review/Accept checks; other editor support remains scoped. Older setup notes below do not override this guide.
+
 Current product direction, audit boundaries and development authority are in [`docs/control/CURRENT_DECISIONS.md`](docs/control/CURRENT_DECISIONS.md) and [`control/state.json`](control/state.json). Read [`AGENTS.md`](AGENTS.md) before new work. The current local candidate has qualified reviewed Accept for narrowly supported Windows Edit/RichEdit controls and opted-in Chromium textarea/simple contenteditable, including the desktop global shortcut/widget path. The optional pinned LibreOffice Writer candidate also qualifies shortcut -> Instant -> reviewed Accept -> Undo in bounded Standard-body new/local saved DOCX synthetic documents, using its paired opt-in extension. Supported bold/RGB spans preserve paragraph topology; an explicit uniform-topology option permits merge/split and empty-part changes only when affected paragraphs share identical formatting. Qualification uses owned synthetic Windows environments; complex/differently formatted paragraph topology, Microsoft Office/Hancom adapters and whole-product acceptance remain incomplete. See the latest HANDOFF for exact commits and receipts; older setup and contract notes below are historical.
 
-Codex Pencil is a compact Windows tray/widget writing assistant built with Tauri v2, React, TypeScript, and Rust commands. It uses the local Codex app-server over stdio and ChatGPT managed Codex device-code login. It does not implement custom OpenAI OAuth, run a backend server, expose a network listener, add monetization, or create app-specific user accounts.
+Codex Pencil is a compact Windows tray/widget writing assistant built with Tauri v2, React, TypeScript, and Rust commands. The prototype defaults to local Gemma through a loopback-only model runtime, with optional consent-bound cloud CLI providers and OpenAI-compatible API configuration. It does not implement custom OpenAI OAuth, monetization or app-specific user accounts.
 
 ## File Tree
 
