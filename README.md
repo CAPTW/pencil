@@ -4,8 +4,9 @@
 
 ### Write where you already write.
 
-**Windows용 review-first AI writing assistant.**  
-문장을 선택하고, 제안을 검토하고, 원하는 경우에만 적용합니다.
+**쓰던 그 자리에서 바로 다듬는 Windows용 AI 글쓰기 도우미.**  
+빠른 로컬 Gemma를 기본으로, API 키나 OAuth 로그인으로 ChatGPT·Claude·Google 모델도 직접 연결합니다.  
+제안은 AI가, 결정은 내가.
 
 <p>
   <img alt="Release" src="https://img.shields.io/github/v/release/CAPTW/pencil?include_prereleases&sort=semver&style=flat-square&label=release">
@@ -27,11 +28,11 @@ Pencil은 별도의 AI 채팅창에서 글을 다시 복사하는 대신, **지�
 
 | | |
 | --- | --- |
-| ⚡ **Local-first** | 로컬 추론을 사용하면 번역과 재작성을 기기 안에서 처리할 수 있습니다. |
+| ⚡ **Local-first** | 기본 엔진은 기기 안에서 도는 Gemma. 윤문·번역 제안을 클라우드 왕복 없이 빠르게 받습니다. |
+| 🔌 **Bring your own AI** | 더 깊은 재작성이 필요하면 ChatGPT·Claude·Google 계정 로그인 또는 OpenAI 호환 API 키로 원하는 모델을 연결합니다. |
 | ✅ **Review first** | 제안을 바로 덮어쓰지 않습니다. 검토하고 수정한 뒤 Accept 또는 Copy를 선택합니다. |
-| 🎯 **Scoped Apply** | 대상·원문·범위가 바뀌었으면 적용을 거부할 수 있습니다. |
+| 🎯 **Scoped Apply** | 대상·원문·범위가 바뀌었으면 적용을 거부합니다. |
 | 🌐 **Browser opt-in** | 사용자가 켠 Chromium 문서와 지원 입력 필드에서만 동작합니다. |
-| ☁️ **Deep is optional** | 더 깊은 재작성은 선택한 Provider/API와 명시적 동의가 있을 때만 사용합니다. |
 
 ## How it works
 
@@ -45,12 +46,24 @@ Pencil의 기본 원칙은 간단합니다. **AI는 제안하고, 변경은 사�
 
 ## What you get
 
-- **Rewrite & translate** — 자연스럽게, 간결하게, 공손하게 등의 고정 writing intent와 번역.
+- **One-shortcut writing modes** — 문법 교정 · 자연스럽게 · 간결하게 · 공손하게 · 한↔영 번역. 프롬프트를 쓸 필요가 없습니다.
+- **Terminology profiles** — 자주 쓰는 용어를 프로필별로 등록·가져오기·내보내기. 클라우드 요청에는 해당 문장에 실제로 쓰인 승인 용어만 보냅니다.
 - **Editable review** — 결과를 그대로 쓰지 않고 검토 창에서 직접 수정.
 - **Explicit replacement** — 지원 대상에서는 검증된 원문 범위만 명시적으로 교체.
 - **Inline browser assist** — opt-in한 textarea와 지원되는 simple contenteditable에 제안.
-- **Optional Deep** — 선택한 CLI Provider 또는 OpenAI-compatible API 경로.
 - **Privacy boundaries** — password/sensitive target 거부, opt-in 범위, 명시적 cloud consent.
+
+## Bring your own AI
+
+| 경로 | 연결 방식 | 쓰임 |
+| --- | --- | --- |
+| 🖥️ **Local Gemma** (기본) | 최초 1회 준비 스크립트 실행 | 빠른 Instant 제안, 오프라인 처리 |
+| 🔑 **Account sign-in** | ChatGPT(Codex) · Claude(Claude Code) · Google(Antigravity) 공식 로그인 | 계정 구독을 활용한 Deep 재작성 |
+| 🧩 **API key** | OpenAI 호환 endpoint · model · key 입력 | 원하는 클라우드/사내 모델 연결 |
+
+- 한 요청은 사용자가 고른 Provider 하나에만 보내며, 실패해도 다른 Provider로 몰래 재시도하지 않습니다.
+- API 키는 앱 메모리에만 두고 설정 파일에 저장하지 않습니다. 계정 로그인은 각 공식 도구가 관리합니다.
+- 클라우드 경로는 명시적 동의 후에만 사용합니다. 로컬 Gemma는 클라우드 설정과 무관하게 동작합니다.
 
 ## Quick start
 
@@ -69,14 +82,14 @@ Set-Location "$env:LOCALAPPDATA\PencilPrototype1"
 
 ### 3. Choose how to run
 
-로컬 AI를 사용할 경우 최초 한 번 준비한 뒤 시작합니다.
+로컬 Gemma를 사용할 경우 최초 한 번 준비한 뒤 시작합니다. 약 7 GB 모델과 NVIDIA GPU 런타임을 받으므로 여유 공간과 GPU 사양을 먼저 확인하세요.
 
 ~~~powershell
 .\Prepare-GrammarLocal.ps1
 .\Start-Grammar.ps1
 ~~~
 
-로컬 모델 없이 시작할 수도 있습니다.
+GPU가 없거나 클라우드 Provider만 쓰려면 로컬 모델 없이 시작할 수 있습니다.
 
 ~~~powershell
 .\Start-Grammar.ps1 -WithoutLocalModel
@@ -90,12 +103,21 @@ Set-Location "$env:LOCALAPPDATA\PencilPrototype1"
 | --- | --- |
 | Qualified Windows Edit / RichEdit controls | 🟢 Scoped prototype support |
 | Chromium textarea / simple contenteditable | 🟢 Explicit opt-in, scoped support |
-| Additional desktop application adapters | 🧪 In development / bounded qualification |
+| Microsoft Word · LibreOffice Writer · HWP/HWPX adapters | 🧪 In development / bounded qualification |
 | Arbitrary editors, Office/Hancom in general, every website | ⚪ Not generally qualified |
 | macOS / Linux / Windows ARM | ⚪ No current release package |
 
 > [!NOTE]
 > 파일 확장자가 같다는 이유만으로 Pencil이 그 편집기를 안전하게 수정할 수 있다고 가정하지 않습니다. 각 편집기 adapter는 별도로 검증합니다.
+
+## What's next
+
+Pencil은 계속 업데이트됩니다. 아래는 진행 중인 방향이며, 지원 완료를 뜻하지 않습니다.
+
+- 🧩 **더 많은 편집기** — Word, LibreOffice Writer, HWP/HWPX 어댑터를 하나씩 검증해 추가
+- ✍️ **입력 중 인라인 제안** — opt-in한 문서에서 타이핑하는 동안 밑줄 제안 표시, 적용은 여전히 사용자가 결정
+- 🔌 **Provider 확장** — 계정 로그인·API 연결 경로와 모델 선택지 확대
+- ⏱️ **더 빠른 로컬 제안** — 입력 후 1초 이내 제안을 목표로 성능 개선
 
 ## Privacy & control
 
