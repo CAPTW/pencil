@@ -85,6 +85,10 @@ Copy-Item -LiteralPath (Join-Path $source 'adapters/chromium/host') -Destination
 Copy-Item -LiteralPath (Join-Path $source 'adapters/chromium/README.md') -Destination (Join-Path $destination 'README.md')
 Copy-Item -LiteralPath (Join-Path $source 'docs/control/HANDOFF.md') -Destination (Join-Path $destination 'HANDOFF.md')
 Copy-Item -LiteralPath $ReceiptPath -Destination (Join-Path $destination 'BUILD_RECEIPT.json')
+Copy-Item -LiteralPath (Join-Path $source 'docs/PROTOTYPE.md') -Destination (Join-Path $destination 'PROTOTYPE.md')
+Copy-Item -LiteralPath (Join-Path $source 'scripts/package/START_HERE.md') -Destination (Join-Path $destination 'START_HERE.md')
+& python (Join-Path $PSScriptRoot 'package-notices.py') (Join-Path $destination 'THIRD_PARTY_NOTICES')
+if ($LASTEXITCODE -ne 0) { throw 'Dependency notice collection failed' }
 $null=& (Join-Path $PSScriptRoot 'build-receipt.ps1') -SourceRoot $source -ReceiptPath $ReceiptPath -VerifyOnly -ExecutablePath (Join-Path $destination 'codex-pencil.exe') -HostExecutablePath (Join-Path $destination 'grammar-chromium-host.exe') -TargetLibraryPath (Join-Path $destination 'target-apply.dll') -GemmaBrokerPath (Join-Path $destination 'grammar-gemma-broker.exe')
 $files=@(Get-ChildItem -LiteralPath $destination -File -Recurse -Force | Sort-Object FullName | ForEach-Object {
   [ordered]@{path=[IO.Path]::GetRelativePath($destination,$_.FullName).Replace('\','/');sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower();bytes=$_.Length}

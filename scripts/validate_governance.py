@@ -212,7 +212,14 @@ def mission_check(value):
         require(json.dumps(scope, sort_keys=True) == json.dumps(expected, sort_keys=True), "GitHub validation scope mismatch")
 
 
+def prototype_release_check(value):
+    expected = {'repository': 'CAPTW/pencil', 'target_branch': 'main', 'tag': 'v0.1.0-prototype.1', 'prerelease': True, 'binary_upload': True, 'model_upload': False, 'force_push': False}
+    require(json.dumps(value, sort_keys=True) == json.dumps(expected, sort_keys=True), 'prototype release scope mismatch')
+
+
 def state_check(state):
+    if 'prototype_release' in state:
+        prototype_release_check(state['prototype_release'])
     require(state.get("automatic_continuation") is False, "automatic continuation must be false")
     require(state.get("next_gate_executed") is False, "next gate must not execute")
     require(isinstance(state.get("exact_next_task"), str) and bool(state["exact_next_task"]), "one exact next task required")
@@ -352,6 +359,14 @@ def self_test(root):
     for field in ('release', 'live_provider'):
         invalid = copy.deepcopy(session); invalid['github_validation'][field] = True
         rejects('GitHub session ' + field, lambda invalid=invalid: mission_check(invalid))
+    release = {'repository': 'CAPTW/pencil', 'target_branch': 'main', 'tag': 'v0.1.0-prototype.1', 'prerelease': True, 'binary_upload': True, 'model_upload': False, 'force_push': False}
+    prototype_release_check(release)
+    for key in release:
+        invalid = dict(release); invalid[key] = 'unauthorized'
+        rejects('prototype release ' + key, lambda invalid=invalid: prototype_release_check(invalid))
+    for key in ('prerelease', 'binary_upload', 'model_upload', 'force_push'):
+        invalid = dict(release); invalid[key] = int(release[key])
+        rejects('prototype release boolean ' + key, lambda invalid=invalid: prototype_release_check(invalid))
     # Test real pin comparison with in-memory path stand-ins, without writing fixtures.
     class FakePath:
         def __init__(self, rel=""): self.rel = rel

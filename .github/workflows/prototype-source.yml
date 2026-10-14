@@ -1,7 +1,7 @@
 name: Prototype source checks
 on:
   push:
-    branches: [codex/grammar-local-trial-ba58b7d]
+    branches: [main, codex/grammar-local-trial-ba58b7d]
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   source:
-    if: github.repository == 'CAPTW/pencil' && github.ref == 'refs/heads/codex/grammar-local-trial-ba58b7d'
+    if: github.repository == 'CAPTW/pencil' && (github.ref == 'refs/heads/codex/grammar-local-trial-ba58b7d' || github.ref == 'refs/heads/main')
     runs-on: windows-2022
     timeout-minutes: 15
     steps:

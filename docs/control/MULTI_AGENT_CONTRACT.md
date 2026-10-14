@@ -1,6 +1,6 @@
 # Grammar Tool-neutral Multi-Agent Development Contract
 
-Contract-Version: 1.5.4
+Contract-Version: 1.5.5
 
 ## Active mission override (Owner authorization, 2026-09-25)
 For GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1, the Owner explicitly authorizes investigation, implementation, tests, local commits, reviewed safe local main integration and continuation through P3-A stabilization and the first Chromium textarea/simple-contenteditable adapter for personal use. This section supersedes conflicting historical one-step gates below, fixed file/iteration/commit budgets, per-step new-worktree requirements and fresh Source UI upload prerequisites. Use one dedicated mission worktree; preserve historical failed candidates and unrelated work. Historical failures remain failures. Review changed main before integration; no history rewrite or forced conflict resolution.
@@ -90,6 +90,22 @@ files. No force push, main adoption, tag, executable release, visibility change 
 new Provider/account operation is authorized by this source publication. Keep
 mission_completion INCOMPLETE and document measured limitations. Existing historical
 push permissions remain; remote_publication=false excludes general releases.
+
+## First executable prototype (Owner authorization, 2026-10-14)
+The Owner now explicitly authorizes safe fast-forward adoption into CAPTW/pencil
+main and the first Windows x64 executable GitHub prerelease v0.1.0-prototype.1.
+This supersedes the preceding source-only/no-main/no-release boundaries for this
+exact operation. Preserve unrelated local files and recheck remote main ancestry
+before a non-force push. Validate a fresh source-bound package, installer/removal,
+checksums and payload exclusions before uploading it. No model weights, user data,
+credentials or local test profiles are uploaded. Include startup instructions,
+third-party notices and truthful hardware/quality/latency limits. Standard source
+CI is permitted on main; it does not prove GPU/native runtime acceptance. A release
+is a prototype distribution, not whole-mission completion or all-editor support.
+No new account operation, paid inference, signing identity, security-policy change
+or system-wide installation is authorized. Scope is recorded separately as
+prototype_release; generic remote_publication and github_validation retain their
+older narrow meanings. Publication must not conceal historical failed tests.
 
 ## Historical task defaults (except active mission override)
 

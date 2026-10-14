@@ -25,7 +25,8 @@ included in the default package's support claim. No automatic background Apply.
 
 Prerequisites: Windows x64, PowerShell 7, Git, Node/npm, Rust MSVC toolchain,
 Visual Studio C++ build tools with Windows SDK and release CRT, and WebView2.
-The commands below build a fresh package; they do not download a prebuilt release.
+For the executable ZIP, read START_HERE.md included in the GitHub prerelease.
+The commands below instead build a fresh package from source.
 Use an empty output directory outside the checkout and keep the checkout clean.
 
 ```powershell
@@ -91,6 +92,6 @@ historical evidence references are in [HANDOFF](control/HANDOFF.md); referenced
 local evidence files are not public artifacts. Later documentation commits are
 not new measurements of rebuilt binaries. Mission acceptance remains incomplete.
 
-This publication contains source only: no signed installer, model weights, runtime
-binary, GitHub release or main-branch adoption. No new source license is granted
+Prototype 1 is prepared for main adoption and an unsigned Windows x64 ZIP
+prerelease. It excludes model weights and downloaded GPU runtime binaries. No new source license is granted
 by this preparation; a project-wide license decision remains with the owner.

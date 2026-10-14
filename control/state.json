@@ -251,12 +251,13 @@
     "2026-10-14 clean a0ae323 schema3 release/package installed at C:/Users/USER/GrammarPersonal, previous installation backed up, model preserved, settings/dictionary hashes unchanged. One supervised installed actual-Gemma session reached ready in26.851s, but180s foreground activation wait expired BEFORE_CAPTURE: translation/rewrite/Accept NOT_RUN, no source mutation; diagnostic21/21 not promoted. App/editor natural exit;3 owned conhost/WebView descendants forced-cleaned, final Job0/process0/sessionJSON0/endpoint absent. Build exit0 with1 leftover cleaned; package/install supervisors PASS. No further session running, no main/push/release;mission INCOMPLETE;Source stale. Evidence D:/dev/grammar-evidence/grammar-personal-candidate-20261014/RESULT.md.",
     "2026-10-14 Owner-activated installed a0ae323 single-session actual Gemma/RichEdit retest:7/7 capture+reviewed-output matches,6 exact Accept rereads PASS. First natural rewrite review-window activation refused BEFORE_ACCEPT; unchanged source, Accept NOT_RUN, whole fixture/supervisor FAIL preserved. No capture timeout or target Apply refusal observed in executed paths; original intermittent causality not proven. Startup14.805s; short624-1330ms(2/5 misses1s), paragraphs1045-2129ms(0/2 misses3s), Accept310-2277ms(5/6 misses0.5s). App/editor natural exit,3 owned descendants forced-cleaned; final Job0/process0/sessionJSON0/endpoint absent, personal settings and installed pins unchanged. Product/package unchanged; no overlapping/restarted trial, no main/push/release;mission INCOMPLETE. Evidence D:/dev/grammar-evidence/grammar-personal-candidate-20261014/retry-activation/SUMMARY.json.",
     "2026-10-14 installed792032b review placement repair: cursor-relative window is clamped to physical monitor work area; old placement5/5red,new5/5PASS. Clean schema3 release/package/install PASS with unchanged Gemma12B Q4_0 and settings. One supervised actual-Gemma RichEdit session14/14 captures,reviewed outputs,explicitAccept/exact rereads PASS; all14 edge-position windows contained. Native mouse7 Accept113-332ms,CDP7 66-267ms,DOMclick-to-reread; isolatedbackend timing NOT_OBSERVED. Startup16.164s,short687-1371ms(2/10 miss1s),paragraph987-1090ms(0/4 miss3s). App/editor natural exit but2 WebView children required ownedJobcleanup,supervisor FAIL_LEFTOVER_CHILDREN retained; finalobservedownedPID0/product0/sessionJSON0/endpointabsent/settingsunchanged. Earlier observer/foreground failures preserved, original intermittent causality not fullyproven. No main/push/release;missionINCOMPLETE,Source stale. Evidence D:/dev/grammar-evidence/grammar-accept-phases-20261014/RESULT.md.",
-    "2026-10-14 Owner authorizes public prototype source commit/push to CAPTW/pencil branch codex/grammar-local-trial-ba58b7d. Publication preparation includes outgoing-history scan and current prototype guide. Installed product remains792032b; no binary release/main adoption, mission INCOMPLETE. New hosted source checks are not GPU/native acceptance."
+    "2026-10-14 Owner authorizes public prototype source commit/push to CAPTW/pencil branch codex/grammar-local-trial-ba58b7d. Publication preparation includes outgoing-history scan and current prototype guide. Installed product remains792032b; no binary release/main adoption, mission INCOMPLETE. New hosted source checks are not GPU/native acceptance.",
+    "2026-10-14 Owner authorizes fast-forward main adoption and first Windows x64 GitHub executable prerelease v0.1.0-prototype.1; fresh source-bound package and installation checks required, no models/user data, mission INCOMPLETE."
   ],
   "native_capture_activation": "OWNED_SINGLELINE_AUTOVSCROLL_MULTILINE_EDIT_AND_RICHEDIT_ACCEPT_INSTALLED_SYNTHETIC_VERIFIED",
   "chromium_deep_activation": "SOURCE_UNCONFIGURED_PERSONAL_INSTALLER_CONFIGURES_HOST_CONSENT_BOUND_SYNTHETIC_ONLY",
   "mission_completion": "INCOMPLETE",
-  "main_adoption": "NOT_ADOPTED_CANDIDATE_ONLY",
+  "main_adoption": "AUTHORIZED_FAST_FORWARD_PENDING",
   "github_validation": {
     "repository": "CAPTW/pencil",
     "branch": "codex/grammar-local-trial-ba58b7d",
@@ -264,5 +265,14 @@
     "standard_windows_ci": true,
     "release": false,
     "live_provider": false
+  },
+  "prototype_release": {
+    "repository": "CAPTW/pencil",
+    "target_branch": "main",
+    "tag": "v0.1.0-prototype.1",
+    "prerelease": true,
+    "binary_upload": true,
+    "model_upload": false,
+    "force_push": false
   }
 }
