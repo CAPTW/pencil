@@ -18,6 +18,7 @@ mod p3_03_runtime;
 mod local_model_session;
 mod local_profile;
 mod prerequisites;
+mod review_position;
 mod provider;
 #[cfg(windows)]
 mod process_job;
@@ -2562,8 +2563,19 @@ fn show_main_window(app: &AppHandle, cursor: Option<&CursorPoint>) -> Result<(),
         .ok_or_else(|| "Codex Pencil window is missing.".to_string())?;
 
     if let Some(cursor) = cursor {
-        let x = cursor.x.saturating_add(18).max(0);
-        let y = cursor.y.saturating_add(18).max(0);
+        let monitor = match window
+            .monitor_from_point(f64::from(cursor.x), f64::from(cursor.y))
+            .map_err(|error| format!("Could not locate review display: {error}"))? {
+                Some(monitor) => monitor,
+                None => window.current_monitor().map_err(|error| error.to_string())?
+                    .ok_or_else(|| "Review display is unavailable.".to_string())?,
+            };
+        let area = monitor.work_area();
+        let size = window.outer_size().map_err(|error| error.to_string())?;
+        let (x, y) = review_position::near_cursor(
+            (cursor.x, cursor.y), (size.width, size.height),
+            (area.position.x, area.position.y), (area.size.width, area.size.height),
+        );
         window
             .set_position(Position::Physical(PhysicalPosition { x, y }))
             .map_err(|error| format!("Could not position window: {error}"))?;
