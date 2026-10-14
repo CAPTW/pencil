@@ -270,7 +270,7 @@
   "prototype_release": {
     "repository": "CAPTW/pencil",
     "target_branch": "main",
-    "tag": "v0.1.0-prototype.1",
+    "tag": "v0.1.0-prototype.2",
     "prerelease": true,
     "binary_upload": true,
     "model_upload": false,
