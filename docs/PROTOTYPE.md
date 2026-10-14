@@ -110,5 +110,14 @@ shutdown budget rather than a claim of faster inference or instant shutdown.
 The first bounded candidate completed in 12.4 seconds with no forced cleanup;
 use the release receipts for the final packaged binary measurements.
 
+The final installed package passed three sequential no-model shutdowns and one
+real Gemma readiness/shutdown in a single owned session, with no forced cleanup
+and no remaining processes. Observed shutdown was 12.8–18.5 seconds; fresh-profile
+readiness was 21.7–31.6 seconds (the last case includes Gemma readiness). These are
+local observations, not a speed guarantee. An earlier trial that immediately
+closed its CDP connection failed; its cause remains unproven. Final checks kept
+CDP attached and required explicit acknowledgement of the production Quit command.
+Physical tray-click shutdown and arbitrary debugger disconnect are not qualified.
+
 Historical prototype.1 and 792032b failures above remain valid historical evidence.
 This repair does not add general editor support or live cloud-provider acceptance.

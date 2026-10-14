@@ -2983,3 +2983,32 @@ FAIL observations, not a parallel full-suite PASS. The first focused filter ran
 zero tests; corrected fully-qualified filter ran one and passed. No thresholds
 or assertions in those tests were changed. Shutdown code was reviewed in a
 separate pass by the same agent; no independent reviewer is claimed.
+
+## 2026-10-14 — final installed shutdown qualification
+
+Package source7951abffc92bf2303c8f2c666e49adc83eafb9dc, ZIP SHA256
+b4e59d62911d256ef0689fe9a20e7c656734c7b72884c85a7a2e4c67fd239ef5.
+Fresh build and all652 manifest file hashes passed. In one owned trial session,
+three installed no-model runs and one actual Gemma ready/shutdown run passed:
+quit command acknowledged, exit0, recorded descendants0. Observed shutdown times
+18.488/14.634/12.783/15.335 seconds; startup readiness21.724/23.658/30.634/31.618
+seconds (last includes real Gemma readiness). Final supervisor207.531s PASS,
+remainingBeforeCleanup=0, remainingAfterCleanup=0. Installer pin checks, installed
+local host, removal and task registry cleanup passed; uninstall stopped0 processes.
+Owned evidence profiles remain as evidence; no user settings or personal install
+were removed. Outside trial launcher entry restored. No concurrent trial sessions.
+
+Preserved final-package failures: trial1/2 could not obtain a ready app page;
+trial3 swallowed quit transport errors and closed CDP immediately, then observed
+the app alive after40s and required six forced descendants. Cause is not proven.
+Trial4 records affirmative quit acknowledgement and keeps CDP attached; it passed
+all four runs. Do not reclassify trial3 as PASS or claim arbitrary debugger detach
+is qualified. Native physical tray click, new language quality/Accept, new PC,
+and live cloud Provider remain NOT_RUN. The trial harness is updated separately
+from the packaged product source; this record commit does not rebuild the ZIP.
+
+Release evidence: D:/dev/grammar-evidence/grammar-shutdown-20261014/final,
+trial-r4. VALIDATION.json preserves serial Rust282/32ignored and both parallel
+FAIL observations. Prototype2 main/publication is the authorized next operation;
+prototype1 and its assets must remain unchanged. Mission INCOMPLETE; Project UI
+Source package stale. This is scoped shutdown qualification, not instant exit.
