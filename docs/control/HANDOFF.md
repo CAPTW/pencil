@@ -3012,3 +3012,18 @@ trial-r4. VALIDATION.json preserves serial Rust282/32ignored and both parallel
 FAIL observations. Prototype2 main/publication is the authorized next operation;
 prototype1 and its assets must remain unchanged. Mission INCOMPLETE; Project UI
 Source package stale. This is scoped shutdown qualification, not instant exit.
+
+## 2026-10-14 — Prototype 2 published
+
+Main safely fast-forwarded f873c24 ->536fe13; tag v0.1.0-prototype.2 pins the
+actual built source7951abf. Release ZIP, SHA256SUMS and VALIDATION were downloaded
+again and all three hashes matched. Prototype1 asset IDs/digests were unchanged.
+Release: https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.2
+Source CI7951abf and qualification-record CI536fe13 passed (frontend/governance,
+not native/GPU acceptance). Independent post-trial check found all39 recorded
+process identities absent. Outside launcher restored byte-for-byte; personal
+installation/model/settings unchanged. Owned evidence profiles remain on disk.
+Canonical unrelated untracked files3 preserved by hashes. This publication record
+is not another binary build. Source package remains stale; mission INCOMPLETE.
+Remaining: startup/shutdown latency, parallel cleanup-test load sensitivity,
+physical tray-click/debugger-detach behavior, broader hardware/editor acceptance.
