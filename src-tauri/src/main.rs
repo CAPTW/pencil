@@ -35,6 +35,7 @@ mod translation;
 mod writing_contract;
 mod windows_apply;
 mod windows_target;
+mod webview_shutdown;
 
 #[cfg(test)]
 mod p0_02_contract_tests;
@@ -1956,8 +1957,18 @@ fn main() {
                     }
                     match shutdown_providers(state.inner()).await {
                         Ok(()) => {
+                            // Close controllers before leaving the UI event loop;
+                            // do not mistake process exit for WebView cleanup.
+                            let webview_result = webview_shutdown::close(&app).await;
                             state.shutdown_complete.store(true, Ordering::SeqCst);
-                            app.exit(0);
+                            let exit_code = match webview_result {
+                                Ok(()) => 0,
+                                Err(code) => {
+                                    eprintln!("Shutdown incomplete ({code}); WebView exit unconfirmed.");
+                                    1
+                                }
+                            };
+                            app.exit(exit_code);
                         }
                         Err(code) => {
                             state.shutdown_started.store(false, Ordering::SeqCst);

@@ -1,6 +1,6 @@
 # Grammar Tool-neutral Multi-Agent Development Contract
 
-Contract-Version: 1.5.5
+Contract-Version: 1.5.6
 
 ## Active mission override (Owner authorization, 2026-09-25)
 For GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1, the Owner explicitly authorizes investigation, implementation, tests, local commits, reviewed safe local main integration and continuation through P3-A stabilization and the first Chromium textarea/simple-contenteditable adapter for personal use. This section supersedes conflicting historical one-step gates below, fixed file/iteration/commit budgets, per-step new-worktree requirements and fresh Source UI upload prerequisites. Use one dedicated mission worktree; preserve historical failed candidates and unrelated work. Historical failures remain failures. Review changed main before integration; no history rewrite or forced conflict resolution.
@@ -106,6 +106,15 @@ No new account operation, paid inference, signing identity, security-policy chan
 or system-wide installation is authorized. Scope is recorded separately as
 prototype_release; generic remote_publication and github_validation retain their
 older narrow meanings. Publication must not conceal historical failed tests.
+
+## Shutdown repair prerelease (Owner authorization, 2026-10-14)
+The Owner authorizes repairing residual child processes, serial verification in
+one owned trial session, safe main integration and publishing the repaired package
+as v0.1.0-prototype.2. Preserve prototype.1 and its failed-cleanup evidence. The
+same publication exclusions and non-force ancestry checks above remain required.
+The fixed WebView shutdown has one ten-second deadline starting before controller
+closure; timeout is an error, never confirmed cleanup. Trial Job cleanup remains
+a separate backstop and cannot count as natural product shutdown.
 
 ## Historical task defaults (except active mission override)
 
