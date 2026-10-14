@@ -4,8 +4,9 @@
 
 ### Write where you already write.
 
-**A review-first AI writing assistant for Windows.**  
-Select text, review the suggestion, and apply it only when you choose.
+**A local-first AI writing copilot for Windows — rewrite, polish & translate right where you type.**  
+Fast on-device Gemma by default; bring your own provider via API key or OAuth sign-in (ChatGPT · Claude · Google).  
+AI suggests, you decide.
 
 <p>
   <img alt="Release" src="https://img.shields.io/github/v/release/CAPTW/pencil?include_prereleases&sort=semver&style=flat-square&label=release">
@@ -27,11 +28,11 @@ Pencil is designed to start from the text you are already writing instead of mak
 
 | | |
 | --- | --- |
-| ⚡ **Local-first** | Optional local inference can handle translation and rewriting on your device. |
+| ⚡ **Local-first** | On-device Gemma is the default engine, so rewrite and translation suggestions arrive fast without a cloud round trip. |
+| 🔌 **Bring your own AI** | Need a deeper rewrite? Connect ChatGPT, Claude or Google via account sign-in, or any OpenAI-compatible API key. |
 | ✅ **Review first** | Suggestions are not silently written back. Review, edit, then choose Accept or Copy. |
-| 🎯 **Scoped Apply** | Replacement can be refused when the target, source text, or range has changed. |
+| 🎯 **Scoped Apply** | Replacement is refused when the target, source text, or range has changed. |
 | 🌐 **Browser opt-in** | Browser assistance runs only in explicitly enabled Chromium documents and supported fields. |
-| ☁️ **Deep is optional** | Deeper rewriting uses a selected Provider/API only after explicit consent. |
 
 ## How it works
 
@@ -45,12 +46,24 @@ The core rule is simple: **AI suggests; you decide what changes.**
 
 ## Highlights
 
-- **Rewrite & translate** with fixed writing intents such as natural, concise, and polite.
+- **One-shortcut writing modes** — grammar fix, natural, concise, polite, and Korean ↔ English translation. No prompt writing needed.
+- **Terminology profiles** — register, import and export your terms per profile. Cloud requests carry only the approved terms that actually appear in the selected text.
 - **Editable review** before anything is applied.
 - **Explicit replacement** of a verified source range on supported targets.
 - **Inline browser assist** for opted-in textarea and supported simple contenteditable fields.
-- **Optional Deep** through a selected CLI Provider or OpenAI-compatible API path.
 - **Privacy boundaries** for sensitive targets, opt-in scope, and cloud consent.
+
+## Bring your own AI
+
+| Route | How to connect | Best for |
+| --- | --- | --- |
+| 🖥️ **Local Gemma** (default) | Run the one-time prepare script | Fast Instant suggestions, offline processing |
+| 🔑 **Account sign-in** | Official sign-in for ChatGPT (Codex) · Claude (Claude Code) · Google (Antigravity) | Deep rewrites using your existing subscription |
+| 🧩 **API key** | OpenAI-compatible endpoint · model · key | Any cloud or self-hosted model |
+
+- Each request goes to exactly one Provider you chose; failures never silently retry on another Provider.
+- API keys stay in app memory only and are never written to settings. Account sign-in is managed by each official tool.
+- Cloud routes run only after explicit consent. Local Gemma works independently of any cloud setup.
 
 ## Quick start
 
@@ -69,14 +82,14 @@ Set-Location "$env:LOCALAPPDATA\PencilPrototype1"
 
 ### 3. Choose how to run
 
-Prepare local AI once, then start Pencil:
+To use local Gemma, prepare it once, then start Pencil. This downloads a ~7 GB model and an NVIDIA GPU runtime, so check free space and GPU requirements first.
 
 ~~~powershell
 .\Prepare-GrammarLocal.ps1
 .\Start-Grammar.ps1
 ~~~
 
-Or start without loading a local model:
+No GPU, or cloud Providers only? Start without loading a local model:
 
 ~~~powershell
 .\Start-Grammar.ps1 -WithoutLocalModel
@@ -90,12 +103,21 @@ See the [getting-started guide](GETTING_STARTED.ko.md) for model, hardware, inst
 | --- | --- |
 | Qualified Windows Edit / RichEdit controls | 🟢 Scoped prototype support |
 | Chromium textarea / simple contenteditable | 🟢 Explicit opt-in, scoped support |
-| Additional desktop application adapters | 🧪 In development / bounded qualification |
+| Microsoft Word · LibreOffice Writer · HWP/HWPX adapters | 🧪 In development / bounded qualification |
 | Arbitrary editors, Office/Hancom in general, every website | ⚪ Not generally qualified |
 | macOS / Linux / Windows ARM | ⚪ No current release package |
 
 > [!NOTE]
 > A file extension alone is not treated as authority to edit a document. Editor adapters are qualified separately.
+
+## What's next
+
+Pencil is actively evolving. These are directions in progress, not shipped support.
+
+- 🧩 **More editors** — Word, LibreOffice Writer and HWP/HWPX adapters, each qualified one at a time
+- ✍️ **Inline suggestions while typing** — underline suggestions in opted-in documents; applying still takes your explicit Accept
+- 🔌 **More providers** — broader sign-in and API routes and model choices
+- ⏱️ **Faster local suggestions** — targeting suggestions within one second of typing
 
 ## Privacy & control
 
