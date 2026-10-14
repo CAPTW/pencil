@@ -2,7 +2,7 @@
 
 Local writing assistance for Windows: **select → review → explicitly Accept or Copy**.
 
-[Download Prototype 1](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.1) · [한국어 안내](../README.md) · [Build and qualification details](PROTOTYPE.md)
+[Download Prototype 2](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.2) · [한국어 안내](../README.md) · [Build and qualification details](PROTOTYPE.md)
 
 Pencil offers local Gemma translation and natural, concise and polite rewriting,
 plus inline suggestions in explicitly enabled Chromium fields. Cloud CLI providers
@@ -12,7 +12,7 @@ This is an unsigned Windows x64 prerelease, not universal editor support.
 ## Install and start
 
 1. Prepare **PowerShell 7** and **WebView2** using their Microsoft distributions.
-2. Download `Pencil-0.1.0-prototype.1-windows-x64.zip` and `SHA256SUMS.txt` from
+2. Download `Pencil-0.1.0-prototype.2-windows-x64.zip` and `SHA256SUMS.txt` from
    release Assets. “Source code (zip)” is not the executable package.
 3. Compare the ZIP's `Get-FileHash -Algorithm SHA256` with the checksums file.
 4. Extract into a fresh folder; open PowerShell 7 there.
@@ -44,11 +44,13 @@ Review before Accept. Browser Undo is not guaranteed. Sensitive fields are refus
 - Earlier product `792032b`: 14/14 scoped real-Gemma synthetic RichEdit checks;
   native mouse Accept 113–332 ms; short responses 687–1371 ms (2/10 over 1 second);
   four-sentence paragraphs 987–1090 ms; startup 16.164 seconds.
-- Release `49fb641` was freshly built from unchanged product code. Its installation,
-  hashes, host response, model-free startup and removal passed; real Gemma on the
-  new binary and a different physical PC were not rerun.
-- Five descendants required test-supervisor cleanup. Natural shutdown is not fully
-  resolved. Physical IME, mixed DPI, arbitrary sites and long-term use remain open.
+- Prototype 1 (`49fb641`) required forced cleanup of five descendants; that
+  historical failure remains recorded. Prototype 2 explicitly closes WebViews,
+  releases the UI runtime and waits for browser exit within a 30-second deadline.
+  A closed window does not mean background cleanup is finished. See the release
+  `VALIDATION.json` for exact packaged-binary checks and timings.
+- Physical IME, mixed DPI, arbitrary sites, another physical PC and long-term use
+  remain open. This shutdown repair is not new language-quality qualification.
 - CLI consent persists; Auto rewrite can send captured text after consent. Turn it
   off for manual control. API Deep uses an explicit action and a session-only key.
 - The ZIP is unsigned. Do not disable system security to run it. Third-party/model

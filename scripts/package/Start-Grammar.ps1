@@ -232,6 +232,9 @@ try {
       }
     }
   }
+  if ($null -ne $app -and $app.HasExited -and $app.ExitCode -ne 0) {
+    throw 'Grammar exited unsuccessfully; application cleanup was not confirmed.'
+  }
 } catch {
   $retryTicket = $null
   try { Publish-Session 'failed' } catch { Write-Warning 'Local Gemma status could not be updated.' }

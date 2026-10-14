@@ -112,8 +112,11 @@ The Owner authorizes repairing residual child processes, serial verification in
 one owned trial session, safe main integration and publishing the repaired package
 as v0.1.0-prototype.2. Preserve prototype.1 and its failed-cleanup evidence. The
 same publication exclusions and non-force ancestry checks above remain required.
-The fixed WebView shutdown has one ten-second deadline starting before controller
-closure; timeout is an error, never confirmed cleanup. Trial Job cleanup remains
+The fixed WebView shutdown has one thirty-second deadline starting before
+controller closure; timeout is an error, never confirmed cleanup. The earlier
+ten-second candidate failed and is preserved. Causal observations of prototype.1
+and a candidate without forced cleanup took about 22 seconds; this is a bounded
+shutdown budget, not a claim of faster cleanup or a relaxed inference/Accept goal. Trial Job cleanup remains
 a separate backstop and cannot count as natural product shutdown.
 
 ## Historical task defaults (except active mission override)
