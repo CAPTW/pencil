@@ -27,3 +27,21 @@ Run `python scripts/mission/test_owned_trial.py` before the interactive trial.
 The tests cover normal no-console exit, timeout descendants, abandoned children,
 cross-process mutex exclusion, and supervisor termination. They launch only their
 own short synthetic Python processes.
+
+For installed review/Accept testing, compile `owned-review-click.cs` with the
+existing x64 C# compiler outside the source tree. Arguments are app PID, target
+PID, their exact verified executable paths, then the DOM button center x/y,
+viewport width/height and devicePixelRatio. The caller must wait for the Accept
+button to be enabled and stable, verify package hashes and use only its synthetic
+profile. The helper verifies process/window ownership, physical viewport size,
+unobscured hit target and actual cursor position before sending mouse input.
+An offscreen or unrelated target is a refusal, never a reason to force input.
+
+Do not require a separate helper to force the review foreground before a click:
+its foreground privileges differ from the app and the user. Measure from the
+trusted DOM click through exact editor reread; also retain helper preparation
+and click-to-UI-confirmation durations. Playwright request-to-return is a distinct
+measurement and must not be relabelled retroactively as native Apply time.
+Tauri 2.11.3's internal invoke is non-writable; observe DOM status with a
+MutationObserver instead of replacing IPC internals. This bounds user-observed
+completion, not isolated backend time. Preserve missed clicks and failed traces.
