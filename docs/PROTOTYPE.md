@@ -1,8 +1,9 @@
-# Pencil public source prototype
+# Pencil — build and qualification reference
 
-This is a Windows x64 personal-use prototype, not a production release or a claim
-of Grammarly-equivalent language quality. Source branch:
-`codex/grammar-local-trial-ba58b7d` in `CAPTW/pencil`.
+For installation, start with the [Korean guide](GETTING_STARTED.ko.md) or
+[English overview](README.en.md). [Prototype 1 is published](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.1).
+The package is pinned to `49fb641`; main contains later documentation.
+This is not a production release or a claim of Grammarly-equivalent language quality.
 
 ## What works within the tested scope
 
@@ -92,6 +93,6 @@ historical evidence references are in [HANDOFF](control/HANDOFF.md); referenced
 local evidence files are not public artifacts. Later documentation commits are
 not new measurements of rebuilt binaries. Mission acceptance remains incomplete.
 
-Prototype 1 is prepared for main adoption and an unsigned Windows x64 ZIP
+Prototype 1 has been adopted into main and published as an unsigned Windows x64 ZIP
 prerelease. It excludes model weights and downloaded GPU runtime binaries. No new source license is granted
 by this preparation; a project-wide license decision remains with the owner.

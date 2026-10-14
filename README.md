@@ -1,353 +1,127 @@
-# Codex Pencil
+# Pencil
 
-## Prototype 1 — October 2026
+**Windows에서 선택한 문장을 다듬고, 검토한 뒤 직접 적용하는 글쓰기 도우미.**
 
-[Download the Windows x64 prerelease](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.1). Verify SHA256SUMS.txt and follow START_HERE.md inside the ZIP. PowerShell 7 and WebView2 are required. The model is downloaded separately.
+Local writing assistance · Translation · Explicit Accept
 
-Start with the [current prototype guide](docs/PROTOTYPE.md) for build/install steps, Gemma hardware requirements and measured limitations. The first unsigned Windows x64 prototype ZIP is prepared under GitHub Releases; read its START_HERE.md before installation. Latest installed desktop qualification: product `792032b`, 14/14 synthetic actual-Gemma capture/review/Accept checks; other editor support remains scoped. Older setup notes below do not override this guide.
+[**Prototype 1 다운로드**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.1) · [설치부터 첫 사용까지](docs/GETTING_STARTED.ko.md) · [English](docs/README.en.md) · [문제 신고](https://github.com/CAPTW/pencil/issues/new?template=bug_report.md)
 
-Current product direction, audit boundaries and development authority are in [`docs/control/CURRENT_DECISIONS.md`](docs/control/CURRENT_DECISIONS.md) and [`control/state.json`](control/state.json). Read [`AGENTS.md`](AGENTS.md) before new work. The current local candidate has qualified reviewed Accept for narrowly supported Windows Edit/RichEdit controls and opted-in Chromium textarea/simple contenteditable, including the desktop global shortcut/widget path. The optional pinned LibreOffice Writer candidate also qualifies shortcut -> Instant -> reviewed Accept -> Undo in bounded Standard-body new/local saved DOCX synthetic documents, using its paired opt-in extension. Supported bold/RGB spans preserve paragraph topology; an explicit uniform-topology option permits merge/split and empty-part changes only when affected paragraphs share identical formatting. Qualification uses owned synthetic Windows environments; complex/differently formatted paragraph topology, Microsoft Office/Hancom adapters and whole-product acceptance remain incomplete. See the latest HANDOFF for exact commits and receipts; older setup and contract notes below are historical.
+> **현재 버전: 0.1.0 Prototype 1 · Windows x64 · 서명되지 않은 사전 릴리스**
+>
+> 개인 시험 사용 단계입니다. 지원 범위를 먼저 확인하고 짧은 비민감 문장으로 시작하세요.
 
-Codex Pencil is a compact Windows tray/widget writing assistant built with Tauri v2, React, TypeScript, and Rust commands. The prototype defaults to local Gemma through a loopback-only model runtime, with optional consent-bound cloud CLI providers and OpenAI-compatible API configuration. It does not implement custom OpenAI OAuth, monetization or app-specific user accounts.
+## Pencil로 무엇을 할 수 있나요?
 
-## File Tree
+새 프롬프트를 매번 작성하는 대신, 쓰던 문장에서 바로 시작합니다.
 
-```text
-.
-|-- README.md
-|-- index.html
-|-- package-lock.json
-|-- package.json
-|-- tsconfig.json
-|-- tsconfig.node.json
-|-- vite.config.ts
-|-- scripts
-|   |-- build-tauri.ps1
-|   |-- test-capture-contract.mjs
-|   |-- test-promptless-contract.mjs
-|   |-- test-terminology-contract.mjs
-|   `-- verify-windows.ps1
-|-- src
-|   |-- App.tsx
-|   |-- captureContract.ts
-|   |-- main.tsx
-|   |-- promptlessContract.ts
-|   |-- terminologyContract.ts
-|   |-- styles.css
-|   `-- vite-env.d.ts
-`-- src-tauri
-    |-- Cargo.toml
-    |-- build.rs
-    |-- capabilities
-    |   `-- default.json
-    |-- icons
-    |   |-- 32x32.png
-    |   |-- icon.ico
-    |   `-- icon.png
-    |-- src
-    |   |-- apply_safety.rs
-    |   |-- capture_session.rs
-    |   |-- clipboard.rs
-    |   |-- codex_client.rs
-    |   |-- codex_home.rs
-    |   |-- content_limits.rs
-    |   |-- device_login.rs
-    |   |-- main.rs
-    |   |-- process_job.rs
-    |   |-- prerequisites.rs
-    |   |-- runtime_isolation.rs
-    |   |-- shortcut.rs
-    |   |-- settings.rs
-    |   |-- terminology.rs
-    |   |-- terminology_import_export.rs
-    |   |-- terminology_matcher.rs
-    |   |-- terminology_service.rs
-    |   |-- terminology_store.rs
-    |   |-- terminology_validation.rs
-    |   |-- translation.rs
-    |   |-- windows_apply.rs
-    |   `-- windows_target.rs
-    `-- tauri.conf.json
-```
+**문장 선택 → `Ctrl+Shift+G` → 제안 검토·수정 → `Accept` 또는 `Copy`**
 
-## Windows Setup
+- **로컬 글쓰기 지원:** Gemma를 이용한 번역과 자연스럽게·간결하게·공손하게 재작성.
+- **브라우저 inline 제안:** 직접 활성화한 문서와 입력 필드에서 제안을 보고 선택해 적용.
+- **검토 후 적용:** 자동으로 문서를 고치지 않습니다. 대상이나 원문이 바뀌면 Accept를 거부할 수 있습니다.
+- **선택적 클라우드 Deep:** 원하는 Provider 또는 OpenAI-compatible API를 직접 설정하고 동의한 경우에 사용.
 
-Prerequisites:
+Gemma의 기본 모델은 **Gemma4 12B IT QAT Q4_0**입니다. 속도를 위해 작은 모델로 자동 전환하지 않습니다.
 
-- Windows 10/11.
-- Node.js and npm.
-- Exact supported Codex CLI: `codex-cli 0.144.6`, resolved as described below.
-- Rust toolchain via `rustup` for building the Tauri app.
-- Microsoft C++ Build Tools with the Desktop development with C++ workload.
-- Microsoft Edge WebView2 Runtime if it is not already installed in the environment.
+## 내 PC에서는 어떻게 시작하나요?
 
-`cargo` and `rustc` are build-time requirements. They are not part of the intended runtime path for rewriting text; at runtime the app needs the bundled Tauri app and the exact supported Codex CLI. The runtime resolver uses a non-empty `CODEX_PENCIL_CODEX_BIN` first, then the first `codex.cmd` on `PATH`, and finally the first `codex.exe` on `PATH`. A configured override is authoritative and is not silently bypassed.
+| 환경 | 시작 방법 | 기대할 수 있는 범위 |
+| --- | --- | --- |
+| RTX 5070 Ti에서 검증한 CUDA 13.4 구성 | Gemma 모델 준비 후 일반 실행 | 로컬 번역·재작성; 아래 실측 참고 |
+| 다른 NVIDIA GPU | 호환성을 별도로 확인한 뒤 시험 | 같은 속도·안정성 보장 없음 |
+| GPU가 부족하거나 로컬 모델을 쓰지 않을 때 | `-WithoutLocalModel`로 실행 | 기본 로컬 규칙 + 별도 설정한 Deep. Gemma 기능과 동일하지 않음 |
+| macOS, Linux, Windows ARM | 이번 실행 패키지 대상 아님 | Windows x64 패키지만 제공 |
 
-If Rust was just installed and `where cargo` or `where rustc` still fails, open a new terminal or add `%USERPROFILE%\.cargo\bin` to the current session PATH.
+**필수:** Windows x64, PowerShell 7, Microsoft WebView2. Pencil 설치에는 개발 도구가 필요하지 않습니다. Gemma 모델은 약 **7 GB**이며 GPU 런타임과 준비 공간이 추가로 필요합니다. ZIP 자체에는 모델이 없습니다.
 
-Install dependencies:
+## 설치와 첫 실행
+
+### 1. 릴리스 파일 받기
+
+[릴리스 페이지](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.1)의 **Assets**에서 다음을 받으세요.
+
+| 파일 | 용도 |
+| --- | --- |
+| `Pencil-0.1.0-prototype.1-windows-x64.zip` | 실행 프로그램과 설치 스크립트, 약 9.4 MB |
+| `SHA256SUMS.txt` | 다운로드 파일 무결성 확인 |
+| `VALIDATION.json` | 이번 패키지의 검증 범위와 남은 제한 |
+
+GitHub가 제공하는 **Source code (zip)**은 실행 패키지가 아닙니다.
+
+### 2. 확인하고 설치하기
+
+[상세 설치 안내](docs/GETTING_STARTED.ko.md)에 따라 PowerShell 7·WebView2를 준비하고 ZIP 해시를 확인하세요. ZIP을 새 폴더에 푼 다음, **PowerShell 7**에서 그 폴더로 이동해 실행합니다.
 
 ```powershell
-cd D:\dev\repos\Grammar
-npm install
+.\Install-Grammar.ps1 -InstallRoot "$env:LOCALAPPDATA\PencilPrototype1"
+Set-Location "$env:LOCALAPPDATA\PencilPrototype1"
 ```
 
-Run locally:
+### 3. 두 시작 방법 중 하나 선택하기
+
+**Gemma를 쓸 때 — 최초 한 번 모델을 준비한 뒤 실행:**
 
 ```powershell
-npm run dev
+.\Prepare-GrammarLocal.ps1
+.\Start-Grammar.ps1
 ```
 
-Build a Windows bundle:
+다음부터는 설치 폴더에서 `Start-Grammar.ps1`만 실행하세요. 처음 다운로드·준비하는 시간과 앱 시작 시 모델 예열 시간은 문장 응답 시간과 별개입니다.
+
+**모델 없이 시작할 때 — 모델 다운로드 불필요:**
 
 ```powershell
-npm run build
+.\Start-Grammar.ps1 -WithoutLocalModel
 ```
 
-Current release artifacts are written under `src-tauri\target\release`:
+실행한 PowerShell 창은 앱을 관리하므로 사용하는 동안 열어 두고, 종료는 Pencil 트레이 메뉴에서 하세요. 이미 실행 중이라면 두 번째 세션을 띄우지 마세요.
 
-```text
-src-tauri\target\release\codex-pencil.exe
-src-tauri\target\release\bundle\msi\Codex Pencil_0.1.0_x64_en-US.msi
-src-tauri\target\release\bundle\nsis\Codex Pencil_0.1.0_x64-setup.exe
-```
+## 첫 문장을 다듬어 보기
 
-### Private portable personal bundle
+**데스크톱:** 지원되는 입력칸에서 짧은 문장을 선택하고 `Ctrl+Shift+G`를 누르세요. 결과를 읽고 필요하면 수정한 뒤 **Accept**로 원문을 교체하거나 **Copy**로 직접 붙여넣으세요. 원문·선택이 바뀌었거나 시간이 지나 거부되면 다시 선택합니다.
 
-Installed candidate40a7d26 now passes actual hotkey/Instant/edited-draft/direct-Apply reread and rejection/Copy/cleanup checks in an owned Medium Windows Sandbox. This qualification is limited to the synthetic x64 RichEdit50W target explicitly exposing text/default input scope; it does not qualify arbitrary applications or user documents. Standard Edit remains capture/Copy. Receipt schema2 binds the later-built target DLL to the exact app binary. The package also includes the Chromium extension and native host (which replaces text only in explicitly enabled browser fields, on explicit Accept or Apply edit, with reread). Build it with `scripts/mission/build-receipt.ps1` and `scripts/mission/package.ps1`, then use `Install-Grammar.ps1` and `Uninstall-Grammar.ps1` inside the package. [`scripts/package/PERSONAL_USE.md`](scripts/package/PERSONAL_USE.md) is the user guide and `docs/control/HANDOFF.md` holds the evidence. The older bundles below predate that qualification.
+**Chromium:** 설치 폴더의 `extension`을 개발자 모드로 로드하고, 확장 아이콘을 고정하세요. 팝업의 **Enable this document** → 지원 입력칸의 **Enable this field** 순으로 켭니다. 설치 위치 선택부터 중지 방법까지는 [상세 안내](docs/GETTING_STARTED.ko.md)를 참고하세요.
 
-For current daily use, build the R8 portable folder with `scripts/build-daily-use-bundle.ps1`. The historical P2-01 personal-use deliverable below remains the reproducible portable ZIP used by that earlier packaging chain, not the developer bundle output above. It is unsigned, has no updater or public publication step, and keeps exact `codex-cli 0.144.6` as an external prerequisite. Packaging uses existing locked dependencies only; do not run an install or update command as part of this workflow.
+## 어디에서 사용할 수 있나요?
 
-After the packaging workflow source commit exists and the worktree is clean:
+| 대상 | Prototype 1 범위 |
+| --- | --- |
+| Windows 표준 Edit / RichEdit | 검증 조건을 충족하는 특정 컨트롤에서 캡처·Accept. 모든 앱의 입력칸을 뜻하지 않음 |
+| Chromium textarea / 단순 contenteditable | 명시적으로 켠 문서·필드에서 제안·Accept. 모든 웹사이트 호환 보장 아님 |
+| Windows 11 새 메모장, Microsoft Office, Hancom | 일반 지원 미완료. 파일 확장자만으로 Apply를 보장하지 않음 |
+| LibreOffice Writer | 별도 paired adapter의 제한적 개발 검증. 기본 ZIP의 지원 범위에 포함되지 않음 |
+| Edge, 물리 IME, 혼합 DPI, 장시간 사용 | 광범위한 실사용 검증 미완료 |
 
-```powershell
-$packagingHead = (git rev-parse HEAD).Trim()
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-personal-bundle.ps1 `
-  -ExpectedSourceCommit $packagingHead `
-  -OutputBase 'D:\dev\artifacts\Codex-Pencil\P2-01'
-```
+## 속도와 검증 결과
 
-The script rejects an existing commit-bound output root, builds frontend and Rust release outputs externally with Cargo offline and locked, emits the portable directory and ZIP, and verifies both. See [`docs/PERSONAL_BUNDLE.md`](docs/PERSONAL_BUNDLE.md) for the artifact layout, verification command, private-use limitations, and content-free troubleshooting codes.
+아래는 **RTX 5070 Ti·합성 RichEdit·제품 커밋 `792032b`**에서 얻은 작은 표본입니다. 다른 PC의 성능 보장이나 언어 품질 전체 평가가 아닙니다.
 
-If the app cannot find `codex`, set an explicit path before running:
+| 항목 | 관측 결과 |
+| --- | --- |
+| 실제 Gemma 제안 → Accept → 원문 재조회 | 14/14 성공 |
+| 실제 마우스 클릭 → 원문 변경 확인 | 113–332 ms, 7건 |
+| 짧은 문장 응답 | 687–1371 ms; 10건 중 2건은 1초 목표 초과 |
+| 4문장 단락 응답 | 987–1090 ms, 4건 |
+| 모델 준비 | 16.164초 |
 
-```powershell
-$env:CODEX_PENCIL_CODEX_BIN = "C:\Users\USER\AppData\Roaming\npm\codex.cmd"
-npm run dev
-```
+릴리스 바이너리는 `49fb641`에서 새로 빌드했습니다. 제품 코드는 위 실측 버전과 같지만, **새 바이너리의 Gemma 전체 시험이나 다른 물리 PC 시험을 다시 수행한 것은 아닙니다.** 이번 ZIP에서는 설치·해시·native host·모델 없는 시작·제거를 확인했습니다. 종료 후 남은 자식 프로세스 5개는 시험 감독기가 정리했으며, 자연 종료 문제는 아직 남아 있습니다. [검증·개발 안내](docs/PROTOTYPE.md)
 
-## Verification
+## 개인정보와 클라우드 사용
 
-Manual checks:
+- 기본 Gemma 추론은 로컬에서 실행됩니다. 최초 모델·런타임 다운로드에는 인터넷이 필요합니다.
+- 브라우저 분석은 opt-in한 문서·필드에서만 동작하며, 비밀번호·민감 필드는 처리하지 않습니다.
+- CLI Deep 동의는 Provider별로 저장됩니다. **Auto rewrite**가 켜져 있으면 동의 후 캡처 시 전송될 수 있습니다. 수동으로 결정하려면 이를 끄세요.
+- API 방식은 **Run API Deep**으로 명시적으로 요청합니다. 모든 API 형식 지원은 아닙니다. 클라우드 사용에는 제공업체의 데이터 정책과 비용이 적용됩니다.
+- 로그·스크린샷·Issue에 원문, API 키, 인증 코드나 사용자 문서를 올리지 마세요.
 
-```powershell
-cd D:\dev\repos\Grammar
-where codex
-where cargo
-where rustc
-codex --version
-cargo --version
-rustc --version
-npm run typecheck
-node scripts/test-capture-contract.mjs
-node scripts/test-promptless-contract.mjs
-node scripts/test-terminology-contract.mjs
-npm run build:frontend
-npm run build
-```
+## 도움이 필요하신가요?
 
-Helper script:
+- **설치 오류, 모델 준비 실패, Accept 거부:** [설치·사용·문제 해결 안내](docs/GETTING_STARTED.ko.md)
+- **빌드하거나 검증 기록을 읽고 싶다면:** [개발자 안내](docs/PROTOTYPE.md)
+- **재현 가능한 문제를 발견했다면:** [버그 보고](https://github.com/CAPTW/pencil/issues/new?template=bug_report.md)
 
-```powershell
-npm run verify:windows
-```
+현재 실행 파일은 서명되지 않았습니다. 보안 정책을 끄지 말고, unsigned 실행이 금지된 환경에서는 사용을 보류하세요. 공개 저장소라는 사실이 별도의 오픈소스 사용 허가를 뜻하지는 않습니다. 프로젝트 전체 라이선스는 아직 지정되지 않았고, 의존성과 모델에는 각 upstream 조건이 적용됩니다.
 
-The helper prints Node/npm/Codex/Rust tool versions, runs the frontend checks, and runs `npm run build` only when both `cargo` and `rustc` are available. If Rust is missing, it clearly skips the full Tauri build.
+---
 
-`npm run build` also adds the standard Rustup bin directory to its own build-session PATH when Rust is installed there but the current terminal has not picked it up yet.
-
-## Implementation Notes
-
-- The app runs as a Tauri tray app with one hidden floating window.
-- The Rust global-shortcut plugin registers one primary shortcut. Its default is `Ctrl+Shift+G`; Settings can transactionally replace it or reset it to the default.
-- A candidate shortcut is normalized and registered before the old binding is removed. Registration conflicts leave the old runtime binding and persisted setting unchanged; persistence failure attempts a bounded rollback to the old binding.
-- Saved settings use schema version 4 and recoverable same-directory temporary-file promotion with a previous-file backup. Earlier schemas migrate without changing the shortcut, mode, translation target/format, clipboard restore, or terminology preferences. The only new persisted privacy field is the version number of the user's cloud-processing acknowledgement; selected text, results, and acknowledgement content are not stored. Terminology defaults to enabled with `general` active, approved matches and suggestions enabled, and `autoSaveSuggestions` fixed to `false`.
-- The tray menu includes Show, Hide, Login / Account, Settings, and Quit. Settings shows and focuses the existing widget and opens its focused settings view.
-- On hotkey press, Rust reads the selection directly from the focused control of the foreground window, and only when that control is a standard Windows `Edit` control: exact class `Edit`, Unicode, visible, enabled, not `ES_PASSWORD`, no password character, owned by the window's process, not a known password-manager or credential UI process, and under 65,535 UTF-16 units (for example classic Notepad or a dialog text box). The separate candidate target service can additionally capture a qualified x64 `RichEdit50W` exposing explicit text/default input scope after authentication and target-side privacy checks. Other editors, including unqualified Windows 11 Notepad, WinForms/WPF, browsers and Office, remain denied; this is not general RichEdit application qualification. Capture never uses the clipboard or simulated keys.
-- The primary shortcut is a toggle: pressed while the widget is visible it hides the widget and cancels the current capture. Press it again to capture a new selection.
-- Before the widget is shown or focused, Rust captures the foreground target window and its owning process for a backend-owned capture session. Raw target handles and process identifiers are never sent to React.
-- The full selected text is kept in Rust memory for the current capture and is not stored in settings or logged. React receives the selected text in the one-shot capture event only to derive the displayed character count, then retains the opaque session token rather than the source text. The local React preview receives the replacement, summary, confidence, and edit snippets (`before`/`after`/`reason`) returned by Codex so the user can review before copying.
-- Rewrite modes: `grammar`, `natural`, `concise`, `polite`, and one promptless `translate` mode.
-- Translation infers the source language and supports exact targets `ko`, `en`, `ja`, `zh-Hans`, and `zh-Hant`. There is no free-form Prompt or chat input.
-- The model is instructed to return translated text only. Rust binds the result to the exact capture session, generation, mode, and target, then locally applies either `translation_only` or `source_with_translation` using the backend-owned exact source.
-- The Rust backend starts `codex app-server` with piped stdin/stdout/stderr. The default app-server transport is stdio, which is local to the child process. On Windows, the launcher and every npm/native descendant are assigned to an app-owned Job Object so shutdown and reconnect terminate the complete process tree.
-- The app must not be changed to launch Codex app-server with a websocket, TCP listener, or non-local network transport.
-- App Server uses a marked, empty, per-client working directory under `%TEMP%\codex-pencil-runtime-v1`. It is never the repository, Documents, Desktop, OneDrive, or a user project, and it is removed after bounded process shutdown. A separate app-owned `%LOCALAPPDATA%\com.local.codexpencil\codex-home-v1` isolates Codex Pencil authentication from the user's general Codex config, MCP servers, plugins, skills, and hooks. Codex itself owns the credential payload; Codex Pencil neither reads nor copies token values. A `config.toml` in this dedicated home is rejected fail-closed.
-- Rewrites use ephemeral Codex threads with `approvalPolicy: "never"`, the pinned stable `readOnly` sandbox policy with tool network disabled, and a strict JSON schema requiring `{ replacement, changed, summary, confidence }`. Optional `edits` remain available for the existing review UI, and `additionalProperties` is `false`. Shell, MCP, plugin, skill, browser, image, multi-agent, history, analytics, and telemetry surfaces are disabled at child startup; unexpected tool, approval, permission, or dynamic activity fails the turn.
-- Source text is rejected before client/thread acquisition above 12,000 Unicode scalars or 48 KiB UTF-8. Model replacement is rejected above 24,000 scalars or 96 KiB, and locally formatted final Copy text is rejected before the clipboard write above 36,000 scalars or 144 KiB. Text is never truncated or silently coerced.
-- Copying a result requires the exact current session identifier and generation. Rust validates lifecycle state, target-window validity and owning process, then copies the approved replacement to the clipboard. It sends no message and no simulated `Ctrl+V` to the captured editor; the user pastes the result (see the Target-bound Copy Contract).
-- Settings are stored locally in the Tauri app config directory as `settings.json`; they contain preferences only, not selected text, replacements, clipboard contents, or history.
-
-## Codex Auth Model
-
-Codex Pencil uses Codex managed auth through the local app-server protocol:
-
-1. The Rust backend starts `codex app-server`.
-2. It sends one `initialize` request and awaits its response.
-3. It sends an id-less `initialized` notification and only then marks the connection ready. Experimental API capability is not enabled.
-4. It reads auth state with `account/read`.
-5. Device-code login starts with:
-
-```json
-{
-  "id": 1,
-  "method": "account/login/start",
-  "params": {
-    "type": "chatgptDeviceCode"
-  }
-}
-```
-
-6. Codex returns `loginId`, `verificationUrl`, and `userCode`. Rust accepts only the exact pinned `https://auth.openai.com/codex/device` URL and keeps it in backend memory.
-7. The UI receives only the opaque `loginId` and `userCode`. Opening the login page requires the matching backend-held validated login; arbitrary frontend URLs are not accepted.
-8. The app listens for `account/login/completed` and `account/updated` notifications, and also polls `account/read` while waiting.
-
-The app-specific Codex home is intentionally separate from the user's normal Codex CLI home, so the first production run may require one device login even when the general CLI is already authenticated. Requests are rejected locally until the handshake completes. A closed stdout stream, unwritable stdin, malformed protocol JSON, or child-process exit invalidates the cached client and fails pending requests. The next user request performs at most one clean reconnect; an in-flight request is not silently replayed.
-
-## Codex App Server Protocol Authority
-
-- Supported version: `codex-cli 0.144.6`.
-- Retained schema bundle: `src-tauri/protocol/codex-cli-0.144.6/`.
-- Schema generation: `& $resolvedCodex app-server generate-json-schema --out src-tauri/protocol/codex-cli-0.144.6`.
-- Experimental fields were not requested; `--experimental` was not passed.
-- Generated JSON files: 267.
-- Canonical bundle SHA-256: `c954593823626b5194b7f687c27d542eb87fcfa63e5e11af3ca95f9b6c39c6e8`.
-
-The fingerprint algorithm and executable resolution policy are recorded in `src-tauri/protocol/codex-cli-0.144.6/PROVENANCE.md`. Regenerate into a new versioned directory and update the resolver pin, tests, README, and fingerprint together when intentionally supporting a different Codex version.
-
-The app does not implement custom OAuth, does not store or display tokens, does not use an OpenAI API key, and does not expose a network listener.
-
-## Target-bound Copy Contract
-
-- Each successful capture creates one in-memory lifecycle: `Captured -> Rewriting -> Ready -> Applying -> Completed`, with explicit retry/cancellation transitions for failures. `Applying` covers delivery reservation. The IPC command `apply_replacement` defaults to Copy; only explicit `directApply` plus a matching backend target capability enables the new target-side operation.
-- A new capture or dismiss invalidates the old token. An asynchronous rewrite completion is accepted only if its session identifier and generation are still current; stale completions cannot become `Ready`.
-- Translation additionally binds `Ready` and Copy to the exact mode and target language. A target/mode change invalidates an older result without changing the clipboard. Copy-format changes (stored as `applyFormat`) remain local and do not require another model request.
-- Terminology-aware rewrites additionally bind `Ready` and Copy to the enabled flags, active profile, store revision, and deterministic matched entry IDs. A profile, dictionary, or terminology-setting change makes the older result stale before any clipboard write.
-- Stale or mismatched Copy requests are rejected before any clipboard write.
-- Copy remains the supported standard Edit delivery and never mutates that editor. The removed external lock/replace/whole-source-restore protocol and `SendInput` paste are not restored. The new candidate Apply uses a separately authenticated target service and one TSF write transaction: exact revision, source, range and privacy are checked inside the target. Only qualified captures show Apply; Copy is separate. Rejecting or losing confirmation never triggers automatic Copy, rollback or replay. An applied result is kept distinct from an indeterminate result, even when the UI capture ends concurrently. The current grant lasts at most30seconds; long Deep/review and general application acceptance remain pending. The installed40a7d26 widget flow passes in the owned RichEdit scope (HANDOFF).
-- Every other case copies the approved replacement the same way. That includes a missing target or a changed process, where the widget adds a note, and any target not captured by the native reader.
-- Copy intentionally leaves the approved replacement on the clipboard. The stored Restore clipboard preference is kept so existing settings files stay valid, but nothing reads it and the widget does not show it.
-
-P1-01 ignored live checks use actual Windows global-hotkey registration, an actual Tauri tray/window runtime, and the existing target-bound editor harness with synthetic text only:
-
-```powershell
-$env:CARGO_TARGET_DIR = Join-Path $env:TEMP "grammar-p1-01-target"
-cargo test --manifest-path src-tauri/Cargo.toml p1_01_windows_live_tests::p1_01_windows_live_shortcut_registration_conflict_restart_and_reset -- --ignored --exact --test-threads=1
-cargo test --manifest-path src-tauri/Cargo.toml p1_01_windows_live_tests::p1_01_windows_live_tray_settings_action_shows_focuses_and_emits_settings_mode -- --ignored --exact --test-threads=1
-cargo test --manifest-path src-tauri/Cargo.toml p0_02_windows_live_tests::p1_01_windows_live_translation_formats_acceptance -- --ignored --exact --test-threads=1
-```
-
-## Local Terminology Memory
-
-The personal dictionary is local product configuration, not document or rewrite history.
-
-- The store is `terminology.v1.json` under Tauri `app_data_dir`; `terminology.v1.json.bak` retains a valid recovery source. Writes validate the complete next store, sync a same-directory temporary file, and promote it without partially updating in-memory state.
-- A new store contains reserved `global` and `general` profiles. `global` is always enabled and implicitly active; settings select exactly one enabled non-global profile.
-- Entry types are `translation`, `preferred`, and `protected`; states are `approved`, `suggested`, and `disabled`. Suggested and disabled entries are inert. Suggestions require an explicit Save as suggested action and a later explicit Approve action before matching.
-- Settings shows the filtered saved-entry count and entry cards before the add/edit form. Filter and form controls have distinct accessible labels, and a hidden-entry hint appears when active filters exclude stored entries.
-- Automatic matching is local, NFC-normalized, exact `whole_phrase` matching with aliases and deterministic profile/language/length/priority/time/ID precedence. It does not use fuzzy matching, embeddings, document scanning, or a database.
-- Only approved entries from `global` and the active profile that actually match the backend-owned selected text are serialized as request constraints. The subset is capped at 50 entries and 16 KiB. Notes, profile names, usage counters, timestamps, unmatched entries, suggested/disabled entries, UI search text, and the full dictionary are not sent.
-- Selected text and terminology constraints are encoded as untrusted JSON data in the existing stdio App Server request. Protected terms are preserve-exact constraints; translation and preferred entries carry only the matched source and preferred form.
-- Result validation is local. Missing protected or preferred forms, unverified usage, matcher truncation, and conflicts produce review warnings; they do not silently rewrite or auto-copy the result.
-- `usageCount` is best-effort and increments only after the user copies the result. No sentence, result, clipboard value, Prompt, or model output is stored with it.
-- JSON export is the versioned profile/entry store. CSV uses fixed RFC 4180 columns and CRLF records. Import accepts at most 2 MiB, performs an expiring dry run, reports duplicates/conflicts, applies only valid non-conflicting data in one revision, and rejects a stale plan if the store changed.
-- If both main and backup are invalid, the app exposes a content-free unrecoverable state and does not overwrite either automatically. The user must explicitly reset or import a valid recovery file.
-
-Focused checks:
-
-```powershell
-$env:CARGO_TARGET_DIR = Join-Path $env:TEMP "grammar-p1-02-target"
-cargo test --manifest-path src-tauri/Cargo.toml p1_02_contract_tests:: -- --test-threads=1
-node scripts/test-terminology-contract.mjs
-npm run typecheck
-```
-
-The ignored P1-02 Windows acceptance uses only owned temporary app data and bounded synthetic editor windows. It exercises persistence/recovery and terminology-bound Copy without live model inference:
-
-```powershell
-$env:CARGO_TARGET_DIR = Join-Path $env:TEMP "grammar-p1-02-live"
-cargo test --manifest-path src-tauri/Cargo.toml p1_02_windows_live_tests::p1_02_windows_live_store_profile_suggestion_and_import_restart_acceptance -- --ignored --exact --test-threads=1
-cargo test --manifest-path src-tauri/Cargo.toml p1_02_windows_live_tests::p1_02_windows_live_matched_validation_and_target_bound_apply_acceptance -- --ignored --exact --test-threads=1
-```
-
-## Privacy Behavior
-
-- No continuous clipboard monitoring.
-- No rewrite history storage.
-- No document, clipboard, Prompt, or terminology-request history storage. Dictionary exports contain only local profiles and terminology entries.
-- Before the first inference, the app explains that the selected text and only matched approved terminology are processed by Codex/ChatGPT in the cloud. Cancelling invalidates the capture and sends no model request; acknowledgement persists only as a versioned preference.
-- Selected text is sent to Codex only after the user presses the configured shortcut, accepts the cloud disclosure, and the app performs a rewrite.
-- The local preview UI may receive and display replacement text plus short edit metadata. Edit metadata can include snippets from the selected text.
-- Prompts and selected text should not be logged. Codex app-server stderr is drained and discarded by the app.
-- Desktop delivery requires explicit Copy or, for a qualified target-side capture, explicit Apply. Apply changes only the exact captured range after target-side revalidation; it does not use clipboard paste or whole-source restoration. The Chromium extension changes text only in explicitly enabled browser fields, on explicit Accept or Apply edit.
-
-## Second-Pass Verification Notes
-
-- Supported and verified `codex --version`: `codex-cli 0.144.6`.
-- `rustc` and `cargo` were installed at `%USERPROFILE%\.cargo\bin`, but the original shell PATH did not include that directory.
-- With `%USERPROFILE%\.cargo\bin` temporarily prepended to PATH, `npm run build` completed and produced MSI/NSIS bundles.
-- With the same temporary PATH, `cargo test` passed all Rust tests.
-- `npm run verify:windows` now adds the standard Rustup bin directory to its own session PATH when needed.
-
-## Known Limitations
-
-- Copy writes plain text and deliberately replaces what the clipboard held, including images, files, rich HTML/RTF, or app-private formats. It does not restore the earlier clipboard content.
-- Native capture denies `ES_PASSWORD` fields, fields that report a password character, and a fixed list of password-manager and credential UI processes before any text-bearing message. A secret typed into an ordinary Edit field of another app cannot be recognized. Do not use the hotkey in secret fields.
-- Installed native qualification covers standard Edit capture/Copy and the owned synthetic target-side RichEdit Apply flow; general rich/custom editors, elevated apps and unknown or protected fields remain unavailable. Use the Chromium adapter for browser text.
-- Codex CLI must be installed and authenticated-capable.
-- Cancel, dismiss, recapture, mode/target/profile/revision changes, and application exit issue at most one bounded `turn/interrupt` for the exact active turn. A timeout or process failure still relies on the existing stale-result backstop; the app never retries an uncertain old turn or applies its completion.
-- The pinned `codex-cli 0.144.6` `readOnly` schema exposes `networkAccess` but no stable custom readable-root list. Codex Pencil therefore combines the narrowest schema-valid sandbox with an empty isolated cwd, a dedicated config-free Codex home, disabled tool surfaces, and fail-closed event inspection. Supporting a newer CLI requires a new versioned schema authority and fresh acceptance.
-- Terminology matching is intentionally exact and deterministic. This MVP has one active non-global profile, no automatic app/document profile switching, no fuzzy or semantic matching, and no cloud synchronization.
-- The terminology backup is a recovery source, not a journal. Recovery can roll back the most recent semantic mutation if the newest main file becomes invalid.
-- CSV is an entry-oriented interchange format: its fixed columns do not encode profile enablement or profiles with no entries. New CSV-only profiles are imported enabled but never become active automatically; use JSON for a full-fidelity local profile/store backup.
-
-## Runtime Smoke Test Checklist
-
-- Launch the release executable directly:
-
-```powershell
-cd D:\dev\repos\Grammar\src-tauri\target\release
-.\codex-pencil.exe
-```
-
-- Confirm the app starts without a dev server and shows a system tray icon.
-- Use the tray menu to show and hide the floating window.
-- Use the tray Quit item and confirm `codex-pencil.exe` exits.
-- After Quit, confirm no Codex Pencil-owned `codex app-server` child remains. Other Codex desktop app-server processes may exist separately.
-- If not logged in, click Start device login, confirm the browser opens, enter the displayed device code, and wait for the app to show the ChatGPT account.
-- Cancel a device login and confirm the UI shows Login cancelled.
-- Select text in a standard Edit field (classic Notepad or a dialog text box) and press the currently displayed primary shortcut (default `Ctrl+Shift+G`). Confirm that an unsupported editor shows the unsupported-editor message without reading text.
-- Open Settings from the widget and tray, register a non-default shortcut, confirm the old shortcut stops firing, restart, and confirm the saved shortcut remains active. Reset and confirm `Ctrl+Shift+G` is active again.
-- Confirm the floating window appears near the cursor and does not show the full selected source text.
-- Verify each rewrite mode produces a non-empty replacement, summary, confidence, and optional local edit details.
-- In Translate mode, verify all five targets, `translation_only`, and exact local `source_with_translation` composition for single-line and CRLF multiline source.
-- Confirm Copy is available for a ready draft. Only a qualified target-side capture additionally shows Apply. In the owned RichEdit fixture, explicitly Apply and reread the field; changed source/selection, revoked privacy or expired capture must not mutate it. Deep pending still disables delivery.
-- Click Copy and confirm the original standard Edit field is unchanged, the widget shows `Copied — paste it into the field` with the draft still visible, the result is on the clipboard, and Copy stays disabled until the next capture.
-- Close the captured target before Copy and confirm nothing is pasted, the result is on the clipboard, and the widget notes that the captured window is gone.
-- Start a new capture before an older rewrite completes and confirm the older result cannot be copied for the new capture.
-- Keep typing in the field while clicking Copy and confirm typing is never blocked and nothing Grammar sends changes the field.
-- Press the hotkey with no selected text and confirm the No text selected state.
-- Copy an image or file reference to the clipboard, then Copy a result, and confirm the documented limitation (the earlier clipboard content is replaced) is acceptable.
-- Inspect stdout/stderr or any local diagnostic output and confirm selected text, prompts, raw model output, clipboard contents, and tokens are not logged.
-- Smoke test one installer when appropriate:
-
-```powershell
-cd D:\dev\repos\Grammar\src-tauri\target\release\bundle
-.\nsis\Codex` Pencil_0.1.0_x64-setup.exe
-# or
-msiexec /i ".\msi\Codex Pencil_0.1.0_x64_en-US.msi"
-```
-
-- Launch the installed app, confirm tray startup/login screen/quit behavior, confirm it can find `codex` on `PATH`, then verify the uninstall entry exists.
-
-If a saved shortcut cannot be registered at startup, Codex Pencil attempts the default `Ctrl+Shift+G`, exposes a content-free recovery warning, and keeps Settings reachable from the tray.
+개발 참여 전 [AGENTS.md](AGENTS.md)를 확인하세요. 현재 상태는 [control/state.json](control/state.json), 상세 이력은 [HANDOFF](docs/control/HANDOFF.md)에 기록합니다.
