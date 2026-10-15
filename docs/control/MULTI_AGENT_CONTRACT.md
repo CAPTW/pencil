@@ -1,6 +1,6 @@
 # Grammar Tool-neutral Multi-Agent Development Contract
 
-Contract-Version: 1.5.6
+Contract-Version: 1.5.7
 
 ## Active mission override (Owner authorization, 2026-09-25)
 For GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1, the Owner explicitly authorizes investigation, implementation, tests, local commits, reviewed safe local main integration and continuation through P3-A stabilization and the first Chromium textarea/simple-contenteditable adapter for personal use. This section supersedes conflicting historical one-step gates below, fixed file/iteration/commit budgets, per-step new-worktree requirements and fresh Source UI upload prerequisites. Use one dedicated mission worktree; preserve historical failed candidates and unrelated work. Historical failures remain failures. Review changed main before integration; no history rewrite or forced conflict resolution.
@@ -118,6 +118,19 @@ ten-second candidate failed and is preserved. Causal observations of prototype.1
 and a candidate without forced cleanup took about 22 seconds; this is a bounded
 shutdown budget, not a claim of faster cleanup or a relaxed inference/Accept goal. Trial Job cleanup remains
 a separate backstop and cannot count as natural product shutdown.
+
+## Continuous product quality (Owner authorization, 2026-10-15)
+PRODUCT_QUALITY_AND_RELEASE_READINESS is a permanent parallel improvement track,
+not a replacement for the active feature mission or its exact next task. Maintain
+prioritized dependencies, completion criteria and evidence in IMPROVEMENT_BACKLOG.md;
+reassess at every major feature/release checkpoint. The Owner authorizes small local
+implementation, tests, documentation and commits in the existing mission worktree.
+Start with Windows main/PR CI and obsolete test contracts. Preserve real failures,
+privacy, explicit safe Accept, compatibility and distinction between implementation,
+synthetic evidence, user qualification and acceptance. Existing open defects remain.
+This amendment grants no new account use, paid inference, public deployment, license
+choice, branch-protection mutation or security relaxation. Prepare workflow changes
+locally; report hosted execution separately. No recurring scheduler is implied.
 
 ## Historical task defaults (except active mission override)
 

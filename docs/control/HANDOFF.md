@@ -3027,3 +3027,56 @@ Canonical unrelated untracked files3 preserved by hashes. This publication recor
 is not another binary build. Source package remains stale; mission INCOMPLETE.
 Remaining: startup/shutdown latency, parallel cleanup-test load sensitivity,
 physical tray-click/debugger-detach behavior, broader hardware/editor acceptance.
+
+
+## 2026-10-15 — PRODUCT_QUALITY_AND_RELEASE_READINESS / first CI slice
+
+Owner requested a durable parallel quality track, preserving the feature mission.
+Base1749dee; reused clean codex/grammar-local-trial-ba58b7d worktree. No main/push,
+release, install, branch-setting, license, account or live Provider action.
+Contract1.5.7 and all three wrapper pins synchronized; charter/roadmap/ledger/state
+and README point to IMPROVEMENT_BACKLOG.md. Seventeen items record priorities,
+dependencies, criteria and evidence; re-evaluate at each major milestone.
+
+Main/PR core Windows source workflow now runs TS/build, provider/runtime/capture,
+Chromium core/worker/scheduling, startup fixture regression and nonignored Rust.
+Same workflow/check name; read-only token, pinned actions, no persisted credentials,
+no pull_request_target, secrets, uploads or ignored failures. --no-fail-fast exposes
+all Rust target results. Hosted run NOT_RUN. 45min job budget accommodates added
+Rust compile, copied from mission CI; no product/test deadline was increased.
+
+Old P3_02_MAIN_GUARD failed against legitimate AnalysisMode references. Replaced
+with runtime-dispatch boundary and negative engine/import examples, retaining
+production reducer/runtime tests. Structural checks are not standalone behavior proof.
+
+Full Rust validation exposed a separate real fixture fault: interrupted HTTP header
+read panicked with Windows10054/ConnectionReset before warmup. Three full-suite
+FAIL observations plus isolated/library PASS observations retained; this was not
+fixed by retries. Synthetic panic receipt established cause. Fixture now discards
+aborted/short request headers/body per connection with bounded read timeout;
+unchanged warmup/cleanup assertions still run. New disconnect test FAILs old fixture
+and PASSes repaired fixture. No production engine behavior changed.
+
+Read-only GitHub API reports repository private/main on this date. Protection and
+rulesets reads403 (plan/public availability); no inference that protection is absent.
+Owner/platform decision remains Q03; do not change visibility as a workaround.
+
+Evidence outside repo: quality-rust-20261015.log, quality-rust-all-20261015.log,
+quality-final-rust-20261015.log retain failures; quality-startup-diagnostic-full and
+quality-startup-suite-diagnostic logs record isolated/library passes; one mistakenly
+short --exact filter selected0 tests and is NOT counted. quality-fixture-red-20261015
+contains deterministic old-fixture failure. Final results recorded below.
+All logs under D:/dev/grammar-evidence; no external evidence uploaded. No interactive
+session/GPU/account test launched. Remaining product Q04 cold D model verification
+and Q05 intermittent native click delivery are NOT closed by this fixture repair.
+Project Source authority changed: previously exported Source is stale; no automatic
+Project UI update or replacement claimed. Self-review only, no independent reviewer.
+
+Final verification: cargo test --locked --no-fail-fast -- --test-threads=1 exit0,
+lib147/21ignored, app282/32ignored, remaining targets28/1ignored,2/1ignored,14/1ignored;
+quality-repaired-rust-20261015.log. Existing compiler warnings not cleared.
+Provider/runtime contracts PASS; capture PASS; Chromium core227, worker77,
+scheduling6 PASS; tsc+Vite PASS; fixture disconnect test oldFAIL/newPASS;
+governance self-test and final validation PASS; final YAML trigger/privilege/failure
+checks PASS (not actionlint/hosted execution). No further repetition needed without
+new failure/change. Next: hosted CI confirmation separately, Q07, and feature Q04/Q05.

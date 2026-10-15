@@ -2,30 +2,61 @@ name: Prototype source checks
 on:
   push:
     branches: [main, codex/grammar-local-trial-ba58b7d]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: prototype-source-${{ github.ref }}
+  group: prototype-source-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   source:
-    if: github.repository == 'CAPTW/pencil' && (github.ref == 'refs/heads/codex/grammar-local-trial-ba58b7d' || github.ref == 'refs/heads/main')
+    if: github.repository == 'CAPTW/pencil'
     runs-on: windows-2022
-    timeout-minutes: 15
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
       - name: Governance and negative checks
         run: python scripts/validate_governance.py --root . --self-test
       - name: Install locked frontend dependencies
+        if: ${{ !cancelled() }}
         run: npm ci --ignore-scripts
       - name: Typecheck and frontend build
+        if: ${{ !cancelled() }}
         run: npm run build:frontend
+      - name: Provider and runtime contracts
+        if: ${{ !cancelled() }}
+        run: npm run test:provider
+      - name: Capture contract
+        if: ${{ !cancelled() }}
+        run: node scripts/test-capture-contract.mjs
+      - name: Chromium core
+        if: ${{ !cancelled() }}
+        run: node adapters/chromium/tests/core.test.mjs
+      - name: Chromium worker
+        if: ${{ !cancelled() }}
+        run: node adapters/chromium/tests/worker.test.mjs
+      - name: Chromium scheduling
+        if: ${{ !cancelled() }}
+        run: node --test adapters/chromium/tests/scheduling.test.mjs
+      - name: Startup HTTP fixture disconnect regression
+        if: ${{ !cancelled() }}
+        run: python scripts/mission/test-gemma-startup-fixture.py
+      - name: Rust regressions (ignored live tests excluded)
+        if: ${{ !cancelled() }}
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-fail-fast -- --test-threads=1
       - name: Scope
         run: Write-Output 'Source checks only. No native desktop, GPU, model download, account access or Provider inference.'

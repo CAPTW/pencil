@@ -125,3 +125,6 @@ Prototype 2는 WebView 종료를 요청하고 런타임을 해제한 뒤 실제 
 ---
 
 개발 참여 전 [AGENTS.md](AGENTS.md)를 확인하세요. 현재 상태는 [control/state.json](control/state.json), 상세 이력은 [HANDOFF](docs/control/HANDOFF.md)에 기록합니다.
+
+
+개발 우선순위와 완료조건은 [지속 품질 개선 백로그](docs/control/IMPROVEMENT_BACKLOG.md)에서 관리합니다. 기존 기능 개발과 함께 CI·안정성·사용성·개인정보·배포 위험을 주요 단계마다 재평가합니다.

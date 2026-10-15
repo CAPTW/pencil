@@ -157,3 +157,14 @@ acceptance. Current source packages become stale until regenerated and uploaded.
 
 
 Owner sequencing2026-10-07: defer optional CUDA tuning profiles behind shared Gemma runtime, warm cancellation and adapter routing. Preserve recommendation<=1000ms and Apply<=500ms targets plus quality. Existing CUDA remains enabled; tuning is unqualified follow-up, not an implementation blocker.
+
+
+## PRODUCT_QUALITY_AND_RELEASE_READINESS (2026-10-15)
+Permanent parallel track: [prioritized backlog](IMPROVEMENT_BACKLOG.md). Preserve
+current feature goals and exact next task. Start with Windows main/PR checks and
+current test invariants; review quality debt, usability, evidence gaps and release
+risk at each major checkpoint. Small local improvements may continue autonomously;
+external account/cost/release/license/security decisions remain separately gated.
+The backlog carries dependencies, completion criteria, status and next actions;
+CI green is not native user acceptance. Latest local D-drive startup timeout and
+intermittent Accept input-delivery cause remain open, despite warm synthetic passes.
