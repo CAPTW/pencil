@@ -3409,3 +3409,40 @@ OXT. This does not extend its one-paragraph acceptance. The optional low-level
 builder remains for development, explicitly with null packageBinding. No long-lived
 processes or desktop sessions were launched, and no previous policy-blocked temp
 cleanup was retried. Personal installation unchanged. Project Source stale.
+
+
+## 2026-10-15 — Actual Gemma four-paragraph saved DOCX
+2026-10-15 Current-Gemma four-paragraph Writer DOCX: paired e6ff394 native/app and paragraph-enabled OXT passed13 widget+5 enclosing checks. Selected range within paragraph2; differently colored/aligned surrounding paragraphs and empty paragraph preserved by whole-body reread and per-portion checks. Actual Gemma EN-KO/natural/polite and four-sentence translation/rewrite, edited Accept, Undo, source-change/Disable refusal. Final recommendation831-1205ms (short1s misses2/3, paragraph3s misses0/2); Accept272-294ms (0/5 misses). No autoSave. Final trial PASS, app/Office natural0, Job remaining0 before/after, owned uninstall complete. Earlier missing-profile and quit-reply failures preserved; fixture quit request now tolerates only closed transport and still requires natural exit0. No product-core change or personal-install activation. Cross-paragraph selection/current-Gemma topology, complex docs, Word/IME/live Provider unqualified. Evidence writer-gemma-paragraphs-20261015/FINAL_RECEIPT.json.
+
+Final evidence root: D:/dev/grammar-evidence/writer-gemma-paragraphs-20261015.
+LibreOffice26.2.4.2 from the already pinned SSD runtime; Gemma12B Q4_0 stays on D.
+Only --enable-paragraphs added to the prior saved/uniform/mixed OXT; no span or
+topology flags. Full document text including paragraph separators is reread,
+every portion checks Latin/Asian/complex bold and RGB, each paragraph checks its
+alignment including the empty paragraph. Native shortcut and product menu Enable;
+actual widget Accept via trusted CDP click, no private Apply. No Owner click was
+needed in the final runs. UNO only sets up synthetic documents and independently
+reads/Undo. Product never saves the file; disk digest checked. Five sample outputs
+reviewed by integrator preserve negation,25 dollars,Friday,today and delivery date.
+No independent reviewer/linguistic review. Recommendation p50/p95/p99/max
+1077/1205/1205/1205ms; Accept284/294/294/294ms, nearest-rank n5 only.
+readyMs10135 observes the remaining wait after UI setup, not cold-start duration.
+
+Preserved failure-r1-profile-preparation (launcher refuses absent profile; no
+model/Accept), failure-r2-quit-reply (all9 functional checks pass, UI closes before
+quit IPC reply; overall FAIL, supervisor backstop1->0). pass-r3-short succeeds
+with old driver: UTF8 preparation failed under cp949 so patch did not apply; this
+is not evidence for the repair. Final r4 uses explicit UTF8, preparation exit
+check, and repaired requestAppQuit: transport_closed_before_reply is recorded
+and app natural exit0 remains mandatory. Unrelated IPC errors still fail.
+Shared fixture helper has3 regression tests; Guest payload requires it explicitly.
+Writer layout12/bridge6/package9/binding6 pass; PowerShell parse and governance pass.
+No runtime quality/budget changes. No push/main/release/new Source package.
+
+Final supervisor PASS/COMPLETE, before0/after0; uninstall complete with own native
+host registration/installation/user-data/processes0. Cleanup supervisor likewise0.
+Owned temporary Office profiles and evidence remain; prior policy-blocked cleanup
+was not retried. Personal installation and other sessions unchanged.
+Next: current-Gemma cross-paragraph selection/topology qualification, then rHWP
+trusted transport and Calc/Impress under editor-first priority. General Writer/Word
+acceptance remains incomplete; D startup optimization deferred.

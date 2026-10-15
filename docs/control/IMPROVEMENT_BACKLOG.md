@@ -194,3 +194,6 @@ This reprioritization grants no new accounts/costs, security exceptions or relea
 2026-10-15 Q11: reproducible Writer package preflight implemented and actual package
 regeneration verified, with disabled-personal-build refusal. No new GUI coverage.
 Next: current-Gemma multi-paragraph DOCX qualification; general activation pending.
+
+
+2026-10-15 current checkpoint: 2026-10-15 Current-Gemma four-paragraph Writer DOCX: paired e6ff394 native/app and paragraph-enabled OXT passed13 widget+5 enclosing checks. Selected range within paragraph2; differently colored/aligned surrounding paragraphs and empty paragraph preserved by whole-body reread and per-portion checks. Actual Gemma EN-KO/natural/polite and four-sentence translation/rewrite, edited Accept, Undo, source-change/Disable refusal. Final recommendation831-1205ms (short1s misses2/3, paragraph3s misses0/2); Accept272-294ms (0/5 misses). No autoSave. Final trial PASS, app/Office natural0, Job remaining0 before/after, owned uninstall complete. Earlier missing-profile and quit-reply failures preserved; fixture quit request now tolerates only closed transport and still requires natural exit0. No product-core change or personal-install activation. Cross-paragraph selection/current-Gemma topology, complex docs, Word/IME/live Provider unqualified. Evidence writer-gemma-paragraphs-20261015/FINAL_RECEIPT.json.
