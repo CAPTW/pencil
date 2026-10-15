@@ -219,3 +219,19 @@ trusted deployed transport, source-protection provenance and installed user flow
 remain pending. This is not general HWP/Hancom support or saved-file roundtrip proof.
 Evidence: rhwp-gemma-20261015/FINAL_RECEIPT.json. Prior Instant/bootstrap fixture
 results are separate. `--verify-only` checks all pinned upstream bytes without UI.
+
+
+## Native transport preparation and styled roundtrip (2026-10-15)
+
+`native-review.mjs` provides a trusted extension application entry using real Chrome
+Native Messaging via `native-transport.mjs`. It is not yet bundled/wired into the
+installed product. The host registration and verified document-load eligibility
+must be supplied by that trusted application; default admission still denies.
+Transport unit tests cover context, denial, abort/disconnect, revocation, mismatched
+reply, busy/close and deadline. They do not prove native browser deployment.
+
+The separate actual Gemma fixture now checks bold+italic uniform selected text,
+mixed-format surrounding paragraphs, explicit Accept, Undo and disk export/reopen
+for HWP/HWPX (18 checks). This still uses the earlier TEST-ONLY analysis bridge.
+Mixed formatting within the selected paragraph, tables/fields and general complex
+HWP documents remain unsupported. Do not remove the current refusal to enable them.

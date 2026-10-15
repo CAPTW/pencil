@@ -3520,3 +3520,40 @@ Prior failed profile/evidence retained; unrelated sessions untouched.
 Same-integrator review only. Project Source stale. Next: trusted product transport
 and admission/provenance, then installed rHWP qualification; Calc/Impress remains
 next editor work. General HWP/HWPX support is not enabled by this checkpoint.
+
+
+## 2026-10-15 — rHWP product transport foundation and styled save/reopen
+2026-10-15 rHWP native transport foundation and saved-format fixture: extension-owned Native Messaging module plus admission-bound bootstrap added;9 transport counterexamples and full29 unit tests PASS, but packaging/trusted load provenance/installed routing NOT_RUN and production admission remains denied. Actual Gemma existing test bridge HWP/HWPX6 cases18 checks PASS for styled uniform target, mixed surrounding runs, Accept/Undo and disk save/reopen exact text+property rereads. No mixed-target support or general complex-document claim. Final single-session app/server natural exit, supervisor0, uninstall complete; missing-profile first failure retained with1 owned child cleaned. No personal install/main/push/release changes; mission INCOMPLETE. Evidence rhwp-native-prep-20261015/FINAL_RECEIPT.json.
+
+Request remains PARTIAL. native-review.mjs is a trusted extension application entry,
+not wired into a shipped rHWP package. Native transport uses connectNative with a
+package-supplied host name, same-extension context, one request, bounded10s deadline,
+abort disconnect, terminal close, admission at dispatch and reply, identity binding,
+no Deep fields/retry/HTTP/page-message listener. Unit ports are fake; native runtime
+qualification of this NEW transport is NOT_RUN. The actual-model browser test still
+uses the PREVIOUS Playwright bridge, explicitly labelled as such. Do not combine
+these two observations into installed-product acceptance.
+
+Pinned rHWP rejects mixed character runs IN the selected paragraph before target
+text access. This refusal is retained. New actual Gemma fixture styles all of the
+selected paragraph bold+italic and separate portions of Header/tail bold/italic.
+Before/after/Undo compares exact target character/paragraph/style properties plus
+every surrounding character property. After Accept, exports HWP/HWPX bytes to owned
+disk, verifies disk bytes, performs Undo and source/format checks, then reopens saved
+bytes and confirms output text/format again. Six translation/natural/polite cases
+pass18 checks. This is an API export/reopen test, not a native Save dialog test.
+No tables/fields/mixed selected runs/real Hancom/normal-profile qualification.
+Outputs preserve negation,25 dollars,today in integrator review; no independent
+linguistic reviewer. Timings are scoped headless fixture observations in receipt.
+
+First preparation failed because ProfileDirectory did not exist; fixed owned
+fixture precondition, no product policy relaxed. First supervisor FAIL retained,
+one owned child terminated, remaining0. Final131.5s supervisor PASS before0/after0;
+app quit acknowledged/natural, server exit0. Browser profile removed, owned uninstall
+complete with registration/installation/user-data/processes0. No ongoing sessions.
+Same-integrator code review; no new independent reviewer. Source package stale.
+Next: bundle pinned Studio into extension-owned product page with source/artifact
+binding; implement trusted per-load protection provenance (password-open/save-intent
+metadata alone is insufficient); qualify actual Native Messaging in that package.
+Then mixed-target formatting needs a verified replacement/run-mapping design rather
+than removal of existing format refusal. Existing production activation stays denied.
