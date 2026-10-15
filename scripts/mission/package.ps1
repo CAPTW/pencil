@@ -2,6 +2,7 @@ param(
   [Parameter(Mandatory)][string]$ReceiptPath,
   [Parameter(Mandatory)][string]$OutputRoot,
   [string]$VCRuntimeDirectory,
+  [string]$RhwpSourceRoot,
   [ValidateSet('cuda12.4','cuda13.4-blackwell')][string]$LocalRuntimeProfile='cuda13.4-blackwell'
 )
 $ErrorActionPreference='Stop'
@@ -90,6 +91,10 @@ Copy-Item -LiteralPath (Join-Path $source 'scripts/package/START_HERE.md') -Dest
 & python (Join-Path $PSScriptRoot 'package-notices.py') (Join-Path $destination 'THIRD_PARTY_NOTICES')
 if ($LASTEXITCODE -ne 0) { throw 'Dependency notice collection failed' }
 $null=& (Join-Path $PSScriptRoot 'build-receipt.ps1') -SourceRoot $source -ReceiptPath $ReceiptPath -VerifyOnly -ExecutablePath (Join-Path $destination 'codex-pencil.exe') -HostExecutablePath (Join-Path $destination 'grammar-chromium-host.exe') -TargetLibraryPath (Join-Path $destination 'target-apply.dll') -GemmaBrokerPath (Join-Path $destination 'grammar-gemma-broker.exe')
+if ($RhwpSourceRoot) {
+  & node (Join-Path $PSScriptRoot 'build-rhwp-extension.mjs') $RhwpSourceRoot (Join-Path $destination 'extension')
+  if ($LASTEXITCODE -ne 0) { throw 'Pinned rHWP extension build failed' }
+}
 $files=@(Get-ChildItem -LiteralPath $destination -File -Recurse -Force | Sort-Object FullName | ForEach-Object {
   [ordered]@{path=[IO.Path]::GetRelativePath($destination,$_.FullName).Replace('\','/');sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower();bytes=$_.Length}
 })
