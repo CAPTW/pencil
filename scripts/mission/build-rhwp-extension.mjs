@@ -1,0 +1,27 @@
+// Build the pinned editor into the existing extension; no host permission added.
+import assert from 'node:assert/strict';
+import {readFile,writeFile,readdir,copyFile,mkdir} from 'node:fs/promises';
+import {resolve,join,posix} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {createHash} from 'node:crypto';
+import {overlayProduct} from '../../adapters/rhwp/product-overlay.mjs';
+import {overlayInput,overlayHistory} from '../../adapters/rhwp/input-overlay.mjs';
+const [rootArg,extensionArg]=process.argv.slice(2);assert.ok(rootArg&&extensionArg);
+const root=resolve(rootArg),extension=resolve(extensionArg),repo=resolve(new URL('../..',import.meta.url).pathname.replace(/^\/([A-Za-z]:)/,'$1'));
+const pin=JSON.parse(await readFile(new URL('../../adapters/rhwp/upstream.json',import.meta.url),'utf8'));
+const proof=JSON.parse(await readFile(join(root,'upstream-receipt.json'),'utf8'));assert.equal(proof.sourceCommit,pin.commit);
+const hash=b=>createHash('sha256').update(b).digest('hex');
+for(const f of proof.files)assert.equal(hash(await readFile(join(root,'upstream',f.path))),f.sha256,f.path);
+assert.equal('sha512-'+createHash('sha512').update(await readFile(join(root,'core-0.8.7.tgz'))).digest('base64'),pin.coreIntegrity);
+const studio=join(root,'upstream/rhwp-studio'),modules=new Map();
+for(const name of ['native-review','native-transport','load-protection','accept-gate','review-session','review-panel','instant-draft','bootstrap','document-admission'])modules.set('/grammar-review/'+name+'.mjs',await readFile(new URL('../../adapters/rhwp/'+name+'.mjs',import.meta.url),'utf8'));
+modules.set('/grammar-core.js',await readFile(new URL('../../adapters/chromium/extension/core.js',import.meta.url),'utf8'));
+const {build}=await import(pathToFileURL(join(studio,'node_modules/vite/dist/node/index.js')));
+await build({configFile:false,root:studio,base:'./',publicDir:'public',define:{__APP_VERSION__:JSON.stringify(pin.version),__RHWP_DISABLE_EXTERNAL_WEBFONTS__:'true',__RHWP_HWPCTRL__:'false'},resolve:{alias:{'@':join(studio,'src'),'@wasm/rhwp.js':join(root,'upstream/pkg/rhwp.js'),'@wasm':join(root,'upstream/pkg')}},build:{outDir:join(extension,'rhwp'),emptyOutDir:false,target:'esnext',minify:false},plugins:[{name:'pencil-rhwp',enforce:'pre',resolveId(id,importer){const key=id.startsWith('.')&&importer?.startsWith('\0pencil:')?posix.resolve(posix.dirname(importer.slice(8)),id):id;if(modules.has(key))return '\0pencil:'+key;},load(id){if(id.startsWith('\0pencil:'))return modules.get(id.slice(8));},transform(source,id){id=id.replaceAll('\\','/');source=source.replaceAll('\r\n','\n');if(id.endsWith('/src/recent/recent-store.ts'))return 'export const addRecentDoc=async()=>{};export const listRecentDocs=async()=>[];export const removeRecentDoc=async()=>{};export const clearRecentDocs=async()=>{};';if(id.endsWith('/src/command/commands/file.ts')){const key="    return await saveDocumentToFileSystem({";if(source.split(key).length!==2)throw Error('RHWP_SAVE_SOURCE_DRIFT');return source.replace(key,"    return {method:'fallback',handle:null,fileName:suggestedName};\n    return await saveDocumentToFileSystem({");}if(id.endsWith('/src/main.ts'))return overlayProduct(source);if(id.endsWith('/src/engine/input-handler.ts'))return overlayInput(source);if(id.endsWith('/src/engine/history.ts'))return overlayHistory(source);}}]});
+const manifestPath=join(extension,'manifest.json'),manifest=JSON.parse(await readFile(manifestPath,'utf8'));
+manifest.content_security_policy={extension_pages:"script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; connect-src 'self'; img-src 'self' data: blob:; frame-src 'self'"};
+await writeFile(manifestPath,JSON.stringify(manifest,null,2));
+const popup=join(extension,'popup.html');await writeFile(popup,(await readFile(popup,'utf8')).replace('</body>','<p><a href="rhwp/index.html" target="_blank">Open Pencil HWP / HWPX editor</a></p></body>'));
+await copyFile(join(root,'upstream/LICENSE'),join(extension,'rhwp/RHWP_LICENSE.txt'));
+await writeFile(join(extension,'rhwp/PENCIL_BUILD.json'),JSON.stringify({upstream:pin,sourceModules:Object.fromEntries([...modules].map(([k,v])=>[k,hash(v)])),scope:'PLAIN_PROTECTION_CHECKED_HWP5_HWPX_UNIFORM_BODY_REVIEW'},null,2));
+console.log('PENCIL_RHWP_BUILT');
