@@ -3302,3 +3302,38 @@ removed after processes exited. Original D:/PencilAssets model/runtime and perso
 installation unchanged. Runtime junctions retained without recursive traversal.
 The final production source has no broker change; rejected candidate binaries and
 logs remain evidence. No main/push/release, no installed candidate upgrade.
+
+
+## 2026-10-15 — Owner defers startup tuning; editor integration first
+D: maps to PhysicalDrive0, WDC WD80EAAZ SATA HDD (Healthy reported, not a full
+hardware health diagnosis). Three PDH samples observed queue38-40, average reads
+165-197ms and9-11KiB/request,1.95-2.51MB/s during other workloads. Process IO was
+all-device/logical counters, not attribution to D; do not blame a specific process.
+Installed broker cache-uncontrolled startup PASS8.891s: model pin2.441s
+(read1.018s/hash1.417s), engine6.057s; supervised cleanup before/after0. This warm
+result does not repair earlier cold timeouts. fsutil extents query unsupported;
+no fragmentation conclusion. Unbuffered direct-read comparison prepared but NOT_RUN
+because Owner explicitly deferred latency and will not pause other sessions.
+Evidence D:/dev/grammar-evidence/disk-contention-20261015; dispatcher restored,
+owned app/model processes0, no installation/settings/model modifications.
+
+Independent boundary repair: model verifier previously could return success when
+its final EOF read crossed the deadline. Production verifier extracted with file
+pin ownership unchanged; check active/deadline immediately after read and after
+hash finalization. Delayed EOF regression oldFAIL/newPASS (red-r2), broker3PASS,
+1profile ignored. Initial red attempt was a CRLF preparation/compiler failure,
+not a reproduced bug; preserved separately. No throughput improvement claimed,
+no model/quality/hash/locking/deadline relaxation, no new binary installed.
+
+Current priority is editor/document integration, then Provider/API connectivity
+and stability; startup tuning deferred. State history, roadmap, ledger and backlog
+updated without changing whole-product acceptance. Current next implementation
+slice: paired Writer OXT/current Gemma product for owned saved DOCX, preserving
+format/Undo and target authority. Then rHWP product admission/transport and
+Calc/Impress; actual Office/Hancom remain separate qualification targets.
+Writer bridge6/layout12 and rHWP admission/Instant15 unit regressions PASS;
+these are not new native editor or current-Gemma adapter acceptance. No additional
+Accept trial this turn; prior14-pass quiet native result remains historical.
+Governance PASS. Same-integrator review only. Q04 deferred, Q05 correctness open;
+no main/push/release or Project Source regeneration. Source package now stale for
+priority change. Other sessions were not interrupted.
