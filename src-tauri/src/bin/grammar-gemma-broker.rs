@@ -192,6 +192,13 @@ fn pin_model(model:&Path,expected:&str,active:&AtomicBool,deadline:Instant)->Res
     {
         return Err("gemma_model_limit".into());
     }
+    verify_model_stream(&mut model_file, expected, active, deadline)?;
+    Ok(model_file)
+}
+
+// File ownership stays in pin_model while this same verifier is exercised by
+// delayed-reader regressions. A completed read must not bypass the startup budget.
+fn verify_model_stream(reader:&mut impl Read,expected:&str,active:&AtomicBool,deadline:Instant)->Result<(),String> {
     let mut timings=ModelPinTimings::new();
     let mut hash = Sha256::new();
     let mut buffer = vec![0u8; 1024 * 1024];
@@ -200,10 +207,13 @@ fn pin_model(model:&Path,expected:&str,active:&AtomicBool,deadline:Instant)->Res
             return Err("gemma_broker_startup_revoked_or_deadline".into());
         }
         let before=Instant::now();
-        let n = model_file
+        let n = reader
             .read(&mut buffer)
             .map_err(|_| "gemma_model_read")?;
         timings.read_us+=before.elapsed().as_micros();
+        if !active.load(Ordering::SeqCst) || Instant::now() >= deadline {
+            return Err("gemma_broker_startup_revoked_or_deadline".into());
+        }
         if n == 0 {
             break;
         }
@@ -215,11 +225,11 @@ fn pin_model(model:&Path,expected:&str,active:&AtomicBool,deadline:Instant)->Res
     if format!("{:x}", hash.finalize()) != expected.to_ascii_lowercase() {
         return Err("gemma_model_hash".into());
     }
-    if !active.load(Ordering::SeqCst) {
-        return Err("gemma_broker_revoked".into());
+    if !active.load(Ordering::SeqCst) || Instant::now() >= deadline {
+        return Err("gemma_broker_startup_revoked_or_deadline".into());
     }
     timings.verified=true;
-    Ok(model_file)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -268,6 +278,23 @@ mod tests {
         assert!(std::fs::remove_file(&path).is_err());
         drop(pin);std::fs::remove_file(path).unwrap();
     }
+    #[test]
+    fn model_verifier_rejects_eof_that_arrives_after_deadline() {
+        struct LateEof { deadline:Instant, called:bool }
+        impl Read for LateEof {
+            fn read(&mut self,_:&mut [u8])->std::io::Result<usize> {
+                self.called=true;
+                while Instant::now()<self.deadline { std::thread::sleep(Duration::from_millis(1)); }
+                Ok(0)
+            }
+        }
+        let deadline=Instant::now()+Duration::from_millis(250);
+        let mut reader=LateEof{deadline,called:false};
+        let expected=format!("{:x}",Sha256::digest(b""));
+        assert_eq!(verify_model_stream(&mut reader,&expected,&AtomicBool::new(true),deadline).err().as_deref(),Some("gemma_broker_startup_revoked_or_deadline"));
+        assert!(reader.called);
+    }
+
     #[test]
     #[ignore="owned model hash profile only; no GPU or inference"]
     fn owned_model_pin_profile() {

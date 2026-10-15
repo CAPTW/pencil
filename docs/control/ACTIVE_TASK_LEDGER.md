@@ -141,3 +141,31 @@ external account/cost/release/license/security decisions remain separately gated
 The backlog carries dependencies, completion criteria, status and next actions;
 CI green is not native user acceptance. Latest local D-drive startup timeout and
 intermittent Accept input-delivery cause remain open, despite warm synthetic passes.
+
+
+## Owner sequencing override — 2026-10-15
+Current execution priority: (1) document/editor integration, (2) Provider/API
+connectivity and stability, (3) startup/performance optimization. The Owner
+explicitly deferred D-drive first-start latency and will keep other sessions
+running. Do not stop unrelated processes or require them to pause. Q04 is deferred,
+not repaired; preserve all timeout failures and existing latency/quality targets.
+Q05 remains a correctness regression within each editor qualification, not a
+reason to keep broad editor implementation behind repeated performance trials.
+
+Next concrete slice: requalify the existing Writer adapter with the current
+Gemma-enabled product, paired native DLL/OXT and owned saved DOCX. Verify selection,
+translation/rewrite, edited Accept, complete reread, formatting/Undo, changed-source
+refusal, Disable and cleanup. Prior runtime0fc8624 evidence is not current Gemma
+qualification. Then complete rHWP trusted admission/local transport and HWP/HWPX
+installed flow; progress Calc/XLSX and Impress/PPTX adapters, with actual Microsoft
+Office/Hancom application qualification tracked separately. Reuse existing cores.
+Manual text -> analyze -> Copy is a useful unsupported-editor fallback, never a
+claim of direct Apply or a replacement for the requested adapters.
+
+All-document operation is the product objective, not current support. Activate
+only verified application/version/range combinations; file suffixes do not grant
+mutation authority. Keep explicit Accept, exact source/revision, user edit/format
+preservation, sensitive-field refusal, single owned test session and cleanup.
+Provider work follows adapter connectivity: one selected provider, consent,
+revocation/cancel, no replay, explicit successful-response and failure validation.
+This reprioritization grants no new accounts/costs, security exceptions or release.
