@@ -33,7 +33,7 @@ class ProductionBrokerTests(launcher.LauncherTests):
             entry.update(sha256=launcher.digest(path), bytes=path.stat().st_size)
         (self.root / "MANIFEST.json").write_text(json.dumps(self.manifest))
         (self.root / "wait-release").touch()
-        command = "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); & '" + str(self.root / "Start-Grammar.ps1").replace("'", "''") + "' -EnableDesktopGemma"
+        command = "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); try { & '" + str(self.root / "Start-Grammar.ps1").replace("'", "''") + "' -EnableDesktopGemma } finally { foreach ($failure in $Error) { [Console]::Error.WriteLine($failure.ToString()) } }"
         process = subprocess.Popen(["pwsh", "-NoProfile", "-Command", command], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", creationflags=0x08000000)
         try:
             path, state = self.wait_phase("failed")
@@ -57,6 +57,7 @@ class ProductionBrokerTests(launcher.LauncherTests):
         finally:
             (self.root / "release-app").touch()
             out, err = process.communicate(timeout=20)
+            print("Owned artifact-failure launcher diagnostics:\n" + out + err)
         self.assertNotEqual(process.returncode, 0)
         self.assertIn("no runtime was started", err)
         self.assertNotIn("cleanup complete", (out + err).lower())

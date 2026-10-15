@@ -3122,3 +3122,10 @@ failures remain recorded in quality-launcher-r2/r3-20261015.log. Focused retries
 passed2/2 but do not erase these failures or establish their cause. Added last-phase
 and stdout failure diagnostics without changing deadlines/assertions. Hosted final
 result must be read for the exact candidate commit; no local full31 PASS claimed.
+
+Hosted c0ecb04 run38725130779 FAIL: actual-broker artifact failure did not offer
+a retryTicket; warmup-failure case passed and all earlier core steps passed.
+Cause remains under diagnosis. Preserve quality-ci-c0ecb04-failure-20261015.log.
+Fixture now emits owned PowerShell error history (no user data) to identify the
+original handled failure. CI dev/test debug profiles aligned to reuse dependencies;
+observed duplicate broker dev build took4m28s; no timeout or assertion relaxed.
