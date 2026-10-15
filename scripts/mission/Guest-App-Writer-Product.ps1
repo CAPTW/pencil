@@ -10,6 +10,9 @@ $office=$null;$python=$null
 function Save-Receipt {$report | ConvertTo-Json -Depth 5 | Set-Content C:\GrammarOutput\launcher.json}
 try {
  Save-Receipt
+ foreach($fixture in @('writer-app-e2e.mjs','request-app-quit.mjs','writer-product-probe.py')) {
+  if(-not(Test-Path -LiteralPath (Join-Path 'C:\GrammarPayload' $fixture) -PathType Leaf)){throw "Writer fixture payload missing: $fixture"}
+ }
  $report.writerExtensionSha256=(Get-FileHash C:\GrammarPayload\GrammarWriter-product.oxt -Algorithm SHA256).Hash.ToLowerInvariant()
  if($SavedDocx){$report.classification='INSTALLED_WRITER_WIDGET_OWNED_SAVED_PLAIN_DOCX'}
  if($UniformFormat){$report.uniformFormat=$true;$report.savedDocx=[bool]$SavedDocx;$report.classification='INSTALLED_WRITER_WIDGET_OWNED_UNIFORM_FORMAT'}

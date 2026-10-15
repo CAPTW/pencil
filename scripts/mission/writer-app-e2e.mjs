@@ -1,6 +1,7 @@
 // Parent is the owned LibreOffice Python fixture; its JSON commands operate
 // only its newly created synthetic document. No product-private Apply shortcut.
 import assert from 'node:assert/strict';
+import {requestAppQuit} from './request-app-quit.mjs';
 import {spawn} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {readFile, writeFile} from 'node:fs/promises';
@@ -81,7 +82,7 @@ try{
  await until('revoked permission refused',async()=>['Apply unavailable - Copy is available','Apply outcome unconfirmed'].includes(await status.textContent()));
  result.revokedStatus=await status.textContent();
  assert.equal(normalized(await command('read')),initial);pass('Disable after capture prevents mutation');
- await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app'));
+ result.quitRequest=await requestAppQuit(page);
  await until('app natural exit',()=>app.exitCode!==null);assert.equal(app.exitCode,0);pass('app exits naturally');result.status='PASS';
 }catch(error){result.error=String(error.stack??error);if(page){result.lastStatus=await page.locator('.status-pill').textContent().catch(()=>null);}}
 finally{

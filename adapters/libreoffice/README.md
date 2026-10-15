@@ -1,3 +1,10 @@
+> New current-Gemma scope: four-paragraph saved DOCX, homogeneous selection within
+> paragraph2, distinct surrounding color/alignment and empty paragraph preserved.
+> Actual translation/natural/polite and four-sentence translation/rewrite Accept,
+> whole-text/format reread and Undo PASS13+5 (writer-gemma-paragraphs-20261015).
+> This does not qualify cross-paragraph selection or general Writer/Word support.
+> For Sandbox fixture payloads also copy scripts/mission/request-app-quit.mjs.
+
 
 > Current Gemma checkpoint (2026-10-15): clean e6ff394 app/host/broker plus paired
 > Writer-enabled native DLL/OXT passed owned saved DOCX EN-KO/natural/polite
