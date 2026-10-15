@@ -3153,3 +3153,11 @@ or deadline increase. Test observers retain Rust-equivalent sharing. Initial .NE
 PowerShell null binding produced an empty backup path; corrected to NullString.Value.
 That intermediate test run is failed, not final validation. This is a startup status
 publication race fix, not proof that cold disk latency or native clicks are repaired.
+
+839f6f2 local launcher31 + actual-broker2 PASS. Hosted run38727497426:
+all core steps and broker2 PASS; launcher30PASS/1FAIL. Failure is private CRT
+path spelling (CI TEMP RUNNER~1 vs runneradmin), not distinct directories.
+Fixture now requires os.path.samefile for the first child PATH entry and rejects
+the installation root; parent PATH equality remains unchanged. Focused check PASS.
+Previous atomic-publication failure no longer reproduced in the hosted regressions.
+Final next-commit hosted status remains separate from this failed run.

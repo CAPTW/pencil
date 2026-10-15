@@ -179,7 +179,11 @@ class LauncherTests(unittest.TestCase):
         process = subprocess.Popen(["pwsh", "-NoProfile", "-File", str(self.root / "Start-Grammar.ps1")], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
         try:
             self.wait_phase("ready")
-            self.assertEqual((self.root / "broker-path").read_text().split(";")[0], str(folder))
+            # CI TEMP may use its 8.3 alias while PowerShell resolves the long
+            # spelling. Require actual directory identity, not string spelling.
+            child_path_first = (self.root / "broker-path").read_text().split(";")[0]
+            self.assertTrue(os.path.samefile(child_path_first, folder))
+            self.assertFalse(os.path.samefile(child_path_first, self.root))
             self.assertEqual(os.environ["PATH"], before)
         finally:
             (self.root / "release-app").touch()
