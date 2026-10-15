@@ -44,3 +44,5 @@ const server=await createServer({root:studio,server:{host:'127.0.0.1',port:17707
 }]});
 await server.listen();console.log('OWNED_SERVER',process.pid);
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,async()=>{await server.close();process.exit(0);});
+
+if(process.argv.includes('--owned-stdin-lifetime')){process.stdin.resume();process.stdin.on('end',async()=>{await server.close();process.exit(0);});}

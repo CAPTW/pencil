@@ -3487,3 +3487,36 @@ Next document-priority slice: rHWP trusted product transport/admission and
 installed HWP/HWPX flow, then Calc/Impress. Writer current-Gemma merge/split,
 complex tables/fields/tracked changes, mixed runs inside each selected paragraph,
 Word/IME/normal profiles remain unqualified. Accept latency debt remains open.
+
+
+## 2026-10-15 — rHWP actual Gemma scoped bridge
+2026-10-15 rHWP actual Gemma scoped bridge: HWP/HWPX plain whole-body paragraph EN-KO/natural/polite6 calls and12 Accept/exact text+format properties/Undo checks PASS. Added opt-in writing intents, response binding and draft-protecting mode changes. Fixed fixture early stdin EOF cancelling async host requests; prior3 failures retained. Recommendation841-1444ms, Accept33-54ms in headless owned Chromium only. Final app/server natural0, supervisor0 before/after, uninstall complete. Default production admission remains denied; trusted installed routing/provenance and rich documents unqualified. No personal installation/main/push/release change; mission INCOMPLETE. Evidence rhwp-gemma-20261015/FINAL_RECEIPT.json.
+
+Native host/broker/app package source e6ff394 remains unchanged. Current JS adapter
+runs against pinned rHWP0.8.7 commit1a76570e833917d15817415a53c09ad61ab3203f;
+864 source hashes and core tarball integrity were verified. Six actual D Gemma12B
+Q4_0 requests use the installed host whose manifest hash is checked. No fake model,
+remote Provider, changed weights or relaxed10s host timeout/256KiB output cap.
+Playwright exposes a TEST-ONLY local analysis bridge and synthetic eligibility;
+this is NOT the trusted bootstrap, desktop shortcut, general profile or installed
+rHWP product routing. Default production admission remains false.
+
+Six cases preserve negation,25 dollars and today in integrator semantic review;
+not independent linguistic review. HWP/HWPX whole homogeneous plain paragraph only,
+with unselected Header/tail exact reread, character/paragraph/style property JSON
+and format digest before/after/Undo. No mixed runs, tables, fields, real Hancom,
+save/reopen roundtrip or sensitive-document qualification. Result1s missed1/6;
+Accept500ms missed0/6; small headless fixture timings do not qualify native UX.
+
+Failures retained: preparation timeout and owned orphan cleanup, reused output
+refusal, then request-pipe early EOF cancelling async Gemma. Full response framing
+before EOF fixed the last failure; six final hosts exited0. New panel tests check
+mode-change decline preserves edited draft, confirmed change clears authority,
+and late old-mode reply cannot publish. rHWP unit suite20 PASS. Older Instant-only
+browser fixture NOT rerun; no claim of new real-model stale/Disable browser tests.
+Final supervisor PASS/COMPLETE before0/after0, app natural exit and server exit0;
+owned uninstall complete with installation/registration/user-data/processes0.
+Prior failed profile/evidence retained; unrelated sessions untouched.
+Same-integrator review only. Project Source stale. Next: trusted product transport
+and admission/provenance, then installed rHWP qualification; Calc/Impress remains
+next editor work. General HWP/HWPX support is not enabled by this checkpoint.

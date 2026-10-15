@@ -201,3 +201,21 @@ The protection counterexample sets only synthetic editor metadata, then clicks
 Accept in the same JS task before the polling callback. It checks zero subsequent
 target reads, unchanged whole-document text, cleared draft and refusal after the
 flag is cleared. This is not an encrypted-file or real-password qualification.
+
+
+## Actual local Gemma writing bridge (2026-10-15, fixture only)
+
+The optional analyzer now supports explicitly enabled translation (ko/en), natural
+and polite rewrite intents. The internal panel binds mode to each capture, asks
+before discarding a changed draft, and invalidates old authority on mode change.
+Reply intent/identity/revision must match. No cloud fallback or retry is added.
+
+`rhwp-api-probe.mjs --gemma-only` (mode is the final positional argument) uses a
+manifest-checked installed native host and actual local broker via a Playwright
+TEST-ONLY bridge. Owned HWP/HWPX EN-KO/natural/polite6 cases passed12 Accept/text,
+character/paragraph/style-property and Undo checks. Only whole homogeneous plain
+body paragraphs are qualified. The default bootstrap still denies admission;
+trusted deployed transport, source-protection provenance and installed user flow
+remain pending. This is not general HWP/Hancom support or saved-file roundtrip proof.
+Evidence: rhwp-gemma-20261015/FINAL_RECEIPT.json. Prior Instant/bootstrap fixture
+results are separate. `--verify-only` checks all pinned upstream bytes without UI.
