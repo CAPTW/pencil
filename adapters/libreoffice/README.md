@@ -1,3 +1,11 @@
+> Current-Gemma span checkpoint: owned saved DOCX selection across four Standard
+> paragraphs (one empty), preserving each paragraph color/alignment and bold,
+> explicit translation/natural/polite/edited Accept, complete reread and Undo.
+> Removed paragraph boundaries, source changes and Disable are refused without
+> wrong mutation. Final10+5 PASS; Accept500ms target missed5/6 across two trials.
+> General DOCX/Word and current-Gemma merge/split remain unqualified. See HANDOFF
+> and writer-gemma-span-20261015/FINAL_RECEIPT.json. Personal install unchanged.
+
 > New current-Gemma scope: four-paragraph saved DOCX, homogeneous selection within
 > paragraph2, distinct surrounding color/alignment and empty paragraph preserved.
 > Actual translation/natural/polite and four-sentence translation/rewrite Accept,
