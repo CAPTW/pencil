@@ -3201,3 +3201,51 @@ trial-r3/desktop-results/app-result.json and trial-r3/supervisor.json. Earlier f
 attempts remain separate. Q04/Q05 stay open: next isolate first-start verification
 and model initialization costs, and reproduce native delivery failure under measured
 focus/occlusion conditions without relaxing target validation. No main/release change.
+
+## 2026-10-15 — Installed startup phases and inactive-review diagnosis
+Product installation remains CI-qualified b145ddd; no product binary, model,
+settings, integrity checks or inference parameters changed. Added developer probe
+scripts/mission/measure-installed-gemma-startup.py for supervised owned trials:
+verify installed package/CRT hashes, run the installed broker, retain only bounded
+fixed numeric phase telemetry, close stdin and require cleanup acknowledgement.
+Actual startup PASS: 8718ms (cache uncontrolled), model pin2741ms including
+read1309ms/hash1425ms for6975879296 bytes; other artifact pins350ms, engine
+setup/spawn561ms, health/load4955ms, explicit warmup81ms. It is not an installed
+app launch or cold-storage acceptance. Missing-runtime negative case exited31ms,
+ready=false, exit1, no cleanup acknowledgement; observed expected rejection,
+not a successful startup. Syntax and governance/self-tests PASS.
+
+Inactive-review trial-r3: installed actual Gemma14/14 PASS,7 real native mouse
+Accepts after verified owned target title-bar activation (review inactive),7 CDP.
+Exact source reread,12 golden/2 previously reviewed equivalents. Ready20644ms;
+capture114-234ms, recommendation559-1110ms, click-to-reread79-132ms. App/editor
+natural exit, supervisor PASS/COMPLETE with before/after0. Inactive-review alone
+did not reproduce historical input loss; do not claim Q05 repaired.
+
+Trial preparation failures remain explicit: first copied harness retained old
+task-owned paths (Windows separator mismatch); browser receipt overwritten in
+old evidence directory and copied to new evidence location, no user profile used.
+Desktop prior receipt restored from pre-write backup; failed run archived separately.
+First inactive run failed helper path escaping (owned conhost backstop1 ->0);
+r2 failed before app launch for absent fresh profile/output directories (remaining0).
+r3 fixes paths/directories and passes; earlier failures are not reclassified.
+Evidence roots: personal-inactive-accept-20261015{/startup.json,-r2,-r3},
+personal-chromium-b145ddd-20261015 and its -r2 successor under
+D:/dev/grammar-evidence. No independent reviewer; same-integrator review only.
+Q04/Q05 stay open. Next collect phase telemetry on an actual first cold launch
+without cache manipulation, and reproduce the original input-loss event with
+owned foreground/hit-test/event evidence before changing product input logic.
+
+Fresh Chromium successor-r2: unmodified installed extension pbkigacecepjkokofepecnhncmccnadm,
+fresh owned app/browser profiles, sandbox on, real toolbar mouse then CDP trusted
+mouse on actual popup (not physical-only). Actual Gemma14 translation/paraphrase
+rows PASS including textarea/contenteditable, Accept/Apply edit and exact reread;
+cache/Accept no inference, source-change/sensitive boundaries, disable/navigation
+and no document storage verified. Recommendation337.8-781.5ms,
+Accept click/reread14.3-15.9ms; ready21855.1ms.
+Same-integrator output review preserved numbers/negation/uncertainty/conditions;
+raw qualityStatus remains PENDING_SEPARATE_REVIEW, not independent linguistic QA.
+Supervisor PASS/COMPLETE before/after0; browser closed, host0, profile deleted,
+extension files unchanged. External dispatcher restored byte-for-byte and owned
+app/model process inventory0. Final receipt personal-chromium-b145ddd-20261015-r2/
+FINAL_RECEIPT.json. No main, push, release or normal Chrome profile change.
