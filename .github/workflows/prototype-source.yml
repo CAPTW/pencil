@@ -58,5 +58,13 @@ jobs:
       - name: Rust regressions (ignored live tests excluded)
         if: ${{ !cancelled() }}
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-fail-fast -- --test-threads=1
+      - name: Broker startup failure and explicit retry integration
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: |
+          cargo build --manifest-path src-tauri/Cargo.toml --locked --bin grammar-gemma-broker
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python scripts/mission/test-gemma-pre-ready.py
+          exit $LASTEXITCODE
       - name: Scope
         run: Write-Output 'Source checks only. No native desktop, GPU, model download, account access or Provider inference.'

@@ -15,7 +15,7 @@ Set-StrictMode -Version 3.0
 $root = $PSScriptRoot
 $pins = [Collections.Generic.List[IO.FileStream]]::new()
 $lock = $null; $broker = $null; $app = $null; $published = $null; $original = $null
-$read = $null; $drain = $null; $cleanupComplete = $false
+$read = $null; $drain = $null; $cleanupComplete = $false; $runtimeNotStarted = $false
 $configConflict = $false; $brokerFailed = $false; $missingAssets = $false
 $session = $null; $sessionPath = $null; $sessionBytes = $null; $retryTicket = $null
 $configPath = Join-Path $root 'grammar-chromium-host.origin.json'
@@ -71,6 +71,7 @@ function Restore-Config {
 function Start-Broker {
   $script:retryTicket = $null
   $script:cleanupComplete = $false
+  $script:runtimeNotStarted = $false
   $script:brokerFailed = $false
   $script:missingAssets = $false
   Publish-Session 'starting'
@@ -96,6 +97,10 @@ function Start-Broker {
   if ($line -ceq '{"cleanup":"complete"}') {
     $script:cleanupComplete = $true
     throw 'Gemma startup failed; cleanup acknowledged'
+  }
+  if ($line -ceq '{"startup":"not_started"}') {
+    $script:runtimeNotStarted = $true
+    throw 'Gemma artifact validation failed; no runtime was started'
   }
   if (-not $line -or $line.Length -gt 1024) { throw 'Gemma did not become ready' }
   $ready = $line | ConvertFrom-Json
@@ -134,7 +139,10 @@ function Start-Attempt {
         throw 'Gemma cleanup incomplete; owned process tree termination requested'
       }
       $script:configConflict = Restore-Config
-      if ((Confirm-Cleanup) -and -not $configConflict) {
+      $confirmedCleanup = Confirm-Cleanup
+      # Trusted pinned broker, reaped above, with completed diagnostic drain.
+      # No-runtime receipt is not a claim that an engine was stopped successfully.
+      if (($confirmedCleanup -or ($runtimeNotStarted -and $drain.IsCompleted)) -and -not $configConflict) {
         $script:retryTicket = [Guid]::NewGuid().ToString('N')
       }
     }
@@ -267,6 +275,7 @@ try {
       $null = Confirm-Cleanup
       if ($null -ne $published -and -not $cleanupComplete) { throw 'Gemma cleanup was not confirmed' }
       if ($null -ne $drain -and -not $drain.Wait(1000)) { throw 'Gemma diagnostic reader did not finish' }
+      if ($brokerFailed -and $runtimeNotStarted) { throw 'Local Gemma artifact validation failed; no runtime was started. Retry explicitly.' }
       if ($brokerFailed -or ($null -ne $published -and $broker.ExitCode -ne 0)) { if ($cleanupComplete) { throw 'Local Gemma stopped; cleanup confirmed. Retry explicitly.' }
         throw 'Local Gemma operation failed; cleanup was not confirmed.' }
     }

@@ -3080,3 +3080,26 @@ scheduling6 PASS; tsc+Vite PASS; fixture disconnect test oldFAIL/newPASS;
 governance self-test and final validation PASS; final YAML trigger/privilege/failure
 checks PASS (not actionlint/hosted execution). No further repetition needed without
 new failure/change. Next: hosted CI confirmation separately, Q07, and feature Q04/Q05.
+
+
+## 2026-10-15 — Candidate push, startup recovery and native diagnostic repeat
+Owner explicitly requested candidate push/Windows CI and continued Q04/Q05 diagnosis.
+942043b pushed non-force; run38723527175 is its hosted record. Remote main31a927a
+contains separate README updates, left intact. Follow-up code/validation is described
+in IMPROVEMENT_BACKLOG.md; first-run hosted success cannot qualify a later commit.
+
+Artifact pinning failure occurs before any GemmaEngine/Job; scoped closure releases
+pins then emits a distinct no-runtime receipt. Launcher still reaps broker/drains
+before granting an explicit retry, keeps app draft and does not report cleanup
+completion. Actual broker warmup failure and actual broker bad-model-hash failure
+integration2 PASS. All30 stub-launcher regressions PASS; broker2 PASS/1ignored.
+Old launcher reproducibly fails the new retry test. Initial new-test failure was
+hidden PowerShell OEM output vs UTF8 decoding; test explicitly sets UTF8 rather than
+suppressing errors. Production deadline, integrity and model quality unchanged.
+
+External logs: quality-pre-ready-red-20261015.log, quality-pre-ready-r2-20261015.log,
+quality-launcher-20261015.log, quality-broker-test-20261015.log. Installed792032b native
+trial quality-native-20261015 passes14 with natural app/editor cleanup and supervisor
+forced0/remaining0. Outside dispatcher restored; no live Provider. D cold hash latency
+and original intermittent click cause remain open. No personal binary replacement.
+Hosted follow-up includes the actual broker/launcher integration as a separate step.
