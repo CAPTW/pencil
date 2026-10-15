@@ -37,6 +37,13 @@ class OwnedTrialTests(unittest.TestCase):
                     supervisor.terminate()
                     supervisor.wait(5)
 
+    def test_scope_export_matches_marker(self):
+        with tempfile.TemporaryDirectory(prefix="grammar-supervisor-") as output:
+            code = "import os,json,pathlib; p=pathlib.Path(os.environ['GRAMMAR_TRIAL_ROOT']); m=json.loads((p/'.pencil-trial-owner.json').read_text()); assert m['root']==str(p); assert os.environ['GRAMMAR_HOST_TRIAL']; assert len(m['id'])==32"
+            result = run([sys.executable, "-c", code], output, 10)
+            self.assertEqual(result["status"], "PASS")
+            self.assertEqual(result["cleanupScope"], output)
+
     def test_normal_exit(self):
         with tempfile.TemporaryDirectory(prefix="grammar-supervisor-") as output:
             result = run([sys.executable, "-c", "import ctypes; assert ctypes.windll.kernel32.GetConsoleWindow()==0; print('synthetic normal exit')"], output, 10)

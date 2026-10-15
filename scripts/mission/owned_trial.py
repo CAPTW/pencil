@@ -6,6 +6,8 @@ is permitted. Logs contain trial output; use synthetic documents only.
 """
 import argparse
 import json
+import os
+import uuid
 from pathlib import Path
 import subprocess
 import time
@@ -22,7 +24,11 @@ MUTEX = r"Local\GrammarOwnedDesktopTrialV1"
 
 
 def run(command, output, timeout, mutex_name=MUTEX):
-    output = Path(output)
+    output = Path(os.path.abspath(output))
+    # Check lexical ancestors before mkdir/resolve can traverse a junction.
+    for ancestor in (output, *output.parents):
+        if ancestor.exists() and ancestor.lstat().st_file_attributes & 0x400:
+            raise ValueError("trial root cannot contain reparse points")
     output.mkdir(parents=True, exist_ok=True)
     mutex = win32event.CreateMutex(None, False, mutex_name)
     acquired = False
@@ -39,6 +45,23 @@ def run(command, output, timeout, mutex_name=MUTEX):
         limits = win32job.QueryInformationJobObject(job, win32job.JobObjectExtendedLimitInformation)
         limits["BasicLimitInformation"]["LimitFlags"] = win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         win32job.SetInformationJobObject(job, win32job.JobObjectExtendedLimitInformation, limits)
+        # A child may clean only inside this exact output root. Legacy sibling
+        # installations now fail closed until their caller is migrated.
+        scope = output
+        for ancestor in (scope, *scope.parents):
+            if ancestor.lstat().st_file_attributes & 0x400:
+                raise ValueError("trial root cannot contain reparse points")
+        marker = scope / ".pencil-trial-owner.json"
+        if marker.exists():
+            if marker.lstat().st_file_attributes & 0x400:
+                raise ValueError("trial marker cannot be a link")
+            owner = json.loads(marker.read_text(encoding="utf-8"))
+            if owner.get("schema") != "pencil-owned-trial/v1" or Path(owner.get("root", "")).resolve() != scope:
+                raise ValueError("trial root ownership mismatch")
+        else:
+            marker.write_text(json.dumps({"schema":"pencil-owned-trial/v1", "root":str(scope), "id":uuid.uuid4().hex}), encoding="utf-8")
+        child_env = dict(os.environ, GRAMMAR_HOST_TRIAL=os.environ.get("GRAMMAR_HOST_TRIAL") or "owned-supervisor", GRAMMAR_TRIAL_ROOT=str(scope))
+        result["cleanupScope"] = str(scope)
         sa = pywintypes.SECURITY_ATTRIBUTES()
         sa.bInheritHandle = True
         log = win32file.CreateFile(str(output / "trial.log"), win32con.GENERIC_WRITE,
@@ -54,7 +77,7 @@ def run(command, output, timeout, mutex_name=MUTEX):
         try:
             process, thread, pid, _ = win32process.CreateProcess(
                 None, subprocess.list2cmdline(command), None, None, True,
-                win32con.CREATE_SUSPENDED | win32con.CREATE_NO_WINDOW, None, None, si)
+                win32con.CREATE_SUSPENDED | win32con.CREATE_NO_WINDOW, child_env, None, si)
         finally:
             null.Close()
         result["pid"] = pid

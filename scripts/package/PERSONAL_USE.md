@@ -56,7 +56,7 @@ pwsh -NoProfile -File .\grammar-package\Install-Grammar.ps1
 ## 사용
 
 - 데스크톱: PowerShell 7에서 `pwsh -NoProfile -File "<설치 위치>\Start-Grammar.ps1"`로 실행합니다. exe를 직접 실행하면 관리되는 Gemma 연결이 제공되지 않습니다. 검증 조건을 충족한 필드에서 텍스트를 선택하고 `Ctrl+Shift+G`를 누르면 로컬 Instant 초안이 나타납니다. 초안을 검토·편집한 뒤 **Accept**를 누르면 정확한 선택 범위만 교체합니다. **Copy**를 선택하면 원문을 바꾸지 않고 클립보드에 복사하며 "Copied — paste it into the field"가 표시됩니다. 초안은 창에 남고, 다음 선택을 캡처할 때까지 Copy는 비활성화됩니다. 번역의 "원문 + 번역" 형식도 Copy할 때 적용됩니다(한 줄 원문은 `원문 (번역)`, 여러 줄 원문은 빈 줄 뒤 `(번역)`). 클라우드 동의는 Deep을 요청할 때만 묻습니다.
-  - Deep 동의는 Provider 별로 저장되어 재시작 뒤에도 유지됩니다. 동의한 뒤에는 **Auto rewrite**(기본 켜짐)가 켜져 있는 한 캡처할 때마다 선택문이 그 Provider 로 전송됩니다. 캡처마다 직접 정하려면 설정에서 Auto rewrite 를 끄고 필요할 때 **Run Deep** 을 누릅니다. 저장된 동의를 되돌리는 화면은 없습니다(`-RemoveUserData` 로 사용자 데이터를 지우면 초기화됩니다).
+  - Deep 동의는 Provider 별로 저장되어 재시작 뒤에도 유지됩니다. 동의한 뒤에는 **Auto rewrite**(기본 켜짐)가 켜져 있는 한 캡처할 때마다 선택문이 그 Provider 로 전송됩니다. 캡처마다 직접 정하려면 설정에서 Auto rewrite 를 끄고 필요할 때 **Run Deep** 을 누릅니다. 저장된 동의를 되돌리는 화면은 없습니다(공유 사용자 데이터의 자동 삭제는 안전상 차단되어 있습니다).
   - Deep 이 실행되는 동안에는 Copy 가 비활성화됩니다. Instant 초안을 바로 쓰려면 **Cancel**(또는 결과 영역에서 Escape)을 누릅니다. Cancel 은 Deep만 멈추고, 캡처와 (고친) 초안은 그대로 남아 Copy할 수 있습니다. 창을 닫거나 단축키·트레이로 숨기면 그 캡처는 끝나며 더 이상 Copy할 수 없습니다.
   - 초안을 직접 고친 뒤 모드·번역 언어·사전을 바꾸면, 고친 초안을 버릴지 먼저 묻습니다. 취소하면 아무것도 바뀌지 않습니다.
   - Claude Deep 은 네이티브 `claude.exe` 가 필요합니다. npm 으로 설치된 `claude.cmd` 만 있으면 여러 줄 요청을 전달할 수 없어 상태가 "사용할 수 없음"으로 표시됩니다. Antigravity 도 같은 이유로 `agy.exe` 가 필요합니다.
@@ -72,7 +72,7 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\GrammarPersonal\Uninstall-Grammar.ps1"
 
 - 설치 위치에서 실행 중인 프로세스만 종료하고, 설치 영수증에 기록된 네이티브 호스트 등록만 지운 뒤 설치 폴더를 삭제합니다. 다른 위치에 설치했다면 그 폴더의 `Uninstall-Grammar.ps1` 을 실행합니다(자기 폴더를 지웁니다).
 - 파일이 잠겨 일부가 남으면 결과에 `complete: false` 와 남은 항목이 나옵니다. 영수증과 제거 스크립트는 마지막까지 남으므로, 잠근 프로그램을 닫고 같은 명령을 다시 실행하면 이어서 지웁니다.
-- 설정과 개인 사전은 남습니다. 모두 지우려면 `-RemoveUserData` 를 붙입니다. 이 옵션은 설정, 개인 사전, WebView 데이터, 앱 전용 Codex 로그인(`%APPDATA%\com.local.codexpencil`, `%LOCALAPPDATA%\com.local.codexpencil`)을 지우며, 같은 Windows 사용자의 다른 Grammar 사본(이전 번들 포함)도 같은 데이터를 씁니다. 다른 Grammar 가 실행 중이면 거부합니다.
+- 설정과 개인 사전은 남습니다. 이 후보부터 `-RemoveUserData`만 지정해 기본 AppData를 지우는 동작은 거부합니다. 시험 데이터 제거에는 supervisor가 지정한 `GRAMMAR_TRIAL_ROOT`(또는 `-TrialRoot`), 그 루트의 소유 표식, 루트 내부의 명시적 `-UserDataDirectory`가 모두 필요합니다. 일반 사용자 설정·사전은 이 시험 정리 경로로 삭제하지 마십시오.
 - Chrome의 확장은 `chrome://extensions` 에서 직접 제거합니다.
 
 ## 새 패키지로 바꾸기
