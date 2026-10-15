@@ -142,3 +142,12 @@ cache, recommendation555-1225ms, observed Accept click-to-reread77-123ms. Qualit
 status failures preserved. Fixture focus repair is not a product input-loss fix.
 Next: isolate cold verification/init costs and reproduce original input loss.
 See HANDOFF installed checkpoint and personal-b145ddd-20261015/FINAL_RECEIPT.json.
+
+## Phase diagnosis and Chromium requalification (2026-10-15)
+Q04/Q05 remain open. Installed broker phase probe measured warm/uncontrolled8.72s:
+model pin2.74s, engine health/load4.96s, explicit warmup0.081s. No model-quality,
+integrity or deadline change. Inactive-review hypothesis did not reproduce loss:
+7 native mouse +7 CDP Accept/reread PASS with cleanup0. New installed extension
+fresh-profile real Gemma translation/rewrite14 PASS, cleanup0; see latest HANDOFF.
+Fixture path/preparation failures preserved, not product regression or successes.
+Next: first-cold phase evidence and original missing-input reproduction.
