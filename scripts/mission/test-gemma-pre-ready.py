@@ -14,6 +14,54 @@ spec.loader.exec_module(launcher)
 
 
 class ProductionBrokerTests(launcher.LauncherTests):
+    def test_artifact_failure_is_retryable_without_claiming_runtime_cleanup(self):
+        broker = launcher.ROOT / "src-tauri/target/debug/grammar-gemma-broker.exe"
+        self.assertTrue(broker.is_file())
+        shutil.copyfile(broker, self.root / broker.name)
+        runtime = self.root / "local/runtime/llama-server.exe"
+        subprocess.run(["rustc", str(HERE / "fixtures/gemma-startup-runtime.rs"), "-o", str(runtime)], check=True, capture_output=True, creationflags=0x08000000)
+        model = self.root / "local/gemma-4-12b-it-qat-q4_0.gguf"
+        model.write_text("invalid")
+        catalog_path = self.root / "Gemma-Assets.json"
+        catalog = json.loads(catalog_path.read_text())
+        catalog["runtimeSha256"] = launcher.digest(runtime)
+        catalog["runtimeBundleSha256"] = launcher.hashlib.sha256(("llama-server.exe\0" + launcher.digest(runtime) + "\n").encode()).hexdigest()
+        catalog["model"]["sha256"] = "0" * 64
+        catalog_path.write_text(json.dumps(catalog))
+        for entry in self.manifest["files"]:
+            path = self.root / entry["path"]
+            entry.update(sha256=launcher.digest(path), bytes=path.stat().st_size)
+        (self.root / "MANIFEST.json").write_text(json.dumps(self.manifest))
+        (self.root / "wait-release").touch()
+        command = "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); & '" + str(self.root / "Start-Grammar.ps1").replace("'", "''") + "' -EnableDesktopGemma"
+        process = subprocess.Popen(["pwsh", "-NoProfile", "-Command", command], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", creationflags=0x08000000)
+        try:
+            path, state = self.wait_phase("failed")
+            self.assertIsNotNone(state["retryTicket"])
+            self.assertFalse(model.with_suffix(".pid").exists(), "runtime must never launch")
+            model.write_text("invalid")  # artifact pins released before retry admission
+            app_pid = (self.root / "app.pid").read_text()
+            path.with_suffix(".json.retry").write_text(state["retryTicket"])
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                current = json.loads(path.read_text())
+                if current["phase"] == "failed" and current["retryTicket"] != state["retryTicket"]:
+                    break
+                time.sleep(.02)
+            else:
+                self.fail("explicit retry did not finish")
+            self.assertIsNotNone(current["retryTicket"])
+            self.assertEqual((self.root / "app.pid").read_text(), app_pid)
+            self.assertFalse(model.with_suffix(".pid").exists())
+            self.assertEqual(self.sidecar.read_text(), self.original)
+        finally:
+            (self.root / "release-app").touch()
+            out, err = process.communicate(timeout=20)
+        self.assertNotEqual(process.returncode, 0)
+        self.assertIn("no runtime was started", err)
+        self.assertNotIn("cleanup complete", (out + err).lower())
+        self.assertFalse(list(self.root.glob("gemma-session-*.json*")))
+
     def test_pre_ready_failure_receipt_through_actual_broker(self):
         broker = launcher.ROOT / "src-tauri/target/debug/grammar-gemma-broker.exe"
         self.assertTrue(broker.is_file(), "Build the current broker first")
@@ -71,4 +119,4 @@ class ProductionBrokerTests(launcher.LauncherTests):
 
 
 if __name__ == "__main__":
-    unittest.main(defaultTest="ProductionBrokerTests.test_pre_ready_failure_receipt_through_actual_broker", verbosity=2)
+    unittest.main(defaultTest=["ProductionBrokerTests.test_pre_ready_failure_receipt_through_actual_broker", "ProductionBrokerTests.test_artifact_failure_is_retryable_without_claiming_runtime_cleanup"], verbosity=2)

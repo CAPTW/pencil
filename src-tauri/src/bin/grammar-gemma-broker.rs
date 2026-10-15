@@ -40,6 +40,10 @@ async fn run() -> Result<(), String> {
         let _ = std::io::stdin().read(&mut byte);
         closing.store(false, Ordering::SeqCst);
     });
+    let model = Path::new(&args[2]);
+    // Artifact validation creates only retained file handles, never an engine/Job.
+    // On error the closure drops every pin before reporting this distinct state.
+    let artifacts = (|| -> Result<_, String> {
     let runtime_path = std::fs::canonicalize(&args[0]).map_err(|_| "gemma_runtime_path")?;
     let _runtime = ImagePin::verify(&runtime_path, &args[1])?;
     let _runtime_bundle = pin_runtime_bundle(&runtime_path, &args[6], &active, startup_deadline)?;
@@ -49,8 +53,18 @@ async fn run() -> Result<(), String> {
         clients.push(ImagePin::verify(Path::new(&args[7]), &args[8])?);
     }
     eprintln!("gemma_boot phase=model_hash ms={}", started.elapsed().as_millis());
-    let model = Path::new(&args[2]);
     let _model_file=pin_model(model,&args[3],&active,startup_deadline)?;
+        Ok((runtime_path, _runtime, _runtime_bundle, clients, _model_file))
+    })();
+    let (runtime_path, _runtime, _runtime_bundle, clients, _model_file) = match artifacts {
+        Ok(pins) => pins,
+        Err(error) => {
+            writeln!(std::io::stdout(), "{{\"startup\":\"not_started\"}}")
+                .map_err(|_| "gemma_broker_stdout")?;
+            std::io::stdout().flush().map_err(|_| "gemma_broker_stdout")?;
+            return Err(error);
+        }
+    };
     eprintln!("gemma_boot phase=model_verified ms={}", started.elapsed().as_millis());
     let engine = match GemmaEngine::start_reported(
         &runtime_path, model, startup_deadline, active.clone(),

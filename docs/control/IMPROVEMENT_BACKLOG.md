@@ -72,3 +72,25 @@ startup disconnect red→green, governance negative checks and YAML semantic che
 passed. Compiler warnings remain; this is not lint-clean or hosted/native acceptance.
 Q07 reporting procedure is next independent documentation improvement; Q04/Q05
 remain the parallel feature reliability priorities.
+
+## Candidate CI and startup recovery follow-up (2026-10-15)
+Owner authorized candidate push and hosted Windows validation. 942043b pushed to
+codex/grammar-local-trial-ba58b7d; run38723527175 records that exact snapshot.
+Remote main advanced only in README docs (df48758/31a927a); not merged or overwritten.
+
+Q04 partial repair: broker now reports `startup:not_started` for artifact validation
+failure before engine creation, after dropping its file pins. Launcher grants only
+an explicit generation-bound retry after broker exit and diagnostic drain; it does
+not claim runtime cleanup. Existing crash/unconfirmed cleanup remains nonretryable.
+Production broker+launcher tests2 and launcher regressions30 PASS; old-launcher
+regression fails for absent retry ticket. Startup timeout/model integrity/quality
+unchanged. Private installation unchanged; no actual cold HDD speed improvement
+or installed retry acceptance claimed. This is independent of Q17 fixture reset fix.
+
+Q05 diagnostic repeat: installed792032b, one owned session, real D-drive Gemma,
+14/14 desktop capture/rewrite/translate/Accept+reread PASS; all input clicks observed,
+ready30.05s, supervisor PASS/COMPLETE, zero forced/remaining. Failure did not recur;
+its original cause is still unknown. No cache flush/pre-read used, but cache state
+uncontrolled, so this is not proof of cold performance. Evidence quality-native-20261015.
+Final hosted outcome must be tied to the actual follow-up commit, not inherited from
+942043b. No main adoption, release or private-install upgrade by this follow-up.
