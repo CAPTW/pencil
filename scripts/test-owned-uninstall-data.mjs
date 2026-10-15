@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {randomUUID} from 'node:crypto';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+const script=new URL('./package/Uninstall-Grammar.ps1',import.meta.url).pathname.replace(/^\/([A-Za-z]:)/,'$1');
+const run=args=>spawnSync('pwsh',['-NoProfile','-File',script,'-InstallRoot',join(tmpdir(),'pencil-absent-'+randomUUID()),...args],{encoding:'utf8',windowsHide:true,env:{...process.env,GRAMMAR_HOST_TRIAL:'owned-data-regression'}});
+test('owned uninstall refuses implicit real user data before looking up install',{skip:process.platform!=='win32'},()=>{const r=run(['-RemoveUserData']);assert.equal(r.status,1);assert.match(r.stderr,/OWNED_TRIAL_REQUIRES_EXPLICIT_USER_DATA_DIRECTORY/);assert.doesNotMatch(r.stderr,/install-receipt.json missing/);});
+test('owned uninstall explicit data still validates installation',{skip:process.platform!=='win32'},()=>{const r=run(['-RemoveUserData','-UserDataDirectory',join(tmpdir(),'pencil-absent-data-'+randomUUID())]);assert.equal(r.status,1);assert.match(r.stderr,/install-receipt.json missing/);assert.doesNotMatch(r.stderr,/OWNED_TRIAL_REQUIRES/);});

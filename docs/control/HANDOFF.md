@@ -3557,3 +3557,55 @@ binding; implement trusted per-load protection provenance (password-open/save-in
 metadata alone is insufficient); qualify actual Native Messaging in that package.
 Then mixed-target formatting needs a verified replacement/run-mapping design rather
 than removal of existing format refusal. Existing production activation stays denied.
+
+
+## 2026-10-16 rHWP installed Native Messaging / original-load protection
+
+Runtime package: verified e6ff394 native binaries plus separately source/hash-bound
+rHWP addon (implementation bdc832d plus current readiness/CSP fixes), external
+rhwp-installed-20261016/package-r5. This is a composite, not a native rebuild from
+one source commit. Pinned upstream source864 hashes/core integrity checked; no new
+dependency. Installer supplies actual Chrome NativeMessagingHosts registration and
+host-config; no test analysis bridge/window hook. Popup links extension-owned Studio.
+
+Original-byte bounded HWP5/HWPX inspection happens before editor text parsing.
+Protected/unknown headers, ZIP encryption/ambiguity, nonempty protection manifest
+refuse. Only proven plain formats qualify, with exact generation proof retained
+until initializeDocument completes. Old review disposed on new/failed load. Recent
+store/recovery/idle autosave disabled; explicit Save downloads bytes. CSP permits
+local WASM, denies external connections; worker blob source was rejected by MV3,
+fixed to self. Rebuilding popup now keeps exactly one editor link.
+
+Final owned installed run:21 PASS, six actual Gemma EN-KO/natural/polite cases.
+18 independent saved-file text/character/paragraph/style, Undo and reopen checks;
+2 original protected-byte refusal checks;1 no HTTP requests check. No live mutation
+through test APIs. Input is uniform bold+italic paragraph amid mixed surrounding
+runs; mixed runs within selection, tables/fields/arbitrary complex files/Hancom
+remain unsupported. Headless Chromium147/new profile, not physical-keyboard use.
+Recommendation850-1380ms (2/6 exceed1s), Accept29-67ms. Quality reviewed by integrator:
+negation,25 dollars,today preserved; no independent linguistic review. Cold model
+startup not qualified or optimized. 33 adapter tests +2 uninstall guard tests PASS;
+governance self-test and syntax/diff checks PASS. Native full-suite not rerun.
+
+Failed selection fixture (inactive editor), early load-readiness candidate, and MV3
+CSP rejection are preserved under external failure folders. Successful installed
+runs18/20/21 remain separate. Final supervisor100.766s PASS, natural app exit,
+0 children before/after cleanup. Explicit owned-profile uninstall removed install,
+registration and profiles; no ongoing trial. Personal binary path was not updated.
+
+IMPORTANT TEST CLEANUP INCIDENT: earlier external trial.py reinstall steps invoked
+RemoveUserData without UserDataDirectory. That targets default Roaming/Local
+com.local.codexpencil folders, not just owned app-profile. Logs report removal
+complete but no baseline inventory exists, so prior contents/data loss are UNKNOWN.
+Do not claim personal settings were untouched. Credentials were not inspected or
+restored. Trial script now specifies owned path. Production uninstaller now rejects
+this omission whenever GRAMMAR_HOST_TRIAL is set, before modifying installation;
+2 real PowerShell regression cases pass. Final cleanup exercised this guarded source
+script with explicit owned path. The r5 browser-tested package predates that guard;
+r6 incorporates that guard. Its only changed payload file versus r5 is the uninstaller; all runtime/extension bytes are identical. r6 actual install, omitted-path refusal and explicit-path uninstall PASS in a separate sequential owned session (1.688s, children0). No release/push/adoption performed.
+
+Evidence: D:/dev/grammar-evidence/rhwp-installed-20261016/FINAL_RECEIPT.json;
+installed-receipt.json, supervisor.json, final-uninstall.json, cleanup-verification.json.
+Same-integrator review only. Project Source snapshot is stale. Next: expand selected-run mapping only with
+preservation/Undo proof, then Calc/Impress per editor-first priority. Provider work
+second, startup third. Do not silently enable broader HWP/Hancom support.
