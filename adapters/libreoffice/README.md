@@ -1,3 +1,15 @@
+
+> Current Gemma checkpoint (2026-10-15): clean e6ff394 app/host/broker plus paired
+> Writer-enabled native DLL/OXT passed owned saved DOCX EN-KO/natural/polite
+> Accept, exact reread, bold/RGB/alignment preservation, Undo, edited draft,
+> changed-source and Disable checks. One paragraph/mixed surroundings only;
+> actual D-drive Gemma, LibreOffice26.2.4.2 in owned SSD temp profile/runtime.
+> Native shortcut + Owner foreground activation + trusted widget UI Accept.
+> This is a separate installed candidate, not personal-install activation, Word
+> support or current-Gemma qualification of all earlier paragraph-topology scopes.
+> Detailed receipts, preserved failures and temporary-file cleanup limitation:
+> HANDOFF.md, 2026-10-15 Current Gemma + Writer saved DOCX qualification.
+
 # LibreOffice Writer adapter (implementation in progress)
 
 Current checkpoint: see "Uniform paragraph topology candidate" below. The opted-in
