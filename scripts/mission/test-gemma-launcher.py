@@ -1,5 +1,7 @@
 """Production PowerShell launcher with owned stub executables, not model/UI acceptance."""
 import ctypes
+import os
+import msvcrt
 import hashlib
 import json
 import pathlib
@@ -60,6 +62,29 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def open_shared_text(path):
+    """Match Rust File::open: polling must not veto atomic status replacement."""
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32,
+                                  ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p]
+    kernel.CreateFileW.restype = ctypes.c_void_p
+    kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = kernel.CreateFileW(str(path), 0x80000000, 7, None, 3, 0x80, None)
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        fd = msvcrt.open_osfhandle(handle, os.O_RDONLY)
+    except BaseException:
+        kernel.CloseHandle(handle)
+        raise
+    return os.fdopen(fd, encoding="utf-8")
+
+
+def read_shared_text(path):
+    with open_shared_text(path) as stream:
+        return stream.read()
+
+
 class LauncherTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -117,7 +142,7 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("Gemma cleanup complete.", result.stdout)
         self.assertTrue((self.root / "app-started").exists())
         self.assertEqual((self.root / "desktop-configured").read_text(),"yes")
-        self.assertEqual(self.sidecar.read_text(), self.original)
+        self.assertEqual(read_shared_text(self.sidecar), self.original)
 
     def test_model_free_mode_needs_no_model_and_publishes_no_endpoint(self):
         (self.root / "local/runtime/llama-server.exe").unlink()
@@ -126,7 +151,7 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((self.root / "broker.pid").exists())
         self.assertEqual((self.root / "desktop-configured").read_text(), "no")
-        self.assertEqual(self.sidecar.read_text(), self.original)
+        self.assertEqual(read_shared_text(self.sidecar), self.original)
 
     def test_missing_explicit_profile_refuses_before_model_or_app(self):
         result = self.run_launcher("-ProfileDirectory", str(self.root / "absent"))
@@ -193,7 +218,7 @@ class LauncherTests(unittest.TestCase):
             files=list(self.root.glob("gemma-session-*.json"))
             if files:
                 try:
-                    state=json.loads(files[0].read_text())
+                    state=json.loads(read_shared_text(files[0]))
                 except (PermissionError, FileNotFoundError):
                     # A Windows open can race the launcher's atomic replacement.
                     # Keep the original deadline and every phase assertion.
@@ -218,7 +243,7 @@ class LauncherTests(unittest.TestCase):
             request.write_text("0"*32)
             time.sleep(.5)
             self.assertEqual((self.root / "broker.pid").read_text(),pid)
-            self.assertEqual(json.loads(path.read_text())["phase"],"failed")
+            self.assertEqual(json.loads(read_shared_text(path))["phase"],"failed")
             # A second failure issues a different ticket; old clicks cannot replay.
             request.write_text(state["retryTicket"])
             deadline=time.monotonic()+10
@@ -238,12 +263,12 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual((self.root / "app.pid").read_text(),app_pid)
             self.assertFalse(request.exists())
             self.assertFalse((self.root / "app-exited").exists())
-            self.assertIsNone(json.loads(path.read_text())["retryTicket"])
+            self.assertIsNone(json.loads(read_shared_text(path))["retryTicket"])
         finally:
             (self.root / "release-app").touch()
             out,err=first.communicate(timeout=20)
         self.assertEqual(first.returncode,0,err)
-        self.assertEqual(self.sidecar.read_text(),self.original)
+        self.assertEqual(read_shared_text(self.sidecar),self.original)
         self.assertFalse(list(self.root.glob("gemma-session-*.json")))
 
     def test_unconfirmed_cleanup_never_offers_retry(self):
@@ -272,7 +297,7 @@ class LauncherTests(unittest.TestCase):
             app_pid=(self.root / "app.pid").read_text()
             time.sleep(.4)
             self.assertEqual((self.root / "broker.pid").read_text(),pid)
-            self.assertEqual(self.sidecar.read_text(),self.original)
+            self.assertEqual(read_shared_text(self.sidecar),self.original)
             (self.root / "fail-start").unlink()
             path.with_suffix(".json.retry").write_text(state["retryTicket"])
             self.wait_phase("ready")
@@ -283,7 +308,7 @@ class LauncherTests(unittest.TestCase):
             out,err=first.communicate(timeout=20)
         self.assertEqual(first.returncode,0,err)
         self.assertFalse(list(self.root.glob("gemma-session-*.json*")))
-        self.assertEqual(self.sidecar.read_text(),self.original)
+        self.assertEqual(read_shared_text(self.sidecar),self.original)
 
     def test_ready_then_retry_artifact_failure_keeps_no_runtime_disposition(self):
         for name in ["crash-after-app", "confirmed-failure", "wait-release"]:
@@ -297,14 +322,14 @@ class LauncherTests(unittest.TestCase):
             path.with_suffix(".json.retry").write_text(state["retryTicket"])
             deadline = time.monotonic() + 8
             while time.monotonic() < deadline:
-                current = json.loads(path.read_text())
+                current = json.loads(read_shared_text(path))
                 if current["phase"] == "failed" and current["retryTicket"] != state["retryTicket"]:
                     break
                 time.sleep(.02)
             else:
                 self.fail("retry did not complete")
             self.assertIsNotNone(current["retryTicket"])
-            self.assertEqual(self.sidecar.read_text(), self.original)
+            self.assertEqual(read_shared_text(self.sidecar), self.original)
         finally:
             (self.root / "release-app").touch()
             out, err = process.communicate(timeout=20)
@@ -317,7 +342,7 @@ class LauncherTests(unittest.TestCase):
         result = self.run_launcher("-EnableDesktopGemma:$false")
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual((self.root / "desktop-configured").read_text(),"no")
-        self.assertEqual(self.sidecar.read_text(), self.original)
+        self.assertEqual(read_shared_text(self.sidecar), self.original)
 
     def test_broker_crash_preserves_app_and_lock_until_explicit_exit_then_relaunch(self):
         (self.root / "crash-after-app").touch()
@@ -331,7 +356,7 @@ class LauncherTests(unittest.TestCase):
             self.wait_phase("failed")
             self.assertIsNone(first.poll(), "launcher released ownership while app still open")
             self.assertFalse((self.root / "app-exited").exists())
-            self.assertEqual(self.sidecar.read_text(), self.original)
+            self.assertEqual(read_shared_text(self.sidecar), self.original)
             second = self.run_launcher()
             self.assertNotEqual(second.returncode, 0)
             removal = subprocess.run(["pwsh","-NoProfile","-File",str(self.root / "Uninstall-Grammar.ps1")],capture_output=True,text=True,encoding="utf-8",timeout=10)
@@ -349,7 +374,7 @@ class LauncherTests(unittest.TestCase):
         (self.root / "crash-after-app").unlink()
         retry=self.run_launcher()
         self.assertEqual(retry.returncode,0,retry.stderr)
-        self.assertEqual(self.sidecar.read_text(),self.original)
+        self.assertEqual(read_shared_text(self.sidecar),self.original)
 
     def test_confirmed_cleanup_does_not_turn_broker_failure_into_success(self):
         (self.root / "crash-after-app").touch()
@@ -359,7 +384,7 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("cleanup confirmed",result.stderr)
         self.assertNotIn("cleanup was not confirmed",result.stderr)
         self.assertTrue((self.root / "app-exited").exists())
-        self.assertEqual(self.sidecar.read_text(),self.original)
+        self.assertEqual(read_shared_text(self.sidecar),self.original)
 
     def test_desktop_opens_while_preparing_and_publishes_ready_without_relaunch(self):
         (self.root / "wait-broker").touch()
@@ -370,11 +395,18 @@ class LauncherTests(unittest.TestCase):
             while not (self.root / "app-started").exists() and time.monotonic()<deadline: time.sleep(.02)
             self.assertTrue((self.root / "app-started").exists())
             files=list(self.root.glob("gemma-session-*.json")); self.assertEqual(len(files),1)
-            self.assertEqual(json.loads(files[0].read_text())["phase"],"starting")
-            self.assertEqual(self.sidecar.read_text(),self.original)
-            (self.root / "release-broker").touch()
-            while json.loads(files[0].read_text())["phase"]!="ready" and time.monotonic()<deadline: time.sleep(.02)
-            ready=json.loads(files[0].read_text());self.assertEqual(ready["phase"],"ready")
+            self.assertEqual(json.loads(read_shared_text(files[0]))["phase"],"starting")
+            self.assertEqual(read_shared_text(self.sidecar),self.original)
+            while not (self.root / "broker.pid").exists() and time.monotonic()<deadline: time.sleep(.02)
+            self.assertTrue((self.root / "broker.pid").exists())
+            # Retain the same sharing mode as production Rust readers during both
+            # status and endpoint publication; readers must not veto readiness.
+            with open_shared_text(files[0]) as held_status, open_shared_text(self.sidecar) as held_config:
+                (self.root / "release-broker").touch()
+                while json.loads(read_shared_text(files[0]))["phase"]!="ready" and time.monotonic()<deadline: time.sleep(.02)
+                ready=json.loads(read_shared_text(files[0]));self.assertEqual(ready["phase"],"ready")
+                self.assertEqual(json.loads(held_status.read())["phase"], "starting")
+                self.assertEqual(held_config.read(), self.original)
             self.assertTrue(ready["pipe"].startswith(r"\\.\pipe\Grammar.Gemma.Broker."))
             self.assertIsNone(first.poll())
             self.assertFalse((self.root / "app-exited").exists())
@@ -383,7 +415,7 @@ class LauncherTests(unittest.TestCase):
             out,err=first.communicate(timeout=20)
         self.assertEqual(first.returncode,0,err)
         self.assertFalse(list(self.root.glob("gemma-session-*.json")))
-        self.assertEqual(self.sidecar.read_text(),self.original)
+        self.assertEqual(read_shared_text(self.sidecar),self.original)
 
     def test_desktop_start_failure_preserves_app_until_explicit_exit(self):
         (self.root / "fail-start").touch();(self.root / "wait-release").touch()
@@ -393,15 +425,15 @@ class LauncherTests(unittest.TestCase):
             phase=None
             while time.monotonic()<deadline:
                 files=list(self.root.glob("gemma-session-*.json"))
-                if files: phase=json.loads(files[0].read_text())["phase"]
+                if files: phase=json.loads(read_shared_text(files[0]))["phase"]
                 if phase=="failed": break
                 time.sleep(.02)
             self.assertEqual(phase,"failed")
-            self.assertIsNone(json.loads(files[0].read_text())["retryTicket"])
+            self.assertIsNone(json.loads(read_shared_text(files[0]))["retryTicket"])
             self.assertTrue((self.root / "app-started").exists())
             self.assertIsNone(first.poll())
             self.assertNotEqual(self.run_launcher().returncode,0)
-            self.assertEqual(self.sidecar.read_text(),self.original)
+            self.assertEqual(read_shared_text(self.sidecar),self.original)
         finally:
             (self.root / "release-app").touch();out,err=first.communicate(timeout=20)
         self.assertNotEqual(first.returncode,0)
@@ -413,7 +445,7 @@ class LauncherTests(unittest.TestCase):
         self.assertNotEqual(result.returncode,0)
         self.assertIn("App closed while Gemma was preparing",result.stderr)
         self.assertTrue((self.root / "app-exited").exists())
-        self.assertEqual(self.sidecar.read_text(),self.original)
+        self.assertEqual(read_shared_text(self.sidecar),self.original)
         self.assertFalse(list(self.root.glob("gemma-session-*.json")))
 
     def test_missing_cleanup_receipt_is_failure(self):
@@ -421,7 +453,7 @@ class LauncherTests(unittest.TestCase):
         result = self.run_launcher()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("cleanup was not confirmed", result.stderr)
-        self.assertEqual(self.sidecar.read_text(), self.original)
+        self.assertEqual(read_shared_text(self.sidecar), self.original)
 
     def test_concurrent_launcher_refused(self):
         (self.root / "hold-app").touch()
@@ -440,7 +472,7 @@ class LauncherTests(unittest.TestCase):
         finally:
             out, err = first.communicate(timeout=20)
         self.assertEqual(first.returncode, 0, err)
-        self.assertEqual(self.sidecar.read_text(), self.original)
+        self.assertEqual(read_shared_text(self.sidecar), self.original)
 
     def prepare_fixture(self, corrupt=False, run=True):
         # All paths belong to this test's newly allocated temporary directory.
@@ -490,7 +522,7 @@ class LauncherTests(unittest.TestCase):
 
     def test_uninstalling_installation_never_starts(self):
         path = self.root / "install-receipt.json"
-        data = json.loads(path.read_text())
+        data = json.loads(read_shared_text(path))
         data["state"] = "uninstalling"
         path.write_text(json.dumps(data))
         result = self.run_launcher()
@@ -528,12 +560,12 @@ class LauncherTests(unittest.TestCase):
             app_pid = (self.root / "app.pid").read_text()
             self.assertFalse((self.root / "broker.pid").exists())
             self.assertIsNotNone(state["retryTicket"])
-            self.assertEqual(self.sidecar.read_text(), self.original)
+            self.assertEqual(read_shared_text(self.sidecar), self.original)
             # A premature click fails again without allocating a broker.
             path.with_suffix(".json.retry").write_text(state["retryTicket"])
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
-                current = json.loads(path.read_text())
+                current = json.loads(read_shared_text(path))
                 if current["phase"] == "failed" and current["retryTicket"] != state["retryTicket"]:
                     break
                 time.sleep(.02)
@@ -554,7 +586,7 @@ class LauncherTests(unittest.TestCase):
             out, err = process.communicate(timeout=25)
         self.assertEqual(process.returncode, 0, out + err)
         self.assertFalse(list(self.root.glob("gemma-session-*.json")))
-        self.assertEqual(self.sidecar.read_text(), self.original)
+        self.assertEqual(read_shared_text(self.sidecar), self.original)
 
     def test_managed_missing_assets_exit_reports_unavailable_and_releases_session(self):
         (self.root / "local/gemma-4-12b-it-qat-q4_0.gguf").unlink()
@@ -565,7 +597,7 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("no runtime was started", result.stderr)
         self.assertNotIn("Gemma cleanup complete.", result.stdout)
         self.assertFalse(list(self.root.glob("gemma-session-*.json")))
-        self.assertEqual(self.sidecar.read_text(), self.original)
+        self.assertEqual(read_shared_text(self.sidecar), self.original)
         # Exclusive ownership was released even on this failure path.
         result = self.run_launcher("-EnableDesktopGemma")
         self.assertIn("no runtime was started", result.stderr)
@@ -585,7 +617,7 @@ class LauncherTests(unittest.TestCase):
         result = self.run_launcher("-EnableDesktopGemma:$false")
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse((self.root / "app-started").exists())
-        self.assertEqual(self.sidecar.read_text(), self.original)
+        self.assertEqual(read_shared_text(self.sidecar), self.original)
 
     def test_existing_endpoint_preserved(self):
         original = json.loads(self.original)
@@ -594,7 +626,7 @@ class LauncherTests(unittest.TestCase):
         self.sidecar.write_text(value)
         result = self.run_launcher()
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(self.sidecar.read_text(), value)
+        self.assertEqual(read_shared_text(self.sidecar), value)
         self.assertFalse((self.root / "broker.pid").exists())
 
     def test_external_config_change_preserved_broker_closed(self):
@@ -602,7 +634,7 @@ class LauncherTests(unittest.TestCase):
         result = self.run_launcher("-EnableDesktopGemma:$false")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Host configuration changed externally", result.stderr)
-        self.assertEqual(json.loads(self.sidecar.read_text()), {"outside": True})
+        self.assertEqual(json.loads(read_shared_text(self.sidecar)), {"outside": True})
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ class ProductionBrokerTests(launcher.LauncherTests):
             path.with_suffix(".json.retry").write_text(state["retryTicket"])
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
-                current = json.loads(path.read_text())
+                current = json.loads(launcher.read_shared_text(path))
                 if current["phase"] == "failed" and current["retryTicket"] != state["retryTicket"]:
                     break
                 time.sleep(.02)
@@ -53,7 +53,7 @@ class ProductionBrokerTests(launcher.LauncherTests):
             self.assertIsNotNone(current["retryTicket"])
             self.assertEqual((self.root / "app.pid").read_text(), app_pid)
             self.assertFalse(model.with_suffix(".pid").exists())
-            self.assertEqual(self.sidecar.read_text(), self.original)
+            self.assertEqual(launcher.read_shared_text(self.sidecar), self.original)
         finally:
             (self.root / "release-app").touch()
             out, err = process.communicate(timeout=20)
@@ -97,7 +97,7 @@ class ProductionBrokerTests(launcher.LauncherTests):
             deadline = time.monotonic() + 10
             next_state = state
             while time.monotonic() < deadline:
-                next_state = json.loads(session_path.read_text())
+                next_state = json.loads(launcher.read_shared_text(session_path))
                 if next_state["phase"] == "failed" and next_state["retryTicket"] != state["retryTicket"]:
                     break
                 time.sleep(.02)
@@ -108,7 +108,7 @@ class ProductionBrokerTests(launcher.LauncherTests):
             self.assertFalse(pathlib.Path(model.with_suffix(".cwd").read_text()).parent.exists())
             shutil.copyfile(model.with_suffix(".pid"), self.root / "broker.pid")
             self.assertFalse((self.root / "app-exited").exists())
-            self.assertEqual(self.sidecar.read_text(), self.original)
+            self.assertEqual(launcher.read_shared_text(self.sidecar), self.original)
             time.sleep(.3)
             self.assertIsNone(process.poll(), "app ownership was released")
         finally:

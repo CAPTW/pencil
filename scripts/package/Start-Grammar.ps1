@@ -35,7 +35,9 @@ function Write-Config([string]$Text) {
   $temp = $configPath + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
   try {
     [IO.File]::WriteAllText($temp, $Text, $utf8)
-    [IO.File]::Move($temp, $configPath, $true)
+    # ReplaceFile preserves atomic publication while Rust readers retain their
+    # FILE_SHARE_DELETE handles. Move(overwrite) can fail on that same overlap.
+    [IO.File]::Replace($temp, $configPath, [NullString]::Value)
   } finally { if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp } }
 }
 function Publish-Session([string]$Phase, $PipeName = $null) {
@@ -44,7 +46,11 @@ function Publish-Session([string]$Phase, $PipeName = $null) {
   $temp = $sessionPath + '.tmp'
   try {
     [IO.File]::WriteAllText($temp,$text,$utf8)
-    [IO.File]::Move($temp,$sessionPath,$true)
+    if ([IO.File]::Exists($sessionPath)) {
+      [IO.File]::Replace($temp,$sessionPath,[NullString]::Value)
+    } else {
+      [IO.File]::Move($temp,$sessionPath)
+    }
     $script:sessionBytes = $text
   } finally { if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp } }
 }
