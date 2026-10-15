@@ -188,3 +188,5 @@ preservation, sensitive-field refusal, single owned test session and cleanup.
 Provider work follows adapter connectivity: one selected provider, consent,
 revocation/cancel, no replay, explicit successful-response and failure validation.
 This reprioritization grants no new accounts/costs, security exceptions or release.
+
+2026-10-15 Q11 progress: current Gemma + paired Writer candidate passes scoped saved DOCX translation/rewrite/Accept/format/Undo and stale/Disable checks (9 widget +5 enclosing). General activation and broad DOCX/Office remain open; next reproducible opt-in setup and expanded document coverage/rHWP transport. See HANDOFF and writer-gemma-ssd-20261015 evidence. Q04 remains deferred.

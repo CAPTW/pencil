@@ -3337,3 +3337,64 @@ Accept trial this turn; prior14-pass quiet native result remains historical.
 Governance PASS. Same-integrator review only. Q04 deferred, Q05 correctness open;
 no main/push/release or Project Source regeneration. Source package now stale for
 priority change. Other sessions were not interrupted.
+
+
+## 2026-10-15 — Current Gemma + Writer saved DOCX qualification
+Fresh source e6ff394 build, paired Writer-enabled native library and product-only
+OXT: actual Gemma12B Q4_0 from D:/PencilAssets, LibreOffice26.2.4.2, owned saved
+DOCX, one paragraph with homogeneous selected style and differently formatted
+surroundings. Real native shortcut, explicit one-review Writer menu opt-in and
+actual widget Accept (CDP trusted UI click) were exercised after Owner activated
+the owned Writer title bar. No private Apply or synthetic inference replacement.
+
+PASS9 widget checks: EN->KO translation, natural and polite rewrite, each exact
+whole-document reread + bold/Asian/complex weight, RGB and paragraph alignment
+preservation + Undo; manually edited draft Accept/Undo; changed-source preservation;
+Disable refusal. Enclosing5 checks: no fixture UNO service installed, saved DOCX
+reopen exact text/format, installed-widget result, file SHA unchanged by product
+(no automatic Save). Fixture explicitly saves each synthetic source before capture.
+Three outputs reviewed by integrator preserve negation/25 dollars, Friday/reason,
+and today/polite request respectively. Not independent linguistic qualification.
+
+Recommendation from hotkey dispatch through capture/actionable draft:1391/1137/
+878ms. Accept click through status and independent Writer reread:198/215/212ms.
+Two short-recommendation1s target misses; all three0.5s Accept checks pass. n3 is
+not broad latency/quality coverage. readyMs7 is observation after readiness, NOT
+startup duration. No speed threshold or quality change. Long paragraphs/IME and
+other document structures were not tested in this checkpoint.
+
+Build initially bound the existing D: portable Office; preserved registration90s
+failures and initial Office connection30s/120s failures. Successful environment
+uses the identical SHA-pinned Office archive extracted into owned SSD temp storage;
+Gemma stays on D. App/host/broker reused the clean e6ff394 build; native DLL was
+separately rebuilt for the exact new Office path, then package verified/reassembled.
+REASSEMBLY.json binds parent receipt and new native build. No product binaries
+were edited after packaging. OXT binds installed DLL hash/path. General personal
+install remains b145ddd and Writer-disabled; this is a separate owned candidate.
+
+Fixture failures retained: retry preflight incorrectly expected installer-only
+files in installed tree; accidental retry refused existing root without overwrite;
+new widget wait15s corrected to existing desktop fixture60s; Windows foreground
+refusal corrected by explicit Owner title-bar activation, not weakened checks.
+Final app/Office natural exits0, supervised trial PASS/COMPLETE before/after0;
+cleanup supervisor before/after0, both owned installations and their host registration
+children removed. Dispatcher restored byte-for-byte. Original model/runtime,
+personal install, other sessions and normal profiles unchanged. Attempt to recursively
+remove three C: temp Office/profile roots was rejected by automatic tool approval
+with only 'blocked by policy'; no retry/bypass. Temp files remain, no owned processes.
+
+Evidence: D:/dev/grammar-evidence/writer-gemma-ssd-20261015/FINAL_RECEIPT.json,
+output/{app-writer-result,uno-result,trial-result}.json, supervisor.json,
+uninstall-cleanup.json and cleanup-supervisor.json. Earlier failed root:
+D:/dev/grammar-evidence/writer-gemma-20261015. Qualified app SHA05c68e4d...bf23f,
+DLL e6cf2da9...7101; full hashes in receipts. Package ZIP c0e15d4700916634a9903099d62ecad3368fa5f267f23cef223afd54b6e87679.
+Writer bridge6/layout12/package9 unit tests and governance PASS. No independent
+reviewer. No push/main/release/general activation; Project Source stale.
+
+Next: repeat this scoped integration through a reproducible opt-in Writer package
+setup before personal-profile activation; broaden DOCX paragraph/format coverage
+and rHWP product transport under the Owner's editor-first priority. Preserve prior
+0fc8624 paragraph-topology evidence as historical, not current-Gemma qualification.
+Actual Microsoft Word, general DOCX, tables/fields/tracked changes, IME, Calc/Impress
+and Hancom remain unqualified. Provider stability follows document integration;
+D-drive startup tuning remains deferred.
