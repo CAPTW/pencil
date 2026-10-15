@@ -132,3 +132,13 @@ or deadline increase. Test observers retain Rust-equivalent sharing. Initial .NE
 PowerShell null binding produced an empty backup path; corrected to NullString.Value.
 That intermediate test run is failed, not final validation. This is a startup status
 publication race fix, not proof that cold disk latency or native clicks are repaired.
+
+## Installed CI candidate checkpoint (2026-10-15)
+Q01/Q02/Q17 hosted snapshot b145ddd: run38728375665 SUCCESS. Installed that source
+without model/settings changes. Q04/Q05 remain open: final actual Gemma owned
+trial-r3 passed14/14 with natural cleanup/remaining0; ready24.97s with uncontrolled
+cache, recommendation555-1225ms, observed Accept click-to-reread77-123ms. Quality
+12 golden +2 previously reviewed equivalents. Earlier occlusion/interruption/stale
+status failures preserved. Fixture focus repair is not a product input-loss fix.
+Next: isolate cold verification/init costs and reproduce original input loss.
+See HANDOFF installed checkpoint and personal-b145ddd-20261015/FINAL_RECEIPT.json.
