@@ -108,3 +108,27 @@ failures remain recorded in quality-launcher-r2/r3-20261015.log. Focused retries
 passed2/2 but do not erase these failures or establish their cause. Added last-phase
 and stdout failure diagnostics without changing deadlines/assertions. Hosted final
 result must be read for the exact candidate commit; no local full31 PASS claimed.
+
+
+CI/local launcher flake root cause reproduced in quality-pre-ready-repeat-20261015.log:
+Python pathlib.read_text held a Windows handle without FILE_SHARE_DELETE while
+Publish-Session attempted atomic Move; original error was Access denied, before
+broker creation. Thus retryTicket absence and broker-null disposition were caused
+by the observer itself. Test readers now use explicit READ|WRITE|DELETE sharing,
+matching production local_model_session.rs File::open and installed Rust API docs.
+Added deterministic open-reader/atomic-replace regression. No launcher retry,
+permission, timeout, phase assertion or model integrity rule weakened. Historical
+failed runs remain FAIL; this correction does not explain original native click loss
+or HDD startup latency. Candidate CI must verify this new fixture version.
+
+
+Further deterministic reproduction corrected the initial fixture-only attribution:
+even a production-equivalent shared-delete reader blocks File.Move(overwrite).
+ReplaceFile succeeds with that reader retained. Production regression now holds
+both session and host-config readers while the real launcher publishes ready;
+old launcher fails (quality-status-replace-red-20261015.log). Launcher now uses
+File.Replace for existing files, Move only for first session creation; no retry loop
+or deadline increase. Test observers retain Rust-equivalent sharing. Initial .NET
+PowerShell null binding produced an empty backup path; corrected to NullString.Value.
+That intermediate test run is failed, not final validation. This is a startup status
+publication race fix, not proof that cold disk latency or native clicks are repaired.
