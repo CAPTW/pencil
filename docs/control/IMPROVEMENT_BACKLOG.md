@@ -98,4 +98,13 @@ Final hosted outcome must be tied to the actual follow-up commit, not inherited 
 Hosted Q01/Q02/Q17 snapshot942043b: Windows run38723527175 SUCCESS. PR event itself
 still NOT_RUN (only push exercised); branch protection unchanged. Final follow-up
 also corrects historical-ready → no-runtime-retry exit classification (red reproduced,
-launcher31 PASS). No cold-start or click-loss repair claimed from these results.
+launcher31: 30PASS/1FAIL, ready observation unresolved). No cold-start or click-loss repair claimed from these results.
+
+
+Follow-up verification correction: commit05ef854 incorrectly stated launcher31 PASS.
+The actual r2 result was30PASS/1FAIL (ready observation); r3 was30PASS/1FAIL
+(unconfirmed-cleanup scenario ended with broker-null startup disposition). Both
+failures remain recorded in quality-launcher-r2/r3-20261015.log. Focused retries
+passed2/2 but do not erase these failures or establish their cause. Added last-phase
+and stdout failure diagnostics without changing deadlines/assertions. Hosted final
+result must be read for the exact candidate commit; no local full31 PASS claimed.
