@@ -364,7 +364,11 @@ try {
     window.review=createReviewSession(DocumentAgentController,collectTargetEvidence,{wasm:w.__wasm,input:w.__inputHandler,eventBus:w.__eventBus,isDirty:()=>true,render:()=>w.__canvasView.refreshDocumentAgentMutation()},()=>true);
     window.removeReview=mountReviewPanel(document.body,review,createInstantDraft(grammarLocalAnalyze,GrammarCore,{writing:true}));
     await editor.focusTarget({kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(source).length});
+    w.__wasm.applyCharFormat(0,0,0,3,JSON.stringify({bold:true}));
+    w.__wasm.applyCharFormat(0,2,0,5,JSON.stringify({italic:true}));
+    w.__wasm.applyCharFormat(0,1,0,Array.from(source).length,JSON.stringify({bold:true,italic:true}));
     window.properties=()=>JSON.stringify({character:w.__wasm.getCharPropertiesAt(0,1,0),paragraph:w.__wasm.getParaPropertiesAt(0,1),style:w.__wasm.getStyleAt(0,1)});window.propertiesBefore=properties();
+    window.outsideProperties=()=>JSON.stringify([0,2].map(p=>Array.from({length:w.__wasm.getParagraphLength(0,p)},(_,i)=>w.__wasm.getCharPropertiesAt(0,p,i))));window.outsideBefore=outsideProperties();
     window.formatBefore=collectTargetEvidence(w.__wasm,{kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(source).length}).formatSha256;
     window.readFormat=()=>collectTargetEvidence(w.__wasm,{kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:w.__wasm.getParagraphLength(0,1)}).formatSha256;
    },{format,source});
@@ -378,10 +382,19 @@ try {
    assert.deepEqual(await page.evaluate(()=>readAll()),['Header',source,'Unselected tail']);
    const acceptStart=performance.now();await page.getByRole('button',{name:'Accept',exact:true}).click();await page.getByRole('status').filter({hasText:/^Applied$/}).waitFor();
    assert.deepEqual(await page.evaluate(()=>readAll()),['Header',outputText,'Unselected tail']);sample.acceptMs=performance.now()-acceptStart;
-   assert.equal(await page.evaluate(()=>readFormat()),await page.evaluate(()=>formatBefore));assert.equal(await page.evaluate(()=>properties()),await page.evaluate(()=>propertiesBefore));record(format+' '+mode+' actual Gemma Accept exact text and format');
+   assert.equal(await page.evaluate(()=>readFormat()),await page.evaluate(()=>formatBefore));assert.equal(await page.evaluate(()=>properties()),await page.evaluate(()=>propertiesBefore));assert.equal(await page.evaluate(()=>outsideProperties()),await page.evaluate(()=>outsideBefore));record(format+' '+mode+' actual Gemma Accept exact text and format');
+   const saved=await page.evaluate(async format=>Array.from(await (format==='hwp'?editor.exportHwp():editor.exportHwpx())),format);
+   await writeFile(join(output,mode+'-accepted.'+format),Buffer.from(saved));
    await page.evaluate(()=>editor.element.contentWindow.__inputHandler.handleUndo());
    assert.deepEqual(await page.evaluate(()=>readAll()),['Header',source,'Unselected tail']);assert.equal(await page.evaluate(()=>readFormat()),await page.evaluate(()=>formatBefore));assert.equal(await page.evaluate(()=>properties()),await page.evaluate(()=>propertiesBefore));record(format+' '+mode+' Undo exact text and format');
-   result.samples.push(sample);await page.evaluate(()=>removeReview());
+   assert.equal(await page.evaluate(()=>outsideProperties()),await page.evaluate(()=>outsideBefore));
+   const propertiesBefore=await page.evaluate(()=>propertiesBefore),outsideBefore=await page.evaluate(()=>outsideBefore);
+   await page.evaluate(()=>removeReview());
+   const disk=await readFile(join(output,mode+'-accepted.'+format));assert.deepEqual(disk,Buffer.from(saved));
+   await page.evaluate(async({bytes,format})=>editor.loadFile(new Uint8Array(bytes),'saved.'+format,{suppressDialogs:true,skipUnsavedGuard:true}),{bytes:Array.from(disk),format});
+   assert.deepEqual(await page.evaluate(()=>readAll()),['Header',outputText,'Unselected tail']);
+   assert.equal(await page.evaluate(()=>properties()),propertiesBefore);assert.equal(await page.evaluate(()=>outsideProperties()),outsideBefore);record(format+' '+mode+' disk save reopen exact text and properties');
+   result.samples.push(sample);
   }
  }
  if(['--bootstrap-only','--bootstrap-denied-only'].includes(process.argv[6]))for(const format of ['hwp','hwpx']){
