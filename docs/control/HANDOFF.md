@@ -3161,3 +3161,43 @@ Fixture now requires os.path.samefile for the first child PATH entry and rejects
 the installation root; parent PATH equality remains unchanged. Focused check PASS.
 Previous atomic-publication failure no longer reproduced in the hosted regressions.
 Final next-commit hosted status remains separate from this failed run.
+
+## Installed CI candidate and owned desktop verification (2026-10-15)
+
+Installed exact b145ddd2a4c67dc575de395fd48aca54d26b5c3e, qualified by Windows
+CI run38728375665, into the existing personal installation. Built from clean source;
+package ZIP SHA256 d1d131511332bcfa57b196b1d04416e2c2b316caace8adf2ec007fc54134bc19.
+Existing settings preserved without reading their content. Model/runtime remain at
+D:/PencilAssets/local via installation junction; no model duplication. Previous
+792032b installation retained as GrammarPersonal.backup-792032b-20261015.
+New package extension ID pbkigacecepjkokofepecnhncmccnadm differs from the previous
+installation; ordinary Chrome profile was not changed and extension reload remains
+necessary. Chromium was NOT_RUN this turn.
+
+Final trial-r3: actual installed Gemma, fresh synthetic profile, 14/14 capture,
+translation/rewrite and explicit Accept with exact source reread PASS (7 owned
+native mouse, 7 CDP). Quality: 12 exact golden outputs, 2 existing reviewed-equivalent
+paragraph translations, no new output accepted by weakening assertions. Ready
+24970ms; capture114-247ms, recommendation555-1225ms (3/14 above1000ms), observed
+Accept click-to-reread77-123ms. Input-helper launch/focus is excluded from that
+Accept metric. Cache state uncontrolled; this is not cold disk qualification.
+Broker observed approximately7.74GB reads and runtime creation approximately6.96s
+later; this does not isolate hash CPU versus disk time or prove the latency cause.
+Model, integrity checks, inference quality and time budgets unchanged.
+
+Serial diagnostic failures preserved: initial owned editor occlusion; accidental
+redispatch after a UTF8 preparation error (INTERRUPTED_NOT_PASS, owned dispatcher
+stopped); r2 functional14 PASS but final cleanup assertion FAIL due to the stale
+starting-status file from that interruption. Exact stale file preserved then removed
+only after no owned processes remained. Fixture now temporarily raises only its
+verified owned editor and hit-tests before clicking, restores normal z-order, and
+preparation checks exit status. These fixture repairs do not explain product click
+loss. Final r3 app/editor exited naturally, supervisor PASS/COMPLETE, zero processes
+before forced cleanup and zero remaining; original external dispatcher restored.
+
+Evidence: D:/dev/grammar-evidence/personal-b145ddd-20261015/FINAL_RECEIPT.json,
+build-receipt.json, install.json, update.json, interrupted-dispatch.json,
+trial-r3/desktop-results/app-result.json and trial-r3/supervisor.json. Earlier failed
+attempts remain separate. Q04/Q05 stay open: next isolate first-start verification
+and model initialization costs, and reproduce native delivery failure under measured
+focus/occlusion conditions without relaxing target validation. No main/release change.
