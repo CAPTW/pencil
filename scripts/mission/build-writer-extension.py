@@ -13,6 +13,8 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--library-file', required=True, type=Path)
 parser.add_argument('--installed-library', required=True)
 parser.add_argument('--output', required=True, type=Path)
+parser.add_argument('--package-root', type=Path,
+    help='verify app/DLL/Writer/source binding against MANIFEST and BUILD_RECEIPT before generating')
 parser.add_argument('--enable-saved-docx', action='store_true', help='explicit candidate qualification switch; default off')
 parser.add_argument('--enable-uniform-format', action='store_true', help='explicit bounded uniform-format candidate switch; default off')
 parser.add_argument('--enable-mixed-surroundings', action='store_true', help='single homogeneous selection within one mixed-format paragraph; default off')
@@ -39,6 +41,13 @@ base = root / 'adapters/libreoffice'
 names = ('writer.py', 'Addons.xcu', 'description.xml', 'META-INF/manifest.xml',
          'pythonpath/grammar_writer_core.py', 'pythonpath/grammar_writer_bridge.py')
 files = {name: (base / name).read_bytes() for name in names}
+binding = None
+if args.package_root:
+    from writer_package_binding import verify
+    try:
+        binding = verify(args.package_root, args.library_file, root, files)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        parser.error(str(error))
 digest = hashlib.sha256(args.library_file.read_bytes()).hexdigest()
 files['pythonpath/grammar_writer_installation.py'] = (
     '# Generated package binding; never supplied by a document or UNO request.\n'
@@ -53,6 +62,7 @@ with zipfile.ZipFile(args.output, 'x', zipfile.ZIP_DEFLATED) as archive:
     for name, data in files.items():
         archive.writestr(name, data)
 print(json.dumps(dict(classification='PRODUCT_WRITER_CANDIDATE_NOT_ACCEPTANCE',
+    packageBinding=binding,
     savedDocxEnabled=args.enable_saved_docx, uniformFormatEnabled=args.enable_uniform_format,
     mixedSurroundingsEnabled=args.enable_mixed_surroundings,
     paragraphsEnabled=args.enable_paragraphs, crossFormatEnabled=args.enable_cross_format, paragraphSpanEnabled=args.enable_paragraph_span, uniformTopologyEnabled=args.enable_uniform_topology,

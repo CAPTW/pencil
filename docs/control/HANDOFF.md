@@ -3398,3 +3398,14 @@ and rHWP product transport under the Owner's editor-first priority. Preserve pri
 Actual Microsoft Word, general DOCX, tables/fields/tracked changes, IME, Calc/Impress
 and Hancom remain unqualified. Provider stability follows document integration;
 D-drive startup tuning remains deferred.
+
+
+## 2026-10-15 — Reproducible Writer package binding
+2026-10-15 Writer package binding: builder optional --package-root verifies app/DLL receipt hashes, Writer-enabled native build and exact executable hash/path, plus adapter sources against package commit. Actual prior qualified package regenerates seven byte-identical OXT members; current Writer-disabled personal installation rejected without output or modification. Binding6/package9/bridge6/layout12 and governance self-test PASS. No GUI session or new document qualification this turn; next current-Gemma multi-paragraph DOCX qualification. Evidence writer-gemma-ssd-20261015/package-binding-result.json. No push/install/release; D startup deferred.
+Same-integrator code review only. Package metadata is consistency evidence, not
+authenticity; use trusted artifacts. OXT archive hash differs because ZIP timestamps
+are not fixed; all seven member bytes match the previous actual-Gemma qualified
+OXT. This does not extend its one-paragraph acceptance. The optional low-level
+builder remains for development, explicitly with null packageBinding. No long-lived
+processes or desktop sessions were launched, and no previous policy-blocked temp
+cleanup was retried. Personal installation unchanged. Project Source stale.

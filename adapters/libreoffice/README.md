@@ -12,6 +12,24 @@
 
 # LibreOffice Writer adapter (implementation in progress)
 
+### Preparing the paired extension from a verified package
+
+Use `scripts/mission/build-writer-extension.py --package-root <package-or-install-root>
+--library-file <same-root>/target-apply.dll --installed-library <final-absolute-path>/target-apply.dll
+--output <fresh-path.oxt> --enable-saved-docx --enable-uniform-format --enable-mixed-surroundings`.
+Run from a checkout containing the package's source commit. This checks actual
+app/DLL hashes against both receipts, the exact local Writer executable, and all
+six adapter source inputs against that commit (checkout line endings may differ).
+A Writer-disabled native build is rejected: generating an OXT cannot enable it.
+The command does not install/register an extension or touch a document/profile.
+The output remains a candidate, with one-review Enable/Disable required in Writer.
+Metadata checks establish consistency, not publisher authenticity or new runtime
+qualification. Only use a trusted source/package. Without `--package-root`, the
+older low-level builder remains available for development and records null binding.
+Broader paragraph/cross-format flags require separate qualification; do not infer
+support from successful package generation. An installed path change requires a
+new paired OXT. Native runtime pinning still checks the library when it is used.
+
 Current checkpoint: see "Uniform paragraph topology candidate" below. The opted-in
 candidate OXT is installed-widget qualified only in the documented owned synthetic
 scope; general Writer acceptance is incomplete. Earlier sections below are

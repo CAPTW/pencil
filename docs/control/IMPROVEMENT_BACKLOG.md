@@ -190,3 +190,7 @@ revocation/cancel, no replay, explicit successful-response and failure validatio
 This reprioritization grants no new accounts/costs, security exceptions or release.
 
 2026-10-15 Q11 progress: current Gemma + paired Writer candidate passes scoped saved DOCX translation/rewrite/Accept/format/Undo and stale/Disable checks (9 widget +5 enclosing). General activation and broad DOCX/Office remain open; next reproducible opt-in setup and expanded document coverage/rHWP transport. See HANDOFF and writer-gemma-ssd-20261015 evidence. Q04 remains deferred.
+
+2026-10-15 Q11: reproducible Writer package preflight implemented and actual package
+regeneration verified, with disabled-personal-build refusal. No new GUI coverage.
+Next: current-Gemma multi-paragraph DOCX qualification; general activation pending.
