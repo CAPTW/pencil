@@ -273,7 +273,7 @@ try {
         throw 'Gemma cleanup incomplete; owned process tree termination requested'
       }
       $null = Confirm-Cleanup
-      if ($null -ne $published -and -not $cleanupComplete) { throw 'Gemma cleanup was not confirmed' }
+      if ($null -ne $published -and -not $cleanupComplete -and -not $runtimeNotStarted) { throw 'Gemma cleanup was not confirmed' }
       if ($null -ne $drain -and -not $drain.Wait(1000)) { throw 'Gemma diagnostic reader did not finish' }
       if ($brokerFailed -and $runtimeNotStarted) { throw 'Local Gemma artifact validation failed; no runtime was started. Retry explicitly.' }
       if ($brokerFailed -or ($null -ne $published -and $broker.ExitCode -ne 0)) { if ($cleanupComplete) { throw 'Local Gemma stopped; cleanup confirmed. Retry explicitly.' }

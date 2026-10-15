@@ -23,6 +23,7 @@ fn main() {
    for _ in 0..500 { if dir.join("release-broker").exists() {break;} std::thread::sleep(std::time::Duration::from_millis(10)); }
  }
  if dir.join("fail-start").exists() {
+   if dir.join("not-started").exists() { println!("{{\"startup\":\"not_started\"}}"); std::io::stdout().flush().unwrap(); std::process::exit(2); }
    if dir.join("confirmed-failure").exists() { println!("{{\"cleanup\":\"complete\"}}"); std::io::stdout().flush().unwrap(); }
    std::process::exit(2);
  }
@@ -281,6 +282,34 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(first.returncode,0,err)
         self.assertFalse(list(self.root.glob("gemma-session-*.json*")))
         self.assertEqual(self.sidecar.read_text(),self.original)
+
+    def test_ready_then_retry_artifact_failure_keeps_no_runtime_disposition(self):
+        for name in ["crash-after-app", "confirmed-failure", "wait-release"]:
+            (self.root / name).touch()
+        process = subprocess.Popen(["pwsh", "-NoProfile", "-File", str(self.root / "Start-Grammar.ps1")], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+        try:
+            path, state = self.wait_phase("failed")
+            self.assertIsNotNone(state["retryTicket"])
+            (self.root / "fail-start").touch()
+            (self.root / "not-started").touch()
+            path.with_suffix(".json.retry").write_text(state["retryTicket"])
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                current = json.loads(path.read_text())
+                if current["phase"] == "failed" and current["retryTicket"] != state["retryTicket"]:
+                    break
+                time.sleep(.02)
+            else:
+                self.fail("retry did not complete")
+            self.assertIsNotNone(current["retryTicket"])
+            self.assertEqual(self.sidecar.read_text(), self.original)
+        finally:
+            (self.root / "release-app").touch()
+            out, err = process.communicate(timeout=20)
+        self.assertNotEqual(process.returncode, 0)
+        self.assertIn("no runtime was started", err)
+        self.assertNotIn("cleanup was not confirmed", err)
+        self.assertFalse(list(self.root.glob("gemma-session-*.json*")))
 
     def test_desktop_configuration_can_be_explicitly_disabled(self):
         result = self.run_launcher("-EnableDesktopGemma:$false")
