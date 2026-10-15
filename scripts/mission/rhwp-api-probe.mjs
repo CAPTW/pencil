@@ -19,13 +19,14 @@ for(const file of proof.files){
  assert.equal(createHash('sha256').update(bytes).digest('hex'),file.sha256,file.path);
 }
 assert.equal('sha512-'+createHash('sha512').update(await readFile(join(root,'core-0.8.7.tgz'))).digest('base64'),pin.coreIntegrity);
+if(process.argv[6]==='--verify-only'){console.log(JSON.stringify({status:'SOURCE_VERIFIED',files:proof.files.length,commit:pin.commit}));process.exit(0);}
 await mkdir(output,{recursive:false});
 const profile=join(output,'owned-profile');
 const origin='http://127.0.0.1:17707';
 const sdk='/@fs/'+join(root,'upstream/npm/editor/index.js').replaceAll('\\','/');
 const core='/@fs/'+join(root,'upstream/pkg/rhwp.js').replaceAll('\\','/');
 const result={status:'RUNNING',scope:'RHWP_API_SYNTHETIC_NOT_GRAMMAR_ACCEPTANCE',upstreamCommit:pin.commit,version:pin.version,checks:[],findings:[],networkBlocked:0};
-let browser, watchdog;
+let browser, watchdog, page;
 const record=name=>result.checks.push(name);
 try {
  browser=await chromium.launchPersistentContext(profile,{executablePath:resolve(chromeArg),headless:true,chromiumSandbox:true,serviceWorkers:'block',acceptDownloads:false});
@@ -38,25 +39,36 @@ try {
  await browser.addInitScript(()=>{
   localStorage.setItem('rhwp-settings',JSON.stringify({version:1,theme:{skin:'default',skinChosen:true},autosave:{recoveryEnabled:false,idleSaveEnabled:false}}));
  });
- const page=await browser.newPage();
- if(process.argv[6]==='--instant-only'){
-  const hostDir=join(output,'host');await mkdir(hostDir);
-  const host=join(hostDir,'grammar-chromium-host.exe');await copyFile(new URL('../../src-tauri/target/debug/grammar-chromium-host.exe',import.meta.url),host);
-  const hostOrigin='chrome-extension://'+'a'.repeat(32)+'/';
-  await writeFile(join(hostDir,'grammar-chromium-host.origin.json'),JSON.stringify({origin:hostOrigin}));
+ page=await browser.newPage();
+ if(['--instant-only','--gemma-only'].includes(process.argv[6])){
+  let host,hostOrigin;
+  if(process.argv[6]==='--gemma-only'){
+   assert.equal(process.env.GRAMMAR_HOST_TRIAL,'20261011-owned');
+   assert.ok(process.env.GRAMMAR_INSTALL_ROOT);
+   const install=resolve(process.env.GRAMMAR_INSTALL_ROOT);
+   host=join(install,'grammar-chromium-host.exe');
+   const manifest=JSON.parse(await readFile(join(install,'MANIFEST.json'),'utf8'));
+   assert.equal(createHash('sha256').update(await readFile(host)).digest('hex'),manifest.files.find(x=>x.path==='grammar-chromium-host.exe').sha256);
+   const config=JSON.parse(await readFile(join(install,'grammar-chromium-host.origin.json'),'utf8'));
+   assert.ok(config.gemma);hostOrigin=config.origin;result.sourceCommit=manifest.sourceCommit;
+   result.scope='ACTUAL_GEMMA_RHWP_OWNED_BRIDGE_FIXTURE_NOT_INSTALLED_ROUTING';
+  }else{
+   const hostDir=join(output,'host');await mkdir(hostDir);host=join(hostDir,'grammar-chromium-host.exe');await copyFile(new URL('../../src-tauri/target/debug/grammar-chromium-host.exe',import.meta.url),host);
+   hostOrigin='chrome-extension://'+'a'.repeat(32)+'/';await writeFile(join(hostDir,'grammar-chromium-host.origin.json'),JSON.stringify({origin:hostOrigin}));
+  }
   result.hostSha256=createHash('sha256').update(await readFile(host)).digest('hex');result.hostCalls=0;result.hostExits=[];
   await page.exposeFunction('grammarLocalAnalyze',async request=>{
    assert.equal(request.op,'analyze');assert.equal(typeof request.text,'string');assert.ok(request.text.length<=8192);
-   const body=Buffer.from(JSON.stringify({version:1,op:'analyze',id:request.id,epoch:request.epoch,revision:request.revision,text:request.text}));
+   const body=Buffer.from(JSON.stringify({version:1,op:'analyze',id:request.id,epoch:request.epoch,revision:request.revision,text:request.text,...(request.intent?{intent:request.intent}:{})}));
    const frame=Buffer.alloc(4);frame.writeUInt32LE(body.length);result.hostCalls++;
    return await new Promise((ok,no)=>{
     const child=spawn(host,[hostOrigin],{windowsHide:true,stdio:['pipe','pipe','pipe']});let chunks=[],size=0,error=null;
     const timer=setTimeout(()=>{error=new Error('HOST_TIMEOUT');child.kill();},10000);
-    child.on('error',e=>{error=e;});child.stdout.on('data',b=>{size+=b.length;if(size>256*1024){error=new Error('HOST_OUTPUT_LIMIT');child.kill();}else chunks.push(b);});
+    child.on('error',e=>{error=e;});child.stdout.on('data',b=>{size+=b.length;if(size>256*1024){error=new Error('HOST_OUTPUT_LIMIT');child.kill();}else {chunks.push(b);const out=Buffer.concat(chunks);if(out.length>=4&&out.length===4+out.readUInt32LE(0))child.stdin.end();}});
     child.stderr.on('data',()=>{error=new Error('HOST_STDERR');});child.stdin.on('error',e=>{error=e;});
     child.on('close',code=>{clearTimeout(timer);result.hostExits.push(code);if(error||code!==0)return no(error??new Error('HOST_EXIT'));
      try{const out=Buffer.concat(chunks);assert.ok(out.length>=4);assert.equal(out.readUInt32LE(0),out.length-4);ok(JSON.parse(out.subarray(4).toString('utf8')));}catch(e){no(e);}
-    });child.stdin.end(Buffer.concat([frame,body]));
+    });child.stdin.write(Buffer.concat([frame,body]));
    });
   });
  }
@@ -89,7 +101,7 @@ try {
    return {state,selection,evidence,command:{schemaVersion:1,commandId:crypto.randomUUID(),expectedDocumentEpoch:state.documentEpoch,expectedChangeSeq:state.changeSeq,expectedDocumentSha256:state.documentSha256,target,expectedBeforeSha256:evidence.textSha256,expectedFormatSha256:evidence.formatSha256,expectedAdjacentContextSha256:evidence.adjacentContextSha256,replacement}};
   };
  },{sdk,core,origin});
- for(const format of (['--review-only','--instant-only','--bootstrap-only','--bootstrap-denied-only'].includes(process.argv[6])?[]:['hwp','hwpx'])){
+ for(const format of (['--review-only','--instant-only','--gemma-only','--bootstrap-only','--bootstrap-denied-only'].includes(process.argv[6])?[]:['hwp','hwpx'])){
   const bytes=await page.evaluate(format=>synthetic[format],format);
   const data=Buffer.from(bytes);await writeFile(join(output,'synthetic.'+format),data);
   result[format]={sha256:createHash('sha256').update(data).digest('hex'),bytes:data.length};
@@ -336,6 +348,42 @@ try {
   }
   await page.evaluate(()=>removeReview());
  }
+ if(process.argv[6]==='--gemma-only'){
+  result.samples=[];
+  for(const format of ['hwp','hwpx'])for(const mode of ['ko','paraphrase','polite']){
+   const source='Do not change the price. The total is 25 dollars. Send me the report today.';
+   await page.evaluate(async({format,source})=>{
+    await editor.loadFile(new Uint8Array(synthetic[format]),'gemma.'+format,{suppressDialogs:true,skipUnsavedGuard:true});
+    const w=editor.element.contentWindow;
+    w.__wasm.deleteText(0,1,0,w.__wasm.getParagraphLength(0,1));w.__wasm.insertText(0,1,0,source);
+    await import('/grammar-core.js');
+    const {createInstantDraft}=await import('/grammar-review/instant-draft.mjs');
+    const {createReviewSession}=await import('/grammar-review/review-session.mjs');
+    const {mountReviewPanel}=await import('/grammar-review/review-panel.mjs');
+    const {DocumentAgentController,collectTargetEvidence}=await import('/src/document-agent/controller.ts');
+    window.review=createReviewSession(DocumentAgentController,collectTargetEvidence,{wasm:w.__wasm,input:w.__inputHandler,eventBus:w.__eventBus,isDirty:()=>true,render:()=>w.__canvasView.refreshDocumentAgentMutation()},()=>true);
+    window.removeReview=mountReviewPanel(document.body,review,createInstantDraft(grammarLocalAnalyze,GrammarCore,{writing:true}));
+    await editor.focusTarget({kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(source).length});
+    window.properties=()=>JSON.stringify({character:w.__wasm.getCharPropertiesAt(0,1,0),paragraph:w.__wasm.getParaPropertiesAt(0,1),style:w.__wasm.getStyleAt(0,1)});window.propertiesBefore=properties();
+    window.formatBefore=collectTargetEvidence(w.__wasm,{kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:Array.from(source).length}).formatSha256;
+    window.readFormat=()=>collectTargetEvidence(w.__wasm,{kind:'body_paragraph',section:0,paragraph:1,charOffset:0,length:w.__wasm.getParagraphLength(0,1)}).formatSha256;
+   },{format,source});
+   await page.getByLabel('Local writing mode').selectOption(mode);
+   await page.getByRole('button',{name:'Enable review',exact:true}).click();
+   const start=performance.now();await page.getByRole('button',{name:'Capture selection',exact:true}).click();
+   await page.getByRole('status').filter({hasText:/^Local Instant ready/}).waitFor();
+   const outputText=await page.getByRole('textbox',{name:'Reviewed replacement'}).inputValue();
+   const sample={format,mode,source,output:outputText,recommendationMs:performance.now()-start};
+   assert.notEqual(outputText,source);assert.match(outputText,/25/);if(mode==='ko')assert.match(outputText,/[가-힣]/);
+   assert.deepEqual(await page.evaluate(()=>readAll()),['Header',source,'Unselected tail']);
+   const acceptStart=performance.now();await page.getByRole('button',{name:'Accept',exact:true}).click();await page.getByRole('status').filter({hasText:/^Applied$/}).waitFor();
+   assert.deepEqual(await page.evaluate(()=>readAll()),['Header',outputText,'Unselected tail']);sample.acceptMs=performance.now()-acceptStart;
+   assert.equal(await page.evaluate(()=>readFormat()),await page.evaluate(()=>formatBefore));assert.equal(await page.evaluate(()=>properties()),await page.evaluate(()=>propertiesBefore));record(format+' '+mode+' actual Gemma Accept exact text and format');
+   await page.evaluate(()=>editor.element.contentWindow.__inputHandler.handleUndo());
+   assert.deepEqual(await page.evaluate(()=>readAll()),['Header',source,'Unselected tail']);assert.equal(await page.evaluate(()=>readFormat()),await page.evaluate(()=>formatBefore));assert.equal(await page.evaluate(()=>properties()),await page.evaluate(()=>propertiesBefore));record(format+' '+mode+' Undo exact text and format');
+   result.samples.push(sample);await page.evaluate(()=>removeReview());
+  }
+ }
  if(['--bootstrap-only','--bootstrap-denied-only'].includes(process.argv[6]))for(const format of ['hwp','hwpx']){
   await page.evaluate(async format=>{
    await editor.loadFile(new Uint8Array(synthetic[format]),'bootstrap.'+format,{suppressDialogs:true,skipUnsavedGuard:true});
@@ -399,7 +447,7 @@ try {
   return rows;
  });
  result.status='PASS_API_FIXTURE';
-} catch(e){result.status='FAIL';result.error=String(e.stack??e);}
+} catch(e){result.status='FAIL';result.error=String(e.stack??e);if(page)result.visibleStatus=await page.getByRole('status').allTextContents().catch(()=>[]);}
 finally{
  clearTimeout(watchdog);
  try { if(browser)await browser.close(); } catch(e){result.status='FAIL';result.browserCloseError=String(e);}

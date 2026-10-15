@@ -34,3 +34,26 @@ test('already cancelled capture sends no request',async()=>{
  let calls=0;const run=createInstantDraft(async r=>{calls++;return response(r);},GrammarCore);
  const c=new AbortController();c.abort();await assert.rejects(run(capture,c.signal),/INSTANT_CANCELLED/);assert.equal(calls,0);
 });
+
+test('writing mode requires explicit capability and exact response intent',async()=>{
+ let calls=0;
+ const analyze=async r=>{calls++;return response(r);};
+ await assert.rejects(createInstantDraft(analyze,GrammarCore)(capture,signal(),{mode:'translate',target:'ko'}),/INTENT_REFUSED/);
+ assert.equal(calls,0);
+ const run=createInstantDraft(analyze,GrammarCore,{writing:true});
+ assert.equal(await run(capture,signal(),{mode:'translate',target:'ko'}),'😀 separate');
+ const wrong=createInstantDraft(async r=>({...response(r),intent:{mode:'translate',target:'en'}}),GrammarCore,{writing:true});
+ await assert.rejects(wrong(capture,signal(),{mode:'translate',target:'ko'}),/INTENT_REPLY_REFUSED/);
+});
+
+test('unsupported modes and extra fields never dispatch',async()=>{
+ let calls=0;const run=createInstantDraft(async r=>{calls++;return response(r);},GrammarCore,{writing:true});
+ for(const intent of [{mode:'provider'},{mode:'translate',target:'unknown'},{mode:'polite',provider:'codex'},[]])await assert.rejects(run(capture,signal(),intent),/INTENT_REFUSED/);
+ assert.equal(calls,0);
+});
+
+test('caller mutation cannot change in-flight mode binding',async()=>{
+ let finish;const run=createInstantDraft(r=>new Promise(ok=>{finish=()=>ok(response(r));}),GrammarCore,{writing:true});
+ const intent={mode:'translate',target:'ko'},pending=run(capture,signal(),intent);
+ intent.target='en';finish();assert.equal(await pending,'😀 separate');
+});
