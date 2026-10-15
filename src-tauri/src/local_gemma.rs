@@ -820,7 +820,7 @@ mod tests {
         for mode in ["invalid","timeout"] {
             let model=root.join(format!("{mode}.gguf"));std::fs::write(&model,mode).unwrap();
             let failure=GemmaEngine::start_reported(&exe,&model,Instant::now()+Duration::from_secs(3),Arc::new(AtomicBool::new(true))).await.err().unwrap();
-            assert!(model.with_extension("warmup").exists(),"warmup was not reached: {}",failure.error);
+            assert!(model.with_extension("warmup").exists(),"warmup was not reached: {}; fixture diagnostic: {}",failure.error,std::fs::read_to_string(model.with_extension("fixture-error")).unwrap_or_else(|_| "unavailable".into()));
             assert!(failure.cleanup_confirmed,"{}",failure.error);
             assert_eq!(failure.error,if mode=="timeout" {"gemma_start_timeout"} else {"gemma_warmup_output"});
             let cwd=std::path::PathBuf::from(std::fs::read_to_string(model.with_extension("cwd")).unwrap());

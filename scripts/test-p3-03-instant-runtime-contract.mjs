@@ -27,9 +27,21 @@ check(existsSync(join(root, runtimePath)), "RUNTIME_MODULE_MISSING");
 check(existsSync(join(root, "src/instantSelectionRuntime.ts")), "TS_REDUCER_MISSING");
 check(existsSync(join(root, "docs/P3_03_INSTANT_SELECTION_RUNTIME_WIRING.md")), "DOC_MISSING");
 check(mainSource.includes("mod p3_03_runtime;"), "MAIN_MOD_MISSING");
-check(!mainSource.includes("mod instant_selection") && !mainSource.includes("instant_selection::"), "P3_02_MAIN_GUARD");
+// P3-02 prohibited all engine references before runtime integration existed.
+// Main now legitimately chooses AnalysisMode for Gemma. Keep the actual boundary:
+// analysis runs through p3_03_runtime, not a directly constructed/called engine.
+// This is a structural guard; production Rust/reducer tests cover behavior.
+function bypassesRuntime(source) {
+  const withoutModes = source.replace(/(?:codex_pencil::)?instant_selection::AnalysisMode::[A-Za-z]+/g, "MODE");
+  return /mod\s+instant_selection\b|\binstant_selection\s*::/.test(withoutModes);
+}
+check(!bypassesRuntime(mainSource), "MAIN_ANALYSIS_RUNTIME_BOUNDARY");
+check(!bypassesRuntime("codex_pencil::instant_selection::AnalysisMode::Translation"), "GUARD_ALLOWS_MODE");
+check(bypassesRuntime("instant_selection::DefaultEngine::default().analyze(&request)"), "GUARD_REJECTS_ENGINE");
+check(bypassesRuntime("use codex_pencil::instant_selection::{DefaultEngine};"), "GUARD_REJECTS_IMPORT");
+check(mainSource.includes("p3_03_runtime::analyze_correction_source_off_ui(") && mainSource.includes("p3_03_runtime::analyze_gemma_source("), "MAIN_RUNTIME_DISPATCH");
 check(!/async fn rewrite_selected_text\([^)]*selected_text/.test(mainSource), "FRONTEND_SOURCE_PARAM");
-check(runtime.includes("spawn_blocking") || runtime.includes("spawn_blocking"), "NON_BLOCKING_MISSING");
+check(runtime.includes("spawn_blocking"), "NON_BLOCKING_MISSING");
 check(runtime.includes("InvalidationReason::Recapture"), "INVALIDATION_RECAPTURE");
 check(runtime.includes("InvalidationReason::Cancel"), "INVALIDATION_CANCEL");
 check(runtime.includes("InvalidationReason::Dismiss"), "INVALIDATION_DISMISS");
