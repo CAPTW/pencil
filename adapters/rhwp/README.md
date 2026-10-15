@@ -235,3 +235,41 @@ mixed-format surrounding paragraphs, explicit Accept, Undo and disk export/reope
 for HWP/HWPX (18 checks). This still uses the earlier TEST-ONLY analysis bridge.
 Mixed formatting within the selected paragraph, tables/fields and general complex
 HWP documents remain unsupported. Do not remove the current refusal to enable them.
+
+
+## Installed extension-owned editor candidate (2026-10-16)
+
+The optional `package.ps1 -RhwpSourceRoot <verified-upstream-root>` build now
+bundles the pinned Studio into `extension/rhwp/index.html`, linked from the popup.
+It uses the installer's Native Messaging registration and the managed local Gemma
+broker. There is no page analysis hook, HTTP bridge, cloud fallback or automatic
+Accept. The earlier fixture-only statements above describe historical checkpoints.
+
+Before the editor parses document text, `load-protection.mjs` checks bounded
+original bytes. Only plain HWP5 with compression as its sole optional header flag,
+and bounded HWPX with an empty ODF protection manifest, are admitted. Password,
+distribution, DRM, unknown flags/containers and ambiguous ZIP members are refused.
+This deliberately rejects some otherwise valid documents. Admission is granted
+only after that exact load finishes initializing; switching/failed loads dispose
+old review authority. Recent-document persistence and recovery/idle autosave are
+disabled in this bundle. Explicit Save downloads a file chosen by the user.
+
+Actual installed Native Messaging with Gemma passed six HWP/HWPX translation,
+natural and polite rewrite cases, with independent saved-file parsing for exact
+text, character/paragraph/style preservation, Undo and reopen (18 checks).
+The selected paragraph is uniform bold+italic; surrounding paragraphs have mixed
+formatting. Mixed runs INSIDE the selection, tables, fields, arbitrary complex
+files and actual Hancom remain unqualified. This is headless Chromium automation
+with a fresh owned profile, not physical keyboard or ordinary profile acceptance.
+
+`test-rhwp-installed.mjs <config.json>` repeats the installed-browser checks under
+the existing single-session supervisor. Config supplies evidenceRoot (containing
+install and protected synthetic files), playwrightModule, wasmModule, wasmBinary,
+browserProfile, chromiumBinary and inputs.hwp/inputs.hwpx. Use synthetic documents
+only, a running owned Gemma installation, and a fresh profile. The independent WASM
+parser only reads downloaded files; it does not mutate the live editor.
+
+Evidence: external `rhwp-installed-20261016`. The tested package combines verified
+native binaries from e6ff394 with the separately hash-bound rHWP addon; it is not
+a clean native rebuild from the addon commit. No personal-install update, release
+or general support claim follows from this candidate.

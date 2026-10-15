@@ -15,6 +15,10 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
+# Owned trials must never fall back to the real user's shared data directories.
+if ($env:GRAMMAR_HOST_TRIAL -and $RemoveUserData -and -not $UserDataDirectory) {
+  throw 'OWNED_TRIAL_REQUIRES_EXPLICIT_USER_DATA_DIRECTORY'
+}
 if (-not $InstallRoot) {
   $InstallRoot = if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'install-receipt.json') -PathType Leaf) { $PSScriptRoot } else { Join-Path $env:LOCALAPPDATA 'GrammarPersonal' }
 }
