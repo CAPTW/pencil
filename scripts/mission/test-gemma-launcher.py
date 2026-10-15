@@ -188,6 +188,7 @@ class LauncherTests(unittest.TestCase):
 
     def wait_phase(self, phase):
         deadline=time.monotonic()+10
+        last_phase = "not_observed"
         while time.monotonic()<deadline:
             files=list(self.root.glob("gemma-session-*.json"))
             if files:
@@ -198,9 +199,10 @@ class LauncherTests(unittest.TestCase):
                     # Keep the original deadline and every phase assertion.
                     time.sleep(.02)
                     continue
+                last_phase = state["phase"]
                 if state["phase"]==phase: return files[0],state
             time.sleep(.02)
-        self.fail("missing phase: "+phase)
+        self.fail("missing phase: "+phase+"; last phase: "+last_phase)
 
     def test_explicit_retry_keeps_app_and_rejects_stale_ticket(self):
         (self.root / "crash-after-app").touch()
@@ -256,7 +258,7 @@ class LauncherTests(unittest.TestCase):
             (self.root / "release-app").touch()
             out,err=first.communicate(timeout=20)
         self.assertNotEqual(first.returncode,0)
-        self.assertIn("cleanup was not confirmed",err)
+        self.assertIn("cleanup was not confirmed",err, out + err)
 
     def test_confirmed_startup_failure_retries_without_restarting_app(self):
         (self.root / "fail-start").touch()

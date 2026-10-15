@@ -3110,6 +3110,15 @@ Follow-up transition defect reproduced: after prior readiness + confirmed cleanu
 a subsequent no-runtime retry failed final classification because historical published
 configuration remained non-null. Final guard now accepts the explicit no-runtime
 state for that attempt, keeping exit failure and no-cleanup-claim semantics. Added
-stub transition regression oldFAIL/newPASS; final launcher31 PASS. CI additionally
+stub transition regression oldFAIL/newPASS; final launcher31: 30PASS/1FAIL (existing confirmed-startup retry ready observation); failure remains under diagnosis. CI additionally
 runs all launcher tests after actual-broker integration. Superseded dd1734f run may
 be cancelled to avoid duplicate compilation; cancellation is not a test PASS.
+
+
+Follow-up verification correction: commit05ef854 incorrectly stated launcher31 PASS.
+The actual r2 result was30PASS/1FAIL (ready observation); r3 was30PASS/1FAIL
+(unconfirmed-cleanup scenario ended with broker-null startup disposition). Both
+failures remain recorded in quality-launcher-r2/r3-20261015.log. Focused retries
+passed2/2 but do not erase these failures or establish their cause. Added last-phase
+and stdout failure diagnostics without changing deadlines/assertions. Hosted final
+result must be read for the exact candidate commit; no local full31 PASS claimed.
