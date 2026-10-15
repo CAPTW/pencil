@@ -151,3 +151,12 @@ integrity or deadline change. Inactive-review hypothesis did not reproduce loss:
 fresh-profile real Gemma translation/rewrite14 PASS, cleanup0; see latest HANDOFF.
 Fixture path/preparation failures preserved, not product regression or successes.
 Next: first-cold phase evidence and original missing-input reproduction.
+
+
+2026-10-15 Q04/Q05 reproduction checkpoint: cold first-file verification timed out
+before GPU initialization (read175s vs hash1.29s). Sequential hint and8MiB reads
+failed qualification; no product optimization adopted. Q04 remains open. Q05 has
+a controlled test-input cursor race reproduction and a fail-closed helper repair;
+42 actual Gemma cases were40PASS/2safe input refusals, not a full PASS. Historical
+product loss remains open pending isolated reproduction. See HANDOFF and
+cold-input-cause-20261015 evidence; do not conflate fixture repair with product fix.

@@ -3249,3 +3249,56 @@ Supervisor PASS/COMPLETE before/after0; browser closed, host0, profile deleted,
 extension files unchanged. External dispatcher restored byte-for-byte and owned
 app/model process inventory0. Final receipt personal-chromium-b145ddd-20261015-r2/
 FINAL_RECEIPT.json. No main, push, release or normal Chrome profile change.
+
+
+## 2026-10-15 — Cold read timeout reproduced; input delivery race isolated
+Evidence: D:/dev/grammar-evidence/cold-input-cause-20261015. Installed product
+remains b145ddd, unchanged. One owned supervisor/job at a time; no user documents,
+normal profiles, provider calls or global cache purge. Fresh task-owned model files
+were written unbuffered/write-through; broker performs their first buffered read.
+This is a cold-file reproduction, not reboot/storage-cache controlled acceptance.
+Copy preparation time is excluded from startup measurements.
+
+Baseline cold-r2 failed at180234ms: model pin read175145ms/hash1291ms, only
+5573181440/6975879296 bytes read; GPU engine had not started. Sequential-read hint
+candidate also failed180219ms (3357540352 bytes); rejected. An8MiB read candidate
+passed105218ms once (pin96314ms, engine5265ms), then failed180204ms on a fresh
+file (read166962ms/hash1672ms,6887047168 bytes). Neither optimization is retained.
+Original model/hash, file locks, quality settings and deadline remain unchanged.
+This localizes the timeout to model verification IO, but does not prove the storage,
+filesystem/filter or scheduling cause. Q04 remains OPEN; do not increase timeout
+or skip hashing to turn these failures green. Next isolate read latency distribution
+and disk contention, then evaluate bounded pre-read/preparation with unchanged
+trusted verification and cancellation ownership. No product fix claimed.
+
+Input trial:42 actual Gemma/native-mouse samples,40PASS/2FAIL. Both failures
+refused before input; source unchanged. Continuous pointer movement and a window
+on another monitor were observed. This is not proof of user intent or backend loss.
+Controlled cursor displacement inside the owned review reproduces a concrete
+harness flaw: old helper reports sent2 but no Accept event/source change; new
+helper refuses before input. scripts/mission/owned-review-click.cs now checks the
+actual cursor again before SendInput, validates cursor clipping and separates
+foreground/hit-test/position diagnostics. No automatic retry or product mutation
+checks removed. There remains a non-atomic gap before SendInput; historical
+intermittent product Accept is not declared universally fixed. The42-case fixture's
+experimental80ms settling delay was not adopted.
+
+Latest helper compiles. Broker pin regression tests2PASS/1profile-only ignored;
+existing library warnings remain. Governance PASS; no independent reviewer.
+Earlier preparation failure (bounded360s CopyFileEx) and both rejected experiments
+remain as failures. Final quiet-input result and cleanup are appended below.
+
+Final input-final quiet-input test (Owner coordinated):14/14 real Gemma native
+mouse Accept PASS, exact source reread, controlled old/new race reproduced again
+with latest helper. No settling delay. Ready56.006s (cache uncontrolled), capture
+108-237ms, recommendation549-983ms, trusted click-to-reread25-116ms. Whole helper
+request-to-reread82-575ms includes process/input dispatch; do not label it backend
+latency. App/editor natural exit; supervisor PASS/COMPLETE before/after0. This
+isolated run does not prove all historical intermittent cases fixed.
+
+FINAL_RECEIPT.json records all measured ranges and cleanup: owned process
+inventory0, dispatcher restored byte-for-byte, four task-owned6.98GB model copies
+removed after processes exited. Original D:/PencilAssets model/runtime and personal
+installation unchanged. Runtime junctions retained without recursive traversal.
+The final production source has no broker change; rejected candidate binaries and
+logs remain evidence. No main/push/release, no installed candidate upgrade.

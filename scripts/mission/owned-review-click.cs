@@ -21,6 +21,7 @@ class OwnedReviewClick {
  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
  [DllImport("user32.dll")] static extern bool SetCursorPos(int x,int y);
  [DllImport("user32.dll")] static extern bool GetCursorPos(out Point point);
+ [DllImport("user32.dll")] static extern bool GetClipCursor(out Rect rect);
  [DllImport("user32.dll")] static extern uint SendInput(uint n,Input[] data,int size);
  [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access,bool inherit,int pid);
  [DllImport("kernel32.dll",CharSet=CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr p,uint flags,StringBuilder s,ref uint n);
@@ -41,12 +42,19 @@ class OwnedReviewClick {
   var point=new Point{x=(int)Math.Round(x),y=(int)Math.Round(y)};
   if(!ClientToScreen(window,ref point))throw new Exception("screen mapping failed");
   uint foreground=Owner(GetForegroundWindow());
-  if((foreground!=app&&foreground!=target)||GetAncestor(WindowFromPoint(point),2)!=window)throw new Exception("click would target an unowned or obscured window");
+  bool foregroundOwned=foreground==app||foreground==target;
+  bool pointVisible=GetAncestor(WindowFromPoint(point),2)==window;
+  if(!foregroundOwned||!pointVisible)throw new Exception("owned click refused: foregroundOwned="+foregroundOwned+" pointVisible="+pointVisible);
+  Rect clip;if(!GetClipCursor(out clip))throw new Exception("cursor clip unavailable");
+  if(point.x<clip.left||point.x>=clip.right||point.y<clip.top||point.y>=clip.bottom)throw new Exception("requested owned point outside cursor clip");
   if(!SetCursorPos(point.x,point.y))throw new Exception("cursor unavailable");
-  Point actual;if(!GetCursorPos(out actual)||actual.x!=point.x||actual.y!=point.y)throw new Exception("requested click lies outside the accessible desktop");
+  Point actual;if(!GetCursorPos(out actual)||actual.x!=point.x||actual.y!=point.y)throw new Exception("cursor moved during owned positioning expected="+point.x+","+point.y+" actual="+actual.x+","+actual.y);
   // Recheck immediately before input; never click through an unrelated window.
   uint current=Owner(GetForegroundWindow());
   if((current!=app&&current!=target)||GetAncestor(WindowFromPoint(point),2)!=window)throw new Exception("click target changed");
+  // SetCursorPos and SendInput are separate operations. Another input source
+  // can move the cursor between them; checking the old point alone misses it.
+  if(!GetCursorPos(out actual)||actual.x!=point.x||actual.y!=point.y)throw new Exception("cursor moved before owned click");
   var events=new Input[2];events[0].mouse.flags=2;events[1].mouse.flags=4;
   uint sent=SendInput(2,events,Marshal.SizeOf(typeof(Input)));
   if(sent!=2){if(sent==1)SendInput(1,new[]{events[1]},Marshal.SizeOf(typeof(Input)));throw new Exception("incomplete mouse input");}
