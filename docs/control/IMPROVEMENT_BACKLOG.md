@@ -94,3 +94,8 @@ its original cause is still unknown. No cache flush/pre-read used, but cache sta
 uncontrolled, so this is not proof of cold performance. Evidence quality-native-20261015.
 Final hosted outcome must be tied to the actual follow-up commit, not inherited from
 942043b. No main adoption, release or private-install upgrade by this follow-up.
+
+Hosted Q01/Q02/Q17 snapshot942043b: Windows run38723527175 SUCCESS. PR event itself
+still NOT_RUN (only push exercised); branch protection unchanged. Final follow-up
+also corrects historical-ready → no-runtime-retry exit classification (red reproduced,
+launcher31 PASS). No cold-start or click-loss repair claimed from these results.
