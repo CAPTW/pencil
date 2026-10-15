@@ -3446,3 +3446,44 @@ was not retried. Personal installation and other sessions unchanged.
 Next: current-Gemma cross-paragraph selection/topology qualification, then rHWP
 trusted transport and Calc/Impress under editor-first priority. General Writer/Word
 acceptance remains incomplete; D startup optimization deferred.
+
+
+## 2026-10-15 — Actual Gemma cross-paragraph saved DOCX
+2026-10-15 Actual Gemma Writer cross-paragraph DOCX: e6ff394 binaries plus package-verified span-enabled OXT, selection from inside paragraph1 to inside paragraph4 including empty paragraph3. Final10 widget+5 enclosing checks PASS: EN-KO/natural/polite Accept and Undo, full text/portion bold/RGB/alignment preservation, edited span, removed-boundary refusal unchanged, source-change and Disable. Two sequential trials PASS with natural app/Office exit and supervisor0 before/after; owned uninstall complete. Final recommendation1098-1471ms and Accept455-958ms; across6 samples Accept500ms missed5, short1s missed6, no result over3s. Latency unresolved, no relaxed targets. No production defect found or core change. Personal install unchanged; general DOCX/Word/current-Gemma merge-split unqualified. Evidence writer-gemma-span-20261015/FINAL_RECEIPT.json.
+
+Exact environment: pinned LibreOffice26.2.4.2 SSD runtime, D Gemma12B Q4_0,
+unchanged e6ff394 app/broker/native DLL. Package binding verified by the current
+builder. Added explicit cross-format/span OXT flags, kept uniform-topology OFF.
+Four Standard body paragraphs with colors118822/BB2200/2255AA/442299 and
+alignments0/3/0/1, bold across Latin/Asian/complex script properties. Capture
+starts after the unselected Before prefix in paragraph1 and ends before After
+suffix in paragraph4. Paragraph3 is empty. Full document string and every portion
+format are checked after Apply and Undo, not event-count inference. Actual Gemma
+keeps separators/empty paragraph; first-selected-style-per-part policy applies.
+Fixture UNO creates/reopens/saves synthetic sources, reads and requests Undo;
+product mutation is only trusted widget Accept following native shortcut/menu
+Enable. No private Apply, fake model response, automatic file Save or cloud call.
+Quality reviewed by integrator: negation,25 dollars,Friday,today and delivery-date
+constraint preserved. Not independent linguistic review.
+
+Final expanded run also checks edited multi-paragraph draft and deliberately
+collapsed boundaries: unsupported merge is refused, whole text and formats
+unchanged. Earlier pass-r1 retained separately. Final p50/p95/p99/max: result
+1146/1471/1471/1471ms; Accept670/958/958/958ms (n3). Both runs n6: Accept5/6
+misses500ms and result6/6 misses1s, none over3s. This does not prove a broad3s
+paragraph target; exact small samples and misses retained. No startup tuning;
+readyMs is residual observation after UI startup, not a cold-start measurement.
+No correctness defect reproduced; no product algorithm changed.
+
+Final10 widget+5 enclosing checks, separate prior8+5 PASS; source layout12,
+bridge6, package9, binding6, quit3 tests PASS. Same-integrator review only.
+Evidence D:/dev/grammar-evidence/writer-gemma-span-20261015/FINAL_RECEIPT.json
+binds fixtures, OXT and outputs. Both trial supervisors PASS/COMPLETE with
+before0/after0 and natural app/Office exit0. Cleanup supervisor PASS/COMPLETE0;
+uninstall reports root/host-registration/user-data/processes0. New task-owned
+Office profiles/evidence retained; no prior policy-blocked deletion retried.
+Personal installation, other sessions, main and release unchanged. Source stale.
+Next document-priority slice: rHWP trusted product transport/admission and
+installed HWP/HWPX flow, then Calc/Impress. Writer current-Gemma merge/split,
+complex tables/fields/tracked changes, mixed runs inside each selected paragraph,
+Word/IME/normal profiles remain unqualified. Accept latency debt remains open.
