@@ -3609,3 +3609,55 @@ installed-receipt.json, supervisor.json, final-uninstall.json, cleanup-verificat
 Same-integrator review only. Project Source snapshot is stale. Next: expand selected-run mapping only with
 preservation/Undo proof, then Calc/Impress per editor-first priority. Provider work
 second, startup third. Do not silently enable broader HWP/Hancom support.
+
+
+## 2026-10-16 AppData incident investigation / cleanup containment
+
+Priority override: user requested read-only impact/recovery investigation before
+further product trials. No app/model/browser session, user-file restoration,
+credential inspection, personal install update, push or release was performed.
+
+Historical `grammar-host-personal-20261011/personal-data-before.json` records four
+Roaming files: settings.json808 bytes, settings.json.bak598, terminology.v1.json2587,
+terminology.v1.json.bak2036, each with SHA256. Matching virtualized baseline and
+preservation receipt exist. Current default Roaming/Local directories are absent;
+MSIX LocalCache was also checked (no settings/dictionary found). Exact deletion
+time, last pre-incident contents and full loss cannot be proven. This narrows the
+previous UNKNOWN: historical existence is confirmed; current absence is confirmed;
+causal attribution of every lost byte is not. Do not claim no data loss.
+
+Actual personal shortcut passes ProfileDirectory=C:/Users/USER/GrammarPersonalData-dffcf8a;
+that path was outside the erroneous default deletion list and currently contains
+only its original marker. Known personal installation backups and two related
+external evidence roots yielded11 settings/dictionary candidates, none matching
+historical personal hashes. Candidates are not restored or treated as user backups.
+Only names/sizes/hashes were recorded, not setting values or dictionary entries.
+VSS CIM query unavailable (CimException), NOT evidence of no snapshots; File History
+configuration absent in current view. No undelete tools, raw disk scan, credential
+recovery or privileged operation. Hashes alone cannot reconstruct contents. A known
+independent backup/Previous Versions source is needed before safe restoration.
+Evidence: D:/dev/grammar-evidence/appdata-investigation-20261016/IMPACT_AND_RECOVERY.json
+and recovery-candidates.json. Search was bounded, not exhaustive across every disk.
+
+Cleanup now requires explicit directories and a marked TrialRoot; implicit shared
+AppData removal is rejected even without a trial environment flag. Normal uninstall
+without RemoveUserData preserves settings. Trial scope is exported by owned_trial
+as its exact output directory with owner marker. Install/data paths must be strict
+children; lexical traversal/ADS/UNC/broad roots, missing or mismatched ownership,
+reparse ancestors/descendants, and foreign host registration are rejected BEFORE
+receipt/lock/registry mutation. Parent directory handles exclude delete sharing;
+scoped deletion removes single entries rather than recursive traversal. Receipt
+replacement avoids modifying outside hard-linked bytes. All pins close in finally.
+This is guarded cleanup, not OS sandboxing of arbitrary scripts or protection from
+an administrator/forged ownership. Old package uninstallers do not acquire these
+fixes. Do not run archived cleanup scripts; migrate callers to this current contract.
+
+14 production PowerShell synthetic tests PASS (including preserved outside sentinels,
+unchanged refused receipts, junctions, hardlinks, native registration); supervisor6
+PASS; one supervised synthetic install/profile cleanup PASS, remaining children0.
+All new test data under D evidence; user data untouched. Intermediate File.Replace
+null-binding failure2 retained as tests-r3 fixture state; fixed NullString binding,
+no requirement relaxed. Governance/syntax/diff checks PASS. Hosted package CI NOT_RUN;
+legacy test-personal-package RemoveUserData calls and external sibling-root trial
+scripts require scope migration before rerunning (fail closed, not test acceptance).
+No blanket claim that every old test driver is safe. No obsolete package publication.

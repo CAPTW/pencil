@@ -2,22 +2,96 @@
 # Stops only processes started from this install root, removes only the exact
 # native host registration recorded for it, and deletes the install root. The
 # receipt and this script are deleted last (after the user data, when asked),
-# so an interrupted or failed run can simply be repeated. -RemoveUserData also
-# deletes the app's settings, dictionary, WebView data and app-owned Codex
-# sign-in for this Windows user; every Grammar copy of this user shares them.
+# so an interrupted or failed run can simply be repeated. Shared AppData is
+# never an implicit deletion target. RemoveUserData is limited to explicit
+# directories inside a marked trial root; normal removal preserves user data.
 [CmdletBinding()]
 param(
   # Default: the installation this script belongs to, else the standard location.
   [string]$InstallRoot,
   [switch]$RemoveUserData,
   # Tests only: task-owned folders in place of the app's user data folders.
-  [string[]]$UserDataDirectory
+  [string[]]$UserDataDirectory,
+  # Existing task-owned root with .pencil-trial-owner.json; never inferred.
+  [string]$TrialRoot = $env:GRAMMAR_TRIAL_ROOT
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
-# Owned trials must never fall back to the real user's shared data directories.
-if ($env:GRAMMAR_HOST_TRIAL -and $RemoveUserData -and -not $UserDataDirectory) {
-  throw 'OWNED_TRIAL_REQUIRES_EXPLICIT_USER_DATA_DIRECTORY'
+# Test cleanup is a separate, explicit filesystem capability. No default user data.
+$trialCleanup = [bool]($env:GRAMMAR_HOST_TRIAL -or $TrialRoot -or $UserDataDirectory)
+if ($RemoveUserData -and -not $UserDataDirectory) { throw 'OWNED_TRIAL_REQUIRES_EXPLICIT_USER_DATA_DIRECTORY' }
+if ($trialCleanup -and -not $TrialRoot) { throw 'TRIAL_ROOT_REQUIRED' }
+$cleanupPins = @{}
+function Canonical-Local([string]$Path) {
+  if ($Path -notmatch '^[A-Za-z]:[\\/]' -or $Path.Substring(2).Contains(':') -or $Path -match '(^|[\\/])\.\.?([\\/]|$)' -or $Path -match '[. ]([\\/]|$)') {throw 'UNSAFE_CLEANUP_PATH'}
+  [IO.Path]::GetFullPath($Path).TrimEnd('\','/')
+}
+function Assert-Contained([string]$Path) {
+  $full=Canonical-Local $Path
+  if (-not $full.StartsWith($scope+'\',[StringComparison]::OrdinalIgnoreCase)) {throw 'CLEANUP_OUTSIDE_TRIAL_ROOT'}
+  $full
+}
+function Assert-NoLinks([string]$Path) {
+  $cursor=[IO.Path]::GetFullPath($Path)
+  while($cursor) {
+    if (Test-Path -LiteralPath $cursor) {
+      if ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {throw 'CLEANUP_REPARSE_POINT'}
+    }
+    $cursor=[IO.Path]::GetDirectoryName($cursor)
+  }
+}
+function Assert-Tree([string]$Path) {
+  Assert-NoLinks $Path
+  if(Test-Path -LiteralPath $Path -PathType Container) {
+    foreach($item in Get-ChildItem -LiteralPath $Path -Force) {Assert-Tree $item.FullName}
+  }
+}
+if($trialCleanup) {
+  $scope=Canonical-Local $TrialRoot
+  foreach($forbidden in @($env:USERPROFILE,$env:APPDATA,$env:LOCALAPPDATA,[IO.Path]::GetPathRoot($scope))) {
+    if($forbidden -and ($scope.Equals($forbidden.TrimEnd('\'),[StringComparison]::OrdinalIgnoreCase) -or $forbidden.StartsWith($scope+'\',[StringComparison]::OrdinalIgnoreCase))) {throw 'TRIAL_ROOT_TOO_BROAD'}
+  }
+  Assert-NoLinks $scope
+  $marker=Join-Path $scope '.pencil-trial-owner.json';Assert-NoLinks $marker
+  $owner=Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json
+  if($owner.schema -cne 'pencil-owned-trial/v1' -or (Canonical-Local $owner.root) -ine $scope -or $owner.id -notmatch '^[a-f0-9]{32}$') {throw 'TRIAL_OWNER_INVALID'}
+  if($env:GRAMMAR_TRIAL_ROOT -and (Canonical-Local $env:GRAMMAR_TRIAL_ROOT) -ine $scope) {throw 'TRIAL_ROOT_MISMATCH'}
+  if(-not $InstallRoot) {throw 'EXPLICIT_TRIAL_INSTALL_REQUIRED'}
+  $null=Assert-Contained $InstallRoot
+  foreach($path in @($UserDataDirectory)) {if($path){$null=Assert-Contained $path}}
+  # Validate the whole plan before changing receipt, registry or any file.
+  Assert-Tree $InstallRoot
+  foreach($path in @($UserDataDirectory)){if($path){Assert-Tree $path}}
+  Add-Type -TypeDefinition @"
+using System; using System.Runtime.InteropServices; using Microsoft.Win32.SafeHandles;
+public static class PencilCleanupPin {
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]
+ public static extern SafeFileHandle CreateFile(string path,uint access,uint share,IntPtr sa,uint creation,uint flags,IntPtr template);
+}
+"@
+}
+function Pin-Directory([string]$Path) {
+  if(-not $trialCleanup -or -not (Test-Path -LiteralPath $Path -PathType Container)) {return}
+  Assert-NoLinks $Path
+  if(-not $cleanupPins.ContainsKey($Path)) {
+    $handle=[PencilCleanupPin]::CreateFile($Path,0,3,[IntPtr]::Zero,3,0x02200000,[IntPtr]::Zero)
+    if($handle.IsInvalid){$handle.Dispose();throw 'CLEANUP_DIRECTORY_PIN_FAILED'}
+    $cleanupPins[$Path]=$handle
+    Assert-NoLinks $Path
+  }
+}
+try {
+if($trialCleanup) {
+  # Pin every ancestor without FILE_SHARE_DELETE to prevent rename/junction swaps.
+  $ancestors=@();$cursor=$scope
+  while($cursor){$ancestors=@($cursor)+$ancestors;$cursor=[IO.Path]::GetDirectoryName($cursor)}
+  foreach($path in $ancestors){Pin-Directory $path}
+  foreach($target in @($InstallRoot)+@($UserDataDirectory)) {
+    if(-not $target){continue}
+    $chain=@();$cursor=Canonical-Local $target
+    while($cursor -and $cursor -ine $scope){$chain=@($cursor)+$chain;$cursor=[IO.Path]::GetDirectoryName($cursor)}
+    foreach($path in $chain){Pin-Directory $path}
+  }
 }
 if (-not $InstallRoot) {
   $InstallRoot = if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'install-receipt.json') -PathType Leaf) { $PSScriptRoot } else { Join-Path $env:LOCALAPPDATA 'GrammarPersonal' }
@@ -30,6 +104,20 @@ if ($receipt.schema -cne 'grammar-personal-install/v1' -or [IO.Path]::GetFullPat
   throw 'Install receipt does not describe this directory.'
 }
 
+$registration = $receipt.nativeHost
+$keep = @('install-receipt.json', 'Uninstall-Grammar.ps1')
+$hostReceipt = Join-Path $root 'host/registration.json'
+if (-not $registration -and (Test-Path -LiteralPath $hostReceipt -PathType Leaf)) {
+  $recorded = Get-Content -LiteralPath $hostReceipt -Raw | ConvertFrom-Json
+  $recordedKey = if ($recorded.PSObject.Properties['registry_key']) { $recorded.registry_key } else { 'HKCU:\Software\Google\Chrome\NativeMessagingHosts\' + $recorded.name }
+  $registration = [pscustomobject]@{ name = $recorded.name; registryKey = $recordedKey; manifest = $recorded.manifest }
+}
+if($trialCleanup -and $registration) {
+  $native=$registration
+  $manifestPath=Assert-Contained $native.manifest
+  if(-not $manifestPath.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase) -or $native.name -notmatch '^org\.grammar\.personal\.t[a-f0-9]{32}$' -or $native.registryKey -ine ('HKCU:\Software\Google\Chrome\NativeMessagingHosts\'+$native.name)) {throw 'TRIAL_NATIVE_REGISTRATION_REFUSED'}
+  Assert-NoLinks $manifestPath
+}
 # Never terminate an app while its resident broker launcher still owns a session.
 $sessionLock = Join-Path $root 'gemma-session.lock'
 try { $probeLock = [IO.File]::Open($sessionLock, 'OpenOrCreate', 'ReadWrite', 'None') }
@@ -37,15 +125,17 @@ catch { throw 'Quit Grammar and wait for its Gemma launcher to finish before uni
 try {
   # Persist before releasing the lock so a new launcher cannot race removal.
   $receipt | Add-Member -NotePropertyName state -NotePropertyValue 'uninstalling' -Force
-  [IO.File]::WriteAllText($receiptPath, ($receipt | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+  if($trialCleanup) {
+    # Replace the directory entry instead of modifying a possible hard-linked file.
+    $staged=Join-Path $root ('receipt-'+[guid]::NewGuid().ToString('N')+'.tmp')
+    [IO.File]::WriteAllText($staged, ($receipt | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+    [IO.File]::Replace($staged,$receiptPath,[NullString]::Value)
+  } else {[IO.File]::WriteAllText($receiptPath, ($receipt | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))}
 } finally { $probeLock.Dispose() }
 
 $prefix = $root + [IO.Path]::DirectorySeparatorChar
 function Test-Owned($Process) { $Process.Path -and $Process.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) }
-$userData = if ($UserDataDirectory) { $UserDataDirectory } else { @(
-  (Join-Path $env:APPDATA 'com.local.codexpencil'),
-  (Join-Path $env:LOCALAPPDATA 'com.local.codexpencil')
-) }
+$userData = @($UserDataDirectory | Where-Object { $_ })
 $anotherCopy = 'Another Grammar copy is running and uses the same settings and dictionary. Quit it, then run the uninstaller again, or run it without -RemoveUserData.'
 function Test-OtherCopy { [bool]@(Get-Process -Name 'codex-pencil' -ErrorAction SilentlyContinue | Where-Object { -not (Test-Owned $_) }).Count }
 # The data is shared with every other Grammar copy of this Windows user.
@@ -53,6 +143,18 @@ if ($RemoveUserData -and (Test-OtherCopy)) { throw $anotherCopy }
 
 # WebView2 helper processes can hold user-data files for a moment after the app exits.
 function Remove-Tree([string]$Path) {
+  if($trialCleanup) {
+    $Path=Assert-Contained $Path
+    Assert-NoLinks $Path
+    if(Test-Path -LiteralPath $Path -PathType Container) {
+      Pin-Directory $Path
+      foreach($child in Get-ChildItem -LiteralPath $Path -Force){Remove-Tree $child.FullName}
+      if($cleanupPins.ContainsKey($Path)){$cleanupPins[$Path].Dispose();$cleanupPins.Remove($Path)}
+    }
+    # Single entry only: never recursively follow a newly introduced link.
+    Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+    return
+  }
   for ($attempt = 1; ; $attempt++) {
     try { Remove-Item -LiteralPath $Path -Recurse -Force; return }
     catch { if ($attempt -ge 10) { throw }; Start-Sleep -Seconds 1 }
@@ -67,14 +169,7 @@ $notes = @()
 # The registration recorded by the installer, or by the host tool if the
 # install stopped before the receipt was updated. A key that is already gone
 # is fine; a key that now points elsewhere is not ours and stays.
-$registration = $receipt.nativeHost
-$keep = @('install-receipt.json', 'Uninstall-Grammar.ps1')
-$hostReceipt = Join-Path $root 'host/registration.json'
-if (-not $registration -and (Test-Path -LiteralPath $hostReceipt -PathType Leaf)) {
-  $recorded = Get-Content -LiteralPath $hostReceipt -Raw | ConvertFrom-Json
-  $recordedKey = if ($recorded.PSObject.Properties['registry_key']) { $recorded.registry_key } else { 'HKCU:\Software\Google\Chrome\NativeMessagingHosts\' + $recorded.name }
-  $registration = [pscustomobject]@{ name = $recorded.name; registryKey = $recordedKey; manifest = $recorded.manifest }
-}
+# Registration was validated during preflight.
 $registryKey = $null
 # Ours only while it still points at our manifest.
 function Test-OurKey { [bool]($registryKey -and (Test-Path -LiteralPath $registryKey) -and (Get-Item -LiteralPath $registryKey).GetValue('') -eq $registration.manifest) }
@@ -134,3 +229,5 @@ $result = [ordered]@{
 }
 $result | ConvertTo-Json -Depth 4
 if (-not $complete) { exit 1 }
+
+} finally { foreach($handle in $cleanupPins.Values){$handle.Dispose()} }
