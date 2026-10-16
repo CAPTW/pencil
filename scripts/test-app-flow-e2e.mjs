@@ -43,10 +43,10 @@ if (sandbox) {
   assert.equal(process.env.USERNAME, 'WDAGUtilityAccount');
   assert.notEqual(process.env.COMPUTERNAME, (await readFile('C:/GrammarPayload/host-machine.txt', 'utf8')).trim());
   assert.equal(process.cwd().toLowerCase(), 'c:\\grammarpayload');
-  assert.equal(resolve(process.env.GRAMMAR_APP_EXE).toLowerCase(), 'c:\\grammartrial\\codex-pencil.exe');
+  assert.equal(resolve(process.env.GRAMMAR_APP_EXE).toLowerCase(), 'c:\\penciltrialscope\\install\\codex-pencil.exe');
   assert.match(resolve(process.env.GRAMMAR_EVIDENCE).toLowerCase(), /^c:\\grammarapp[a-z0-9-]+$/);
   assert.match(execFileSync('whoami.exe', ['/groups', '/fo', 'csv'], {encoding: 'utf8'}), /S-1-16-8192/, 'medium integrity required');
-  const manifest = JSON.parse(await readFile('C:/GrammarTrial/MANIFEST.json', 'utf8'));
+  const manifest = JSON.parse(await readFile('C:/PencilTrialScope/install/MANIFEST.json', 'utf8'));
   const expected = manifest.files.find((file) => file.path === 'codex-pencil.exe');
   assert.equal(createHash('sha256').update(await readFile(process.env.GRAMMAR_APP_EXE)).digest('hex'), expected.sha256);
   assert.match(manifest.sourceCommit, /^[0-9a-f]{40}$/);
@@ -74,6 +74,8 @@ const harnessScript = resolve('src-tauri/tests/native_edit_harness.ps1');
 const cdpPort = 9361;
 const out = join(evidence, 'app-flow');
 await mkdir(out, {recursive: true});
+if(!process.env.GRAMMAR_PROFILE_DIRECTORY){process.env.GRAMMAR_PROFILE_DIRECTORY=join(out,'profile');await mkdir(process.env.GRAMMAR_PROFILE_DIRECTORY,{recursive:true});}
+process.env.WEBVIEW2_USER_DATA_FOLDER=join(process.env.GRAMMAR_PROFILE_DIRECTORY,'webview');
 // Deep runs only through the task-owned synthetic executable in place of the
 // Claude CLI (no Provider, account or network). Its behaviour per step comes
 // from a task-owned mode file.
@@ -86,7 +88,7 @@ await setProviderMode('success');
 const checks = [];
 let settingsLocker = null;
 async function lockOwnedSettings() {
-  const settingsPath = join(process.env.APPDATA, 'com.local.codexpencil', 'settings.json');
+  const settingsPath = join(process.env.GRAMMAR_PROFILE_DIRECTORY, 'settings.json');
   assert.ok(existsSync(settingsPath), 'owned installed settings exist');
   settingsLocker = spawn('powershell.exe', ['-NoProfile', '-Command',
     '$f=[IO.File]::Open($env:GRAMMAR_SETTINGS_LOCK_PATH,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read); try { [Console]::WriteLine("LOCKED"); [Console]::Out.Flush(); [Console]::ReadLine() | Out-Null } finally { $f.Dispose() }'],

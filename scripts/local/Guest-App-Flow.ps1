@@ -10,13 +10,14 @@ try {
  if(-not $runtime){throw 'Guest runtime absent'}
  $env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER=$runtime.FullName
  $report.runtime=$runtime.FullName
- & C:\GrammarPayload\package-flow\Install-Grammar.ps1 -InstallRoot C:\GrammarTrial
+ & C:\GrammarPayload\package-flow\New-GrammarTrialScope.ps1 -Root C:\PencilTrialScope
+ & C:\GrammarPayload\package-flow\Install-Grammar.ps1 -InstallRoot C:\PencilTrialScope\install
  New-Item -ItemType Directory C:\GrammarAppFlow\runtime -ErrorAction Stop|Out-Null
  Copy-Item C:\GrammarPayload\test-runtime\child.exe C:\GrammarAppFlow\runtime\child.exe
  $env:GRAMMAR_OWNED_SANDBOX_TEST='1'
  $env:GRAMMAR_PLAYWRIGHT='C:\GrammarPayload\node_modules\playwright'
  $env:GRAMMAR_EVIDENCE='C:\GrammarAppFlow'
- $env:GRAMMAR_APP_EXE='C:\GrammarTrial\codex-pencil.exe'
+ $env:GRAMMAR_APP_EXE='C:\PencilTrialScope\install\codex-pencil.exe'
  $env:GRAMMAR_APP_KIND='INSTALLED_UNMODIFIED_APP_MEDIUM_EXPLICIT_GUEST_WEBVIEW_RUNTIME'
  $node=Start-Process C:\GrammarPayload\node.exe -ArgumentList 'C:\GrammarPayload\scripts\test-app-flow-e2e.mjs' -WorkingDirectory C:\GrammarPayload -RedirectStandardOutput C:\GrammarOutput\app.log -RedirectStandardError C:\GrammarOutput\app-error.log -WindowStyle Hidden -PassThru
  if(-not $node.WaitForExit(600000)){$node.Kill($true);$null=$node.WaitForExit(5000);throw 'Harness deadline exceeded'}
@@ -29,7 +30,7 @@ try {
 }catch{$report.error=$_.Exception.Message;$_|Out-String|Set-Content C:\GrammarOutput\medium-error.txt}
 finally {
  if($node -and -not $node.HasExited){$node.Kill($true);$null=$node.WaitForExit(5000)}
- if(Test-Path C:\GrammarTrial\install-receipt.json){try{& C:\GrammarTrial\Uninstall-Grammar.ps1 -InstallRoot C:\GrammarTrial -RemoveUserData|Set-Content C:\GrammarOutput\uninstall.json}catch{$report.cleanupError=$_.Exception.Message}}
+ if(Test-Path C:\PencilTrialScope\install\install-receipt.json){try{& C:\PencilTrialScope\install\Uninstall-Grammar.ps1 -InstallRoot C:\PencilTrialScope\install -TrialRoot C:\PencilTrialScope -RemoveUserData -UserDataDirectory C:\PencilTrialScope\profile|Set-Content C:\GrammarOutput\uninstall.json}catch{$report.cleanupError=$_.Exception.Message}}
  $report|ConvertTo-Json -Depth 5|Set-Content C:\GrammarOutput\medium-result.json
  Stop-Transcript
 }

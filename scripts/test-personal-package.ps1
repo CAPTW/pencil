@@ -13,7 +13,8 @@ Set-StrictMode -Version 3.0
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $evidence = Join-Path $env:GRAMMAR_EVIDENCE 'personal'
 New-Item -ItemType Directory -Path $evidence -Force | Out-Null
-$installRoot = Join-Path $env:RUNNER_TEMP 'grammar-personal-install'
+$trialRoot = Join-Path $env:RUNNER_TEMP 'pencil-package-trial'
+$installRoot = Join-Path $trialRoot 'install'
 $utf8 = [Text.UTF8Encoding]::new($false)
 function Write-Receipt([string]$Name, $Value) {
   [IO.File]::WriteAllText((Join-Path $evidence $Name), ($Value | ConvertTo-Json -Depth 8), $utf8)
@@ -26,6 +27,7 @@ function Require-OwnedDesktop {
     if ([Environment]::GetEnvironmentVariable($pair[0]) -cne $pair[1]) { throw "owned desktop opt-in: $($pair[0])" }
   }
   if ($env:GITHUB_REF -notin @('refs/heads/codex/grammar-autonomous-r1', 'refs/heads/claude/eloquent-faraday-hh62qc')) { throw 'owned desktop opt-in: GITHUB_REF' }
+  & (Join-Path $PSScriptRoot 'package/New-GrammarTrialScope.ps1') -Root $trialRoot
 }
 function Invoke-HostAnalyze([string]$Executable, [string]$Origin) {
   $body = $utf8.GetBytes((@{version = 1; op = 'analyze'; id = 'package'; epoch = 'package-doc'; revision = 1; text = 'seperate' } | ConvertTo-Json -Compress))
@@ -122,6 +124,7 @@ switch ($Phase) {
     Add-Env 'GRAMMAR_INSTALLED_HOST' $hostManifest.path
     Add-Env 'GRAMMAR_INSTALLED_EXTENSION' $install.extensionDirectory
     Add-Env 'GRAMMAR_INSTALL_ROOT' $installRoot
+    foreach($name in @('GRAMMAR_TRIAL_ROOT','GRAMMAR_HOST_TRIAL','GRAMMAR_PROFILE_DIRECTORY','WEBVIEW2_USER_DATA_FOLDER')){Add-Env $name ([Environment]::GetEnvironmentVariable($name))}
     Write-Receipt 'package-install.json' ([ordered]@{
         sourceCommit = $install.sourceCommit
         extensionId = $manifest.extensionId
@@ -134,16 +137,18 @@ switch ($Phase) {
   'failures' {
     Require-OwnedDesktop
     if (-not $env:GRAMMAR_PACKAGE_ZIP) { throw 'package build did not produce a ZIP' }
-    $work = Join-Path $env:RUNNER_TEMP ('grammar-failures-' + [Guid]::NewGuid().ToString('N'))
+    $work = Join-Path $trialRoot ('grammar-failures-' + [Guid]::NewGuid().ToString('N'))
     $extracted = Join-Path $work 'package'
     Expand-Archive -LiteralPath $env:GRAMMAR_PACKAGE_ZIP -DestinationPath $extracted
     # Task-owned registry tree standing in for a profile without Chrome's key.
-    $testKey = 'HKCU:\Software\GrammarCi' + [Guid]::NewGuid().ToString('N')
-    $hosts = "$testKey\Google\Chrome\NativeMessagingHosts"
+    $scopeOwner=Get-Content (Join-Path $trialRoot '.pencil-trial-owner.json') -Raw|ConvertFrom-Json
+    $testKey = 'HKCU:\Software\PencilTrials\'+$scopeOwner.id
+    $hosts = $scopeOwner.nativeHostsKey
     $checks = [ordered]@{}
     $stand = @()
     function Invoke-Pwsh([string]$Script, [string[]]$Arguments) {
-      $out = & pwsh -NoProfile -File $Script @Arguments 2>&1
+      $scopeArguments=if((Split-Path -Leaf $Script) -eq 'Uninstall-Grammar.ps1'){@('-InstallRoot',(Split-Path -Parent $Script),'-TrialRoot',$trialRoot)}else{@()}
+      $out = & pwsh -NoProfile -File $Script @scopeArguments @Arguments 2>&1
       [pscustomobject]@{ exit = $LASTEXITCODE; text = ($out | Out-String) }
     }
     function Start-StandIn([string]$Directory) {
@@ -211,7 +216,7 @@ switch ($Phase) {
       $null = & (Join-Path $extracted 'Install-Grammar.ps1') -InstallRoot $rootE -SkipBrowserHost
       $own = Start-StandIn $rootE
       $other = Start-StandIn (Join-Path $work 'other-copy')
-      $refused = Invoke-Pwsh (Join-Path $rootE 'Uninstall-Grammar.ps1') @('-RemoveUserData')
+      $refused = Invoke-Pwsh (Join-Path $rootE 'Uninstall-Grammar.ps1') @('-RemoveUserData','-UserDataDirectory',(Join-Path $trialRoot 'profile'))
       $checks.removeUserDataRefusedWhileAnotherCopyRuns = ($refused.exit -ne 0) -and ($refused.text -match 'Another Grammar copy is running') -and
         (Test-Path -LiteralPath $rootE) -and -not $own.HasExited
       Stop-Process -Id $other.Id -Force
@@ -263,13 +268,13 @@ switch ($Phase) {
     $before = [ordered]@{ installRoot = Test-Path -LiteralPath $installRoot }
     if (-not $before.installRoot) { throw 'nothing installed to remove' }
     $install = Get-Content -LiteralPath (Join-Path $installRoot 'install-receipt.json') -Raw | ConvertFrom-Json
-    $result = & (Join-Path $installRoot 'Uninstall-Grammar.ps1') -InstallRoot $installRoot -RemoveUserData | ConvertFrom-Json
+    $result = & (Join-Path $installRoot 'Uninstall-Grammar.ps1') -InstallRoot $installRoot -TrialRoot $trialRoot -RemoveUserData -UserDataDirectory (Join-Path $trialRoot 'profile') | ConvertFrom-Json
     $prefix = [IO.Path]::GetFullPath($installRoot).TrimEnd('\') + '\'
     $independent = [ordered]@{
       installRoot = Test-Path -LiteralPath $installRoot
       registryKey = Test-Path -LiteralPath $install.nativeHost.registryKey
-      appData = Test-Path -LiteralPath (Join-Path $env:APPDATA 'com.local.codexpencil')
-      localAppData = Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'com.local.codexpencil')
+      appData = Test-Path -LiteralPath (Join-Path $trialRoot 'profile')
+      localAppData = Test-Path -LiteralPath (Join-Path $trialRoot 'profile/webview')
       # Any process still running one of the installed binaries is residue.
       processes = @(Get-Process -Name 'codex-pencil', 'grammar-chromium-host' -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -and $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) }).Count

@@ -10,7 +10,7 @@ assert.equal(process.platform,'win32');assert.equal(process.env.USERNAME,'WDAGUt
 assert.notEqual(process.env.COMPUTERNAME,(await readFile('C:/GrammarPayload/host-machine.txt','utf8')).trim());
 assert.match(execFileSync('whoami.exe',['/groups','/fo','csv'],{encoding:'utf8'}),/S-1-16-8192/);
 const {chromium}=createRequire(import.meta.url)('C:/GrammarPayload/node_modules/playwright');
-const execAsync=promisify(execFile),root='C:/GrammarTrial',profile='C:/GrammarBrowserAppProfile';
+const execAsync=promisify(execFile),root='C:/PencilTrialScope/install',profile='C:/GrammarBrowserAppProfile';
 const manifest=JSON.parse(await readFile(root+'/MANIFEST.json','utf8'));
 const extension=root+'/extension',ext=JSON.parse(await readFile(extension+'/manifest.json','utf8'));
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -105,7 +105,7 @@ finally{
  if(widget&&app?.exitCode===null){await widget.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});await until('cleanup app',()=>app.exitCode!==null,15000).catch(()=>{});}
  if(context)await context.close().catch(()=>{});if(webview)await webview.close().catch(()=>{});
  if(app?.exitCode===null){app.kill();report.forcedApp=true;}
- const hostCount=()=>Number(execFileSync('powershell.exe',['-NoProfile','-Command',"@(Get-Process grammar-chromium-host -ErrorAction SilentlyContinue | Where-Object Path -eq 'C:\\GrammarTrial\\grammar-chromium-host.exe').Count"],{windowsHide:true,encoding:'utf8'}).trim());
+ const hostCount=()=>Number(execFileSync('powershell.exe',['-NoProfile','-Command',"@(Get-Process grammar-chromium-host -ErrorAction SilentlyContinue | Where-Object Path -eq 'C:\\PencilTrialScope\\install\\grammar-chromium-host.exe').Count"],{windowsHide:true,encoding:'utf8'}).trim());
  await until('owned native host exits',()=>hostCount()===0,15000).catch(error=>{report.cleanupError=String(error);report.status='FAIL';});
  // Fixed task-owned guest path; never recurse through user profile locations.
  await rm(profile,{recursive:true,force:true,maxRetries:3,retryDelay:100}).catch(error=>{report.cleanupError=String(error);report.status='FAIL';});

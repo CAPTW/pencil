@@ -38,7 +38,7 @@ if ($manifest.extensionId -notmatch '^[a-p]{32}$') { throw 'Package has no fixed
 
 $root = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\', '/')
 if (Test-Path -LiteralPath $root) {
-  throw "InstallRoot already exists: $root. To upgrade, run its Uninstall-Grammar.ps1 first (settings and dictionary stay unless you add -RemoveUserData), or choose a new directory."
+  throw "InstallRoot already exists: $root. To upgrade, run its Uninstall-Grammar.ps1 first (settings and dictionary stay; shared AppData removal is disabled), or choose a new directory."
 }
 # Ask the packaged app's own loader before creating files or registry entries.
 # No GUI, user settings or Provider initialization occurs in this mode.
@@ -81,7 +81,7 @@ try {
   foreach ($item in @('codex-pencil.exe', 'grammar-chromium-host.exe', 'MANIFEST.json', 'BUILD_RECEIPT.json', 'PERSONAL_USE.md', 'README.md', 'HANDOFF.md')) {
     Copy-Item -LiteralPath (Join-Path $package $item) -Destination (Join-Path $root $item)
   }
-  foreach ($localFile in @('Start-Grammar.ps1','Prepare-GrammarLocal.ps1','Gemma-Assets.json')) {
+  foreach ($localFile in @('Start-Grammar.ps1','Prepare-GrammarLocal.ps1','Gemma-Assets.json','New-GrammarTrialScope.ps1')) {
     if ($listed.Contains($localFile)) { Copy-Item -LiteralPath (Join-Path $package $localFile) -Destination (Join-Path $root $localFile) }
   }
   if ($listed.Contains('grammar-gemma-broker.exe')) {

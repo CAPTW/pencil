@@ -101,7 +101,10 @@ class LauncherTests(unittest.TestCase):
 
     def setUp(self):
         self.owned = tempfile.TemporaryDirectory(prefix="grammar-launcher-test-")
-        self.root = pathlib.Path(self.owned.name)
+        self.scope = pathlib.Path(self.owned.name)
+        (self.scope / ".pencil-trial-owner.json").write_text(json.dumps({"schema":"pencil-owned-trial/v1","root":str(self.scope),"id":"a"*32}))
+        self.root = self.scope / "install"
+        self.root.mkdir()
         for name, binary in (("codex-pencil.exe", "app.exe"), ("grammar-gemma-broker.exe", "broker.exe"), ("grammar-chromium-host.exe", "app.exe")):
             shutil.copyfile(self.binaries / binary, self.root / name)
         shutil.copyfile(ROOT / "scripts/package/Start-Grammar.ps1", self.root / "Start-Grammar.ps1")
@@ -363,7 +366,7 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(read_shared_text(self.sidecar), self.original)
             second = self.run_launcher()
             self.assertNotEqual(second.returncode, 0)
-            removal = subprocess.run(["pwsh","-NoProfile","-File",str(self.root / "Uninstall-Grammar.ps1")],capture_output=True,text=True,encoding="utf-8",timeout=10)
+            removal = subprocess.run(["pwsh","-NoProfile","-File",str(self.root / "Uninstall-Grammar.ps1"),"-InstallRoot",str(self.root),"-TrialRoot",str(self.scope)],capture_output=True,text=True,encoding="utf-8",timeout=10)
             self.assertNotEqual(removal.returncode,0)
             self.assertIn("wait for its Gemma launcher",removal.stderr)
         finally:
@@ -469,7 +472,7 @@ class LauncherTests(unittest.TestCase):
             self.assertTrue((self.root / "app-started").exists())
             second = self.run_launcher()
             self.assertNotEqual(second.returncode, 0)
-            removal = subprocess.run(["pwsh","-NoProfile","-File",str(self.root / "Uninstall-Grammar.ps1")],capture_output=True,text=True,encoding="utf-8",timeout=10)
+            removal = subprocess.run(["pwsh","-NoProfile","-File",str(self.root / "Uninstall-Grammar.ps1"),"-InstallRoot",str(self.root),"-TrialRoot",str(self.scope)],capture_output=True,text=True,encoding="utf-8",timeout=10)
             self.assertNotEqual(removal.returncode,0)
             self.assertIn("wait for its Gemma launcher",removal.stderr)
             self.assertTrue((self.root / "codex-pencil.exe").exists())
@@ -535,7 +538,7 @@ class LauncherTests(unittest.TestCase):
         self.assertFalse((self.root / "broker.pid").exists())
 
     def test_owned_uninstall_without_active_launcher(self):
-        result = subprocess.run(["pwsh","-NoProfile","-File",str(self.root / "Uninstall-Grammar.ps1"),"-UserDataDirectory",str(self.root / "owned-unused-data")],capture_output=True,text=True,encoding="utf-8",timeout=30)
+        result = subprocess.run(["pwsh","-NoProfile","-File",str(self.root / "Uninstall-Grammar.ps1"),"-InstallRoot",str(self.root),"-TrialRoot",str(self.scope),"-UserDataDirectory",str(self.root / "owned-unused-data")],capture_output=True,text=True,encoding="utf-8",timeout=30)
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertTrue(json.loads(result.stdout)["complete"])
         self.assertFalse(self.root.exists())

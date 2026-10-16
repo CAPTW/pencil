@@ -3661,3 +3661,47 @@ no requirement relaxed. Governance/syntax/diff checks PASS. Hosted package CI NO
 legacy test-personal-package RemoveUserData calls and external sibling-root trial
 scripts require scope migration before rerunning (fail closed, not test acceptance).
 No blanket claim that every old test driver is safe. No obsolete package publication.
+
+
+## 2026-10-16 Cleanup package propagation / maintained trial callers
+
+User requested shipping the containment fix into an actual candidate package and
+migrating old test entry points, without touching user data. Added packaged
+New-GrammarTrialScope.ps1: fresh/marked root only, no unmarked adoption or junction,
+strict supervisor descendant scope, explicit profile and WebView environment.
+Installer copies the helper and package builder hashes/ships it. Trial native-host
+registry exception is limited to marker-id-bound HKCU/Software/PencilTrials/<id>;
+foreign roots still refuse. Normal Chrome registration remains separately allowed.
+
+Sandbox guest installation paths and JS/Writer consumers migrated together to
+C:/PencilTrialScope/install; explicit profile at scope/profile. Guest cleanup passes
+TrialRoot and UserDataDirectory. CI package driver exports scoped profile variables,
+uses marked-root children and passes explicit uninstall scope; failure-case test
+registry uses the marker-bound root. Gemma launcher tests now put installation below
+a marked scope and pass it explicitly. App-flow settings lock uses owned profile,
+not shared AppData. Historical externally archived payloads are preserved, not
+silently edited/requalified; missing helper in old packages fails before installation.
+See scripts/mission/OWNED_TRIAL_CLEANUP.md.
+
+Actual ZIP extracted and installed with owned NativeMessaging registration;6 checks
+PASS: installed script hashes, omitted path/outside sibling/traversal/junction
+refused with unchanged receipt+registration+outside sentinel, then owned
+installation/profile/registration removed with outside sentinel unchanged.
+Single supervisor PASS6.188s,0 children before/after. Empty uniquely owned registry
+parents removed separately after verifying no children/values. Sentinels retained
+as evidence. No app/model/Provider launched in this installed cleanup trial.
+Packaged scripts17 production PowerShell boundary/initializer tests PASS; separate
+existing synthetic launcher31 PASS and Writer packaging9 PASS. JS/Python syntax,
+PowerShell parse, governance self-test and diff checks PASS. No full native/Gemma
+quality/GUI rerun, hosted CI or Sandbox acceptance claimed for the migrated callers.
+
+Package is a truthful composite: prior verified e6ff394 native binaries and prior
+installed-tested rHWP runtime unchanged, four files refreshed (installer, uninstaller,
+scope helper, personal-use guide). MANIFEST cleanupAddon records source hashes;
+not a fresh native build from the new commit. Actual ZIP and source bindings in
+D:/dev/grammar-evidence/cleanup-package-20261016/FINAL_RECEIPT.json.
+Pencil-cleanup-candidate.zip is local only; personal installation, user settings,
+dictionary and credentials were not read/changed. No push/main/release update.
+Prior AppData loss/recovery uncertainty remains unresolved; this is prevention,
+not restoration. Next package/GUI runs must use these new scope paths. Whole
+mission remains INCOMPLETE, Source stale. Same-integrator review only.
