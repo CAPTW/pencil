@@ -9,10 +9,10 @@ assert.equal(process.platform,'win32');assert.equal(process.env.USERNAME,'WDAGUt
 assert.notEqual(process.env.COMPUTERNAME,(await readFile('C:/GrammarPayload/host-machine.txt','utf8')).trim());
 assert.match(execFileSync('whoami.exe',['/groups','/fo','csv'],{encoding:'utf8'}),/S-1-16-8192/);
 const {chromium}=createRequire(import.meta.url)('C:/GrammarPayload/node_modules/playwright');
-const manifest=JSON.parse(await readFile('C:/GrammarTrial/MANIFEST.json','utf8'));
-const hash=createHash('sha256').update(await readFile('C:/GrammarTrial/codex-pencil.exe')).digest('hex');
+const manifest=JSON.parse(await readFile('C:/PencilTrialScope/install/MANIFEST.json','utf8'));
+const hash=createHash('sha256').update(await readFile('C:/PencilTrialScope/install/codex-pencil.exe')).digest('hex');
 assert.equal(hash,manifest.files.find(x=>x.path==='codex-pencil.exe').sha256);
-const targetHash=createHash('sha256').update(await readFile('C:/GrammarTrial/target-apply.dll')).digest('hex');assert.equal(targetHash,manifest.files.find(x=>x.path==='target-apply.dll').sha256);
+const targetHash=createHash('sha256').update(await readFile('C:/PencilTrialScope/install/target-apply.dll')).digest('hex');assert.equal(targetHash,manifest.files.find(x=>x.path==='target-apply.dll').sha256);
 const report={targetSha256:targetHash,fixtureOverrides:manifest.fixtureOverrides??null,status:'FAIL',classification:manifest.fixtureOverrides?'MODIFIED_TARGET_DLL_FIXTURE_API_CANCEL_NOT_SUCCESSFUL_API':'INSTALLED_UNMODIFIED_APP_API_SETUP_AND_LOCAL_TLS_CANCEL_NOT_SUCCESSFUL_API',sourceCommit:manifest.sourceCommit,appSha256:hash,checks:[],appExitCodes:[],liveProvider:'NOT_RUN',successfulApiReply:'NOT_RUN'};
 const pass=s=>{report.checks.push(s);console.log('PASS '+s);};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -22,7 +22,7 @@ const server=net.createServer(socket=>{connections++;sockets.add(socket);socket.
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const endpoint=`https://127.0.0.1:${server.address().port}/v1/chat/completions`;
 async function launch(){
- app=spawn('C:/GrammarTrial/codex-pencil.exe',[],{windowsHide:true,stdio:'ignore',env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9481'}});
+ app=spawn('C:/PencilTrialScope/install/codex-pencil.exe',[],{windowsHide:true,stdio:'ignore',env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9481'}});
  await until('WebView',async()=>{if(app.exitCode!==null)throw Error('app exited');try{return(await fetch('http://127.0.0.1:9481/json/version')).ok;}catch{return false;}},60000);
  browser=await chromium.connectOverCDP('http://127.0.0.1:9481');
  await until('page',async()=>{page=browser.contexts().flatMap(c=>c.pages()).find(p=>/^(https?:\/\/tauri\.localhost|tauri:\/\/localhost)\//.test(p.url()));return !!page;});

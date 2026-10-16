@@ -8,9 +8,9 @@ assert.equal(process.platform,'win32'); assert.equal(process.env.USERNAME,'WDAGU
 assert.notEqual(process.env.COMPUTERNAME,(await readFile('C:/GrammarPayload/host-machine.txt','utf8')).trim());
 assert.match(execFileSync('whoami.exe',['/groups','/fo','csv'],{encoding:'utf8'}),/S-1-16-8192/);
 const {chromium}=createRequire(import.meta.url)('C:/GrammarPayload/node_modules/playwright');
-const manifest=JSON.parse(await readFile('C:/GrammarTrial/MANIFEST.json','utf8'));
+const manifest=JSON.parse(await readFile('C:/PencilTrialScope/install/MANIFEST.json','utf8'));
 const hashes={};for(const name of ['codex-pencil.exe','target-apply.dll','grammar-gemma-broker.exe','Start-Grammar.ps1']){
- hashes[name]=createHash('sha256').update(await readFile('C:/GrammarTrial/'+name)).digest('hex');
+ hashes[name]=createHash('sha256').update(await readFile('C:/PencilTrialScope/install/'+name)).digest('hex');
  assert.equal(hashes[name],manifest.files.find(x=>x.path===name).sha256);
 }
 const editorKind=process.env.GRAMMAR_TEST_EDITOR_KIND??'richedit';assert.ok(['standard','multiline','richedit'].includes(editorKind));
@@ -27,13 +27,13 @@ async function until(name,probe,ms=15000){const end=Date.now()+ms;while(Date.now
 let app,editor,browser,page,launcher;let editorNatural=false,appNatural=false;
 try{
  pass('installed package hashes verified');
- launcher=spawn('C:/GrammarPayload/pwsh/pwsh.exe',['-NoProfile','-File','C:/GrammarTrial/Start-Grammar.ps1'],{windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9481'}});
+ launcher=spawn('C:/GrammarPayload/pwsh/pwsh.exe',['-NoProfile','-File','C:/PencilTrialScope/install/Start-Grammar.ps1'],{windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9481'}});
  launcher.stdout.on('data',data=>process.stdout.write(data));launcher.stderr.on('data',data=>process.stderr.write(data));
  await until('WebView endpoint',async()=>{if(launcher.exitCode!==null)throw Error('Launcher exited before WebView: '+launcher.exitCode);try{return (await fetch('http://127.0.0.1:9481/json/version')).ok;}catch{return false;}},90000);
  browser=await chromium.connectOverCDP('http://127.0.0.1:9481');
  page=await until('widget page',async()=>browser.contexts().flatMap(x=>x.pages()).find(x=>/^(https?:\/\/tauri\.localhost|tauri:\/\/localhost)\//.test(x.url())),60000);
  await page.waitForFunction(()=>typeof window.__TAURI_INTERNALS__?.invoke==='function',null,{polling:100,timeout:60000});
- app={pid:Number(execFileSync('powershell.exe',['-NoProfile','-Command',"(Get-Process codex-pencil | Where-Object Path -eq 'C:\\GrammarTrial\\codex-pencil.exe').Id"],{encoding:'utf8',windowsHide:true}).trim())};
+ app={pid:Number(execFileSync('powershell.exe',['-NoProfile','-Command',"(Get-Process codex-pencil | Where-Object Path -eq 'C:\\PencilTrialScope\\install\\codex-pencil.exe').Id"],{encoding:'utf8',windowsHide:true}).trim())};
  assert.ok(Number.isInteger(app.pid)&&app.pid>0);report.appPid=app.pid;
  await until('initial model banner',()=>page.locator('.local-model-status').textContent().then(s=>s.includes(missingAssets?'Local Gemma stopped':'Preparing local Gemma')));
  pass(missingAssets?'installed widget visible with missing assets':'installed widget visible during model preparation');
@@ -70,30 +70,30 @@ try{
  if(!statusOnly)await capture();
  const reviewed='검토한 초안을 유지합니다. Keep this edited draft.';
  if(!statusOnly){await draft.fill(reviewed);pass(missingAssets?'synthetic capture and edited draft with missing assets':'synthetic capture and edited draft while preparing');}
- if(!missingAssets)await writeFile('C:/GrammarTrial/local/phase-control','fail');
+ if(!missingAssets)await writeFile('C:/PencilTrialScope/install/local/phase-control','fail');
  const retry=page.getByRole('button',{name:'Retry local model',exact:true});
  await retry.waitFor({state:'visible',timeout:20000});
  if(!statusOnly)assert.equal(await draft.inputValue(),reviewed);
  const oldState=await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('local_model_status'));
  assert.equal(oldState.phase,'failed');assert.ok(oldState.canRetry);pass(missingAssets?'missing assets offer explicit retry':(statusOnly?'warmup failure offers explicit retry':'warmup failure leaves draft and offers explicit retry'));
  if(missingAssets){
-  assert.equal((await import('node:fs')).existsSync('C:/GrammarTrial/local'),false);
-  execFileSync('C:/GrammarPayload/pwsh/pwsh.exe',['-NoProfile','-File','C:/GrammarTrial/Prepare-GrammarLocal.ps1','-AssetCache','C:/GrammarPayload/asset-cache'],{windowsHide:true,timeout:30000});
+  assert.equal((await import('node:fs')).existsSync('C:/PencilTrialScope/install/local'),false);
+  execFileSync('C:/GrammarPayload/pwsh/pwsh.exe',['-NoProfile','-File','C:/PencilTrialScope/install/Prepare-GrammarLocal.ps1','-AssetCache','C:/GrammarPayload/asset-cache'],{windowsHide:true,timeout:30000});
   await sleep(300);
-  assert.equal((await import('node:fs')).existsSync('C:/GrammarTrial/local/runtime.pid'),false);
+  assert.equal((await import('node:fs')).existsSync('C:/PencilTrialScope/install/local/runtime.pid'),false);
   assert.equal((await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('local_model_status'))).phase,'failed');
   if(!statusOnly)assert.equal(await draft.inputValue(),reviewed);
   pass('explicit offline preparation leaves draft and does not start runtime');
  }
- await writeFile('C:/GrammarTrial/local/phase-control','ready');
+ await writeFile('C:/PencilTrialScope/install/local/phase-control','ready');
  await retry.click();
  await until('ready banner',()=>page.locator('.local-model-status').textContent().then(s=>s.includes('Local Gemma ready')),20000);
  if(!statusOnly)assert.equal(await draft.inputValue(),reviewed);
  const newState=await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('local_model_status'));
  assert.equal(newState.phase,'ready');assert.equal(newState.canRetry,false);
  if(!statusOnly)assert.equal(await text(),'please seperate this.');pass(statusOnly?'explicit retry becomes ready':'retry becomes ready without changing draft or source');
- const userCount=await readFile('C:/GrammarTrial/local/user-requests','utf8').catch(()=> '0');
- assert.equal(userCount,'0');assert.equal(await readFile('C:/GrammarTrial/local/warmups','utf8'),missingAssets?'1':'2');pass(missingAssets?'one explicit warmup, zero replay or user inference':(statusOnly?'only two warmups, zero user inference':'only two warmups, no capture replay or user inference'));
+ const userCount=await readFile('C:/PencilTrialScope/install/local/user-requests','utf8').catch(()=> '0');
+ assert.equal(userCount,'0');assert.equal(await readFile('C:/PencilTrialScope/install/local/warmups','utf8'),missingAssets?'1':'2');pass(missingAssets?'one explicit warmup, zero replay or user inference':(statusOnly?'only two warmups, zero user inference':'only two warmups, no capture replay or user inference'));
  if(process.argv.includes('--writing-modes')) {
   assert.equal(statusOnly,false);
   for(const [mode,target,expected] of [['natural','en','Please split this.'],['concise','en','Separate this.'],['polite','en','Please separate this. Thank you.'],['translate','ko','이것을 분리해 주세요.'],['translate','en','Please separate this.']]) {
@@ -102,18 +102,18 @@ try{
    await page.evaluate(()=>{window.__captures=[];window.__errors=[];const t=window.__TAURI_INTERNALS__;return Promise.all(['selection-captured','capture-error'].map((event,i)=>t.invoke('plugin:event|listen',{event,target:{kind:'Any'},handler:t.transformCallback(e=>(i?window.__errors:window.__captures).push(e.payload))})));});
    await capture();
    await until('local writing candidate '+mode+target,async()=>await draft.inputValue()===expected,20000);
-   const before=await readFile('C:/GrammarTrial/local/user-requests','utf8');
+   const before=await readFile('C:/PencilTrialScope/install/local/user-requests','utf8');
    const edited=expected+' Edited.';await draft.fill(edited);await apply.click();
    await until('exact applied text '+mode+target,async()=>await text()===edited);
-   assert.equal(await readFile('C:/GrammarTrial/local/user-requests','utf8'),before);
+   assert.equal(await readFile('C:/PencilTrialScope/install/local/user-requests','utf8'),before);
    pass(mode+'/'+target+' local candidate, edited Accept exact reread, zero Apply inference');
   }
  }
  await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});
  await until('launcher natural cleanup',async()=>launcher.exitCode!==null,20000);assert.equal(launcher.exitCode,0);appNatural=true;
- const cwd=await readFile('C:/GrammarTrial/local/runtime.cwd','utf8');
+ const cwd=await readFile('C:/PencilTrialScope/install/local/runtime.cwd','utf8');
  const {existsSync,readdirSync}=await import('node:fs');assert.equal(existsSync(cwd),false);
- assert.equal(readdirSync('C:/GrammarTrial').filter(n=>/^gemma-session-.*\.json/.test(n)).length,0);
+ assert.equal(readdirSync('C:/PencilTrialScope/install').filter(n=>/^gemma-session-.*\.json/.test(n)).length,0);
  pass('app exit completes runtime and session cleanup');
  assert.equal(await command('EXIT'),'EXIT 0');await until('editor natural exit',()=>editor.exitCode!==null);assert.equal(editor.exitCode,0);editorNatural=true;
  report.status='PASS';

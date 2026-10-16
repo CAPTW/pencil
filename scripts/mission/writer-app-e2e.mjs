@@ -28,15 +28,15 @@ let app,browser,page;
 const result={status:'FAIL',classification:'INSTALLED_WRITER_WIDGET_SYNTHETIC',checks:[],providerLive:'NOT_RUN'};
 const pass=name=>result.checks.push(name);
 try{
- const manifest=JSON.parse(await readFile('C:/GrammarTrial/MANIFEST.json','utf8'));
+ const manifest=JSON.parse(await readFile('C:/PencilTrialScope/install/MANIFEST.json','utf8'));
  result.sourceCommit=manifest.sourceCommit;
  result.hashes={};
  for(const name of ['codex-pencil.exe','target-apply.dll']){
-  const digest=createHash('sha256').update(await readFile('C:/GrammarTrial/'+name)).digest('hex');
+  const digest=createHash('sha256').update(await readFile('C:/PencilTrialScope/install/'+name)).digest('hex');
   assert.equal(digest,manifest.files.find(x=>x.path===name).sha256);result.hashes[name]=digest;
  }
  pass('installed app and native library match manifest');
- app=spawn('C:/GrammarTrial/codex-pencil.exe',[],{windowsHide:true,stdio:'ignore',env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9481'}});
+ app=spawn('C:/PencilTrialScope/install/codex-pencil.exe',[],{windowsHide:true,stdio:'ignore',env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9481'}});
  await until('WebView',async()=>{try{return (await fetch('http://127.0.0.1:9481/json/version')).ok;}catch{return false;}},60000);
  browser=await chromium.connectOverCDP('http://127.0.0.1:9481');
  page=await until('widget',()=>browser.contexts().flatMap(c=>c.pages()).find(p=>/^(https?:\/\/tauri\.localhost|tauri:\/\/localhost)\//.test(p.url())));

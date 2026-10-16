@@ -20,7 +20,7 @@ class Tests(unittest.TestCase):
             library.write_bytes(b'synthetic packaging input, not an executable')
             output = root / 'product.oxt'
             command = [sys.executable, str(builder), '--library-file', str(library),
-                '--installed-library', r'C:\GrammarTrial\target-apply.dll', '--output', str(output)]
+                '--installed-library', r'C:\PencilTrialScope\install\target-apply.dll', '--output', str(output)]
             completed = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(completed.returncode, 0, completed.stderr)
             receipt = json.loads(completed.stdout)
@@ -34,7 +34,7 @@ class Tests(unittest.TestCase):
                 tree = ast.parse(archive.read('pythonpath/grammar_writer_installation.py').decode())
                 for statement in tree.body:
                     values[statement.targets[0].id] = ast.literal_eval(statement.value)
-                self.assertEqual(values['LIBRARY_PATH'], r'C:\GrammarTrial\target-apply.dll')
+                self.assertEqual(values['LIBRARY_PATH'], r'C:\PencilTrialScope\install\target-apply.dll')
                 self.assertIs(values['ALLOW_SAVED_DOCX'], False)
                 self.assertIs(values['ALLOW_UNIFORM_FORMAT'], False)
                 self.assertIs(values['ALLOW_MIXED_FORMAT'], False)
@@ -68,7 +68,7 @@ class Tests(unittest.TestCase):
             library.write_bytes(b'synthetic packaging input')
             output = root / 'saved.oxt'
             completed = subprocess.run([sys.executable, str(builder), '--library-file', str(library),
-                '--installed-library', r'C:\GrammarTrial\target-apply.dll', '--output', str(output),
+                '--installed-library', r'C:\PencilTrialScope\install\target-apply.dll', '--output', str(output),
                 '--enable-saved-docx'], capture_output=True, text=True)
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertIs(json.loads(completed.stdout)['savedDocxEnabled'], True)
@@ -85,7 +85,7 @@ class Tests(unittest.TestCase):
             library.write_bytes(b'synthetic packaging input')
             output = root / 'formatted.oxt'
             completed = subprocess.run([sys.executable, str(builder), '--library-file', str(library),
-                '--installed-library', r'C:\GrammarTrial\target-apply.dll', '--output', str(output),
+                '--installed-library', r'C:\PencilTrialScope\install\target-apply.dll', '--output', str(output),
                 '--enable-uniform-format'], capture_output=True, text=True)
             self.assertEqual(completed.returncode, 0, completed.stderr)
             receipt = json.loads(completed.stdout)
@@ -105,7 +105,7 @@ class Tests(unittest.TestCase):
             library.write_bytes(b'synthetic packaging input')
             output = root / 'mixed.oxt'
             command = [sys.executable, str(builder), '--library-file', str(library),
-                '--installed-library', r'C:\GrammarTrial\target-apply.dll', '--output', str(output),
+                '--installed-library', r'C:\PencilTrialScope\install\target-apply.dll', '--output', str(output),
                 '--enable-mixed-surroundings']
             rejected = subprocess.run(command, capture_output=True, text=True)
             self.assertNotEqual(rejected.returncode, 0)
@@ -128,7 +128,7 @@ class Tests(unittest.TestCase):
             library.write_bytes(b'synthetic package input')
             output = root / 'paragraph.oxt'
             command = [sys.executable, str(builder), '--library-file', str(library),
-                '--installed-library', r'C:\GrammarTrial\target-apply.dll', '--output', str(output), '--enable-paragraphs']
+                '--installed-library', r'C:\PencilTrialScope\install\target-apply.dll', '--output', str(output), '--enable-paragraphs']
             for flags in ([], ['--enable-mixed-surroundings']):
                 failed = subprocess.run(command + flags, capture_output=True, text=True)
                 self.assertNotEqual(failed.returncode, 0)
@@ -146,7 +146,7 @@ class Tests(unittest.TestCase):
             library.write_bytes(b'synthetic package input')
             output = root / 'cross.oxt'
             command = [sys.executable, str(builder), '--library-file', str(library),
-                '--installed-library', r'C:\GrammarTrial\target-apply.dll', '--output', str(output)]
+                '--installed-library', r'C:\PencilTrialScope\install\target-apply.dll', '--output', str(output)]
             default = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(default.returncode, 0, default.stderr)
             self.assertFalse(json.loads(default.stdout)['crossFormatEnabled'])
@@ -168,7 +168,7 @@ class Tests(unittest.TestCase):
             root=Path(folder);library=root/'target-apply.dll';library.write_bytes(b'synthetic')
             output=root/'span.oxt'
             command=[sys.executable,str(builder),'--library-file',str(library),
-                '--installed-library',r'C:\GrammarTrial\target-apply.dll','--output',str(output)]
+                '--installed-library',r'C:\PencilTrialScope\install\target-apply.dll','--output',str(output)]
             default=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(default.returncode,0,default.stderr)
             self.assertFalse(json.loads(default.stdout)['paragraphSpanEnabled'])
@@ -186,7 +186,7 @@ class Tests(unittest.TestCase):
             root=Path(folder);library=root/'target-apply.dll';library.write_bytes(b'synthetic')
             output=root/'span.oxt'
             command=[sys.executable,str(builder),'--library-file',str(library),
-                '--installed-library',r'C:\GrammarTrial\target-apply.dll','--output',str(output)]
+                '--installed-library',r'C:\PencilTrialScope\install\target-apply.dll','--output',str(output)]
             default=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(default.returncode,0,default.stderr)
             self.assertFalse(json.loads(default.stdout)['uniformTopologyEnabled'])

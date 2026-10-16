@@ -76,7 +76,7 @@ $extensionManifestPath=Join-Path $destination 'extension/manifest.json'
 $extensionManifest=Get-Content -LiteralPath $extensionManifestPath -Raw | ConvertFrom-Json
 $extensionManifest | Add-Member -NotePropertyName key -NotePropertyValue ([Convert]::ToBase64String($der))
 [IO.File]::WriteAllText($extensionManifestPath,($extensionManifest | ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false))
-foreach($item in @('Install-Grammar.ps1','Uninstall-Grammar.ps1','PERSONAL_USE.md','Start-Grammar.ps1','Prepare-GrammarLocal.ps1')){
+foreach($item in @('Install-Grammar.ps1','New-GrammarTrialScope.ps1','Uninstall-Grammar.ps1','PERSONAL_USE.md','Start-Grammar.ps1','Prepare-GrammarLocal.ps1')){
   Copy-Item -LiteralPath (Join-Path $source ('scripts/package/'+$item)) -Destination (Join-Path $destination $item)
 }
 $catalogName = if ($LocalRuntimeProfile -ceq 'cuda13.4-blackwell') { 'Gemma-Assets-CUDA13.json' } else { 'Gemma-Assets.json' }

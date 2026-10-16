@@ -1,7 +1,7 @@
 param([Parameter(Mandatory)][int]$AppPid)
 $ErrorActionPreference='Stop'
 if($env:USERNAME -ne 'WDAGUtilityAccount' -or $env:COMPUTERNAME -eq (Get-Content C:\GrammarPayload\host-machine.txt -Raw).Trim()){throw 'Owned guest only'}
-if((Get-Process -Id $AppPid).Path -ine 'C:\GrammarTrial\codex-pencil.exe'){throw 'Unexpected app process'}
+if((Get-Process -Id $AppPid).Path -ine 'C:\PencilTrialScope\install\codex-pencil.exe'){throw 'Unexpected app process'}
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -TypeDefinition @'

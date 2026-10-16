@@ -115,7 +115,13 @@ if (-not $registration -and (Test-Path -LiteralPath $hostReceipt -PathType Leaf)
 if($trialCleanup -and $registration) {
   $native=$registration
   $manifestPath=Assert-Contained $native.manifest
-  if(-not $manifestPath.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase) -or $native.name -notmatch '^org\.grammar\.personal\.t[a-f0-9]{32}$' -or $native.registryKey -ine ('HKCU:\Software\Google\Chrome\NativeMessagingHosts\'+$native.name)) {throw 'TRIAL_NATIVE_REGISTRATION_REFUSED'}
+  $allowedKeys=@('HKCU:\Software\Google\Chrome\NativeMessagingHosts\'+$native.name)
+  if($owner.PSObject.Properties['nativeHostsKey']) {
+    $expected='HKCU:\Software\PencilTrials\'+$owner.id+'\NativeMessagingHosts'
+    if($owner.nativeHostsKey -ine $expected){throw 'TRIAL_REGISTRY_ROOT_REFUSED'}
+    $allowedKeys+=($expected+'\'+$native.name)
+  }
+  if(-not $manifestPath.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase) -or $native.name -notmatch '^org\.grammar\.personal\.t[a-f0-9]{32}$' -or $native.registryKey -notin $allowedKeys) {throw 'TRIAL_NATIVE_REGISTRATION_REFUSED'}
   Assert-NoLinks $manifestPath
 }
 # Never terminate an app while its resident broker launcher still owns a session.

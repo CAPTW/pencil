@@ -25,7 +25,7 @@ for name in ['node.exe','target-editor.exe','managed-target-focus.exe','target-s
     shutil.copy2(old / name,p / name)
 owned_link('D:/dev/grammar-evidence/grammar-gemma-20261007/gemma-4-12b-it-qat-q4_0.gguf',p / 'model.gguf')
 s = (Path(__file__).parent / 'managed-app-e2e.mjs').read_text(encoding='utf-8')
-s = s.replace("'C:/GrammarTrial/Start-Grammar.ps1'],", "'C:/GrammarTrial/Start-Grammar.ps1','-RuntimeDirectory','C:/GrammarRuntime','-ModelPath','C:/GrammarPayload/model.gguf'],")
+s = s.replace("'C:/PencilTrialScope/install/Start-Grammar.ps1'],", "'C:/PencilTrialScope/install/Start-Grammar.ps1','-RuntimeDirectory','C:/GrammarRuntime','-ModelPath','C:/GrammarPayload/model.gguf'],")
 s = s.replace("const statusOnly=", "report.classification='INSTALLED_REAL_GEMMA_12B_OFFLINE_SANDBOX';report.samples=[];const trialStart=performance.now();\nconst statusOnly=")
 begin = s.index(" if(!statusOnly)await capture();")
 end = s.index(" await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app'))",begin)
@@ -47,7 +47,7 @@ s = s[:begin] + '''
   if((await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('local_model_status'))).phase!=='ready')break;
  }
 ''' + s[end:]
-s = s.replace(" const cwd=await readFile('C:/GrammarTrial/local/runtime.cwd','utf8');", " const cwd='C:/GrammarTrial/nonexistent-fixture-directory';")
+s = s.replace(" const cwd=await readFile('C:/PencilTrialScope/install/local/runtime.cwd','utf8');", " const cwd='C:/PencilTrialScope/install/nonexistent-fixture-directory';")
 s = s.replace(" report.status='PASS';", " report.status=report.samples.length===5&&report.samples.every(s=>s.status==='PASS')?'PASS':'FAIL';")
 s = s.replace("'local-analysis-completed'", "'instant-candidate'")
 s = s.replace(" async function capture(prefix='',suffix=''){", " let trialSource='please seperate this.';let captureStart=0;\n async function capture(prefix='',suffix=''){")
@@ -70,7 +70,7 @@ if args.local_assets:
         owned_link(Path('D:/dev/grammar-evidence/grammar-gemma-20261007')/name,cache/name)
     s=s.replace(",'-RuntimeDirectory','C:/GrammarRuntime','-ModelPath','C:/GrammarPayload/model.gguf'",'')
     (p/'managed-app-e2e.mjs').write_text(s,encoding='utf-8')
-    g=g.replace(" $arguments=@("," & C:\\GrammarTrial\\Prepare-GrammarLocal.ps1 -AssetCache C:\\GrammarPayload\\asset-cache | Set-Content C:\\GrammarOutput\\prepare-result.json\n $arguments=@(")
+    g=g.replace(" $arguments=@("," & C:\\PencilTrialScope\\install\\Prepare-GrammarLocal.ps1 -AssetCache C:\\GrammarPayload\\asset-cache | Set-Content C:\\GrammarOutput\\prepare-result.json\n $arguments=@(")
 (p / 'Guest-App-Writing.ps1').write_text(g,encoding='utf-8')
 xml = f'<Configuration><vGPU>Disable</vGPU><Networking>Disable</Networking><ProtectedClient>Enable</ProtectedClient><ClipboardRedirection>Disable</ClipboardRedirection><AudioInput>Disable</AudioInput><VideoInput>Disable</VideoInput><PrinterRedirection>Disable</PrinterRedirection><MemoryInMB>24576</MemoryInMB><MappedFolders>'
 for host,guest,readonly in [(p,'C:\\GrammarPayload',True),(root/'output','C:\\GrammarOutput',False),(Path('D:/dev/grammar-evidence/grammar-gemma-20261007/runtime'),'C:\\GrammarRuntime',True)]:

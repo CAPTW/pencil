@@ -8,9 +8,9 @@ assert.equal(process.platform,'win32'); assert.equal(process.env.USERNAME,'WDAGU
 assert.notEqual(process.env.COMPUTERNAME,(await readFile('C:/GrammarPayload/host-machine.txt','utf8')).trim());
 assert.match(execFileSync('whoami.exe',['/groups','/fo','csv'],{encoding:'utf8'}),/S-1-16-8192/);
 const {chromium}=createRequire(import.meta.url)('C:/GrammarPayload/node_modules/playwright');
-const manifest=JSON.parse(await readFile('C:/GrammarTrial/MANIFEST.json','utf8'));
+const manifest=JSON.parse(await readFile('C:/PencilTrialScope/install/MANIFEST.json','utf8'));
 const hashes={};for(const name of ['codex-pencil.exe','target-apply.dll']){
- hashes[name]=createHash('sha256').update(await readFile('C:/GrammarTrial/'+name)).digest('hex');
+ hashes[name]=createHash('sha256').update(await readFile('C:/PencilTrialScope/install/'+name)).digest('hex');
  assert.equal(hashes[name],manifest.files.find(x=>x.path===name).sha256);
 }
 const editorKind=process.env.GRAMMAR_TEST_EDITOR_KIND??'richedit';assert.ok(['standard','multiline','richedit'].includes(editorKind));
@@ -21,7 +21,7 @@ async function until(name,probe,ms=15000){const end=Date.now()+ms;while(Date.now
 let app,editor,browser,page;let editorNatural=false,appNatural=false;
 try{
  pass('installed package hashes verified');
- app=spawn('C:/GrammarTrial/codex-pencil.exe',[],{windowsHide:true,stdio:'ignore',env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9481'}});
+ app=spawn('C:/PencilTrialScope/install/codex-pencil.exe',[],{windowsHide:true,stdio:'ignore',env:{...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9481'}});
  await until('WebView endpoint',async()=>{try{return (await fetch('http://127.0.0.1:9481/json/version')).ok;}catch{return false;}},90000);
  browser=await chromium.connectOverCDP('http://127.0.0.1:9481');
  page=await until('widget page',async()=>browser.contexts().flatMap(x=>x.pages()).find(x=>/^(https?:\/\/tauri\.localhost|tauri:\/\/localhost)\//.test(x.url())),60000);

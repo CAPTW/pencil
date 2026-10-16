@@ -20,8 +20,9 @@ try {
  if(-not $runtime){throw 'Guest WebView2 absent'}
  $env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER=$runtime.FullName
  $report.explicitGuestRuntime=$runtime.FullName
- & C:\GrammarPayload\package-shutdown-admission\Install-Grammar.ps1 -InstallRoot C:\GrammarTrial | Out-Null
- $config=Join-Path $env:APPDATA 'com.local.codexpencil'
+ & C:\GrammarPayload\package-shutdown-admission\New-GrammarTrialScope.ps1 -Root C:\PencilTrialScope
+ & C:\GrammarPayload\package-shutdown-admission\Install-Grammar.ps1 -InstallRoot C:\PencilTrialScope\install | Out-Null
+ $config=$env:GRAMMAR_PROFILE_DIRECTORY
  New-Item -ItemType Directory $config -Force|Out-Null
  $settings=Join-Path $config 'settings.json'
  if(Test-Path $settings){throw 'Expected fresh guest settings'}
@@ -34,7 +35,7 @@ try {
  $sample='This is seperate. 한국어 입력 시험입니다.'
  EditorCommand ('SET 0 '+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($sample)))
  EditorCommand ('SET 5 '+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('Paste the copied draft here.')))
- $app=Start-Process C:\GrammarTrial\codex-pencil.exe -PassThru
+ $app=Start-Process C:\PencilTrialScope\install\codex-pencil.exe -PassThru
  Start-Sleep -Seconds 5
  if($app.HasExited){throw 'App exited before trial'}
  $actual=Get-Content $settings -Raw|ConvertFrom-Json
@@ -71,6 +72,6 @@ Grammar — 격리 수동 입력 시험 (사용자 문서 대신 아래 합성 �
 }catch{$report.status='FAIL';$report.error=$_.Exception.Message}
 finally{
  foreach($p in @($app,$editor,$notes)){if($p -and -not $p.HasExited){$p.Kill($true);$null=$p.WaitForExit(5000)}}
- if(Test-Path C:\GrammarTrial\install-receipt.json){try{& C:\GrammarTrial\Uninstall-Grammar.ps1 -InstallRoot C:\GrammarTrial -RemoveUserData|Set-Content C:\GrammarOutput\uninstall.json}catch{$report.cleanupError=$_.Exception.Message}}
+ if(Test-Path C:\PencilTrialScope\install\install-receipt.json){try{& C:\PencilTrialScope\install\Uninstall-Grammar.ps1 -InstallRoot C:\PencilTrialScope\install -TrialRoot C:\PencilTrialScope -RemoveUserData -UserDataDirectory C:\PencilTrialScope\profile|Set-Content C:\GrammarOutput\uninstall.json}catch{$report.cleanupError=$_.Exception.Message}}
  SaveStatus
 }

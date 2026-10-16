@@ -17,7 +17,7 @@ in the guest; evidence maps to `C:\GrammarOutput`. Stop every guest before
 modifying its mapped payload. The compiled controller cannot run outside WDAG
 or elevated; it owns and checks the target process on every command.
 
-The guest driver installs to a fresh `C:\GrammarTrial`, verifies app/DLL receipt
+The guest driver installs to a fresh `C:\PencilTrialScope\install`, verifies app/DLL receipt
 binding, disables auto Deep without granting cloud consent, and exercises actual
 hotkey capture, local Instant, edited draft and the visible Apply button. It
 re-reads target text after normal Apply, replay, source/range changes, password

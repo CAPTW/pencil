@@ -23,13 +23,14 @@ try {
  $runtime=Get-ChildItem 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application' -Directory | Where-Object{Test-Path (Join-Path $_.FullName 'msedgewebview2.exe')} | Sort-Object Name | Select-Object -Last 1
  if(-not $runtime){throw 'Guest WebView runtime absent'}
  $env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER=$runtime.FullName
- & (Join-Path "C:\GrammarPayload\$PackageDirectoryName" 'Install-Grammar.ps1') -InstallRoot C:\GrammarTrial -SkipBrowserHost
- $report.sourceCommit=(Get-Content C:\GrammarTrial\MANIFEST.json -Raw|ConvertFrom-Json).sourceCommit
+ & (Join-Path "C:\GrammarPayload\$PackageDirectoryName" 'New-GrammarTrialScope.ps1') -Root C:\PencilTrialScope
+ & (Join-Path "C:\GrammarPayload\$PackageDirectoryName" 'Install-Grammar.ps1') -InstallRoot C:\PencilTrialScope\install -SkipBrowserHost
+ $report.sourceCommit=(Get-Content C:\PencilTrialScope\install\MANIFEST.json -Raw|ConvertFrom-Json).sourceCommit
  $extract=Start-Process C:\GrammarLOTools\7z.exe -ArgumentList @('x','C:\GrammarLOTools\engine.paf.exe','App\libreoffice\*','-oC:\GrammarLibreOffice','-y','-bso0','-bsp0') -WindowStyle Hidden -PassThru
  if(-not $extract.WaitForExit(300000)){$extract.Kill($true);$report.forced=$true;throw 'Extraction timeout'}
  if($extract.ExitCode -ne 0){throw 'Extraction failed'}
  $program='C:\GrammarLibreOffice\App\libreoffice\program'
- $build=Get-Content C:\GrammarTrial\BUILD_RECEIPT.json -Raw|ConvertFrom-Json
+ $build=Get-Content C:\PencilTrialScope\install\BUILD_RECEIPT.json -Raw|ConvertFrom-Json
  if(-not $build.targetApply.writerClientEnabled -or $build.targetApply.writerRuntimePath -cne "$program\soffice.bin" -or (Get-FileHash "$program\soffice.bin" -Algorithm SHA256).Hash -ine $build.targetApply.writerSha256){throw 'Writer build binding mismatch'}
  $env:SAL_SKIA='raster'
  $registration=Start-Process "$program\unopkg.com" -ArgumentList @('-env:UserInstallation=file:///C:/GrammarLOProfile','add','--suppress-license','C:\GrammarPayload\GrammarWriter-product.oxt') -WindowStyle Hidden -PassThru -RedirectStandardOutput C:\GrammarOutput\registration.log -RedirectStandardError C:\GrammarOutput\registration-error.log
@@ -58,8 +59,8 @@ try {
 } catch {$report.status='FAIL';$report.error=$_.Exception.Message}
 finally {
  if($office -and -not $office.HasExited){$office.Kill($true);$office.WaitForExit(10000)|Out-Null;$report.forced=$true}
- if(Test-Path C:\GrammarTrial\install-receipt.json){
-  try {& C:\GrammarTrial\Uninstall-Grammar.ps1 -InstallRoot C:\GrammarTrial -RemoveUserData | Set-Content C:\GrammarOutput\uninstall.json}
+ if(Test-Path C:\PencilTrialScope\install\install-receipt.json){
+  try {& C:\PencilTrialScope\install\Uninstall-Grammar.ps1 -InstallRoot C:\PencilTrialScope\install -TrialRoot C:\PencilTrialScope -RemoveUserData -UserDataDirectory C:\PencilTrialScope\profile | Set-Content C:\GrammarOutput\uninstall.json}
   catch {$report.cleanupError=$_.Exception.Message;$report.status='FAIL'}
  }
  $report.remainingProcesses=@(Get-Process soffice,soffice.bin,codex-pencil -ErrorAction SilentlyContinue).Count
@@ -70,7 +71,7 @@ finally {
     Remove-Item -LiteralPath $owned -Recurse -Force
    }
   }
-  $report.cleanup=(-not(Test-Path C:\GrammarLibreOffice)) -and (-not(Test-Path C:\GrammarLOProfile)) -and (-not(Test-Path C:\GrammarTrial))
+  $report.cleanup=(-not(Test-Path C:\GrammarLibreOffice)) -and (-not(Test-Path C:\GrammarLOProfile)) -and (-not(Test-Path C:\PencilTrialScope\install))
  }
  if(-not $report.cleanup -or $report.forced){$report.status='FAIL'}
  Save-Receipt
