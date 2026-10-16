@@ -69,5 +69,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python scripts/mission/test-gemma-launcher.py
           exit $LASTEXITCODE
+      - name: Owned cleanup refusal regressions
+        if: ${{ !cancelled() }}
+        run: node --test scripts/test-owned-uninstall-data.mjs
       - name: Scope
         run: Write-Output 'Source checks only. No native desktop, GPU, model download, account access or Provider inference.'
