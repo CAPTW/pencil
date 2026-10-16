@@ -4,7 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {mkdirSync,writeFileSync,readFileSync,existsSync,symlinkSync,linkSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,existsSync,symlinkSync,linkSync,realpathSync} from 'node:fs';
 const script=process.env.PENCIL_UNINSTALL_SCRIPT||new URL('./package/Uninstall-Grammar.ps1',import.meta.url).pathname.replace(/^\/([A-Za-z]:)/,'$1');
 const windows={skip:process.platform!=='win32'};
 function fixture(){
@@ -53,4 +53,4 @@ const scopeScript=process.env.PENCIL_SCOPE_SCRIPT||new URL('./package/New-Gramma
 function initScope(root){return spawnSync('pwsh',['-NoProfile','-File',scopeScript,'-Root',root],{encoding:'utf8',windowsHide:true,timeout:15000,env:{...process.env,GRAMMAR_TRIAL_ROOT:''}});}
 test('scope initializer refuses adopting existing non-owned directory',windows,()=>{const f=fixture();const r=initScope(f.outside);assert.equal(r.status,1);assert.match(r.stderr,/EXISTING_ROOT_NOT_OWNED/);assert.equal(existsSync(join(f.outside,'.pencil-trial-owner.json')),false);intact(f);});
 test('scope initializer refuses junction without target writes',windows,()=>{const f=fixture();const link=join(f.parent,'linked-scope');symlinkSync(f.outside,link,'junction');const r=initScope(link);assert.equal(r.status,1);assert.match(r.stderr,/TRIAL_ROOT_REPARSE/);intact(f);});
-test('fresh scope initializer creates exact owned profile and marker',windows,()=>{const f=fixture();const root=join(f.parent,'new-scope');const r=initScope(root);assert.equal(r.status,0,r.stderr);const owner=JSON.parse(readFileSync(join(root,'.pencil-trial-owner.json'),'utf8'));assert.equal(owner.root,root);assert.equal(owner.schema,'pencil-owned-trial/v1');assert.equal(existsSync(join(root,'profile')),true);intact(f);});
+test('fresh scope initializer creates exact owned profile and marker',windows,()=>{const f=fixture();const root=join(f.parent,'new-scope');const r=initScope(root);assert.equal(r.status,0,r.stderr);const owner=JSON.parse(readFileSync(join(root,'.pencil-trial-owner.json'),'utf8'));assert.equal(owner.root,realpathSync.native(root));assert.equal(owner.schema,'pencil-owned-trial/v1');assert.equal(existsSync(join(root,'profile')),true);intact(f);});

@@ -93,7 +93,7 @@ class LauncherTests(unittest.TestCase):
         for name, source in (("broker", BROKER), ("app", APP)):
             path = cls.binaries / (name + ".rs")
             path.write_text(source)
-            subprocess.run(["rustc", str(path), "-o", str(path.with_suffix(".exe"))], check=True, capture_output=True)
+            subprocess.run(["rustc", str(path), "-o", str(path.with_suffix(".exe"))], check=True, capture_output=True, creationflags=0x08000000)
 
     @classmethod
     def tearDownClass(cls):
