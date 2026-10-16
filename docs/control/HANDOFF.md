@@ -3741,3 +3741,44 @@ failed run is not overwritten. Evidence cleanup-gui-ci-20261016 includes attempt
 output, ci-failure.log, local-boundaries.log, broker-check*, leftover-images.json.
 No personal install/main/release. Prior AppData recovery remains unresolved.
 Mission INCOMPLETE, Source stale; same-integrator review only.
+
+
+## 2026-10-16 — actual Gemma rHWP in one offline GPU Sandbox
+
+Unchanged cleanup-qualified composite ZIP6b424ce5121d66dd549dd935aeb0d2f84a90605cff912c3fcbbcbddcc792d37a,
+native e6ff394, installed Native Messaging and headed owned Chromium: final21
+checks PASS. Six HWP/HWPX translation/natural/polite cases verify explicit Accept,
+exact saved text and character/paragraph/style properties, Undo and saved reopen;
+two protected inputs refused before admission, no HTTP document/model bridge.
+Installed extension49 files unchanged; actual Gemma4 12B IT QAT Q4_0 unchanged.
+Six output reviews preserve negation,25 dollars,today and recipient. Synthetic
+uniform target paragraph plus mixed surrounding formatting only; same pinned WASM
+parser rereads, not independent Hancom interoperability or arbitrary rich targets.
+
+Final recommendation887-1051ms (1/6 miss1s;0/6 miss3s paragraph), Accept35-85ms
+(0/6 miss500ms). Capture-button to completed suggestion and Accept to Applied;
+file reread is a separate correctness check. Guest asset staging341.444s and
+subsequent product readiness13.073s are separate, not inference latency. No
+quality reduction, hash bypass or product deadline increase.
+
+Preserved attempt1: direct read-only mapped assets fail production artifact
+validation after approximately180s; exact cause not proven. Guest-local staging
+with exact model hash and full product runtime/model validation works. This is a
+verified test setup workaround, not closure of D-drive/startup performance debt.
+Attempt2 functional21 PASS but wrapper incorrectly compared installer-generated
+host-config.js to ZIP placeholder. Fix validates installer receipt registration,
+checks other package pins, and compares all installed files before/after. Attempt3
+fully passes. Test-only headless option and guest runners added; no core product
+change. Local adapter33 tests, JS syntax, PowerShell parse, governance/diff PASS.
+
+Final app/launcher natural exit0; uninstall stopped0 processes, complete=true,
+installation/profiles/registration/product processes0. Exact Sandbox stopped,
+final inventory0 and viewer absent. Quit IPC closed before reply but actual exit0
+confirmed; tray removal warning retained, visual tray state not separately tested.
+One VM reused serially; read-only package/assets/tools, task-owned output only.
+No host user data or personal installation modified. Previous AppData loss and
+recovery uncertainty remain unresolved. No push/main/release. Mission INCOMPLETE,
+Source stale, same-integrator review only. Evidence:
+D:/dev/grammar-evidence/rhwp-sandbox-gemma-20261016/FINAL_RECEIPT.json
+with attempt1/attempt2 failures and final output. Next editor work should preserve
+these guarded cleanup paths; general mixed-target/complex/Hancom remains unqualified.
