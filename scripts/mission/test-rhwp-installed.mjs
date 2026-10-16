@@ -13,7 +13,8 @@ await core.default({module_or_path:await readFile(config.wasmBinary)});
 const snapshot=async path=>{const d=new core.HwpDocument(await readFile(path));try{return Array.from({length:d.getSectionCount()},(_,s)=>Array.from({length:d.getParagraphCount(s)},(_,p)=>({text:d.getTextRange(s,p,0,d.getParagraphLength(s,p)),chars:Array.from({length:d.getParagraphLength(s,p)},(_,i)=>JSON.parse(d.getCharPropertiesAt(s,p,i))),para:JSON.parse(d.getParaPropertiesAt(s,p)),style:JSON.parse(d.getStyleAt(s,p))}))).flat();}finally{d.free();}};
 let browser,page;const result={status:'FAIL',scope:'INSTALLED_NATIVE_MESSAGING_NO_ANALYSIS_BRIDGE',checks:[],samples:[],errors:[],externalRequests:[]};
 try{
- browser=await chromium.launchPersistentContext(config.browserProfile,{executablePath:config.chromiumBinary,headless:true,chromiumSandbox:true,acceptDownloads:true,ignoreDefaultArgs:['--disable-extensions'],args:['--disable-extensions-except='+ext,'--load-extension='+ext]});
+ assert.ok(config.headless===undefined||typeof config.headless==='boolean');
+ browser=await chromium.launchPersistentContext(config.browserProfile,{executablePath:config.chromiumBinary,headless:config.headless??true,chromiumSandbox:true,acceptDownloads:true,ignoreDefaultArgs:['--disable-extensions'],args:['--disable-extensions-except='+ext,'--load-extension='+ext]});
  browser.on('request',q=>{if(/^https?:/.test(q.url()))result.externalRequests.push(new URL(q.url()).origin);});
  page=await browser.newPage();page.on('pageerror',e=>result.errors.push(String(e)));page.on('console',m=>{if(m.type()==='error')console.log('PAGE_ERROR',m.text().slice(0,300));});page.on('dialog',d=>d.accept());
  await page.goto(origin+'/rhwp/index.html');await page.locator('#grammar-review-host').waitFor();console.log('PANEL_READY');

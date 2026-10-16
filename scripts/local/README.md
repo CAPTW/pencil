@@ -61,3 +61,28 @@ Use MediumLaunch. Map scripts to C:/GrammarScripts and copy them into guest-loca
 C:/GrammarPayload; map pwsh, node_modules and package there as separate readonly
 siblings. A readonly parent mapping cannot contain additional child mappings.
 Preserve failure receipts before any same-session retry.
+
+
+## Actual Gemma rHWP Sandbox trial
+
+Guest-App-RhwpGemma.ps1 and rhwp-gemma-sandbox.mjs exercise the installed
+Native Messaging route with actual local Gemma and headed owned Chromium.
+Use one offline GPU Sandbox, MediumLaunch and a fresh writable GrammarOutput.
+Map package, assets, WASM, browser/tool binaries and scripts read-only; never map
+user profiles. Copy scripts, node.exe, request-app-quit.mjs, the mission rHWP
+probe, host-machine.txt and synthetic/protected documents to GrammarPayload.
+Supply rhwp-config.json with explicit owned paths and headless:false. The profile
+must be C:\PencilTrialScope\profile. All removal uses the marked trial root and
+explicit profile directories; no default AppData cleanup is allowed.
+
+The runner stages assets into the guest installation, verifies the model hash,
+and retains the production broker's model/runtime verification. Report staging
+separately from startup and inference; direct mapped-asset startup is not
+qualified by this path. Validate generated host-config.js against the installer
+receipt, then require every installed extension file to remain unchanged.
+The trial verifies six HWP/HWPX translation/natural/polite cases, explicit Accept,
+format/text reread, Undo, saved reopen, and protected-input refusal. These are
+synthetic documents with uniform selected runs and mixed surrounding formatting,
+not general Hancom compatibility or arbitrary mixed-target support. Stop the
+exact owned Sandbox after checking uninstall and process receipts. Preserve failed
+attempts before serial reuse; never run this guest script on the host.
