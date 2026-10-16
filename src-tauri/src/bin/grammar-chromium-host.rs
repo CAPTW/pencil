@@ -271,6 +271,16 @@ async fn analyze_gemma_broker(body:&[u8],broker:&codex_pencil::local_gemma::brok
     gemma_response(request,result)
 }
 
+// End-to-end request ceilings are distinct from recommendation performance targets.
+// Explicit writing retains one shared budget below the extension's 10s watchdog;
+// ordinary proactive grammar retains its existing 1s ceiling. No deadline renewal.
+fn local_request_budget(body: &[u8]) -> Result<Duration, &'static str> {
+    let request = parse_request(body)?;
+    Ok(if request.intent.as_ref().is_some_and(|intent| *intent != codex_pencil::local_gemma::Intent::Grammar) {
+        Duration::from_secs(8)
+    } else { Duration::from_secs(1) })
+}
+
 // The service seam permits synthetic actor tests without any executable discovery.
 trait DeepService {
     fn local_unavailable(&self) -> bool { false }
@@ -282,10 +292,10 @@ trait DeepService {
         let unavailable = self.local_unavailable();
         Box::pin(async move {
             if unavailable { return Err("gemma_configuration_unavailable"); }
-            let deadline=tokio::time::Instant::now()+Duration::from_secs(1);
+            let deadline=tokio::time::Instant::now()+local_request_budget(&body)?;
             if let Some(broker)=broker {return analyze_gemma_broker(&body,&broker,deadline).await;}
             match ticket {
-                Some(ticket) => analyze_gemma(&body, &ticket, tokio::time::Instant::now()+Duration::from_secs(1)).await,
+                Some(ticket) => analyze_gemma(&body, &ticket, deadline).await,
                 None => analyze(&body),
             }
         })
@@ -814,6 +824,17 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst),1);
         assert!(replies.try_recv().is_err());
     }
+    #[test]
+    fn local_writing_budget_keeps_grammar_short_and_one_bounded_writing_budget() {
+        let base=serde_json::json!({"version":1,"op":"analyze","id":"owned","epoch":"owned","revision":1,"text":"synthetic paragraphs"});
+        assert_eq!(local_request_budget(&serde_json::to_vec(&base).unwrap()).unwrap(),Duration::from_secs(1));
+        for intent in [serde_json::json!({"mode":"translate","target":"ko"}),serde_json::json!({"mode":"paraphrase"}),serde_json::json!({"mode":"polite"})] {
+            let mut body=base.clone();body["intent"]=intent;
+            assert_eq!(local_request_budget(&serde_json::to_vec(&body).unwrap()).unwrap(),Duration::from_secs(8));
+        }
+        assert!(local_request_budget(b"invalid").is_err());
+    }
+
     #[test]
     fn local_failure_classifies_only_elapsed_deadlines() {
         let now=tokio::time::Instant::now();

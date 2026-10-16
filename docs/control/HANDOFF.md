@@ -3782,3 +3782,66 @@ Source stale, same-integrator review only. Evidence:
 D:/dev/grammar-evidence/rhwp-sandbox-gemma-20261016/FINAL_RECEIPT.json
 with attempt1/attempt2 failures and final output. Next editor work should preserve
 these guarded cleanup paths; general mixed-target/complex/Hancom remains unqualified.
+
+
+## 2026-10-16 — rHWP rich paragraph selection with actual Gemma
+
+Implemented a conservative rich-review path: complete body paragraphs, ordered
+escaped format-run markers, one full-context model request, review lines bound to
+original styles and blank lines bound to original paragraph boundaries. Never map
+translated text by proportional offsets or split context into per-run inference.
+Accept requires exact source/document/selection/permission and retained topology,
+performs one target-side history operation and checks target/outside properties.
+Existing snapshot Undo fencing and no render-error rollback remain effective.
+Mixed runs must be sentence aligned. Partial/empty selected paragraphs, inline
+word emphasis requiring reordering, tables/fields and general Hancom are unqualified.
+Bounds:8 selected paragraphs,24 runs,3000 selected codepoints; inspected document
+at most128 paragraphs/32000 codepoints. Single section, whole body paragraphs only.
+
+One offline GPU Sandbox, reused serially. Actual installed Native Messaging and
+same Gemma4 12B IT QAT Q4_0: final41 checks PASS,12 samples across mixed single
+paragraph and mixed two-paragraph HWP/HWPX EN-KO/natural/polite. Exact saved text,
+character properties, paragraph/style and outside text preservation, Undo and
+saved reopen36; unsupported inline boundaries2, protected originals2, noHTTP1.
+Original pipeline globals absent. Installed extension51 files unchanged. Saved
+rereads use same pinned WASM, not independent Hancom compatibility. Same-integrator
+review of outputs preserves negation,25 dollars,today,recipient/original deadline.
+No downgrade, per-run fragment translation, replay or cloud inference.
+
+Final recommendation887-1923ms (nearest-rank p50=1404,p95/p99=1923;10/12 miss1s),
+Accept35-75ms (p50=53,p95/p99=75;0/12 miss500ms). All12 below3s reference, including
+four-sentence/two-paragraph samples. Capture-button to complete result and Accept
+to Applied; saved reread checked separately. Staging251.203s and readiness12.831s
+are separate; D-drive performance remains deferred, not fixed.
+
+Failure retained in attempt1: six mixed-paragraph cases18checks PASS, first span
+unavailable, broker stopped and launcher exit1. No raw broker error was retained,
+so exact first terminal error is not directly observed. Source inspection found
+Native Host used a hard1s deadline for writing too. New compiled host uses one8s
+writing budget under extension10s watchdog and broker15s ceiling; grammar1s remains.
+Targets1s/3s/500ms unchanged. Final same corpus succeeds. This is request completion
+repair, not a claim of faster inference. Invalid request remains rejected and
+bootstrap/inference share the deadline. Host29 tests PASS,1ownedGPU test ignored;
+actual installed GPU evidence separate. Adapter43 tests PASS; governance self-test,
+JS syntax/diff checks PASS. Full Rust suite/hosted CI not rerun. Existing lib165
+build warnings retained, no warnings added by the budget helper.
+
+Package is explicit composite: e6ff394 app/broker/target DLL unchanged; new static
+CRT Native Host and source-hashed rich extension. host-build-receipt and MANIFEST
+nativeHostAddon/richSelectionAddon identify source delta and hashes; not a fresh
+whole-native build. Final ZIP is local only. No personal install/main/push/release.
+Source package stale; mission INCOMPLETE. Prior AppData loss/recovery unresolved.
+
+Guest app/launcher natural0, uninstall stopped0/complete, install/profiles/native
+registration/product processes0. Exact VM stopped and Sandbox inventory0, viewer
+absent. Host compiler helper vctip.exe PID60004 started during build window, but
+original parent47732 gone and ancestry audit permission unavailable. Ownership is
+unconfirmed: retained rather than terminating a potentially unrelated session.
+Do NOT claim all host processes were cleared. Future native builds should use the
+owned Job supervisor rather than an untracked compiler launch. No user data touched.
+
+Evidence D:/dev/grammar-evidence/rhwp-rich-sandbox-20261016/FINAL_RECEIPT.json,
+Pencil-rich-selection-candidate.zip, attempt1, output, host-build/test receipts.
+Next: semantic style anchoring for word-level emphasis and reordered translated
+spans; keep unsupported cases denied. Broader formatting/IME/real Hancom remains
+separate from this scoped synthetic acceptance.

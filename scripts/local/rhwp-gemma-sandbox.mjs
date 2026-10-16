@@ -39,7 +39,7 @@ try{
  probe=spawn('C:/GrammarPayload/node.exe',['C:/GrammarPayload/test-rhwp-installed.mjs','C:/GrammarPayload/rhwp-config.json'],{windowsHide:true,stdio:'inherit',env:{...process.env,GRAMMAR_INSTALL_ROOT:install}});
  await until('rHWP actual model flow',()=>probe.exitCode!==null,240000);assert.equal(probe.exitCode,0);
  report.probe=JSON.parse(await readFile(root+'/installed-receipt.json','utf8'));
- assert.equal(report.probe.status,'PASS');assert.equal(report.probe.samples.length,6);
+ assert.equal(report.probe.status,'PASS');const config=JSON.parse(await readFile('C:/GrammarPayload/rhwp-config.json','utf8'));assert.equal(report.probe.samples.length,config.expectedSamples??6);
  for(const [path,hash] of extensionHashes){assert.equal(createHash('sha256').update(await readFile(install+'/'+path)).digest('hex'),hash,path+' changed after installation');}
  report.extensionFilesUnchanged=true;report.extensionFileCount=extensionHashes.size;report.registeredHost=installation.nativeHost.name;report.status='PASS';
 }catch(e){report.error=String(e.stack??e);}

@@ -2,6 +2,7 @@
 export function mountReviewPanel(host, session, instant = null) {
   const doc=host.ownerDocument, root=doc.createElement('section');
   const status=doc.createElement('p');status.setAttribute('role','status');
+  const hint=doc.createElement('p');hint.textContent='For mixed formatting, each review line keeps one original style; blank lines separate paragraphs. Keep these boundaries.';root.append(hint);
   const draft=doc.createElement('textarea');draft.setAttribute('aria-label','Reviewed replacement');
   const button=(label,fn)=>{const b=doc.createElement('button');b.textContent=label;b.type='button';b.addEventListener('click',fn);root.append(b);return b;};
   let capture=null, revision=0, editRevision=0, analysis=null;
@@ -14,16 +15,16 @@ export function mountReviewPanel(host, session, instant = null) {
     const choices=[['grammar','Grammar'],['ko','Translate to Korean'],['en','Translate to English'],['paraphrase','Natural rewrite'],['polite','Polite rewrite']];
     for(const [value,label] of choices){const option=doc.createElement('option');option.value=value;option.textContent=label;mode.append(option);}
     mode.addEventListener('change',()=>{
-      if(capture&&draft.value!==capture.source&&!doc.defaultView.confirm('Discard this draft and change writing mode?')){mode.value=selectedMode;return;}
+      if(capture&&draft.value!==(capture.reviewSource??capture.source)&&!doc.defaultView.confirm('Discard this draft and change writing mode?')){mode.value=selectedMode;return;}
       selectedMode=mode.value;session.disable();clear();intent=mode.value==='grammar'?null:['ko','en'].includes(mode.value)?{mode:'translate',target:mode.value}:{mode:mode.value};status.textContent='Mode changed — enable review and capture again';
     });
     root.append(mode);
   }
-  button('Enable review',()=>{session.enable();status.textContent='Enabled — select one whole plain paragraph';});
+  button('Enable review',()=>{session.enable();status.textContent='Enabled — select whole body paragraphs';});
   button('Capture selection',async()=>{
     clear();
     try{
-      capture=session.capture();draft.value=capture.source;accept.disabled=false;status.textContent='Review and edit before Accept';
+      capture=session.capture();draft.value=capture.reviewSource??capture.source;accept.disabled=false;status.textContent='Review and edit before Accept';
       if(!instant)return;
       const bound=capture,version=revision,edit=editRevision,controller=new AbortController();analysis=controller;
       status.textContent='Local Instant running — draft remains editable';
