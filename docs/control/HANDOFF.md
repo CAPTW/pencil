@@ -3705,3 +3705,39 @@ dictionary and credentials were not read/changed. No push/main/release update.
 Prior AppData loss/recovery uncertainty remains unresolved; this is prevention,
 not restoration. Next package/GUI runs must use these new scope paths. Whole
 mission remains INCOMPLETE, Source stale. Same-integrator review only.
+
+
+## 2026-10-16 — cleanup Sandbox GUI and Windows CI
+
+Owner authorized candidate push and hosted Windows CI, one Sandbox, no user data.
+Unchanged composite ZIP6b424ce5121d66dd549dd935aeb0d2f84a90605cff912c3fcbbcbddcc792d37a
+(native e6ff394 plus hash-bound cleanup addon) installed in one offline Sandbox.
+Real GUI3 PASS: WebView render, explicit owned-profile settings, natural quit.
+Installed boundary6 PASS: missing data/outside/traversal/junction refusal preserves
+receipt/registry/sentinel; normal removal complete. Installation/profile/host key/
+product processes0; final Sandbox inventory empty. No model/Provider/user data.
+Capture/Accept, model quality and all other migrated GUI drivers NOT_RUN here.
+Tray removal warning remains in stderr; natural app/launcher exit and removal
+succeeded, visual tray state not separately inspected.
+
+Preserved setup failures: nested readonly mapping denied, guest script name guard,
+and WebView env initialized after first install. Fixed fixture sequencing and
+mapping without weakening guest isolation; maintained Guest-App-Cleanup.ps1 now
+sets existing WebView path before installation. No new runtime installed.
+
+First CI38838627141 on27d1cce FAILED. Two test failures: retry poll races atomic
+session replacement (WinError2), marker comparison uses8.3 TEMP alias vs canonical
+path. Fixes retain10s deadline and all ticket/PID/cleanup assertions; only transient
+open races retry, marker uses native realpath. Local boundary17 PASS; actual broker2
+PASS after explicit UTF8 output fix for Korean Windows. Hidden compiler/test starts.
+Strict local supervisor still FAIL_LEFTOVER_CHILDREN: owned MSVC vctip.exe persists
+after compilation. Job kills that owned child, confirms cleanup COMPLETE0; not a
+natural-cleanup pass. Process-only VSCMD_SKIP_SENDTELEMETRY did not remove residue;
+no global setting changed. Separate from passing installed GUI natural shutdown.
+
+Source push scanned109 outgoing blobs without secret/unexpected-binary findings.
+Latest exact-commit CI outcome belongs in Actions/external final receipt; initial
+failed run is not overwritten. Evidence cleanup-gui-ci-20261016 includes attempt1,
+output, ci-failure.log, local-boundaries.log, broker-check*, leftover-images.json.
+No personal install/main/release. Prior AppData recovery remains unresolved.
+Mission INCOMPLETE, Source stale; same-integrator review only.
