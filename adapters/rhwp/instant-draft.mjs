@@ -1,3 +1,4 @@
+import {parseRichReply} from './rich-review.mjs';
 // Reuses Chromium's validated UTF-16 cache/review assembly. Transport is injected
 // by a trusted local host; this component has no Provider or network capability.
 export function createInstantDraft(analyze, Core, {writing=false}={}) {
@@ -23,7 +24,7 @@ export function createInstantDraft(analyze, Core, {writing=false}={}) {
       if(response.id!==capture.id||response.epoch!==request.epoch||response.revision!==request.revision||response.error||!owner.publish(request,response.suggestions))throw new Error('INSTANT_REPLY_REFUSED');
       const review=Core.SelectionReview.capture(owner,0,capture.source.length);
       if(!review)throw new Error('INSTANT_REVIEW_REFUSED');
-      const draft=review.draft;review.cancel();return draft;
+      const draft=review.draft;review.cancel();return capture.richParagraphs ? parseRichReply(draft,capture.richParagraphs) : draft;
     }finally{owner.clear();busy=false;}
   };
   Object.defineProperty(run,'supportsWriting',{value:writing});

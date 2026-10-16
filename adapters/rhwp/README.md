@@ -273,3 +273,31 @@ Evidence: external `rhwp-installed-20261016`. The tested package combines verifi
 native binaries from e6ff394 with the separately hash-bound rHWP addon; it is not
 a clean native rebuild from the addon commit. No personal-install update, release
 or general support claim follows from this candidate.
+
+
+## Sentence-aligned rich-selection candidate (2026-10-16)
+
+The new rich-review path binds complete selected body paragraphs and their original
+character-format runs. It sends one full-context, escaped run/paragraph envelope
+through installed local Native Messaging; no per-run inference, HTTP bridge or
+cloud fallback is introduced. The response must retain every ordered marker.
+Review lines retain original styles; blank lines retain paragraph boundaries.
+Accept rejects missing boundaries, changed document/selection, expired permission
+and revoked admission. It applies all paragraphs in one target-side history
+operation and checks saved text/format/outside content, with fenced Undo retained.
+Render failures never restore a snapshot over later application edits.
+
+Current admission is intentionally narrower than arbitrary rich text: whole body
+paragraphs in one section, at most eight nonempty paragraphs, 24 runs and 3000
+selected codepoints, with bounded document inspection. Mixed runs must end at
+sentence boundaries. Mid-sentence emphasis, empty selected paragraphs, partial
+paragraph ranges, tables/fields and reordered style spans remain unsupported.
+This avoids imposing original-language word order on translated inline emphasis.
+A missing model marker is a refusal, never a guessed proportional style mapping.
+
+The Native Host now separates the existing 1s grammar request ceiling from an 8s
+explicit writing ceiling within the extension's 10s watchdog. Bootstrap and model
+inference share that single deadline. The 1s recommendation, 3s paragraph and
+500ms Accept performance targets remain unchanged and misses must be reported.
+See the dated HANDOFF and external receipts for actual qualification and failures;
+this section does not establish general Hancom or whole-document compatibility.
