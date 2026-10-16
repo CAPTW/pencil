@@ -44,7 +44,13 @@ class ProductionBrokerTests(launcher.LauncherTests):
             path.with_suffix(".json.retry").write_text(state["retryTicket"])
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
-                current = json.loads(launcher.read_shared_text(path))
+                try:
+                    current = json.loads(launcher.read_shared_text(path))
+                except (FileNotFoundError, PermissionError):
+                    # Same atomic replacement race handled by wait_phase; do not
+                    # renew the deadline or accept an absent/unfinished retry.
+                    time.sleep(.02)
+                    continue
                 if current["phase"] == "failed" and current["retryTicket"] != state["retryTicket"]:
                     break
                 time.sleep(.02)
@@ -68,7 +74,7 @@ class ProductionBrokerTests(launcher.LauncherTests):
         self.assertTrue(broker.is_file(), "Build the current broker first")
         shutil.copyfile(broker, self.root / broker.name)
         runtime = self.root / "local/runtime/llama-server.exe"
-        subprocess.run(["rustc", str(HERE / "fixtures/gemma-startup-runtime.rs"), "-o", str(runtime)], check=True, capture_output=True)
+        subprocess.run(["rustc", str(HERE / "fixtures/gemma-startup-runtime.rs"), "-o", str(runtime)], check=True, capture_output=True, creationflags=0x08000000)
         model = self.root / "local/gemma-4-12b-it-qat-q4_0.gguf"
         model.write_text("invalid")
         catalog_path = self.root / "Gemma-Assets.json"
@@ -82,7 +88,8 @@ class ProductionBrokerTests(launcher.LauncherTests):
             entry.update(sha256=launcher.digest(path), bytes=path.stat().st_size)
         (self.root / "MANIFEST.json").write_text(json.dumps(self.manifest))
         (self.root / "wait-release").touch()
-        process = subprocess.Popen(["pwsh", "-NoProfile", "-File", str(self.root / "Start-Grammar.ps1"), "-EnableDesktopGemma"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+        command = "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); & '" + str(self.root / "Start-Grammar.ps1").replace("'", "''") + "' -EnableDesktopGemma"
+        process = subprocess.Popen(["pwsh", "-NoProfile", "-Command", command], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", creationflags=0x08000000)
         try:
             session_path, state = self.wait_phase("failed")
             self.assertIsNotNone(state["retryTicket"], "actual cleanup receipt did not reach launcher")
@@ -97,7 +104,11 @@ class ProductionBrokerTests(launcher.LauncherTests):
             deadline = time.monotonic() + 10
             next_state = state
             while time.monotonic() < deadline:
-                next_state = json.loads(launcher.read_shared_text(session_path))
+                try:
+                    next_state = json.loads(launcher.read_shared_text(session_path))
+                except (FileNotFoundError, PermissionError):
+                    time.sleep(.02)
+                    continue
                 if next_state["phase"] == "failed" and next_state["retryTicket"] != state["retryTicket"]:
                     break
                 time.sleep(.02)
