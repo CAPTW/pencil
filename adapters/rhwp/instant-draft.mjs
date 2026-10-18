@@ -32,6 +32,16 @@ export function createInstantDraft(analyze, Core, {writing=false}={}) {
       // Two explicit stages: unchanged ordinary writing, then style-only alignment.
       // No retry/fallback; both stages share one cancellation/deadline and slot.
       const plain=capture.richParagraphs.map(p=>p.runs.map(r=>r.text).join('')).join('\n\n');
+      // Repeated styled source words are not qualified: the model can bind the
+      // opposite (negated) occurrence. Refuse before inference or document change.
+      const sourceDefaults=alignmentDefaults(capture.richParagraphs);
+      for(const [i,p] of capture.richParagraphs.entries()){
+        const text=p.runs.map(r=>r.text).join('');
+        for(const r of p.runs.filter(r=>r.id!==sourceDefaults[i])){
+          const first=text.indexOf(r.text);
+          if(first!==-1&&text.indexOf(r.text,first+1)!==-1)throw new Error('RICH_REPEATED_STYLE_UNQUALIFIED');
+        }
+      }
       const written=await infer(plain,capture.id);
       if(written.split('\n\n').length!==capture.richParagraphs.length||Array.from(written).length>4000)throw new Error('RICH_STRUCTURE_CHANGED');
       const defaults=alignmentDefaults(capture.richParagraphs);

@@ -35,7 +35,7 @@ try{
   const start=performance.now();await page.getByRole('button',{name:'Capture selection',exact:true}).click();
   console.log('CAPTURE_STATUS',await page.locator('#grammar-review-host [role=status]').textContent());
   await page.locator('#grammar-review-host [role=status]').filter({hasText:/^Local Instant ready/}).waitFor({timeout:15000});
-  const text=await page.getByLabel('Reviewed replacement').inputValue();assert.equal((text.match(/25/g)??[]).length,1);if(mode==='ko'){assert.match(text,/[가-힣]/);assert.doesNotMatch(text,/[A-Za-z]/);}else assert.doesNotMatch(text,/[가-힣]/);
+  const text=await page.getByLabel('Reviewed replacement').inputValue();if(config.corpus==='repeated'){assert.equal((text.match(/\"DRAFT\"/g)??[]).length,2);assert.equal((text.match(/DRAFT/g)??[]).length,2);if(mode==='ko')assert.doesNotMatch(text,/"DRAFT"을/);}else assert.equal((text.match(/25/g)??[]).length,1);if(mode==='ko'){assert.match(text,/[가-힣]/);assert.doesNotMatch(text.replaceAll('DRAFT',''),/[A-Za-z]/);}else assert.doesNotMatch(text,/[가-힣]/);
   const spans=await page.locator('[aria-label="Formatted replacement preview"] [data-run-id]').evaluateAll(nodes=>nodes.map(n=>({id:Number(n.dataset.runId),paragraph:Number(n.dataset.paragraph),text:n.textContent,original:n.title})));
   const sample={scenario,format,mode,source,output:text,spans,recommendationMs:performance.now()-start};
   result.pendingSample=sample;
@@ -45,7 +45,14 @@ try{
   if(scenario==='partial-span'){const report=spans.filter(s=>s.original==='Original styled text: report').map(s=>s.text).join('');assert.match(report,mode==='ko'?/보고서/:/report/i);assert.doesNotMatch(report,/25|달러|dollar/i);}
   const joined=text.split('\n').join('');assert.match(joined,mode==='ko'?/다시/:/recheck|double-check|again/i);
   if(mode!=='ko'&&joined.includes('check'))assert.equal(emphasized.map(s=>s.text).join(''),'check');
-  assert.match(text,mode==='ko'?/달러/:/dollar/i);
+  if(config.corpus==='repeated'){
+   assert.equal((joined.match(mode==='ko'?/하지 마|하지 않|안 됩니다|안 돼/g:/\bnot\b/g)??[]).length,scenario==='partial-span'?2:1);
+   assert.match(joined,mode==='ko'?/하지 마|하지 않|안 됩니다|안 돼/:/do not|don't/i);
+   assert.match(joined,mode==='ko'?/승인/:/approval/i);assert.match(joined,mode==='ko'?/전/:/before/i);assert.match(joined,mode==='ko'?/후/:/after/i);
+   const firstBlock=spans.filter(s=>s.paragraph===0),highlight=firstBlock.findIndex(s=>s.original==='Original styled text: check');assert.ok(highlight>=0);
+   const preceding=firstBlock.slice(0,highlight).map(s=>s.text).join('');assert.match(preceding,mode==='ko'?/확인|검토/:/check|verif|review/i); // The first repeated action remains unhighlighted.
+   if(scenario==='partial-span'){const second=spans.filter(s=>s.paragraph===1),at=second.findIndex(s=>s.original==='Original styled text: report');assert.ok(at>=0);assert.match(second.slice(0,at).map(s=>s.text).join(''),mode==='ko'?/보고서/:/report/i);}
+  }else assert.match(text,mode==='ko'?/달러/:/dollar/i);
   const t=performance.now();await page.getByRole('button',{name:'Accept',exact:true}).click();await page.locator('#grammar-review-host [role=status]').filter({hasText:/^Applied$/}).waitFor();sample.acceptMs=performance.now()-t;
   const save=async suffix=>{const download=page.waitForEvent('download',{timeout:15000});await inputBox.focus();await inputBox.press('Control+s');const d=await download;const path=r+'/'+scenario+'-'+format+'-'+mode+'-'+suffix+'.'+format;await d.saveAs(path);return path;};
   const saved=await save('accepted');const after=await snapshot(saved);assert.equal(after.length,before.length);
