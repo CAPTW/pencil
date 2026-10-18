@@ -225,3 +225,7 @@ interior honorifics and broader names/roles need held-out model/document tests.
 Known narrow ending checks must not be marketed as a complete Korean register
 classifier. Q11 editor safety and full save/Undo/reopen checks remain unchanged.
 See rhwp-korean-register-20261018/FINAL_RECEIPT.json; Q04 remains deferred.
+
+
+## Q18 bounded statement/question checkpoint — 2026-10-18
+Natural rewrite preserves tested terminal predicates, question punctuation, mixed sentence levels and honorific words. Eight new installed HWP/HWPX cases plus56 regressions passed Accept/full-format/Undo/reopen. Q18 remains IN_PROGRESS for held-out registers, interior honorific morphology, role/negation shifts and legitimate synonym preservation. Exact word guards are intentionally conservative, not general Korean understanding. Follow FINAL_RECEIPT in rhwp-korean-speech-20261018; 2 requests exceed3s and all exceed1s. Q04 remains deferred. Same-integrator review only; prior refused/fixture attempts preserved.

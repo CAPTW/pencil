@@ -1,0 +1,105 @@
+[
+  {
+    "id": "ko-statement",
+    "body": "Pencil의 \"검토\" 표시는 유지하고, 김민수는 Atlas 보고서 27을 이미 검토했어요.",
+    "names": [
+      "Pencil",
+      "김민수",
+      "Atlas"
+    ],
+    "required": [
+      "27"
+    ],
+    "forbidden": [],
+    "expectedEnding": "검토했어요",
+    "expectedTerminal": "검토했어요.",
+    "styledWord": "검토",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^검토$",
+    "literal": "\"검토\"",
+    "expectedPredicates": [
+      "검토했어요."
+    ]
+  },
+  {
+    "id": "ko-question",
+    "body": "Pencil의 \"검토\" 표시는 유지하고, 교수님께서 Atlas 보고서 27을 이미 검토하셨나요?",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "교수님께서"
+    ],
+    "required": [
+      "27"
+    ],
+    "forbidden": [],
+    "expectedEnding": "검토하셨나요",
+    "expectedTerminal": "검토하셨나요?",
+    "styledWord": "검토",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^검토$",
+    "literal": "\"검토\"",
+    "expectedPredicates": [
+      "검토하셨나요?"
+    ]
+  },
+  {
+    "id": "ko-mixed",
+    "body": "Pencil의 \"검토\" 표시는 유지하고, 교수님께서 Atlas 보고서 27을 검토하셨습니다. 나는 결과를 확인했어.",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "교수님께서"
+    ],
+    "required": [
+      "27"
+    ],
+    "forbidden": [],
+    "expectedEnding": "확인했어",
+    "expectedTerminal": "확인했어.",
+    "styledWord": "검토",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^검토$",
+    "literal": "\"검토\"",
+    "expectedPredicates": [
+      "검토하셨습니다.",
+      "확인했어."
+    ]
+  },
+  {
+    "id": "ko-recipient",
+    "body": "Pencil의 \"검토\" 표시는 유지하고, 선생님께 자료를 드렸고 김민수는 Atlas 보고서 27을 검토했나요?",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수",
+      "선생님께"
+    ],
+    "required": [
+      "27",
+      "드렸고"
+    ],
+    "forbidden": [],
+    "expectedEnding": "검토했나요",
+    "expectedTerminal": "검토했나요?",
+    "styledWord": "검토",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^검토$",
+    "literal": "\"검토\"",
+    "expectedPredicates": [
+      "검토했나요?"
+    ]
+  }
+]

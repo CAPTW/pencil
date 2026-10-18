@@ -401,9 +401,32 @@ fn korean_request_endings(text:&str)->Result<Vec<String>,String>{
     }
     Ok(result)
 }
+// Exact terminal predicates for a bounded declarative/question inventory.
+// Keeping the whole predicate preserves tense and honorific inflection rather
+// than guessing a Korean stem. Unknown endings are not classified by this rule.
+fn korean_sentence_register(text:&str)->Result<Vec<(String,bool)>,String>{
+    let clean=without_literals(text)?;let mut result=Vec::new();
+    for sentence in clean.split_inclusive(['.','!','?','\n']) {
+        let sentence=sentence.trim();let question=sentence.ends_with('?');
+        let body=sentence.trim_end_matches(['.','!','?']).trim_end();
+        let word=body.split_whitespace().last().unwrap_or("");
+        if ["습니다","합니다","입니다","됩니다","어요","아요","해요","인가요","나요","습니까","니","냐","했어","했지","이다","한다","했다","있다","없다"].iter().any(|ending|word.ends_with(ending)) {
+            result.push((word.to_owned(),question));
+        }
+    }
+    Ok(result)
+}
+fn korean_honorific_words(text:&str)->Result<Vec<String>,String>{
+    Ok(without_literals(text)?.split(|c:char|!c.is_alphanumeric() && c!='_')
+        .filter(|w|["님","께서","께","말씀","드리","드렸","주셨","계시","계셨","뵙","뵈"].iter().any(|marker|w.contains(marker)))
+        .map(str::to_owned).collect())
+}
 fn preserve_korean_register(source:&str,fixed:&str)->Result<(),String>{
     let expected=korean_request_endings(source)?;
     if !expected.is_empty() && korean_request_endings(fixed)?!=expected{return Err("gemma_register_changed".into());}
+    let endings=korean_sentence_register(source)?;
+    if !endings.is_empty() && korean_sentence_register(fixed)?!=endings {return Err("gemma_register_changed".into());}
+    if korean_honorific_words(source)?!=korean_honorific_words(fixed)? {return Err("gemma_honorific_changed".into());}
     Ok(())
 }
 // A retained quoted label is not a surviving occurrence of a translated action.
@@ -683,6 +706,10 @@ fn local_prompt(binding: &Binding) -> (String, bool) {
         if let Ok(endings)=korean_request_endings(&binding.source) {if !endings.is_empty(){
             prompt.push_str(&format!("\n자연 재작성의 필수 조건: 각 요청 문장의 종결 표현을 순서대로 {} 그대로 유지하세요. 예: 해 주세요는 해 주세요, 해 줘는 해 줘로 끝내세요. 해 주시기 바랍니다나 해 주십시오로 격식을 올리지 말고 반말로 낮추지도 마세요. 본문만 자연스럽게 다듬되 조건·주체·대상은 유지하세요.",json!(endings)));
         }}
+    }
+    if binding.intent==Intent::Paraphrase && binding.source.chars().any(|c|('가'..='힣').contains(&c)) {
+        let boundaries=json!({"terminalPredicates":korean_sentence_register(&binding.source).unwrap_or_default(),"honorificWords":korean_honorific_words(&binding.source).unwrap_or_default()});
+        prompt.push_str(&format!("\n한국어 말투 경계: {}. terminalPredicates의 각 종결 서술어를 원래 순서와 철자로 유지하세요. true는 의문문이며 물음표를 유지하세요. 평서문을 질문으로, 질문을 평서문으로 바꾸지 마세요. honorificWords는 바꿀 수 없는 완전한 어절입니다. 조사와 연결 어미까지 철자·순서·횟수 그대로 복사하세요. 예: 드렸고를 드렸으며로 바꾸거나 선생님께를 선생님에게로 바꾸면 안 됩니다. 높임말이 아닌 주변 표현에 새로운 높임을 추가하지 마세요. 서로 다른 문장의 반말·존댓말을 하나로 통일하지 마세요. 그 외 본문을 자연스럽게 다듬되 부정·시제·주체·대상은 바꾸지 마세요.",boundaries));
     }
     (prompt,sparse)
 }
@@ -1432,6 +1459,7 @@ mod tests {
         let workspace=engine.workspace.as_ref().unwrap().cwd().parent().unwrap().to_owned();
         let mut cases:Vec<Value>=serde_json::from_str(include_str!("../../scripts/mission/rhwp-korean-names-cases.json")).unwrap();
         cases.extend(serde_json::from_str::<Vec<Value>>(include_str!("../../scripts/mission/rhwp-korean-register-cases.json")).unwrap());
+        cases.extend(serde_json::from_str::<Vec<Value>>(include_str!("../../scripts/mission/rhwp-korean-speech-cases.json")).unwrap());
         let mut rows=Vec::new();
         for case in cases { for intent in [Intent::Paraphrase,Intent::Polite] {
             if case["modes"].as_array().is_some_and(|m|m.len()==1) && intent!=Intent::Paraphrase {continue;}
@@ -1774,6 +1802,16 @@ mod tests {
         assert_ne!(request_frame("", " report 25 today."),request_frame("", " report 50 today."));
         assert_ne!(request_frame("", " report A today."),request_frame("", " report today."));
         assert_ne!(request_frame("", " US report today."),request_frame("", " us report today."));
+    }
+
+    #[test]
+    fn korean_statement_question_and_honorific_boundaries() {
+        for (source,fixed) in [("보고서를 검토했어요.","보고서를 검토했습니다."),("보고서를 검토했나요?","보고서를 검토했나요."),("보고서를 검토했어요.","보고서를 검토했어요?"),("교수님께서 검토하셨습니다.","교수님이 검토하셨습니다."),("선생님께 자료를 드렸고 저는 검토했어요.","선생님께 자료를 보냈고 저는 검토했어요."),("교수님께서 검토하셨습니다. 나는 확인했어.","교수님께서 검토하셨습니다. 나는 확인했어요.")] {
+            assert!(preserve_korean_register(source,fixed).is_err(),"{source} -> {fixed}");
+        }
+        assert!(preserve_korean_register("교수님께서 이미 검토하셨습니다. 나는 확인했어.","교수님께서 벌써 검토하셨습니다. 나는 확인했어.").is_ok());
+        assert_eq!(korean_sentence_register("레이블 \"검토했나요?\"는 유지하고 보고서를 검토했어요.").unwrap(),vec![("검토했어요".into(),false)]);
+        assert!(preserve_korean_register("보고서를 검토했나요?","해당 보고서를 검토했나요?").is_ok());
     }
 
     #[test]

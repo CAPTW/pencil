@@ -445,3 +445,8 @@ repaired in both formats. Declarative/question endings, interior honorifics and
 arbitrary Korean register are not generally qualified; Q18 remains in progress.
 See HANDOFF and register receipts for output review, retained fixture failure and
 latency misses. No general Hancom or user-document acceptance is implied.
+
+
+### Bounded Korean statement/question register (2026-10-18 candidate)
+The later candidate extends the preceding request-only scope: natural rewrite preserves recognized terminal predicates and question punctuation, ordered mixed speech levels, and known honorific words including their connective endings. Tested examples include 검토했어요., 검토하셨나요?, 검토하셨습니다. followed by 확인했어., and 선생님께/드렸고. Eight installed actual-Gemma HWP/HWPX cases and56 regressions passed explicit Accept, exact full saved formatting, Undo and reopen.
+This is a conservative fixed inventory, not full Korean morphology or meaning proof. Unknown endings/interior inflections remain unqualified; valid synonym rewrites can be refused. Explicit Polite mode is unchanged. No post-generation replacement, silent retry or weaker target validation. See HANDOFF and rhwp-korean-speech-20261018 receipts for preserved failures and latency misses. General Hancom/user documents/physical IME remain unqualified.
