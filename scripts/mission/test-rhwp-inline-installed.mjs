@@ -20,7 +20,7 @@ try{
  if(config.diagnose){const debug=await browser.newCDPSession(page);await debug.send('Debugger.enable');await debug.send('Debugger.setPauseOnExceptions',{state:'all'});debug.on('Debugger.paused',async event=>{try{const frame=event.callFrames.find(f=>['parseRichDraft','parseRichAlignment'].includes(f.functionName));if(frame){const value=await debug.send('Debugger.evaluateOnCallFrame',{callFrameId:frame.callFrameId,expression:'({text,paragraphs:paragraphs.map(p=>p.runs.map(r=>({id:r.id,text:r.text})))})',returnByValue:true});(result.rejectedSyntheticReplies??=[]).push(value.result.value);}}finally{await debug.send('Debugger.resume').catch(()=>{});}});}
  await page.goto(origin+'/rhwp/index.html');await page.locator('#grammar-review-host').waitFor();console.log('PANEL_READY');
  assert.equal(await page.evaluate(()=>typeof __wasm),'undefined');assert.equal(await page.evaluate(()=>typeof grammarLocalAnalyze),'undefined');
- for(const scenario of ['inline','partial','partial-span'])for(const format of ['hwp','hwpx'])for(const mode of ['ko','paraphrase','polite']){
+ for(const scenario of (config.scenarios??['inline','partial','partial-span']))for(const format of ['hwp','hwpx'])for(const mode of (config.modes??['ko','paraphrase','polite'])){
   const input=config.inputs[format];
   const before=await snapshot(input);const last=scenario==='partial-span'?2:1;const from=scenario==='inline'?0:16;const to=scenario==='inline'?Array.from(before[last].text).length:Array.from(before[last].text).length-16;const selected=before.slice(1,last+1);const source=selected.map((p,i)=>Array.from(p.text).slice(i===0?from:0,i===selected.length-1?to:undefined).join('')).join('\n');console.log('OPEN',format,mode,source.length);
   const oldGeneration=await page.locator('#grammar-review-host').getAttribute('data-grammar-generation');
@@ -35,7 +35,7 @@ try{
   const start=performance.now();await page.getByRole('button',{name:'Capture selection',exact:true}).click();
   console.log('CAPTURE_STATUS',await page.locator('#grammar-review-host [role=status]').textContent());
   await page.locator('#grammar-review-host [role=status]').filter({hasText:/^Local Instant ready/}).waitFor({timeout:15000});
-  const text=await page.getByLabel('Reviewed replacement').inputValue();if(config.corpus==='repeated'){assert.equal((text.match(/\"DRAFT\"/g)??[]).length,2);assert.equal((text.match(/DRAFT/g)??[]).length,2);if(mode==='ko')assert.doesNotMatch(text,/"DRAFT"을/);}else assert.equal((text.match(/25/g)??[]).length,1);if(mode==='ko'){assert.match(text,/[가-힣]/);assert.doesNotMatch(text.replaceAll('DRAFT',''),/[A-Za-z]/);}else assert.doesNotMatch(text,/[가-힣]/);
+  const text=await page.getByLabel('Reviewed replacement').inputValue();if(config.corpus==='repeated'){assert.equal((text.match(/\"DRAFT\"/g)??[]).length,2);assert.equal((text.match(/DRAFT/g)??[]).length,2);if(mode==='ko')assert.doesNotMatch(text,/"DRAFT"을/);}else if(config.corpus==='mixed'){assert.equal((text.match(/"check"/g)??[]).length,1);}else assert.equal((text.match(/25/g)??[]).length,1);if(mode==='ko'){assert.match(text,/[가-힣]/);assert.doesNotMatch(text.replaceAll('DRAFT',''),/[A-Za-z]/);}else assert.doesNotMatch(text,/[가-힣]/);
   const spans=await page.locator('[aria-label="Formatted replacement preview"] [data-run-id]').evaluateAll(nodes=>nodes.map(n=>({id:Number(n.dataset.runId),paragraph:Number(n.dataset.paragraph),text:n.textContent,original:n.title})));
   const sample={scenario,format,mode,source,output:text,spans,recommendationMs:performance.now()-start};
   result.pendingSample=sample;
@@ -43,8 +43,8 @@ try{
   assert.match(emphasized.map(s=>s.text).join(''),mode==='ko'?/^(확인|검토)$/:/check|verif|review/i);
   assert.doesNotMatch(emphasized.map(s=>s.text).join(''),/25|달러|dollar|report|보고서/i); // A word's emphasis must not spread onto facts or a different noun.
   if(scenario==='partial-span'){const report=spans.filter(s=>s.original==='Original styled text: report').map(s=>s.text).join('');assert.match(report,mode==='ko'?/^보고서$/:/report/i);assert.doesNotMatch(report,/25|달러|dollar/i);}
-  const joined=text.split('\n').join('');assert.match(joined,mode==='ko'?/다시/:/recheck|double-check|again/i);
-  if(mode!=='ko'&&joined.includes('check'))assert.equal(emphasized.map(s=>s.text).join(''),'check');
+  const joined=text.split('\n').join('');if(config.corpus!=='mixed')assert.match(joined,mode==='ko'?/다시/:/recheck|double-check|again/i);
+  if(config.corpus!=='mixed'&&mode!=='ko'&&joined.includes('check'))assert.equal(emphasized.map(s=>s.text).join(''),'check');
   if(config.corpus==='repeated'){
    assert.equal((joined.match(mode==='ko'?/지 마|지 않|안 됩니다|안 돼/g:/\bnot\b/g)??[]).length,scenario==='partial-span'?2:1);
    assert.match(joined,mode==='ko'?/지 마|지 않|안 됩니다|안 돼/:/do not|don't/i);
@@ -52,6 +52,12 @@ try{
    const firstBlock=spans.filter(s=>s.paragraph===0),highlight=firstBlock.findIndex(s=>s.original==='Original styled text: check');assert.ok(highlight>=0);
    const preceding=firstBlock.slice(0,highlight).map(s=>s.text).join('');assert.match(preceding,mode==='ko'?/확인|검토/:/check|verif|review/i); // The first repeated action remains unhighlighted.
    if(scenario==='partial-span'){const second=spans.filter(s=>s.paragraph===1),at=second.findIndex(s=>s.original==='Original styled text: report');assert.ok(at>=0);assert.match(second.slice(0,at).map(s=>s.text).join(''),mode==='ko'?/보고서/:/report/i);}
+  }else if(config.corpus==='mixed'){
+   const highlight=spans.findIndex(s=>s.original==='Original styled text: check');
+   assert.match(spans.slice(0,highlight).map(s=>s.text).join(''),/"check"/);
+   assert.match(joined,/report|document/i);assert.match(joined,/today/i);
+   assert.doesNotMatch(joined,/\b(?:not|never|tomorrow)\b/i);
+   if(config.requireSynonym)assert.match(emphasized.map(s=>s.text).join(''),/^(verify|review)$/i);
   }else assert.match(text,mode==='ko'?/달러/:/dollar/i);
   const t=performance.now();await page.getByRole('button',{name:'Accept',exact:true}).click();await page.locator('#grammar-review-host [role=status]').filter({hasText:/^Applied$/}).waitFor();sample.acceptMs=performance.now()-t;
   const save=async suffix=>{const download=page.waitForEvent('download',{timeout:15000});await inputBox.focus();await inputBox.press('Control+s');const d=await download;const path=r+'/'+scenario+'-'+format+'-'+mode+'-'+suffix+'.'+format;await d.saveAs(path);return path;};

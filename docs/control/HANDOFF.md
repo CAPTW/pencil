@@ -4044,3 +4044,42 @@ corpora on one package. Saved reread uses pinned rHWP, not independent Hancom.
 Composite package retains e6ff394 app/target DLL and prior extension; only rebuilt
 host/broker are new, with local_gemma.rs hash and file hashes in MANIFEST. No claim
 that the entire app was rebuilt. Previous AppData recovery remains unresolved.
+
+
+## 2026-10-18 unique-clause mixed-synonym checkpoint
+
+2026-10-18 mixed-synonym unique-clause alignment: source marked text reconstructs original exactly; only a unique unchanged clause frame can bind a partially substituted repeated word. Schema and decoder share the binding; missing/ambiguous source, changed negation/context, duplicate/deleted identical clauses refuse. Actual Gemma installed repeated HWP/HWPX18 cases57 checks PASS plus mixed-synonym HWP/HWPX2 cases9 checks PASS: literal check preserved, styled check became review, exact Accept/format/Undo/save/reopen. Separate actual-model fixed-stage alignment3/3 PASS is NOT end-to-end inference evidence. Recommendation repeated1912-2967ms,mixed1914-1938ms;1s misses20/20,3s0. Accept repeated45-101ms,mixed68-73ms;500ms0. Adapter62,Gemma27PASS7ignored,host29PASS1ignored; native build exit0. One offline Sandbox stopped,guest product/install/profile/registration0, app natural exit0. No user data/personal install/main/push/release. Scoped English unique-frame support only,not arbitrary synonym/translation alignment or general Hancom. Evidence rhwp-frame-20261018/FINAL_RECEIPT.json; mission INCOMPLETE,Source stale.
+
+The previous blanket nonzero count-change refusal is replaced only for unique
+unchanged English clause frames. This does not prove the generated replacement is
+a synonym: ordinary writing, explicit user review and scoped quality evaluation
+remain necessary. Wider paraphrases that change the frame still refuse; equal-count
+semantic remapping, translated frames retaining source words inside literals,
+other morphology and arbitrary styled phrases remain unqualified. Same integrator
+review only, not independent reviewer. No prompt/model/token/deadline relaxation.
+
+Retained failure: attempt3-mixed-fixture-FAIL matched `not` inside `note` and stopped
+before Accept. The corrected word-boundary assertion still rejects actual not,
+never and tomorrow. Attempt4 repeated the same actual model/package and passed;
+no output substitution, replay, alignment bridge or inference stub. New mixed cases
+are natural rewriting, not mixed-synonym translation qualification. The existing18
+cases cover actual translation/natural/polite with repetition/quotes/negation.
+Raw attempt1 uses three prescribed fixed-stage inputs and a test executable; it is
+separate from both installed journeys. No ordinary non-repeated corpus rerun this
+turn, no full Rust suite/hosted CI/physical IME/Hancom acceptance. Preparatory
+ExistingLogin launch initially returned 0x80070520; retry after login initialization
+used the SAME Sandbox, with no second session. Preliminary/stale output files are
+not acceptance; use the archived attempt receipts with their explicit scopes.
+
+Composite package retains prior e6ff394 app/target DLL and extension, with rebuilt
+host/broker tied to local_gemma.rs SHA256 in manifest; all file hashes checked.
+Harness updated after packaging has its own evidence hash. Compiler helpers caused
+FAIL_LEFTOVER_CHILDREN with build/test exit0, supervisor cleanup COMPLETE0; not
+natural compiler cleanup PASS. Product app natural exit and guest uninstall were
+separately checked. Previous host AppData recovery remains unresolved; nothing in
+host user data was read/modified for this task.
+
+Next: broaden mixed-synonym clause rewriting only with source/meaning/occurrence
+counterexamples; retained-source literals in translated clauses need separate
+qualification. Preserve exact-context rejection until that evidence exists. Global
+adapter work and Provider stabilization remain priorities; HDD latency is deferred.

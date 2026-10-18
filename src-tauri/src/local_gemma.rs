@@ -279,6 +279,55 @@ fn lexical_candidates(fixed: &str, original: &str) -> Vec<String> {
     if words.len()>128 {return Vec::new();}
     words.into_iter().collect()
 }
+// Mixed substitutions require an exact, unique unchanged clause frame. This
+// establishes position only; the existing writing checks and user review still
+// own semantic quality. Never infer equivalence from a substring elsewhere.
+fn mixed_occurrence_anchor(p:&Value,id:usize,n:usize,word:&str)->Result<Option<(String,String)>,String>{
+    let original=p["original"].as_str().unwrap_or("");
+    let fixed=p["fixed"].as_str().ok_or("gemma_alignment_source")?;
+    let count=|text:&str|if word.is_empty(){0}else{text.char_indices().filter(|(at,_)|text[*at..].starts_with(word)).count()};
+    if count(original)<=1 || count(fixed)==0 || count(original)==count(fixed){return Ok(None);}
+    let marked=p["markedOriginal"].as_str().ok_or("gemma_alignment_anchor")?;
+    let decode=|s:&str|s.replace("&lt;","<").replace("&gt;",">").replace("&amp;","&");
+    let mut rest=marked;let mut plain=String::new();let mut selected=None;let mut seen=0;
+    while let Some(at)=rest.find('<') {
+        plain.push_str(&decode(&rest[..at]));rest=&rest[at..];
+        let end=rest.find('>').ok_or("gemma_alignment_anchor")?;
+        let tag=rest[1..end].strip_prefix('r').and_then(|s|s.parse::<usize>().ok()).filter(|v|*v<=23).ok_or("gemma_alignment_anchor")?;
+        let close=format!("</r{tag}>");rest=&rest[end+1..];
+        let end=rest.find(&close).ok_or("gemma_alignment_anchor")?;
+        if rest[..end].contains('<'){return Err("gemma_alignment_anchor".into());}
+        let text=decode(&rest[..end]);
+        if tag==id {if seen==n {if text!=word{return Err("gemma_alignment_anchor".into());}selected=Some(plain.len());}seen+=1;}
+        plain.push_str(&text);rest=&rest[end+close.len()..];
+    }
+    plain.push_str(&decode(rest));
+    if plain!=original{return Err("gemma_alignment_anchor".into());}
+    let at=selected.ok_or("gemma_alignment_anchor")?;
+    let mut offset=0;let mut frame=None;
+    for clause in original.split_inclusive(['.',';','!','?']) {
+        if at>=offset && at+word.len()<=offset+clause.len() {
+            if original.match_indices(clause.trim()).count()!=1{return Err("gemma_alignment_anchor".into());}
+            let local=at-offset;
+            frame=Some((clause[..local].trim_start(),clause[local+word.len()..].trim_end()));break;
+        }
+        offset+=clause.len();
+    }
+    let (before,after)=frame.ok_or("gemma_alignment_anchor")?;
+    // A bare word (or punctuation only) is not a discriminating context.
+    if !before.chars().chain(after.chars()).any(char::is_alphanumeric){return Err("gemma_alignment_anchor".into());}
+    let mut matches=Vec::new();
+    for context in fixed.split_inclusive(['.',';','!','?']).map(str::trim) {
+        if let Some(text)=context.strip_prefix(before).and_then(|s|s.strip_suffix(after)) {
+            if !text.is_empty() && text.chars().count()<=256 && text.chars().all(char::is_alphanumeric)
+                && context.match_indices(text).count()==1 && fixed.match_indices(context).count()==1 {
+                matches.push((context.to_owned(),text.to_owned()));
+            }
+        }
+    }
+    if matches.len()!=1{return Err("gemma_alignment_anchor".into());}
+    Ok(matches.pop())
+}
 fn alignment_slots(paragraphs:&[Value])->Result<Vec<(String,usize,usize,Vec<String>)>,String>{
     let mut slots=Vec::new();
     for (i,p) in paragraphs.iter().enumerate(){
@@ -286,19 +335,10 @@ fn alignment_slots(paragraphs:&[Value])->Result<Vec<(String,usize,usize,Vec<Stri
             let id=f["tag"].as_str().and_then(|t|t.strip_prefix('r')).and_then(|t|t.parse::<usize>().ok()).filter(|n|*n<=23).ok_or("gemma_alignment_source")?;
             for (n,word) in f["originalWords"].as_array().ok_or("gemma_alignment_source")?.iter().enumerate(){
                 let word=word.as_str().ok_or("gemma_alignment_source")?;
-                let fixed=p["fixed"].as_str().unwrap();
-                let original=p["original"].as_str().unwrap_or("");
-                let occurrences=|text:&str| text.char_indices().filter(|(at,_)|text[*at..].starts_with(word)).count();
-                // A surviving exact word is not proof that the styled occurrence
-                // survived. Partial substitution/deletion/addition can otherwise
-                // force emphasis onto an unrelated (even prohibited) action.
-                // Refuse this ambiguous metadata; never rewrite or guess a span.
-                let source_count=if word.is_empty(){0}else{occurrences(original)};
-                let fixed_count=if word.is_empty(){0}else{occurrences(fixed)};
-                if source_count>1 && fixed_count>0 && source_count!=fixed_count {
-                    return Err("gemma_alignment_anchor".into());
-                }
-                let candidates=lexical_candidates(fixed,word);
+                let candidates=match mixed_occurrence_anchor(p,id,n,word)? {
+                    Some((_,text))=>vec![text],
+                    None=>lexical_candidates(p["fixed"].as_str().unwrap(),word),
+                };
                 if candidates.is_empty(){return Err("gemma_alignment_anchor".into());}
                 slots.push((format!("p{i}r{id}n{n}"),i,id,candidates));
             }
@@ -313,11 +353,20 @@ fn alignment_contexts(fixed:&str,candidates:&[String])->Vec<String>{
         && candidates.iter().any(|word| part.match_indices(word.as_str()).count()==1)
     }).map(str::to_owned).collect()
 }
+fn slot_contexts(p:&Value,key:&str,id:usize,candidates:&[String])->Result<Vec<String>,String>{
+    let n=key.rsplit('n').next().and_then(|s|s.parse::<usize>().ok()).ok_or("gemma_alignment_source")?;
+    let f=p["find"].as_array().ok_or("gemma_alignment_source")?.iter().find(|f|f["tag"]==format!("r{id}")).ok_or("gemma_alignment_source")?;
+    let word=f["originalWords"][n].as_str().ok_or("gemma_alignment_source")?;
+    Ok(match mixed_occurrence_anchor(p,id,n,word)? {
+        Some((context,_))=>vec![context],
+        None=>alignment_contexts(p["fixed"].as_str().unwrap(),candidates),
+    })
+}
 fn alignment_schema(source:&str)->Result<Value,String>{
     let paragraphs=alignment_source(source)?;let slots=alignment_slots(&paragraphs)?;
     let mut props=serde_json::Map::new();let mut required=Vec::new();
-    for (key,paragraph,_,candidates) in slots {
-        let contexts=alignment_contexts(paragraphs[paragraph]["fixed"].as_str().unwrap(),&candidates);
+    for (key,paragraph,id,candidates) in slots {
+        let contexts=slot_contexts(&paragraphs[paragraph],&key,id,&candidates)?;
         if contexts.is_empty(){return Err("gemma_alignment_anchor".into());}
         props.insert(key.clone(),json!({"type":"object","properties":{"context":{"type":"string","enum":contexts},"text":{"type":"string","enum":candidates}},"required":["context","text"],"additionalProperties":false}));required.push(key);
     }
@@ -344,7 +393,7 @@ fn alignment_replacement(value:Value,source:&str)->Result<String,String>{
         text.push_str(&format!("<p{i}>"));
         for (key,_,id,candidates) in slots.iter().filter(|(_,p,_,_)|*p==i){
             let a=output.get(key).ok_or("gemma_alignment_anchor")?;let fixed=p["fixed"].as_str().unwrap();
-            if !alignment_contexts(fixed,candidates).contains(&a.context)||a.context.chars().count()>512||a.context.chars().any(char::is_control)||!candidates.contains(&a.text){return Err("gemma_alignment_anchor".into());}
+            if !slot_contexts(p,key,*id,candidates)?.contains(&a.context)||a.context.chars().count()>512||a.context.chars().any(char::is_control)||!candidates.contains(&a.text){return Err("gemma_alignment_anchor".into());}
             let start=unique(fixed,&a.context)?+unique(&a.context,&a.text)?;
             let occurrence=fixed.char_indices().filter(|(at,_)|*at<=start&&fixed[*at..].starts_with(&a.text)).count();
             if !(1..=96).contains(&occurrence){return Err("gemma_alignment_anchor".into());}
@@ -1233,10 +1282,26 @@ mod tests {
             rows.push(json!({"source":binding.source,"intent":binding.intent,"raw":raw,"alignment":alignment,"rawAlignment":raw_alignment}));
         }
           }
+        let mut mixed_rows=Vec::new();
+        for (original,marked,fixed,word,expected) in [
+            ("Do not check; check later.","Do not check; <r1>check</r1> later.","Do not check; verify later.","check","verify"),
+            ("Do not check; check later.","Do not check; <r1>check</r1> later.","Do not verify; check later.","check","check"),
+            ("Do not recheck; recheck later.","Do not recheck; re<r1>check</r1> later.","Do not recheck; reverify later.","check","verify"),
+        ] {
+            let source=format!("<pencil-align>\n<original>{}</original>\n</pencil-align>",json!([{"paragraph":"p0","original":original,"markedOriginal":marked,"fixed":fixed,"find":[{"tag":"r1","originalWords":[word]}]}]));
+            let began=Instant::now();
+            let aligned=tokio::time::timeout(Duration::from_secs(8),async {
+                alignment_replacement(engine.complete_json(&alignment_prompt(&source),alignment_schema(&source)?).await?,&source)
+            }).await;
+            let expected=format!("<p0><r1 occurrence=\"1\">{expected}</r1></p0>");
+            let pass=matches!(&aligned,Ok(Ok(text)) if text==&expected);
+            mixed_rows.push(json!({"original":original,"markedOriginal":marked,"fixed":fixed,"aligned":format!("{aligned:?}"),"expected":expected,"pass":pass,"ms":began.elapsed().as_secs_f64()*1000.}));
+        }
         let cleanup=engine.stop().await;
-        let report=json!({"scope":"FIXED_SYNTHETIC_RAW_DIAGNOSTIC_NOT_APPLIED","rows":rows,"cleanup":cleanup,"workspaceRemoved":!workspace.exists()});
+        let report=json!({"scope":"FIXED_SYNTHETIC_RAW_DIAGNOSTIC_NOT_APPLIED","rows":rows,"mixedRows":mixed_rows,"cleanup":cleanup,"workspaceRemoved":!workspace.exists()});
         std::fs::write(receipt,serde_json::to_vec_pretty(&report).unwrap()).unwrap();
         assert!(cleanup.is_ok()&&!workspace.exists());
+        assert!(report["mixedRows"].as_array().unwrap().iter().all(|r|r["pass"]==true));
     }
     #[test]
     fn inference_metrics_do_not_log_content_or_untrusted_metadata() {
@@ -1479,13 +1544,22 @@ mod tests {
             json!([{"paragraph":"p0","original":"Do not check; check later.",
                 "markedOriginal":"Do not check; <r1>check</r1> later.","fixed":fixed,
                 "find":[{"tag":"r1","originalWords":["check"]}]}]));
-        for fixed in ["Do not check; verify later.", "Do not verify; check later.",
-            "Do not check; check later, then check again."] {
-            assert!(alignment_schema(&source(fixed)).is_err(), "mixed occurrence count must refuse: {fixed}");
-            let response=json!({"choices":[{"finish_reason":"stop","message":{"content":
-                json!({"p0r1n0":{"text":"check","context":"Do not check;"}}).to_string()}}]});
-            assert!(alignment_replacement(response,&source(fixed)).is_err());
+        let response=|text:&str,context:&str|json!({"choices":[{"finish_reason":"stop","message":{"content":
+            json!({"p0r1n0":{"text":text,"context":context}}).to_string()}}]});
+        let mixed=source("Do not check; verify later.");
+        assert!(alignment_schema(&mixed).is_ok());
+        assert_eq!(alignment_replacement(response("verify","verify later."),&mixed).unwrap(),"<p0><r1 occurrence=\"1\">verify</r1></p0>");
+        assert!(alignment_replacement(response("check","Do not check;"),&mixed).is_err());
+        let mixed=source("Do not verify; check later.");
+        assert_eq!(alignment_replacement(response("check","check later."),&mixed).unwrap(),"<p0><r1 occurrence=\"1\">check</r1></p0>");
+        for fixed in ["Do not check; verify soon.", "Do not check; verify later. verify later.",
+            "Do not check; check later, then check again.", "Do not check; do not verify later."] {
+            assert!(alignment_schema(&source(fixed)).is_err(), "ambiguous/changed frame must refuse: {fixed}");
         }
+        let malformed=source("Do not check; verify later.").replace("<r1>check</r1>","check");
+        assert!(alignment_schema(&malformed).is_err());
+        let duplicate=format!("<pencil-align>\n<original>{}</original>\n</pencil-align>",json!([{"paragraph":"p0","original":"check later. check later.","markedOriginal":"check later. <r1>check</r1> later.","fixed":"check later.","find":[{"tag":"r1","originalWords":["check"]}]}]));
+        assert!(alignment_schema(&duplicate).is_err());
         assert!(alignment_schema(&source("Do not check; check later.")).is_ok());
         assert!(alignment_schema(&source("Do not verify; verify later.")).is_ok());
     }
