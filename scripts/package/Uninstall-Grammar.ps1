@@ -127,7 +127,7 @@ if($trialCleanup -and $registration) {
 # Never terminate an app while its resident broker launcher still owns a session.
 $sessionLock = Join-Path $root 'gemma-session.lock'
 try { $probeLock = [IO.File]::Open($sessionLock, 'OpenOrCreate', 'ReadWrite', 'None') }
-catch { throw 'Quit Grammar and wait for its Gemma launcher to finish before uninstalling.' }
+catch { throw 'Quit Pencil and wait for its Gemma launcher to finish before uninstalling.' }
 try {
   # Persist before releasing the lock so a new launcher cannot race removal.
   $receipt | Add-Member -NotePropertyName state -NotePropertyValue 'uninstalling' -Force
@@ -231,7 +231,7 @@ $result = [ordered]@{
   problems = $problems
   notes = $notes
   complete = $complete
-  next = if ($complete) { $null } else { 'Quit Grammar, close windows and terminals that use the install folder, then run this uninstaller again.' }
+  next = if ($complete) { $null } else { 'Quit Pencil, close windows and terminals that use the install folder, then run this uninstaller again.' }
 }
 $result | ConvertTo-Json -Depth 4
 if (-not $complete) { exit 1 }

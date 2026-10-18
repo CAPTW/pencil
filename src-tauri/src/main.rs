@@ -1934,7 +1934,7 @@ fn main() {
             }
         })
         .build(tauri::generate_context!())
-        .expect("error while building Codex Pencil");
+        .expect("error while building Pencil");
     let exit_code = app.run_return(move |app, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             let state = app.state::<AppState>();
@@ -1995,14 +1995,14 @@ fn main() {
 }
 
 fn create_tray(app: &mut tauri::App) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, "show", "Show Grammar", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "Show Pencil", true, None::<&str>)?;
     let hide = MenuItem::with_id(app, "hide", "Hide", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let providers = MenuItem::with_id(app, "providers", "Provider Status", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &hide, &settings, &providers, &quit])?;
 
-    let mut tray = TrayIconBuilder::with_id("main").tooltip("Codex Pencil");
+    let mut tray = TrayIconBuilder::with_id("main").tooltip("Pencil");
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
@@ -2336,10 +2336,10 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
 
     let window = app
         .get_webview_window("main")
-        .ok_or_else(|| "Codex Pencil window is missing.".to_string())?;
+        .ok_or_else(|| "Pencil window is missing.".to_string())?;
     let own_hwnd = window
         .hwnd()
-        .map_err(|_| "Codex Pencil window handle is unavailable.".to_string())?
+        .map_err(|_| "Pencil window handle is unavailable.".to_string())?
         .0 as isize;
     let mut target_platform = WindowsForegroundTargetPlatform;
     let prepare_app = app.clone();
@@ -2581,7 +2581,7 @@ fn spawn_instant_for_capture(app: AppHandle, token: SessionToken, source: String
 fn show_main_window(app: &AppHandle, cursor: Option<&CursorPoint>) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
-        .ok_or_else(|| "Codex Pencil window is missing.".to_string())?;
+        .ok_or_else(|| "Pencil window is missing.".to_string())?;
 
     if let Some(cursor) = cursor {
         let monitor = match window
@@ -2614,7 +2614,7 @@ fn show_main_window(app: &AppHandle, cursor: Option<&CursorPoint>) -> Result<(),
 fn hide_main_window(app: &AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
-        .ok_or_else(|| "Codex Pencil window is missing.".to_string())?;
+        .ok_or_else(|| "Pencil window is missing.".to_string())?;
     window
         .hide()
         .map_err(|error| format!("Could not hide window: {error}"))

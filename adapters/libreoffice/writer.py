@@ -35,7 +35,7 @@ class Panel(unohelper.Base, XActionListener, XTopWindowListener):
         self.doc = self.core.desktop.CurrentComponent
         self.dialog = context.ServiceManager.createInstanceWithContext('com.sun.star.awt.UnoControlDialog', context)
         model = context.ServiceManager.createInstanceWithContext('com.sun.star.awt.UnoControlDialogModel', context)
-        model.Title, model.Width, model.Height = 'Grammar Writer — disabled', 235, 103
+        model.Title, model.Width, model.Height = 'Pencil Writer — disabled', 235, 103
         for name, kind, label, x, y, w, h in (
             ('status', 'FixedText', ('Merge/split requires identical styles in affected paragraphs. Other spans keep paragraph count and empty parts. Undo restores originals.' if ALLOW_TOPOLOGY is True
                 else 'Keep paragraph count and empty paragraphs. Each part uses its first style; Undo restores original styles.' if ALLOW_SPAN is True
@@ -110,7 +110,7 @@ class Panel(unohelper.Base, XActionListener, XTopWindowListener):
             self.schedule()
         except Exception:
             self.release_library()
-            self.status('Cannot enable. Use a new, unsaved plain-text Writer document and the paired Grammar installation.')
+            self.status('Cannot enable. Use a new, unsaved plain-text Writer document and the paired Pencil installation.')
 
     def schedule(self):
         if self.timer is not None:
@@ -138,8 +138,8 @@ class Panel(unohelper.Base, XActionListener, XTopWindowListener):
                 try:
                     self.bridge = WriterBridge(self.core, LIBRARY_PATH)
                     self.bridge.start()
-                    self.dialog.getModel().Title = 'Grammar Writer — enabled for one review'
-                    self.status('Enabled. Return to Writer, select text, and press Ctrl+Shift+G. Review and Accept in Grammar. Disable stops access.')
+                    self.dialog.getModel().Title = 'Pencil Writer — enabled for one review'
+                    self.status('Enabled. Return to Writer, select text, and press Ctrl+Shift+G. Review and Accept in Pencil. Disable stops access.')
                     self.doc.CurrentController.Frame.ComponentWindow.setFocus()
                 except Exception:
                     self.call('disable')
@@ -156,7 +156,7 @@ class Panel(unohelper.Base, XActionListener, XTopWindowListener):
             self.call('poll')
         self.release_library()
         if not self.closed:
-            self.dialog.getModel().Title = 'Grammar Writer — disabled'
+            self.dialog.getModel().Title = 'Pencil Writer — disabled'
             if self.bridge:
                 self.status('Review ended. Enable again for another review.' if self.bridge.cleanup_complete else 'Cleanup is not confirmed. Close this document.')
             self.dialog.getControl('enable').setEnable(not self.bridge or self.bridge.cleanup_complete)

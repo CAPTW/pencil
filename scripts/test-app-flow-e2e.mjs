@@ -1207,7 +1207,7 @@ try {
     }
     let gesture;
     if (windowExitTest) {
-      const quit = page.getByRole('button', {name:'Quit Grammar', exact:true});
+      const quit = page.getByRole('button', {name:'Quit Pencil', exact:true});
       const exitDraft = page.getByLabel('Editable rewrite result text', {exact:true});
       await exitDraft.fill('Keep this edited exit-trial draft.');
       let dismissed = false;
@@ -1251,7 +1251,7 @@ try {
       await releaseRuntimeLock();
       windowExitFailureReceipt.lockReleased = true;
       page.once('dialog', async dialog => { await dialog.accept(); });
-      await page.getByRole('button', {name:'Quit Grammar', exact:true}).click({noWaitAfter:true}).catch(error => { if (!page.isClosed()) throw error; });
+      await page.getByRole('button', {name:'Quit Pencil', exact:true}).click({noWaitAfter:true}).catch(error => { if (!page.isClosed()) throw error; });
     }
     await until('natural app exit after explicit Quit', async () => !alive(app.pid), 20000);
     await until('synthetic Provider exit', async () => !alive(child.pid), 2000);

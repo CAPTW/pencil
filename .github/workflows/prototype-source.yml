@@ -38,6 +38,13 @@ jobs:
       - name: Typecheck and frontend build
         if: ${{ !cancelled() }}
         run: npm run build:frontend
+      - name: Pencil branding and rHWP formatting contracts
+        if: ${{ !cancelled() }}
+        run: |
+          node scripts/test-pencil-branding.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node --test adapters/rhwp/tests/*.test.mjs
+          exit $LASTEXITCODE
       - name: Provider and runtime contracts
         if: ${{ !cancelled() }}
         run: npm run test:provider

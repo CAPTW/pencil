@@ -1527,8 +1527,8 @@ export default function App() {
         setSelection((current) => current ? { ...current, directApply: false } : null);
         setStatus(outcome.status === "rejected_target" ? "Apply unavailable - Copy is available" : "Apply outcome unconfirmed");
         setError(outcome.status === "rejected_target"
-          ? "The target no longer matches this capture or cannot accept it. Grammar did not apply this request. Copy explicitly or capture again."
-          : "The target did not confirm the result. Check its contents before copying or capturing again. Grammar will not retry.");
+          ? "The target no longer matches this capture or cannot accept it. Pencil did not apply this request. Copy explicitly or capture again."
+          : "The target did not confirm the result. Check its contents before copying or capturing again. Pencil will not retry.");
         return;
       }
       if (outcome.status === "copied_fallback" || outcome.status === "applied") {
@@ -1581,7 +1581,7 @@ export default function App() {
   }
 
   async function quitApp() {
-    if (!window.confirm("Quit Grammar? The current draft will be discarded and active Deep work will stop.")) return;
+    if (!window.confirm("Quit Pencil? The current draft will be discarded and active Deep work will stop.")) return;
     try {
       await invoke("quit_app");
     } catch (nextError) {
@@ -1661,7 +1661,7 @@ export default function App() {
               <Sparkles size={16} strokeWidth={2.2} />
             </div>
             <div>
-              <h1>Codex Pencil</h1>
+              <h1>Pencil</h1>
               <p>
                 {providerDisplayName(settings.activeProvider)}
                 {activeProviderStatus ? ` · ${activeProviderStatus.state.replace(/_/g, " ")}` : ""}
@@ -1669,7 +1669,7 @@ export default function App() {
             </div>
           </div>
           <div className="topbar-actions">
-            <button className="icon-button" type="button" onClick={quitApp} disabled={isCopying} aria-label="Quit Grammar" title="Quit Grammar">
+            <button className="icon-button" type="button" onClick={quitApp} disabled={isCopying} aria-label="Quit Pencil" title="Quit Pencil">
               <Power size={16} />
             </button>
             <button
@@ -1690,11 +1690,11 @@ export default function App() {
         {localModelPhase === "starting" ? "Preparing local Gemma — you can keep your draft open." :
           localModelPhase === "ready" ? "Local Gemma ready — capture text to analyze." :
           localModelCanRetry ? "Local Gemma stopped. Your draft is preserved. Retry prepares the model only." :
-          "Local Gemma unavailable. Keep or copy your draft, then exit from the tray and restart Grammar."}
+          "Local Gemma unavailable. Keep or copy your draft, then exit from the tray and restart Pencil."}
         {localModelPhase === "failed" && localModelCanRetry && <button type="button" disabled={!localModelRetryGeneration || localModelRetryPending === localModelRetryGeneration} onClick={async () => {
           setLocalModelRetryPending(localModelRetryGeneration); setLocalModelRetryError("");
           try { await invoke("retry_local_model"); }
-          catch { setLocalModelRetryPending(null); setLocalModelRetryError("Retry unavailable. Keep your draft and restart Grammar from the tray."); }
+          catch { setLocalModelRetryPending(null); setLocalModelRetryError("Retry unavailable. Keep your draft and restart Pencil from the tray."); }
         }}>{localModelRetryPending && localModelRetryPending === localModelRetryGeneration ? "Retry requested..." : "Retry local model"}</button>}
         {localModelRetryError && <span role="alert">{localModelRetryError}</span>}
       </div>}
@@ -1703,14 +1703,14 @@ export default function App() {
           <div className="settings-pane" aria-label="First run">
             <div className="settings-heading">
               <div>
-                <h2>Welcome to Grammar</h2>
+                <h2>Welcome to Pencil</h2>
                 <p>Local Instant edits stay on this device. Deep sends selected text to one chosen Provider. Copy is always explicit: this widget puts the result on the clipboard and never changes text in other apps.</p>
               </div>
             </div>
             <ul className="disclosure-list">
               <li>Default shortcut: {settings.shortcut.primary.display}</li>
-              <li>Tray icon: Show Grammar, Settings, Provider Status, Quit</li>
-              <li>The power button quits Grammar; Close only hides the widget.</li>
+              <li>Tray icon: Show Pencil, Settings, Provider Status, Quit</li>
+              <li>The power button quits Pencil; Close only hides the widget.</li>
               <li>Provider status and Test connection live in Settings</li>
               <li>Instant is local. Deep uses only the selected Provider.</li>
             </ul>
@@ -1743,7 +1743,7 @@ export default function App() {
             <div className="settings-heading">
               <div>
                 <h2>Settings</h2>
-                <p>One primary shortcut opens Codex Pencil.</p>
+                <p>One primary shortcut opens Pencil.</p>
               </div>
               <Keyboard size={20} />
             </div>

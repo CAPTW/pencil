@@ -12,7 +12,7 @@ export function overlayBootstrap(source,{syntheticFixture=false}={}) {
     let grammarHost = document.getElementById('grammar-review-host');
     if (!grammarHost) {
       grammarHost = document.createElement('aside');grammarHost.id='grammar-review-host';
-      grammarHost.setAttribute('aria-label','Grammar review');
+      grammarHost.setAttribute('aria-label','Pencil review');
       grammarHost.style.cssText='position:fixed;right:12px;top:70px;z-index:10000;background:white;color:black;padding:12px;width:320px;border:1px solid #777';
       document.body.append(grammarHost);
     }
