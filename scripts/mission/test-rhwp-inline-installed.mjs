@@ -41,6 +41,7 @@ try{
    for(const name of fixture.names)assert.equal(text.split(name).length-1,source.split(name).length-1,'exact proper-name occurrence: '+name);
    assert.equal(text.split(fixture.literal).length-1,1);
    for(const pattern of fixture.required)assert.match(text,new RegExp(pattern));
+   for(const pattern of fixture.requiredJoined??[])assert.match(text.replaceAll('\n',''),new RegExp(pattern),'exact ordered nested role/condition frame');
    for(const pattern of fixture.forbidden)assert.doesNotMatch(text,new RegExp(pattern));
   }else{
 if(config.corpus==='repeated'){assert.equal((text.match(/\"DRAFT\"/g)??[]).length,2);assert.equal((text.match(/DRAFT/g)??[]).length,2);if(mode==='ko')assert.doesNotMatch(text,/"DRAFT"을/);}else if(config.corpus==='mixed'){assert.equal((text.match(/"check"/g)??[]).length,1);}else assert.equal((text.match(/25/g)??[]).length,1);if(mode==='ko'){assert.match(text,/[가-힣]/);assert.doesNotMatch(text.replaceAll('DRAFT','').replaceAll('"check"',''),/[A-Za-z]/);}else assert.doesNotMatch(text,/[가-힣]/);

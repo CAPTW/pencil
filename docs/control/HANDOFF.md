@@ -4280,3 +4280,37 @@ retain document compatibility priority before Provider stabilization/HDD work.
 - Next Q18: held-out nested conditions/roles and unlisted inflections, with
   independent linguistic review when available. Unknown expressions can refuse.
   General Hancom/user documents/physical IME remain unqualified; Q04 is deferred.
+
+## 2026-10-18 Nested Korean roles and performance checkpoint
+
+Korean nested-role checkpoint: ordered full surface frames preserve actors, recipients, objects, nested condition attachment, negation, tense, honorifics, punctuation and literal positions within bounded reply/question natural rewrites. Added 확인하면/확인한다면 and 확인했으면/확인했다면 after actual-model diagnosis of a valid form being refused. Final installed actual Gemma HWP/HWPX36 cases/120 checks PASS (8 new,28 regressions), explicit Accept/full saved text+char+paragraph+style/outside selection/Undo/reopen; all8 new styled actions became 회신 while quoted 답신 stayed unchanged. Recommendation1891-2981ms,p50=2421,p95=2960,1s misses36/36,3s misses0/36;Accept37-95ms,p95=83,500ms misses0/36. Host free RAM45.9-49.8GiB during final run, guest free13.6GiB snapshot, GPU aggregate10.6-11.1GiB/15.9GiB. Capacity exhaustion not observed; aggregate/coarse counters do not exclude contention. Raw separate pre-repair diagnostic shows writing1.26-1.34s and alignment1.03-1.17s of server prompt+decode time, not installed acceptance. Stage66.562s and ready12.771s separate. Gemma38/host29 assertions pass but strict native supervisors FAIL_LEFTOVER_CHILDREN (vctip.exe identified in diagnostics), complete cleanup0; focused Korean9 PASS1ignored and unchanged build confirmation PASS with clean supervisors; adapter62PASS. Earlier fixture/oracle failures and partial4 then over-refusal remain FAIL. Single exact Sandbox stopped, app natural0,extension unchanged,guest install/profile/process0,host sampler/owned process/viewer0. Composite unchanged e6ff394 app/extension plus rebuilt broker/host; not a full app rebuild. Host user data untouched, prior AppData recovery unresolved. Same-integrator review; no general Korean/Hancom acceptance, no cloud/CI/main/push/release. Evidence rhwp-korean-nested-20261018/FINAL_RECEIPT.json. Mission INCOMPLETE, Source stale, Q18 IN_PROGRESS.
+
+- Scope is intentionally conservative: natural Korean reply/question text with at
+  least two recognised condition/concessive markers. Closed substitutions preserve
+  the entire ordered word/particle/punctuation frame, including quoted positions.
+  This is not a Korean dependency parser; legitimate clause reordering or unlisted
+  synonyms can refuse. Explicit Polite mode retains its existing different contract.
+- Regression counterexamples cover actor exchange, recipient/topic and object/subject
+  particle changes, moved negation, tense loss, cause replacing condition, added else
+  branches, sentence-boundary changes and relocated quotations. Full-body installed
+  oracles supplement exact names/numbers, emphasis and complete saved-format checks.
+- Actual diagnostic preserved the failed 과거형 output: 확인했으면 became 확인했다면.
+  Added the reviewed closed pair, not arbitrary stem stripping or a removed guard.
+  The previous refusal stops the local model under the existing lifecycle contract;
+  no crash/root-cause claim or lifecycle redesign is made by this language change.
+- Test-development failures: generated fixtures initially went to the prior evidence
+  payload; exact newly-created duplicates were hash-checked against this task's files
+  and removed. Next oracle escaped regex syntax and matched review-line separators
+  incorrectly; the joined full-frame oracle fixes that without weakening semantics.
+  A separate raw diagnostic is never counted as installed editor acceptance.
+- Native assertions passed but compilation/fixture activity left MSVC vctip.exe in
+  owned Jobs. Strict supervisor failures remain failures; every owned Job terminated
+  and reaped its actual leftovers. No unowned vctip or other host process was killed.
+- Performance follow-up: prioritise a deterministic emphasis alignment fast path
+  only for proven unique ordered substitutions, retaining current model alignment
+  on ambiguity. Validate complete formatting/Undo/reopen and held-out meaning before
+  activation; no weaker model, output truncation or persistent document cache.
+  RAM upgrade alone is not supported by these measurements. Shared-load effects,
+  per-request GPU attribution and cold-storage causality remain unproven.
+- See the external PERFORMANCE_REVIEW.md, resource-summary.json and numeric raw
+  diagnostic-phase-metrics.json. New CUDA/speculative/prefix-cache options are NOT_RUN.

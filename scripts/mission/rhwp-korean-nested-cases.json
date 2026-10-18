@@ -1,0 +1,138 @@
+[
+  {
+    "id": "ko-nested-roles",
+    "body": "Pencil의 \"답신\" 표시는 유지했어요. 김민수가 승인하면 이서연이 확인하면 박지훈은 교수님께 Atlas 자료 31을 답신했어요.",
+    "names": [
+      "Pencil",
+      "김민수",
+      "이서연",
+      "박지훈",
+      "교수님",
+      "Atlas"
+    ],
+    "required": [
+      "31"
+    ],
+    "forbidden": [
+      "주시"
+    ],
+    "expectedEnding": "했어요",
+    "expectedTerminal": "했어요.",
+    "styledWord": "답신",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(답신|회신)$",
+    "literal": "\"답신\"",
+    "expectedPredicates": [
+      "유지했어요.",
+      "했어요."
+    ],
+    "requiredJoined": [
+      "^Pencil의\\ \"답신\"\\ 표시는\\ 유지했어요\\.\\ 김민수가\\ 승인(?:하면|한다면)\\ 이서연이\\ 확인(?:하면|한다면)\\ 박지훈은\\ 교수님께\\ Atlas\\ 자료\\ 31을\\ (?:답신|회신)했어요\\.$"
+    ]
+  },
+  {
+    "id": "ko-nested-negative",
+    "body": "Pencil의 \"답신\" 표시는 유지했어요. 김민수가 승인하지 않으면 이서연이 확인하더라도 박지훈은 교수님께 Atlas 자료 31을 답신하지 않았어요.",
+    "names": [
+      "Pencil",
+      "김민수",
+      "이서연",
+      "박지훈",
+      "교수님",
+      "Atlas"
+    ],
+    "required": [
+      "31"
+    ],
+    "forbidden": [
+      "주시"
+    ],
+    "expectedEnding": "않았어요",
+    "expectedTerminal": "않았어요.",
+    "styledWord": "답신",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(답신|회신)$",
+    "literal": "\"답신\"",
+    "expectedPredicates": [
+      "유지했어요.",
+      "않았어요."
+    ],
+    "requiredJoined": [
+      "^Pencil의\\ \"답신\"\\ 표시는\\ 유지했어요\\.\\ 김민수가\\ 승인하지\\ 않으면\\ 이서연이\\ 확인하더라도\\ 박지훈은\\ 교수님께\\ Atlas\\ 자료\\ 31을\\ (?:답신|회신)하지\\ 않았어요\\.$"
+    ]
+  },
+  {
+    "id": "ko-nested-past",
+    "body": "Pencil의 \"답신\" 표시는 유지했어요. 김민수가 승인했으면 이서연이 확인했으면 교수님께서 박지훈에게 Atlas 자료 31을 답신하셨습니다.",
+    "names": [
+      "Pencil",
+      "김민수",
+      "이서연",
+      "박지훈",
+      "교수님",
+      "Atlas"
+    ],
+    "required": [
+      "31"
+    ],
+    "forbidden": [
+      "주시"
+    ],
+    "expectedEnding": "하셨습니다",
+    "expectedTerminal": "하셨습니다.",
+    "styledWord": "답신",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(답신|회신)$",
+    "literal": "\"답신\"",
+    "expectedPredicates": [
+      "유지했어요.",
+      "하셨습니다."
+    ],
+    "requiredJoined": [
+      "^Pencil의\\ \"답신\"\\ 표시는\\ 유지했어요\\.\\ 김민수가\\ 승인(?:했으면|했다면)\\ 이서연이\\ 확인(?:했으면|했다면)\\ 교수님께서\\ 박지훈에게\\ Atlas\\ 자료\\ 31을\\ (?:답신|회신)하셨습니다\\.$"
+    ]
+  },
+  {
+    "id": "ko-nested-question",
+    "body": "Pencil의 \"답신\" 표시는 유지했어요. 김민수가 승인하면 이서연이 확인하지 않으면 박지훈은 교수님께 Atlas 자료 31을 답신했나요?",
+    "names": [
+      "Pencil",
+      "김민수",
+      "이서연",
+      "박지훈",
+      "교수님",
+      "Atlas"
+    ],
+    "required": [
+      "31"
+    ],
+    "forbidden": [
+      "주시"
+    ],
+    "expectedEnding": "했나요",
+    "expectedTerminal": "했나요?",
+    "styledWord": "답신",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(답신|회신)$",
+    "literal": "\"답신\"",
+    "expectedPredicates": [
+      "유지했어요.",
+      "했나요?"
+    ],
+    "requiredJoined": [
+      "^Pencil의\\ \"답신\"\\ 표시는\\ 유지했어요\\.\\ 김민수가\\ 승인(?:하면|한다면)\\ 이서연이\\ 확인하지\\ 않으면\\ 박지훈은\\ 교수님께\\ Atlas\\ 자료\\ 31을\\ (?:답신|회신)했나요\\?$"
+    ]
+  }
+]
