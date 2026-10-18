@@ -1,0 +1,312 @@
+[
+  {
+    "id": "ko-sem-reply-condition",
+    "body": "Pencil의 \"회신\" 표시는 유지하고, 김민수가 승인하면 이서연은 Atlas 메일 31에 답신했어요.",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수",
+      "이서연"
+    ],
+    "required": [
+      "31",
+      "승인(?:하면|한다면)",
+      "유지(?:하고|하며)"
+    ],
+    "forbidden": [
+      "주시",
+      "유지하되",
+      "유지하면서"
+    ],
+    "expectedEnding": "했어요",
+    "expectedTerminal": "했어요.",
+    "styledWord": "답신",
+    "styledOccurrence": 1,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(답신|회신)$",
+    "literal": "\"회신\"",
+    "expectedPredicates": [
+      "했어요."
+    ]
+  },
+  {
+    "id": "ko-sem-reply-past-condition",
+    "body": "Pencil의 \"회신\" 표시는 유지하고, 김민수가 승인했으면 이서연은 Atlas 메일 31에 답신했나요?",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수",
+      "이서연"
+    ],
+    "required": [
+      "31",
+      "승인(?:했으면|했다면)",
+      "유지(?:하고|하며)"
+    ],
+    "forbidden": [
+      "주시",
+      "유지하되",
+      "유지하면서"
+    ],
+    "expectedEnding": "했나요",
+    "expectedTerminal": "했나요?",
+    "styledWord": "답신",
+    "styledOccurrence": 1,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(답신|회신)$",
+    "literal": "\"회신\"",
+    "expectedPredicates": [
+      "했나요?"
+    ]
+  },
+  {
+    "id": "ko-sem-reply-honorific",
+    "body": "Pencil의 \"회신\" 표시는 유지하고, 교수님께서 확인하셨고 Atlas 메일 31에 답신하셨습니다.",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "교수님께서"
+    ],
+    "required": [
+      "31",
+      "확인하셨(?:고|으며)",
+      "유지(?:하고|하며)"
+    ],
+    "forbidden": [
+      "주시",
+      "유지하되",
+      "유지하면서"
+    ],
+    "expectedEnding": "하셨습니다",
+    "expectedTerminal": "하셨습니다.",
+    "styledWord": "답신",
+    "styledOccurrence": 1,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(답신|회신)$",
+    "literal": "\"회신\"",
+    "expectedPredicates": [
+      "하셨습니다."
+    ]
+  },
+  {
+    "id": "ko-sem-question-additive",
+    "body": "Pencil의 \"질문\" 표시는 유지하고, 김민수는 자료를 확인했고 Atlas 안건 31을 질의했어요.",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수"
+    ],
+    "required": [
+      "31",
+      "확인했(?:고|으며)",
+      "유지(?:하고|하며)"
+    ],
+    "forbidden": [
+      "주시",
+      "유지하되",
+      "유지하면서"
+    ],
+    "expectedEnding": "했어요",
+    "expectedTerminal": "했어요.",
+    "styledWord": "질의",
+    "styledOccurrence": 1,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(질의|질문)$",
+    "literal": "\"질문\"",
+    "expectedPredicates": [
+      "했어요."
+    ]
+  },
+  {
+    "id": "ko-sem-question-negative",
+    "body": "Pencil의 \"질문\" 표시는 유지하고, 김민수는 Atlas 안건 31을 질의하지 않았어요.",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수"
+    ],
+    "required": [
+      "31",
+      "않았어요",
+      "유지(?:하고|하며)"
+    ],
+    "forbidden": [
+      "주시",
+      "유지하되",
+      "유지하면서"
+    ],
+    "expectedEnding": "않았어요",
+    "expectedTerminal": "않았어요.",
+    "styledWord": "질의",
+    "styledOccurrence": 1,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(질의|질문)$",
+    "literal": "\"질문\"",
+    "expectedPredicates": [
+      "않았어요."
+    ]
+  },
+  {
+    "id": "ko-sem-question-negative-condition",
+    "body": "Pencil의 \"질문\" 표시는 유지하고, 김민수가 승인하면 이서연은 Atlas 안건 31을 질의하지 않았어요.",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수",
+      "이서연"
+    ],
+    "required": [
+      "31",
+      "승인(?:하면|한다면)",
+      "않았어요",
+      "유지(?:하고|하며)"
+    ],
+    "forbidden": [
+      "주시",
+      "유지하되",
+      "유지하면서"
+    ],
+    "expectedEnding": "않았어요",
+    "expectedTerminal": "않았어요.",
+    "styledWord": "질의",
+    "styledOccurrence": 1,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(질의|질문)$",
+    "literal": "\"질문\"",
+    "expectedPredicates": [
+      "않았어요."
+    ]
+  },
+  {
+    "id": "ko-sem-reply-negative",
+    "body": "Pencil의 \"회신\" 표시는 유지하고, 김민수는 Atlas 메일 31에 답신하지 않았어요.",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수"
+    ],
+    "required": [
+      "31",
+      "않았어요",
+      "유지(?:하고|하며)"
+    ],
+    "forbidden": [
+      "주시",
+      "유지하되",
+      "유지하면서"
+    ],
+    "expectedEnding": "않았어요",
+    "expectedTerminal": "않았어요.",
+    "styledWord": "답신",
+    "styledOccurrence": 1,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(답신|회신)$",
+    "literal": "\"회신\"",
+    "expectedPredicates": [
+      "않았어요."
+    ]
+  },
+  {
+    "id": "ko-sem-question-honorific",
+    "body": "Pencil의 \"질문\" 표시는 유지하고, 교수님께서 확인하셨고 Atlas 안건 31을 질의하셨습니다.",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "교수님께서"
+    ],
+    "required": [
+      "31",
+      "확인하셨(?:고|으며)",
+      "유지(?:하고|하며)"
+    ],
+    "forbidden": [
+      "주시",
+      "유지하되",
+      "유지하면서"
+    ],
+    "expectedEnding": "하셨습니다",
+    "expectedTerminal": "하셨습니다.",
+    "styledWord": "질의",
+    "styledOccurrence": 1,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(질의|질문)$",
+    "literal": "\"질문\"",
+    "expectedPredicates": [
+      "하셨습니다."
+    ]
+  },
+  {
+    "id": "ko-sem-reply-literal",
+    "body": "Pencil의 \"답신\" 표시는 유지했어요. 김민수는 Atlas 메일 31에 답신했어요.",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수"
+    ],
+    "required": [
+      "31",
+      "유지했어요"
+    ],
+    "forbidden": [
+      "주시"
+    ],
+    "expectedEnding": "했어요",
+    "expectedTerminal": "했어요.",
+    "styledWord": "답신",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(답신|회신)$",
+    "literal": "\"답신\"",
+    "expectedPredicates": [
+      "유지했어요.",
+      "했어요."
+    ]
+  },
+  {
+    "id": "ko-sem-reply-literal-question",
+    "body": "Pencil의 \"답신\" 표시는 유지했어요. 김민수는 Atlas 메일 31에 답신했나요?",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수"
+    ],
+    "required": [
+      "31",
+      "유지했어요"
+    ],
+    "forbidden": [
+      "주시"
+    ],
+    "expectedEnding": "했나요",
+    "expectedTerminal": "했나요?",
+    "styledWord": "답신",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(답신|회신)$",
+    "literal": "\"답신\"",
+    "expectedPredicates": [
+      "유지했어요.",
+      "했나요?"
+    ]
+  }
+]

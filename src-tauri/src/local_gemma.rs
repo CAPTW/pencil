@@ -250,7 +250,7 @@ fn alignment_source(source: &str) -> Result<Vec<Value>, String> {
     }
     Ok(paragraphs)
 }
-fn korean_action_synonym(word:&str)->Option<&'static str>{match word {"송신"=>Some("전송"),"전송"=>Some("송신"),_=>None}}
+fn korean_action_synonym(word:&str)->Option<&'static str>{match word {"송신"=>Some("전송"),"전송"=>Some("송신"),"회신"=>Some("답신"),"답신"=>Some("회신"),"질의"=>Some("질문"),"질문"=>Some("질의"),_=>None}}
 fn repeated_style_source(source:&str)->bool {
     alignment_source(source).ok().is_some_and(|paragraphs|paragraphs.iter().any(|p|{
         let original=p["original"].as_str().unwrap_or("");
@@ -281,8 +281,8 @@ fn lexical_candidates(fixed: &str, original: &str) -> Vec<String> {
         for stem in ["확인","검토","점검"] {
             if ["해","해주세요","해주십시오","해주시기","해야","하며","하고"].iter().any(|ending|word==format!("{stem}{ending}")){lexical=stem;break;}
         }
-        for stem in ["송신","전송"] {
-            if ["했어요","했나요","하셨습니다"].iter().any(|ending|word==format!("{stem}{ending}")){lexical=stem;break;}
+        for stem in ["송신","전송","회신","답신","질의","질문"] {
+            if KOREAN_ACTION_ENDINGS.iter().any(|ending|word==format!("{stem}{ending}")){lexical=stem;break;}
         }
         if lexical.chars().count()<=256 {words.insert(lexical.to_owned());}
     }
@@ -423,31 +423,58 @@ fn korean_sentence_register(text:&str)->Result<Vec<(String,bool)>,String>{
 }
 fn korean_honorific_words(text:&str)->Result<Vec<String>,String>{
     Ok(without_literals(text)?.split(|c:char|!c.is_alphanumeric() && c!='_')
-        .filter(|w|["님","께서","께","말씀","드리","드렸","주셨","계시","계셨","뵙","뵈"].iter().any(|marker|w.contains(marker)))
+        .filter(|w|["님","께서","께","말씀","드리","드렸","주셨","주시","하시","하셨","계시","계셨","뵙","뵈"].iter().any(|marker|w.contains(marker)))
         .map(str::to_owned).collect())
 }
-// Closed equivalence classes: preserve tense, speech level and polarity.
-// No stem stripping or general synonym expansion is performed.
-fn korean_register_word(word:&str)->String {
-    match word {
-        "드렸으며"=>"드렸고".into(),
-        "말씀하셨으며"=>"말씀하셨고".into(),
-        "송신했어요"=>"전송했어요".into(),
-        "송신했나요"=>"전송했나요".into(),
-        "송신하셨습니다"=>"전송하셨습니다".into(),
-        _=>word.to_owned(),
-    }
-}
+// Closed forms only: no arbitrary stem stripping, negation removal or tense conversion.
+const KOREAN_CONNECTIVES: &[(&str,&str)] = &[
+    ("드렸고","드렸으며"),("말씀하셨고","말씀하셨으며"),
+    ("확인했고","확인했으며"),("확인하셨고","확인하셨으며"),("유지하고","유지하며"),
+    ("승인하면","승인한다면"),("승인했으면","승인했다면"),
+];
+const KOREAN_ACTION_ENDINGS: &[&str] = &["했어요","했나요","하셨습니다","하지","했고","했으며","하셨고","하셨으며"];
 fn korean_register_options(word:&str)->Vec<String>{
-    let canonical=korean_register_word(word);
-    let alternative=match canonical.as_str(){
-        "드렸고"=>Some("드렸으며"),"말씀하셨고"=>Some("말씀하셨으며"),
-        "전송했어요"=>Some("송신했어요"),"전송했나요"=>Some("송신했나요"),
-        "전송하셨습니다"=>Some("송신하셨습니다"),_=>None,
-    };
-    let mut options=vec![canonical];if let Some(other)=alternative {options.push(other.into());}options
+    for &(a,b) in KOREAN_CONNECTIVES {if word==a || word==b{return vec![a.into(),b.into()];}}
+    for (a,b) in [("전송","송신"),("회신","답신"),("질문","질의")] {
+        for ending in KOREAN_ACTION_ENDINGS {
+            if word==format!("{a}{ending}") || word==format!("{b}{ending}") {
+                // Additive connectors stay additive; all other inflections stay exact.
+                let ends:&[&str]=match *ending {"했고"|"했으며"=>&["했고","했으며"],"하셨고"|"하셨으며"=>&["하셨고","하셨으며"],_=>std::slice::from_ref(ending)};
+                return ends.iter().flat_map(|e|[format!("{a}{e}"),format!("{b}{e}")]).collect();
+            }
+        }
+    }
+    vec![word.to_owned()]
+}
+fn korean_register_word(word:&str)->String {korean_register_options(word).remove(0)}
+// Extra semantic fences for the newly qualified reply/question forms. Unknown
+// Korean prose is not claimed to be parsed. Keep ordered action/negative/condition
+// tokens, including unrecognised inflections of those actions, fail-closed.
+fn korean_bounded_tokens(text:&str)->Result<Vec<String>,String>{
+    Ok(without_literals(text)?.split(|c:char|!c.is_alphanumeric() && c!='_')
+        .filter(|w|["회신","답신","질의","질문"].iter().any(|stem|w.starts_with(stem))
+            || KOREAN_CONNECTIVES.iter().any(|(a,b)|w==a || w==b)
+            || *w=="안" || *w=="못" || w.starts_with("않") || w.starts_with("없")
+            || w.ends_with("면") || w.ends_with("지만") || w.ends_with("므로"))
+        .map(str::to_owned).collect())
+}
+fn korean_connective_tokens(text:&str)->Result<Vec<String>,String>{
+    Ok(without_literals(text)?.split(|c:char|!c.is_alphanumeric() && c!='_')
+        .filter(|w|KOREAN_CONNECTIVES.iter().any(|(a,b)|w==a || w==b))
+        .map(str::to_owned).collect())
+}
+fn korean_bounded_scope(text:&str)->bool {
+    without_literals(text).unwrap_or_default().split(|c:char|!c.is_alphanumeric())
+        .any(|w|["회신","답신","질의","질문"].iter().any(|stem|w.starts_with(stem)))
 }
 fn preserve_korean_register(source:&str,fixed:&str)->Result<(),String>{
+    let connectors=korean_connective_tokens(source)?;
+    if !connectors.is_empty() && connectors.iter().map(|w|korean_register_word(w)).collect::<Vec<_>>()
+        !=korean_connective_tokens(fixed)?.iter().map(|w|korean_register_word(w)).collect::<Vec<_>>() {return Err("gemma_semantic_changed".into());}
+    if korean_bounded_scope(source) {
+        let signature=|text:&str|korean_bounded_tokens(text).map(|ws|ws.iter().map(|w|korean_register_word(w)).collect::<Vec<_>>());
+        if signature(source)?!=signature(fixed)? {return Err("gemma_semantic_changed".into());}
+    }
     let expected=korean_request_endings(source)?;
     if !expected.is_empty() && korean_request_endings(fixed)?!=expected{return Err("gemma_register_changed".into());}
     let endings=korean_sentence_register(source)?;
@@ -746,8 +773,10 @@ fn local_prompt(binding: &Binding) -> (String, bool) {
     if binding.intent==Intent::Paraphrase && binding.source.chars().any(|c|('가'..='힣').contains(&c)) {
         let predicates:Vec<Value>=korean_sentence_register(&binding.source).unwrap_or_default().into_iter().map(|(w,q)|json!({"allowed":korean_register_options(&w),"question":q})).collect();
         let honorifics:Vec<Value>=korean_honorific_words(&binding.source).unwrap_or_default().iter().map(|w|json!({"allowed":korean_register_options(w)})).collect();
-        let boundaries=json!({"terminalPredicates":predicates,"honorificWords":honorifics});
-        prompt.push_str(&format!("\n한국어 말투 경계: {}. 각 항목의 allowed 중 하나만 사용하고 항목 순서와 횟수를 유지하세요. 같은 의미의 허용 표현은 문맥에 맞게 선택하세요. 정보 전달의 송신/전송 동등 표현에서는 자연 재작성에 더 일상적인 전송을 우선하세요. 인용문 속 용어는 절대 바꾸지 마세요. 그 밖의 불필요한 단어 변경은 피하세요. question=true이면 의문문과 물음표를 유지하세요. 평서문과 의문문을 서로 바꾸지 마세요. 서로 다른 문장의 반말·존댓말을 통일하지 마세요. 인명과 호칭은 원문 그대로입니다. 님이 없는 이름에 님을 붙이지 마세요. 원문에 없는 존칭이나 높임 표현을 추가하지 마세요. 나머지 본문을 다듬되 부정·시제·주체·대상은 바꾸지 마세요.",boundaries));
+        let semantic_words=if korean_bounded_scope(&binding.source){korean_bounded_tokens(&binding.source)}else{korean_connective_tokens(&binding.source)}.unwrap_or_default();
+        let protected:Vec<Value>=semantic_words.iter().map(|w|json!({"allowed":korean_register_options(w)})).collect();
+        let boundaries=json!({"terminalPredicates":predicates,"honorificWords":honorifics,"orderedSemanticTerms":protected});
+        prompt.push_str(&format!("\n한국어 말투 경계: {}. 각 항목의 allowed 중 하나만 사용하고 항목 순서와 횟수를 유지하세요. 같은 의미의 허용 표현은 문맥에 맞게 선택하세요. 정보 전달의 송신/전송은 전송, 답신/회신은 회신, 질의/질문은 질문을 우선하세요. allowed에 함께 있는 고/으며, 하면/한다면은 같은 관계를 유지하는 경우에만 선택하세요. orderedSemanticTerms의 부정·조건·시제와 행동 순서는 그대로 유지하세요. 인용문 속 용어는 절대 바꾸지 마세요. 그 밖의 불필요한 단어 변경은 피하세요. question=true이면 의문문과 물음표를 유지하세요. 평서문과 의문문을 서로 바꾸지 마세요. 서로 다른 문장의 반말·존댓말을 통일하지 마세요. 인명과 호칭은 원문 그대로입니다. 님이 없는 이름에 님을 붙이지 마세요. 원문에 없는 존칭이나 높임 표현을 추가하지 마세요. 나머지 본문을 다듬되 부정·시제·주체·대상은 바꾸지 마세요.",boundaries));
     }
     (prompt,sparse)
 }
@@ -1858,6 +1887,37 @@ mod tests {
     }
 
     #[test]
+    fn korean_reply_question_equivalence_preserves_semantics() {
+        for (a,b) in [
+            ("승인하면 답신했어요.","승인한다면 회신했어요."),
+            ("확인했고 질의하지 않았어요.","확인했으며 질문하지 않았어요."),
+            ("교수님께서 확인하셨고 답신하셨습니다.","교수님께서 확인하셨으며 회신하셨습니다."),
+            ("승인했으면 질의했나요?","승인했다면 질문했나요?"),
+        ] {assert!(preserve_korean_register(a,b).is_ok(),"{a}->{b}");assert!(preserve_korean_register(b,a).is_ok());}
+        assert!(preserve_korean_register("표시는 유지하고 보고서를 검토하지 마십시오.","표시는 유지하며 보고서를 검토하지 마십시오.").is_ok());
+        assert!(preserve_korean_register("표시는 유지하고 보고서를 검토하지 마십시오.","표시는 유지하되 보고서를 검토하지 마십시오.").is_err());
+        let source="승인하면 질의하지 않았고 답신했어요.";
+        for changed in [
+            "승인했으면 질문하지 않았고 회신했어요.", // tense in prerequisite
+            "승인하므로 질의했고 답신했어요.", // exact baseline red: condition and negation lost
+            "승인하므로 질문하지 않았고 회신했어요.", // condition -> cause
+            "승인하지만 질문하지 않았고 회신했어요.",
+            "승인하면 질문했고 회신했어요.", // negation lost
+            "승인하면 질문하지 않고 회신했어요.", // negative tense
+            "승인하면 질문하지 못했고 회신했어요.", // inability != negation
+            "승인하면 회신하지 않았고 질문했어요.", // negative action swapped
+            "승인하면 질문하지 않았고 회신해요.",
+            "승인하면 질문하지 않았고 회신했어요?",
+        ] {assert!(preserve_korean_register(source,changed).is_err(),"{changed}");}
+        assert!(preserve_korean_register("교수님께서 답신하셨습니다.","교수님께서 회신했습니다.").is_err());
+        assert!(preserve_korean_register("표시는 유지하고 교수님께서 답신하셨습니다.","표시를 유지해 주시고 교수님께서 답신하셨습니다.").is_err());
+        assert!(preserve_korean_register("표시는 유지하고 답신하지 않았어요.","표시를 유지하되 답신하지 않았어요.").is_err());
+        assert!(preserve_korean_register("질의하지 않았어요.","질문하지 않았어요.").is_ok());
+        assert!(preserve_korean_register("질의하지 않았어요.","질문했어요.").is_err());
+        assert_eq!(korean_bounded_tokens("문구 \"질의하지 않았다면\"를 유지하고 답신했어요.").unwrap(),vec!["유지하고","답신했어요"]);
+    }
+
+    #[test]
     fn korean_statement_question_and_honorific_boundaries() {
         for (source,fixed) in [("보고서를 검토했어요.","보고서를 검토했습니다."),("보고서를 검토했나요?","보고서를 검토했나요."),("보고서를 검토했어요.","보고서를 검토했어요?"),("교수님께서 검토하셨습니다.","교수님이 검토하셨습니다."),("선생님께 자료를 드렸고 저는 검토했어요.","선생님께 자료를 보냈고 저는 검토했어요."),("교수님께서 검토하셨습니다. 나는 확인했어.","교수님께서 검토하셨습니다. 나는 확인했어요.")] {
             assert!(preserve_korean_register(source,fixed).is_err(),"{source} -> {fixed}");
@@ -1973,6 +2033,22 @@ mod tests {
         assert!(alignment_replacement(response("\"전송\""),&input).is_err());
         let ambiguous=input.replace("자료를 전송했어요.","자료를 전송했어요. 전송했어요.");
         assert!(alignment_schema(&ambiguous).is_err());
+    }
+
+    #[test]
+    fn korean_new_synonyms_do_not_style_quoted_labels_or_duplicate_actions() {
+        for (old,new) in [("답신","회신"),("질의","질문")] {
+            let original=format!("표시 \"{new}\"는 그대로 두고 {old}하지 않았어요.");
+            let fixed=original.replace(&format!("{old}하지"),&format!("{new}하지"));
+            let input=format!("<pencil-align>\n<original>{}</original>\n</pencil-align>",json!([{"paragraph":"p0","original":original,"markedOriginal":original.replace(old,&format!("<r1>{old}</r1>")),"fixed":fixed,"find":[{"tag":"r1","originalWords":[old]}]}]));
+            assert!(repeated_style_source(&input));
+            let response=|context:&str|json!({"choices":[{"finish_reason":"stop","message":{"content":json!({"p0r1n0":{"text":new,"context":context}}).to_string()}}]});
+            assert_eq!(alignment_replacement(response(&format!("는 그대로 두고 {new}하지 않았어요.")),&input).unwrap(),format!("<p0><r1 occurrence=\"2\">{new}</r1></p0>"));
+            assert!(alignment_replacement(response(&format!("\"{new}\"")),&input).is_err());
+            let ambiguous=input.replace(&format!("{new}하지 않았어요."),&format!("{new}하지 않았어요. {new}했어요."));
+            assert_ne!(ambiguous,input);
+            assert!(alignment_schema(&ambiguous).is_err());
+        }
     }
 
     #[test]
