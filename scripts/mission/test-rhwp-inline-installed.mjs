@@ -40,15 +40,15 @@ try{
   const sample={scenario,format,mode,source,output:text,spans,recommendationMs:performance.now()-start};
   result.pendingSample=sample;
   const emphasized=spans.filter(s=>s.original==='Original styled text: check');assert.ok(emphasized.length);
-  assert.match(emphasized.map(s=>s.text).join(''),mode==='ko'?/확인|검토/:/check|verif|review/i);
+  assert.match(emphasized.map(s=>s.text).join(''),mode==='ko'?/^(확인|검토)$/:/check|verif|review/i);
   assert.doesNotMatch(emphasized.map(s=>s.text).join(''),/25|달러|dollar|report|보고서/i); // A word's emphasis must not spread onto facts or a different noun.
-  if(scenario==='partial-span'){const report=spans.filter(s=>s.original==='Original styled text: report').map(s=>s.text).join('');assert.match(report,mode==='ko'?/보고서/:/report/i);assert.doesNotMatch(report,/25|달러|dollar/i);}
+  if(scenario==='partial-span'){const report=spans.filter(s=>s.original==='Original styled text: report').map(s=>s.text).join('');assert.match(report,mode==='ko'?/^보고서$/:/report/i);assert.doesNotMatch(report,/25|달러|dollar/i);}
   const joined=text.split('\n').join('');assert.match(joined,mode==='ko'?/다시/:/recheck|double-check|again/i);
   if(mode!=='ko'&&joined.includes('check'))assert.equal(emphasized.map(s=>s.text).join(''),'check');
   if(config.corpus==='repeated'){
-   assert.equal((joined.match(mode==='ko'?/하지 마|하지 않|안 됩니다|안 돼/g:/\bnot\b/g)??[]).length,scenario==='partial-span'?2:1);
-   assert.match(joined,mode==='ko'?/하지 마|하지 않|안 됩니다|안 돼/:/do not|don't/i);
-   assert.match(joined,mode==='ko'?/승인/:/approval/i);assert.match(joined,mode==='ko'?/전/:/before/i);assert.match(joined,mode==='ko'?/후/:/after/i);
+   assert.equal((joined.match(mode==='ko'?/지 마|지 않|안 됩니다|안 돼/g:/\bnot\b/g)??[]).length,scenario==='partial-span'?2:1);
+   assert.match(joined,mode==='ko'?/지 마|지 않|안 됩니다|안 돼/:/do not|don't/i);
+   assert.match(joined,mode==='ko'?/승인/:/approval/i);assert.match(joined,mode==='ko'?/전/:/before|prior to/i);assert.match(joined,mode==='ko'?/후/:/after|following/i);
    const firstBlock=spans.filter(s=>s.paragraph===0),highlight=firstBlock.findIndex(s=>s.original==='Original styled text: check');assert.ok(highlight>=0);
    const preceding=firstBlock.slice(0,highlight).map(s=>s.text).join('');assert.match(preceding,mode==='ko'?/확인|검토/:/check|verif|review/i); // The first repeated action remains unhighlighted.
    if(scenario==='partial-span'){const second=spans.filter(s=>s.paragraph===1),at=second.findIndex(s=>s.original==='Original styled text: report');assert.ok(at>=0);assert.match(second.slice(0,at).map(s=>s.text).join(''),mode==='ko'?/보고서/:/report/i);}

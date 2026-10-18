@@ -202,3 +202,16 @@ in rhwp-repeat-sandbox-20261018/FINAL_RECEIPT.json. One Sandbox stopped/inventor
 owned guest uninstall/profile/process0. No user data/personal install/main/push/
 release. Mission INCOMPLETE. Next required per-style semantic-anchor experiment,
 then18 installed cases plus previous corpus. See HANDOFF for failures and limits.
+
+
+2026-10-18 required style slots: repeated/quoted/negated HWP/HWPX18 cases57 checks
+PASS with actual Gemma12B, installed Native Messaging, inline/partial/partial-span
+EN-KO/natural/polite; exact emphasis, Accept, Undo, saved full-format reread/reopen.
+Prior non-repeated18/57 also PASS on same bytes. Required per-style lexical/context
+choices, code-computed occurrence; ambiguous/missing anchors refuse. Earlier
+product and fixture failures preserved. Recommendation1897-2463ms (1s18/18 misses,
+3s0),Accept38-76ms (500ms0). Adapter61, nativeGemma26+7ignored,host29+1ignored.
+Compiler-helper residuals scoped cleanup0; final product natural exit/uninstall0;
+one Sandbox stopped/inventory0. No user data/personal install/main/push/release.
+Scoped rHWP synthetic qualification only; mission INCOMPLETE,Source stale.
+Evidence rhwp-slots-20261018/FINAL_RECEIPT.json; see HANDOFF for limits and next work.

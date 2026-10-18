@@ -3960,3 +3960,64 @@ verify minimal emphasis boundaries and clause identity, then rerun the18 install
 cases plus previous non-repeated corpus. Do not enable repeated-style inference
 until actual model semantic review and Accept/Undo/save/reopen checks pass. Current
 retained guard is unit-tested; its new GUI refusal was NOT_RUN after final cleanup.
+
+
+## 2026-10-18 required style slots — repeated selection scoped qualification
+
+Supersedes the earlier repeated-selection NOT_QUALIFIED checkpoint only for the
+following actual-model synthetic corpus. Evidence: `D:/dev/grammar-evidence/rhwp-slots-20261018/FINAL_RECEIPT.json`.
+Final installed Gemma4 12B IT QAT Q4_0, pinned rHWP Native Messaging, unchanged
+installed extension, offline GPU Sandbox: repeated corpus18 cases/57 checks PASS.
+HWP/HWPX x inline/partial/partial-span x Korean translation/natural/polite writing.
+Quote DRAFT twice, prohibited-before versus permitted-after approval, and second
+check/report emphasis preserved. Korean check maps only to 확인 (not the imperative
+ending); report maps only to 보고서 (not its particle). Exact saved whole-document
+text/character/paragraph/style/outside-selection equality, Undo and reopen pass.
+Protected admission2 and no HTTP requests are included. No test analysis bridge.
+Same final product bytes also passed prior non-repeated corpus18 cases/57 checks.
+
+Implementation: required response key for each source style item; lexical and
+unique-clause context choices come from immutable fixed output. The model selects
+meaning, while code computes occurrence positions. Missing/unknown keys, missing
+or ambiguous context, invalid lexical candidates, overlaps and altered fixed text
+refuse. Source markings escape document markup. Repeated source spans alone select
+this new path; existing non-repeated style protocol remains. Narrow transparent
+Korean ending/particle handling is NOT a general morphological analyzer. Unknown
+languages/morphology, identical clauses without unique context and arbitrary rich
+Hancom documents remain unqualified. Human review before Accept remains required.
+
+Initial installed attempt refused paraphrase because context copied original
+'after approval' while fixed output said 'following approval'. Context enumeration
+repairs this without fuzzy repair, fallback or extra inference. The original unit
+failure on 보내세요 is retained and fixed by the bounded ending table. Two subsequent
+installed failures were fixture errors: before/after-only matching rejected valid
+prior-to/following, and 하지-only negation counting missed 보내지. Their receipts are
+retained; the final fixture allows those equivalents, keeps negation counts and
+order checks, and STRENGTHENS Korean emphasis to exact lexical spans. No deadline,
+model size, quote guard or mutation guard was relaxed. All final36 outputs were
+reviewed by the same integrator; some natural/polite outputs conservatively retain
+wording. This is not broad language quality or independent human review.
+
+Repeated recommendation1897-2463ms, p50=1938,p95/p99=2463;1s misses18/18,3s misses0.
+Accept38-76ms,p50=63,p95/p99=76;500ms misses0. Targets unchanged. Staging20.493s and
+readiness11.926s are separate measured phases, not total install/cold-start time.
+Final focused adapter61PASS, Gemma26PASS7ignored, host29PASS1ignored; release native
+build success. Not a full Rust suite or hosted CI. Native compiler helpers remained
+and the owned supervisor cleaned them: FAIL_LEFTOVER_CHILDREN, cleanup COMPLETE0,
+not natural compiler cleanup PASS. Product app exited naturally with launcher0;
+both final guest runs uninstalled with process/install/profile0. Exact single
+Sandbox7178ebc1-6fa6-48b0-8ada-543dd9a62638 stopped; inventory0.
+
+Source/runtime provenance: package-scoped is a composite of existing e6ff394 app/
+target DLL and newly built host/broker plus source-hashed rHWP extension. Its file
+manifest matches every runtime byte; native source hash matches this implementation.
+Final verification harness hash is in FINAL_RECEIPT separately (fixture assertions
+changed after package build). model-ready.json retains a preliminary FAIL default;
+its ready phase is a timing snapshot only. Final app-result/installed/guest receipts
+all PASS; no status was rewritten. Saved fixtures re-read with pinned rHWP WASM,
+not independent Microsoft/Hancom application compatibility.
+
+No host user data/settings/dictionary, personal install, main adoption, push or
+release. Prior AppData recovery unresolved. Mission INCOMPLETE and Project Source
+stale. Next: broader semantic/format corpus and remaining application adapters,
+then optional Provider stability; do not extrapolate this corpus to general HWP.

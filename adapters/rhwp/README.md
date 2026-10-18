@@ -365,11 +365,17 @@ from exact range/format safety. Earlier failed prompt/representation trials rema
 recorded; mechanical file equality alone is never language-quality acceptance.
 
 
-Repeated styled source substrings are currently refused before local writing
-(`RICH_REPEATED_STYLE_UNQUALIFIED`). Actual Gemma testing found that a repeated
-word in a permitted clause could be mapped to the same word in a negated clause.
-Quoted-input framing is improved, but repeated/quoted/negated mixed-format writing
-is NOT qualified end to end. The unique-context alignment experiment is test-only,
-not a release capability. Accept/Undo/save/reopen support must not be inferred from
-raw model diagnostics or mechanical file equality. See the2026-10-18 repeated
-selection checkpoint in docs/control/HANDOFF.md.
+Repeated styled source uses required per-item response keys. Allowed lexical spans
+and unique clause contexts are extracted from the unchanged writing result; code
+calculates occurrences instead of trusting model-counted positions. Missing items,
+ambiguous contexts, invalid spans and overlap refuse. Non-repeated source retains
+the existing alignment path. A narrow Korean ending/particle table avoids widening
+emphasis to transparent grammatical endings; it is not general morphology support.
+
+Actual Gemma installed HWP/HWPX qualification covers18 synthetic repeated/quoted/
+negated cases (inline, partial and paragraph-span selections; Korean translation,
+natural and polite writing), including exact emphasis, Accept/Undo/save/reopen.
+The prior non-repeated18-case corpus also passes. Recommendation was1.90-2.46s,
+Accept38-76ms; the1s recommendation goal is still missed. Identical repeated clauses,
+other languages/morphology, arbitrary rich documents and actual Hancom remain
+unqualified. See the required-style-slots checkpoint in docs/control/HANDOFF.md.

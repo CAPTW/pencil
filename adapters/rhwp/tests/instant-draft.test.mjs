@@ -73,14 +73,8 @@ test('style alignment cannot change the fluent result or silently retry',async()
 test('cancelled rich writing never dispatches alignment or replays the first stage',async()=>{const c={id:'rich',source:'<p0><r0>source</r0></p0>',richParagraphs:[{runs:[{id:0,text:'source'}]}]},abort=new AbortController();let calls=0;const run=createInstantDraft(async r=>{calls++;abort.abort();return {...r,suggestions:[]};},GrammarCore,{writing:true});await assert.rejects(run(c,abort.signal,{mode:'polite'}),/CANCELLED/);assert.equal(calls,1);});
 
 
-test('repeated styled source refuses before inference instead of marking the wrong occurrence',async()=>{
- for(const runs of [
-  [{id:0,text:'Do not check; '},{id:1,text:'check'},{id:0,text:' after approval.'}],
-  [{id:1,text:'check'},{id:0,text:' before approval; do not check later.'}],
- ]) {
-  const c={id:'repeat',source:'unused bound envelope',richParagraphs:[{runs}]};let calls=0;
-  const run=createInstantDraft(async()=>{calls++;throw new Error('must not infer');},GrammarCore,{writing:true});
-  await assert.rejects(run(c,signal(),{mode:'polite'}),/RICH_REPEATED_STYLE_UNQUALIFIED/);
-  assert.equal(calls,0);
- }
+test('repeated style uses marked source and exact second occurrence',async()=>{
+ const c={id:'repeat',source:'bound',richParagraphs:[{runs:[{id:0,text:'Do not check; '},{id:1,text:'check'},{id:0,text:' after approval.'}]}]};let calls=0;
+ const run=createInstantDraft(async r=>{calls++;if(calls===2)assert.match(r.text,/<r1>check<\/r1>/);return {...r,suggestions:calls===1?[]:[{start:0,end:r.text.length,replacement:'<p0><r1 occurrence="2">check</r1></p0>',rule:'alignment'}]};},GrammarCore,{writing:true});
+ assert.equal((await run(c,signal(),{mode:'polite'})).text,'Do not check; \ncheck\n after approval.');assert.equal(calls,2);
 });
