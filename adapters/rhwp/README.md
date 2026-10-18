@@ -402,3 +402,19 @@ Exact-frame and normalized-frame candidates are considered together; multiple
 matches refuse. This is a small qualified request pattern, not general semantic
 similarity, arbitrary word-order changes or multilingual equivalence. No new model
 call or relaxed inference/Accept deadline is introduced.
+
+
+The 2026-10-18 Korean retained-literal candidate additionally separates a quoted
+English label from the unique unquoted action translated to Korean. Emphasis may
+bind to 확인/검토/점검 without their tested 하다 conjugation endings. The full-body
+translation must remain present, quoted literals remain exact, and styled source
+reconstruction and target-side mutation checks are unchanged. Simple approval
+request frames additionally support before/prior-to and after/following/once-approved
+movement; coordinated predicates remain unqualified. Duplicate courtesy is reduced
+by the writing prompt, with adjacent and separated markers checked in synthetic
+fixtures. Model-assisted meaning alignment is not general semantic equivalence.
+
+Actual Gemma installed synthetic HWP/HWPX new18 + repeated18 cases passed Accept,
+full saved-format comparison, Undo and reopen. This is candidate scope only, not
+real Hancom/general-document acceptance. See HANDOFF and the multilingual receipt
+for failures, current language limits and timings; recommendation1s remains unmet.
