@@ -86,7 +86,7 @@
     ],
     "required": [
       "27",
-      "드렸고"
+      "드렸(?:고|으며)"
     ],
     "forbidden": [],
     "expectedEnding": "검토했나요",

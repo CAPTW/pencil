@@ -1,0 +1,156 @@
+[
+  {
+    "id": "ko-connective",
+    "body": "Pencil의 \"검토\" 표시는 유지하고, 선생님께 자료를 드렸고 김민수는 Atlas 보고서 27을 검토했나요?",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수",
+      "선생님께"
+    ],
+    "required": [
+      "27",
+      "드렸(?:고|으며)"
+    ],
+    "forbidden": [],
+    "expectedEnding": "검토했나요",
+    "expectedTerminal": "검토했나요?",
+    "styledWord": "검토",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^검토$",
+    "literal": "\"검토\"",
+    "expectedPredicates": [
+      "검토했나요?"
+    ]
+  },
+  {
+    "id": "ko-transmission",
+    "body": "Pencil의 \"송신\" 표시는 유지하고, 김민수는 Atlas 자료 27을 송신했어요.",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수"
+    ],
+    "required": [
+      "27"
+    ],
+    "forbidden": [],
+    "expectedEnding": "했어요",
+    "expectedTerminal": "했어요.",
+    "styledWord": "송신",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(송신|전송)$",
+    "literal": "\"송신\"",
+    "expectedPredicates": [
+      "했어요."
+    ]
+  },
+  {
+    "id": "ko-transmission-question",
+    "body": "Pencil의 \"송신\" 표시는 유지하고, 김민수는 Atlas 자료 27을 송신했나요?",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수"
+    ],
+    "required": [
+      "27"
+    ],
+    "forbidden": [],
+    "expectedEnding": "했나요",
+    "expectedTerminal": "했나요?",
+    "styledWord": "송신",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(송신|전송)$",
+    "literal": "\"송신\"",
+    "expectedPredicates": [
+      "했나요?"
+    ]
+  },
+  {
+    "id": "ko-transmission-honorific",
+    "body": "Pencil의 \"송신\" 표시는 유지하고, 교수님께서 Atlas 자료 27을 송신하셨습니다.",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "교수님께서"
+    ],
+    "required": [
+      "27"
+    ],
+    "forbidden": [],
+    "expectedEnding": "하셨습니다",
+    "expectedTerminal": "하셨습니다.",
+    "styledWord": "송신",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(송신|전송)$",
+    "literal": "\"송신\"",
+    "expectedPredicates": [
+      "하셨습니다."
+    ]
+  },
+  {
+    "id": "ko-synonym-email",
+    "body": "Pencil의 \"전송\" 표시는 유지하고, 김민수는 Atlas 자료 27을 이메일로 송신했어요.",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수"
+    ],
+    "required": [
+      "27",
+      "이메일"
+    ],
+    "forbidden": [],
+    "expectedEnding": "했어요",
+    "expectedTerminal": "했어요.",
+    "styledWord": "송신",
+    "styledOccurrence": 1,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(송신|전송)$",
+    "literal": "\"전송\"",
+    "expectedPredicates": [
+      "했어요."
+    ]
+  },
+  {
+    "id": "ko-synonym-network",
+    "body": "Pencil의 \"전송\" 표시는 유지하고, 김민수는 Atlas 자료 27을 인터넷을 통해 송신했나요?",
+    "names": [
+      "Pencil",
+      "Atlas",
+      "김민수"
+    ],
+    "required": [
+      "27",
+      "인터넷"
+    ],
+    "forbidden": [],
+    "expectedEnding": "했나요",
+    "expectedTerminal": "했나요?",
+    "styledWord": "송신",
+    "styledOccurrence": 1,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(송신|전송)$",
+    "literal": "\"전송\"",
+    "expectedPredicates": [
+      "했나요?"
+    ]
+  }
+]
