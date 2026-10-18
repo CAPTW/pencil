@@ -5,7 +5,7 @@
 ### Write where you already write.
 
 **쓰던 그 자리에서 바로 다듬는 Windows용 AI 글쓰기 도우미.**  
-빠른 로컬 Gemma를 기본으로, API 키나 OAuth 로그인으로 ChatGPT·Claude·Google 모델도 직접 연결합니다.  
+로컬 Gemma를 기본으로, 선택적 OpenAI 호환 API와 Provider CLI 연결을 제공합니다.  
 제안은 AI가, 결정은 내가.
 
 <p>
@@ -29,7 +29,7 @@ Pencil은 별도의 AI 채팅창에서 글을 다시 복사하는 대신, **지�
 | | |
 | --- | --- |
 | ⚡ **Local-first** | 기본 엔진은 기기 안에서 도는 Gemma. 윤문·번역 제안을 클라우드 왕복 없이 빠르게 받습니다. |
-| 🔌 **Bring your own AI** | 더 깊은 재작성이 필요하면 ChatGPT·Claude·Google 계정 로그인 또는 OpenAI 호환 API 키로 원하는 모델을 연결합니다. |
+| 🔌 **Bring your own AI** | 더 깊은 재작성이 필요하면 OpenAI 호환 API 또는 지원하는 Provider CLI를 선택합니다. 계정·실행 환경에 따른 제한이 있습니다. |
 | ✅ **Review first** | 제안을 바로 덮어쓰지 않습니다. 검토하고 수정한 뒤 Accept 또는 Copy를 선택합니다. |
 | 🎯 **Scoped Apply** | 대상·원문·범위가 바뀌었으면 적용을 거부합니다. |
 | 🌐 **Browser opt-in** | 사용자가 켠 Chromium 문서와 지원 입력 필드에서만 동작합니다. |
@@ -172,3 +172,5 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --offline
 **Pencil — AI suggestions, human decisions.**
 
 </div>
+
+Provider CLI의 계정 로그인·모델 이용 가능 여부는 설치 버전과 계정에 따라 달라집니다. 실제 Provider 전체를 검증했다는 의미가 아니며, Claude·Antigravity의 개인정보·인증 제한은 [현재 제품 범위](docs/PROTOTYPE.md)를 확인하세요.

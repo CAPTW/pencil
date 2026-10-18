@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 const config=JSON.parse(read('src-tauri/tauri.conf.json'));
 assert.equal(config.productName,'Pencil');
+assert.ok(read('index.html').includes('<title>Pencil</title>'));
 assert.equal(config.app.windows[0].title,'Pencil');
 assert.equal(JSON.parse(read('adapters/chromium/extension/manifest.json')).name,'Pencil');
 assert.ok(read('src/App.tsx').includes('<h1>Pencil</h1>'));
