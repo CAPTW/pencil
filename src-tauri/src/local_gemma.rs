@@ -377,17 +377,31 @@ fn preserve_nonliteral_body(source:&str,output:&str)->Result<(),String>{
         && !without_literals(output)?.chars().any(char::is_alphanumeric){return Err("gemma_incomplete_output".into());}
     Ok(())
 }
+// Korean rewriting must not silently romanize, rename or drop embedded ASCII
+// identifiers. This is a conservative token guard, not named-entity recognition.
+fn ascii_identifiers(text:&str)->Vec<&str>{
+    text.split(|c:char| !c.is_ascii_alphanumeric() && c!='_' && c!='-')
+        .filter(|s|s.chars().any(|c|c.is_ascii_alphabetic())).collect()
+}
+fn preserve_korean_identifiers(source:&str,fixed:&str)->Result<(),String>{
+    if source.chars().any(|c|('가'..='힣').contains(&c))
+        && ascii_identifiers(source)!=ascii_identifiers(fixed){return Err("gemma_identifier_changed".into());}
+    Ok(())
+}
 // A retained quoted label is not a surviving occurrence of a translated action.
-// Admit only one nonliteral source occurrence and zero nonliteral survivors.
+// Admit only one nonliteral source occurrence and at most one fixed survivor.
+// A same-clause quoted label may survive alongside the actual action.
 // Semantic mapping remains model-assisted; identical unquoted actions stay blocked.
-fn literal_only_survivor(p:&Value,id:usize,n:usize,word:&str)->Result<bool,String>{
+fn literal_excluded_action(p:&Value,id:usize,n:usize,word:&str)->Result<bool,String>{
     let Some(original)=p["original"].as_str() else{return Ok(false);};
     let fixed=p["fixed"].as_str().ok_or("gemma_alignment_source")?;
     if word.is_empty() || !fixed.contains(word){return Ok(false);}
     let clean=without_literals(original)?;let clean_fixed=without_literals(fixed)?;
-    if !clean_fixed.chars().any(|c|('가'..='힣').contains(&c)) || clean_fixed.chars().any(|c|c.is_ascii_alphabetic()){return Ok(false);}
+    if !clean_fixed.chars().any(|c|('가'..='힣').contains(&c)){return Ok(false);}
+    if clean_fixed.chars().any(|c|c.is_ascii_alphabetic())
+        && (!clean.chars().any(|c|('가'..='힣').contains(&c)) || preserve_korean_identifiers(&clean,&clean_fixed).is_err()){return Ok(false);}
     preserve_literals(original,fixed)?;
-    if clean.match_indices(word).count()!=1 || clean_fixed.contains(word) || clean==original{return Ok(false);}
+    if clean.match_indices(word).count()!=1 || clean_fixed.match_indices(word).count()>1 || clean==original{return Ok(false);}
     let at=marked_occurrence(p,id,n,word)?;
     Ok(clean.get(at..at+word.len())==Some(word))
 }
@@ -400,7 +414,7 @@ fn mixed_occurrence_anchor(p:&Value,id:usize,n:usize,word:&str)->Result<Option<(
     let count=|text:&str|if word.is_empty(){0}else{text.char_indices().filter(|(at,_)|text[*at..].starts_with(word)).count()};
     if count(original)<=1 || count(fixed)==0 || count(original)==count(fixed){return Ok(None);}
     let at=marked_occurrence(p,id,n,word)?;
-    if literal_only_survivor(p,id,n,word)? { return Ok(None); }
+    if literal_excluded_action(p,id,n,word)? { return Ok(None); }
     let mut offset=0;let mut frame=None;let mut source_clause="";
     for clause in original.split_inclusive(['.',';','!','?']) {
         if at>=offset && at+word.len()<=offset+clause.len() {
@@ -436,7 +450,7 @@ fn alignment_slots(paragraphs:&[Value])->Result<Vec<(String,usize,usize,Vec<Stri
                 let word=word.as_str().ok_or("gemma_alignment_source")?;
                 let candidates=match mixed_occurrence_anchor(p,id,n,word)? {
                     Some((_,text))=>vec![text],
-                    None=>lexical_candidates(&if literal_only_survivor(p,id,n,word)? {without_literals(p["fixed"].as_str().unwrap())?}else{p["fixed"].as_str().unwrap().to_owned()},word),
+                    None=>lexical_candidates(&if literal_excluded_action(p,id,n,word)? {without_literals(p["fixed"].as_str().unwrap())?}else{p["fixed"].as_str().unwrap().to_owned()},word),
                 };
                 if candidates.is_empty(){return Err("gemma_alignment_anchor".into());}
                 slots.push((format!("p{i}r{id}n{n}"),i,id,candidates));
@@ -461,9 +475,20 @@ fn slot_contexts(p:&Value,key:&str,id:usize,candidates:&[String])->Result<Vec<St
         None=>{
             let fixed=p["fixed"].as_str().unwrap();
             let mut contexts=alignment_contexts(fixed,candidates);
-            if literal_only_survivor(p,id,n,word)? {
+            if literal_excluded_action(p,id,n,word)? {
                 // Candidate/context pairs are validated again in the decoder.
                 contexts.retain(|context| without_literals(context).is_ok_and(|clean|candidates.iter().any(|w|clean.match_indices(w.as_str()).count()==1)));
+                // Keep actual fixed substrings, never masked text in the schema.
+                // Splitting only at validated literal boundaries disambiguates a
+                // quoted label and its action within the same compound sentence.
+                let mut from=0;
+                for range in literal_ranges(fixed)?.into_iter().chain(std::iter::once(fixed.len()..fixed.len())) {
+                    for context in alignment_contexts(&fixed[from..range.start],candidates) {
+                        if fixed.match_indices(&context).count()==1 {contexts.push(context);}
+                    }
+                    from=range.end;
+                }
+                contexts.sort();contexts.dedup();
             }
             contexts
         },
@@ -504,7 +529,7 @@ fn alignment_replacement(value:Value,source:&str)->Result<String,String>{
             let start=unique(fixed,&a.context)?+unique(&a.context,&a.text)?;
             let n=key.rsplit('n').next().and_then(|s|s.parse::<usize>().ok()).ok_or("gemma_alignment_source")?;
             let f=p["find"].as_array().unwrap().iter().find(|f|f["tag"]==format!("r{id}")).ok_or("gemma_alignment_source")?;
-            if literal_only_survivor(p,*id,n,f["originalWords"][n].as_str().ok_or("gemma_alignment_source")?)?
+            if literal_excluded_action(p,*id,n,f["originalWords"][n].as_str().ok_or("gemma_alignment_source")?)?
                 && without_literals(fixed)?.get(start..start+a.text.len())!=Some(a.text.as_str()) {return Err("gemma_alignment_anchor".into());}
             let occurrence=fixed.char_indices().filter(|(at,_)|*at<=start&&fixed[*at..].starts_with(&a.text)).count();
             if !(1..=96).contains(&occurrence){return Err("gemma_alignment_anchor".into());}
@@ -633,6 +658,9 @@ fn local_prompt(binding: &Binding) -> (String, bool) {
         prompt = format!("Read the decoded text field as the source. JSON serialization quotes are NOT part of the source and NEVER make the whole text a literal. ONLY the listed verbatimLiterals are immutable, including their own delimiters. Preserve their exact contents, order and count, even when repeated. {action} all other text normally. Do not wrap the result in quotes or copy the input JSON.\n{prompt}");
     }
     if quoted { prompt.push_str("\nThe replacement must transform the ENTIRE text field, including EVERY sentence outside the literals. verbatimLiterals is only a preservation constraint, NEVER the requested output. Return the full transformed text, not just the quoted label."); }
+    if matches!(binding.intent,Intent::Paraphrase|Intent::Concise|Intent::Polite) && binding.source.chars().any(|c|('가'..='힣').contains(&c)) {
+        prompt.push_str("\n한국어 재작성: 고유명사와 영문 식별자의 철자, 대소문자, 순서, 횟수를 그대로 유지하세요. 조건절의 적용 대상, 행동 주체와 대상, 부정과 승인 전후의 관계를 바꾸지 마세요. 부탁 표현을 중복하지 마세요. 강조 정렬은 별도 단계이므로 본문에 서식 태그를 추가하지 마세요.");
+    }
     (prompt,sparse)
 }
 
@@ -990,6 +1018,7 @@ impl GemmaEngine {
             }
             if matches!(binding.intent, Intent::Paraphrase | Intent::Concise | Intent::Polite) {
                 preserve_english_modality(&binding.source, &replacement)?;
+                preserve_korean_identifiers(&binding.source,&replacement)?;
             }
             Ok(replacement)
         });
@@ -1364,6 +1393,44 @@ mod tests {
     }
     #[tokio::test]
     #[ignore="owned Sandbox synthetic diagnostic only; never installed acceptance"]
+    async fn owned_korean_names_diagnostic() {
+        assert_eq!(std::env::var("USERNAME").as_deref(),Ok("WDAGUtilityAccount"));
+        assert_eq!(std::env::var("GRAMMAR_GEMMA_TRIAL").as_deref(),Ok("owned-synthetic"));
+        let root=Path::new("C:/PencilTrialScope/install/local");
+        let receipt=Path::new("C:/GrammarOutput/korean-diagnostic.json");assert!(!receipt.exists());
+        let _pin=peer::ImagePin::verify(&root.join("runtime/llama-server.exe"),"a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1").unwrap();
+        use sha2::{Digest,Sha256}; use std::io::Read; use std::os::windows::fs::OpenOptionsExt;
+        let model=root.join("gemma-4-12b-it-qat-q4_0.gguf");
+        let mut model_pin=std::fs::OpenOptions::new().read(true).share_mode(1).open(&model).unwrap();
+        let mut hash=Sha256::new();let mut buf=vec![0u8;1024*1024];loop{let n=model_pin.read(&mut buf).unwrap();if n==0{break}hash.update(&buf[..n]);}
+        assert_eq!(format!("{:x}",hash.finalize()),"93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b");
+        let mut engine=GemmaEngine::start(&root.join("runtime/llama-server.exe"),&model,Instant::now()+Duration::from_secs(180)).await.unwrap();
+        let workspace=engine.workspace.as_ref().unwrap().cwd().parent().unwrap().to_owned();
+        let cases:Vec<Value>=serde_json::from_str(include_str!("../../scripts/mission/rhwp-korean-names-cases.json")).unwrap();
+        let mut rows=Vec::new();
+        for case in cases { for intent in [Intent::Paraphrase,Intent::Polite] {
+            let source=case["body"].as_str().unwrap();
+            let binding=Binding{epoch:"owned-synthetic".into(),revision:1,intent,source:source.into()};
+            let (prompt,_)=local_prompt(&binding);
+            let schema=json!({"type":"object","properties":{"replacement":{"type":["string","null"]}},"required":["replacement"],"additionalProperties":false});
+            let raw=tokio::time::timeout(Duration::from_secs(10),engine.complete_json(&prompt,schema)).await.ok();
+            let mut guard=None;let mut alignment=None;let mut raw_alignment=None;
+            if let Some(Ok(value))=&raw {if let Ok(written)=short_replacement(value.clone(),source){
+                guard=Some(preserve_literals(source,&written).and_then(|_|preserve_nonliteral_body(source,&written)).and_then(|_|preserve_korean_identifiers(source,&written)).and_then(|_|preserve_english_modality(source,&written)));
+                let word=case["styledWord"].as_str().unwrap();let at=source.rfind(word).unwrap();
+                let marked=format!("{}<r1>{word}</r1>{}",&source[..at],&source[at+word.len()..]);
+                let query=json!([{"paragraph":"p0","original":source,"markedOriginal":marked,"fixed":written,"find":[{"tag":"r1","originalWords":[word]}]}]);
+                let input=format!("<pencil-align>\n<original>{query}</original>\n</pencil-align>");
+                alignment=Some(match alignment_schema(&input){Ok(schema)=>match engine.complete_json(&alignment_prompt(&input),schema).await{Ok(value)=>{raw_alignment=Some(value.clone());alignment_replacement(value,&input)},Err(e)=>Err(e)},Err(e)=>Err(e)});
+            }}
+            rows.push(json!({"id":case["id"],"source":source,"intent":binding.intent,"raw":raw,"guard":guard,"alignment":alignment,"rawAlignment":raw_alignment}));
+        }}
+        let cleanup=engine.stop().await;
+        std::fs::write(receipt,serde_json::to_vec_pretty(&json!({"scope":"RAW_SYNTHETIC_DIAGNOSTIC_NOT_INSTALLED_ACCEPTANCE","rows":rows,"cleanup":cleanup,"workspaceRemoved":!workspace.exists()})).unwrap()).unwrap();
+        assert!(cleanup.is_ok()&&!workspace.exists());
+    }
+    #[tokio::test]
+    #[ignore="owned Sandbox synthetic diagnostic only; never installed acceptance"]
     async fn owned_repeated_literal_diagnostic() {
         assert_eq!(std::env::var("USERNAME").as_deref(),Ok("WDAGUtilityAccount"));
         assert_eq!(std::env::var("GRAMMAR_GEMMA_TRIAL").as_deref(),Ok("owned-synthetic"));
@@ -1681,6 +1748,38 @@ mod tests {
         assert_ne!(request_frame("", " report 25 today."),request_frame("", " report 50 today."));
         assert_ne!(request_frame("", " report A today."),request_frame("", " report today."));
         assert_ne!(request_frame("", " US report today."),request_frame("", " us report today."));
+    }
+
+    #[test]
+    fn same_korean_action_in_quote_and_compound_clause_uses_nonliteral_occurrence() {
+        let original="Pencil의 \"검토\" 표시는 유지하고, 김민수가 승인한 뒤 Gemma 보고서를 검토해 주세요.";
+        let marked=original.replace("보고서를 검토","보고서를 <r1>검토</r1>");
+        let fixed=original.replace("유지하고","그대로 두고");
+        let source=format!("<pencil-align>\n<original>{}</original>\n</pencil-align>",json!([{"paragraph":"p0","original":original,"markedOriginal":marked,"fixed":fixed,"find":[{"tag":"r1","originalWords":["검토"]}]}]));
+        assert!(alignment_schema(&source).is_ok());
+        let response=|context:&str|json!({"choices":[{"finish_reason":"stop","message":{"content":json!({"p0r1n0":{"text":"검토","context":context}}).to_string()}}]});
+        assert_eq!(alignment_replacement(response("표시는 그대로 두고, 김민수가 승인한 뒤 Gemma 보고서를 검토해 주세요."),&source).unwrap(),"<p0><r1 occurrence=\"2\">검토</r1></p0>");
+        assert!(alignment_replacement(response("Pencil의 \"검토\""),&source).is_err());
+        assert!(alignment_replacement(response(&fixed),&source).is_err());
+    }
+
+    #[test]
+    fn korean_names_and_literal_action_alignment_are_scoped() {
+        let original="Pencil의 \"검토\" 표시는 유지하고, Gemma 보고서를 승인 후 검토하세요.";
+        let fixed="Pencil의 \"검토\" 표시를 유지하며, 승인 후 Gemma 보고서를 점검하세요.";
+        assert!(preserve_korean_identifiers(original,fixed).is_ok());
+        for changed in [fixed.replace("Gemma","Gema"),fixed.replace("Pencil","pencil"),fixed.replace("Gemma",""),fixed.replace("Gemma","Gemma Gemma")] {
+            assert!(preserve_korean_identifiers(original,&changed).is_err());
+        }
+        let paragraph=json!({"paragraph":"p0","original":original,"markedOriginal":original.replace("후 검토","후 <r1>검토</r1>"),"fixed":fixed,"find":[{"tag":"r1","originalWords":["검토"]}]});
+        assert!(literal_excluded_action(&paragraph,1,0,"검토").unwrap());
+        let source=format!("<pencil-align>\n<original>{}</original>\n</pencil-align>",json!([paragraph]));
+        let response=|text:&str|json!({"choices":[{"finish_reason":"stop","message":{"content":json!({"p0r1n0":{"text":text,"context":fixed}}).to_string()}}]});
+        assert!(alignment_replacement(response("점검"),&source).is_ok());
+        assert!(alignment_replacement(response("검토"),&source).is_err());
+        assert!(alignment_schema(&source.replace("승인 후 Gemma","승인 후 Gema")).is_err());
+        // A second unquoted action is ambiguous even with stable proper names.
+        assert!(alignment_schema(&source.replace("보고서를 승인 후", "보고서를 검토하고 승인 후")).is_err());
     }
 
     #[test]

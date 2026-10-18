@@ -4171,3 +4171,37 @@ unresolved. No personal install, main adoption, push or release this checkpoint.
 Next: broaden semantic/occurrence evidence for mixed-language names, more complex
 clauses and Korean rewrite contexts without allowing quote-based misalignment;
 retain document compatibility priority before Provider stabilization/HDD work.
+
+
+## 2026-10-18 Korean compound names / same-clause emphasis
+
+2026-10-18 Korean compound/name checkpoint: quoted label and styled action in the same clause now disambiguate through a validated unique nonliteral source occurrence and exact unquoted fixed contexts; quoted overlap, duplicate nonliteral ambiguity and target mutation fences remain. Korean rewriting preserves case-sensitive ordered ASCII identifier tokens, conservatively refusing changes, not general entity recognition. Actual Gemma installed HWP/HWPX Korean natural/polite12/39 + prior multilingual18/57 + repeated18/57 PASS (48 cases153 checks), full saved char/paragraph/style/outside selection, explicit Accept, Undo and reopen. Output review confirms Pencil/Gemma/김민수/이서연, numeric25, approval-before/after, prohibition and sender/reviewer roles in three templates. New live cases retained 검토; no new live-synonym claim. Natural roles rewrite becomes more formal; Q18 TODO. Recommendation1901-2967ms,p50=1942,p95=2955,1s misses48/48,3s0;Accept40-104ms,p50=58,p95=83,500ms0. Stage34.308s, readiness9.038s after raw diagnostic, not cold start. Raw6/6 alignment and guard PASS separately; Gemma31PASS8ignored,host29PASS1ignored,adapter62PASS; supervised native build/tests PASS cleanup COMPLETE0. Red alignment regression and two refused installed attempts preserved. Final app natural0, owned install/profile/registration/process0, single Sandbox cf84966b-655c-4030-ad04-5cdd6884fe26 stopped. User data untouched; prior AppData recovery unresolved. Composite rebuilt host/broker plus unchanged e6ff394 app/extension, not full app rebuild. No push/main/release/personal install. Evidence rhwp-korean-names-20261018/FINAL_RECEIPT.json; mission INCOMPLETE,Source stale.
+
+- Reproduction: actual model kept both quoted 검토 and action 검토 within one
+  sentence. The old full-clause uniqueness check rejected all six raw rows and
+  stopped the installed path before Accept. `same-clause-red` preserves the failing
+  production schema test. Fixed schema uses only exact unquoted substrings after
+  source reconstruction, and decoder independently rejects quote overlap.
+- Mixed ASCII names are admitted only for Korean source with exact ordered ASCII
+  tokens. These rules can conservatively refuse legitimate reorderings. They do
+  not prove every Korean name, role or meaning is unchanged; actual corpus review
+  is in `korean-quality-review.json`, limited to three named templates.
+- `승인하면` is accepted as the equivalent approval-conditioned variant of
+  `승인한 뒤` in this request; it is not permission to drop or invert approval.
+  Corpus assertions added that equivalent after the raw diagnostic, before the
+  final installed run. No test deadline, model, integrity check or mutation fence
+  was relaxed. Before-approval prohibition remains independently checked.
+- Final raw diagnostic and installed test are separate. The model is staged and
+  checked on every attempt; three stages were 15.286s,17.006s,34.308s. Final app
+  readiness follows the raw test, so it is not a cold-start measurement.
+- Package manifest binds new broker/host to local_gemma.rs SHA and build2 receipt;
+  e6ff394 base app/extension remain unchanged. All payload file hashes verified.
+  External FINAL_RECEIPT records final source commit after local commit; no
+  self-referential HEAD is put in tracked state. Project Source remains stale.
+- Review: same integrator reviewed source/schema/decoder and all12 actual Korean
+  outputs; no independent reviewer. Existing compiler warnings remain; none point
+  to touched local_gemma code. No frontend changes or full-app build this turn.
+- Next: Q18 preserve natural Korean register on held-out names, nested conditions
+  and larger selections; then qualify wider mixed-name translations/rewrites with
+  the same full-document checks. Unknown semantic alignment stays fail-closed.
+  Do not infer general Hancom support, user-data recovery or desktop bug closure.
