@@ -1,4 +1,4 @@
-# Grammar 개인용 패키지 안내
+# Pencil 개인용 패키지 안내
 
 이 패키지는 한 Windows 사용자 계정에서 개인적으로 쓰기 위한 후보 빌드입니다. 1차 공개 Prototype 사전 릴리스로 제공되며 서명되지 않았습니다. `MANIFEST.json`에 이 패키지를 만든 소스 커밋, 모든 파일의 SHA-256, 고정된 확장 ID, 지원 범위가 기록되어 있고, `BUILD_RECEIPT.json`에 깨끗한 소스에서 실행한 release 빌드 영수증이 있습니다.
 
@@ -64,7 +64,7 @@ pwsh -NoProfile -File .\grammar-package\Install-Grammar.ps1
 
 ## 제거
 
-먼저 앱 상단의 전원 버튼(**Quit Grammar**)을 누르고 확인하거나, 트레이 메뉴의 Quit으로 Grammar를 끄세요. 전원 버튼의 확인을 취소하면 앱과 진행 중인 작업이 유지됩니다. Close는 창만 숨깁니다. 종료 시 현재 초안은 저장되지 않으며, 정리를 완료하지 못하면 앱이 열린 채 오류를 표시합니다. 앱이 종료된 뒤 설치 폴더를 연 탐색기·터미널 창을 닫습니다.
+먼저 앱 상단의 전원 버튼(**Quit Pencil**)을 누르고 확인하거나, 트레이 메뉴의 Quit으로 Pencil을 끄세요. 전원 버튼의 확인을 취소하면 앱과 진행 중인 작업이 유지됩니다. Close는 창만 숨깁니다. 종료 시 현재 초안은 저장되지 않으며, 정리를 완료하지 못하면 앱이 열린 채 오류를 표시합니다. 앱이 종료된 뒤 설치 폴더를 연 탐색기·터미널 창을 닫습니다.
 
 ```powershell
 pwsh -NoProfile -File "$env:LOCALAPPDATA\GrammarPersonal\Uninstall-Grammar.ps1"

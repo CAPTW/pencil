@@ -5,7 +5,7 @@
 ### Write where you already write.
 
 **A local-first AI writing copilot for Windows — rewrite, polish & translate right where you type.**  
-Fast on-device Gemma by default; bring your own provider via API key or OAuth sign-in (ChatGPT · Claude · Google).  
+On-device Gemma by default, with optional OpenAI-compatible API and Provider CLI connections.  
 AI suggests, you decide.
 
 <p>
@@ -29,7 +29,7 @@ Pencil is designed to start from the text you are already writing instead of mak
 | | |
 | --- | --- |
 | ⚡ **Local-first** | On-device Gemma is the default engine, so rewrite and translation suggestions arrive fast without a cloud round trip. |
-| 🔌 **Bring your own AI** | Need a deeper rewrite? Connect ChatGPT, Claude or Google via account sign-in, or any OpenAI-compatible API key. |
+| 🔌 **Bring your own AI** | Need a deeper rewrite? Select a supported Provider CLI or OpenAI-compatible API; account and runtime restrictions apply. |
 | ✅ **Review first** | Suggestions are not silently written back. Review, edit, then choose Accept or Copy. |
 | 🎯 **Scoped Apply** | Replacement is refused when the target, source text, or range has changed. |
 | 🌐 **Browser opt-in** | Browser assistance runs only in explicitly enabled Chromium documents and supported fields. |
@@ -170,3 +170,5 @@ Read [AGENTS.md](../AGENTS.md) before development work. Current semantic state i
 **Pencil — AI suggestions, human decisions.**
 
 </div>
+
+Provider CLI sign-in and model availability depend on the installed version and account. This is not live qualification of every provider. See [current scope](PROTOTYPE.md) for Claude/Antigravity privacy and authentication limitations.
