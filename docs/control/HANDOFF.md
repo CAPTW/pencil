@@ -4127,3 +4127,47 @@ Next: wider clause paraphrases and bilingual retained-literal alignment need
 separate meaning/occurrence evidence before activation; current unknown/ambiguous
 cases refuse. Improve phrasing quality independently of format/Apply checks.
 Keep document compatibility ahead of Provider stabilization and deferred HDD tuning.
+
+
+## 2026-10-18 Korean retained-literal and approval context checkpoint
+
+2026-10-18 Korean retained-literal/context checkpoint: a unique nonliteral styled occurrence can align to Korean without inheriting emphasis from a preserved quoted label; source reconstruction and quote-overlap rejection remain mandatory. Bounded Korean action contractions retain only 확인/검토/점검 stems. Simple approval requests allow before/prior-to and after/following/once-approved equivalents while retaining event direction, role/order, negation, numbers and ambiguity refusal; compound predicate movement is unqualified. Fixed a leading-clause-space mismatch in this new rule. Prompt changes remove adjacent and separated courtesy duplication and clarify full-body translation; literal-only body loss now refuses before publication. Actual Gemma final installed HWP/HWPX new18/57 + existing repeated18/57 PASS (36 cases114 checks): translation/natural/polite, exact emphasis, numeric tokens/literals/meaning fixtures, explicit Accept, full char/paragraph/style/outside-selection equality, Undo and saved/reopened equality. Recommendation1408-2466ms,p50=1928,p95=2455,1s misses36/36,3s0;Accept38-102ms,p50=64,p95=93,500ms0. Final raw diagnostic18 alignments +5 fixed alignment checks PASS separately, not installed acceptance. Adapter62,Gemma29PASS7ignored,host29PASS1ignored; final supervised native tests/build PASS and cleanup COMPLETE0. Single Sandbox c02233e3-af03-422f-9fb0-bb96ac1304b6 stopped; natural app exit0, guest install/profile/process/registration0. Host user data untouched. Local composite candidate only, mission INCOMPLETE,Source stale. Evidence rhwp-multilingual-20261018/FINAL_RECEIPT.json.
+
+Evidence: `D:/dev/grammar-evidence/rhwp-multilingual-20261018/FINAL_RECEIPT.json`;
+`attempt6-final-PASS` has installed receipts, actual synthetic model responses,
+saved accepted/Undo/reopened documents, and uninstall evidence. `package` retains
+the e6ff394 base app/DLL/extension; only host/broker rebuilt from source-hashed
+local_gemma.rs. This is not a fresh full desktop-app build or personal installation.
+The committed `scripts/mission/rhwp-multilingual-cases.json` records synthetic inputs
+and semantic checks; the installed runner now supports named fixtures and tests
+one courtesy marker per clause, excluding immutable quoted literals.
+
+Retained failures: attempt1 styled 확인해 instead of 확인 (before Accept); attempt2
+returned only the quoted label for approval translation and still used separated
+Kindly ..., please; attempts4/5 refused an otherwise valid approval paraphrase.
+The final raw diagnostic identified the exact Once approved/review response;
+whole-clause unit coverage exposed leading-space normalization mismatch. All these
+logs remain failures. Initial compile-quoting and unit regressions remain in tests1,
+tests2; tests8's last-line-JSON test was corrected to require one exact decoded JSON
+input plus the new trailing full-body instruction. No semantic assertion was removed.
+Raw diagnostic test process success alone does not assert all response quality:
+attempt3 had a translation/alignment error despite its process exit0. Final all18
+alignment results and actual installed semantic assertions were checked separately.
+
+Qualification remains bounded: Korean retained-literal path requires one unquoted
+source occurrence and no remaining unquoted ASCII word in translated output.
+Semantic alignment is model-assisted, not a proof of arbitrary equivalence. English
+new event normalization is only for simple request frames; unknown or ambiguous
+frames refuse. Politeness improvement is confirmed for these fixtures, not every
+language/register. General multilingual/compound-predicate rewriting, general
+Hancom, physical IME/user profiles, cloud Provider and full Rust/hosted CI NOT_RUN.
+Review was a separate same-integrator diff pass, not an independent reviewer.
+
+Final asset staging15.486s and app readiness9.841s followed the diagnostic run in
+that same VM; these are not cold-start benchmarks. Earlier stage times23.404,
+197.519,173.627,108.831,103.062s are preserved. No HDD tuning or timing threshold
+change. Only owned guest profiles were removed; host AppData recovery remains
+unresolved. No personal install, main adoption, push or release this checkpoint.
+Next: broaden semantic/occurrence evidence for mixed-language names, more complex
+clauses and Korean rewrite contexts without allowing quote-based misalignment;
+retain document compatibility priority before Provider stabilization/HDD work.

@@ -1,0 +1,87 @@
+[
+  {
+    "id": "courtesy",
+    "body": "Keep the label \"check\". Kindly check today's report, please.",
+    "styledWord": "check",
+    "styledOccurrence": 2,
+    "modes": [
+      "ko",
+      "paraphrase",
+      "polite"
+    ],
+    "required": {
+      "en": [
+        "today",
+        "report|document"
+      ],
+      "ko": [
+        "오늘",
+        "보고서"
+      ]
+    },
+    "forbidden": {},
+    "mustPreserveLiteral": "\"check\"",
+    "maxCourtesyMarkersPerClause": 1
+  },
+  {
+    "id": "approval",
+    "body": "Keep the label \"check\". After approval, please check report 25.",
+    "styledWord": "check",
+    "styledOccurrence": 2,
+    "modes": [
+      "ko",
+      "paraphrase",
+      "polite"
+    ],
+    "required": {
+      "en": [
+        "25",
+        "after|following|once approved",
+        "approval|approved"
+      ],
+      "ko": [
+        "25",
+        "승인",
+        "후|뒤"
+      ]
+    },
+    "forbidden": {
+      "en": [
+        "\\bnot\\b|before|prior"
+      ],
+      "ko": [
+        "지 마|지 않|않습니다|안 됩니다"
+      ]
+    },
+    "mustPreserveLiteral": "\"check\"",
+    "maxCourtesyMarkersPerClause": 1
+  },
+  {
+    "id": "negative",
+    "body": "Keep the label \"check\". Please do not check report 25 before approval.",
+    "styledWord": "check",
+    "styledOccurrence": 2,
+    "modes": [
+      "ko",
+      "paraphrase",
+      "polite"
+    ],
+    "required": {
+      "en": [
+        "25",
+        "before|prior",
+        "approval",
+        "\\bnot\\b"
+      ],
+      "ko": [
+        "25",
+        "승인",
+        "전",
+        "지 마|지 않|않습니다|안 됩니다"
+      ]
+    },
+    "forbidden": {},
+    "mustPreserveLiteral": "\"check\"",
+    "maxCourtesyMarkersPerClause": 1
+  }
+]

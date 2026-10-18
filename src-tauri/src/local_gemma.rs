@@ -274,6 +274,11 @@ fn lexical_candidates(fixed: &str, original: &str) -> Vec<String> {
                 }
             }
         }
+        // Bounded 하다-action contractions, not arbitrary trailing 해 removal
+        // (오해 and 이해 are nouns whose final syllable must remain).
+        for stem in ["확인","검토","점검"] {
+            if ["해","해주세요","해주십시오","해주시기","해야","하며","하고"].iter().any(|ending|word==format!("{stem}{ending}")){lexical=stem;break;}
+        }
         if lexical.chars().count()<=256 {words.insert(lexical.to_owned());}
     }
     if words.len()>128 {return Vec::new();}
@@ -284,14 +289,32 @@ fn lexical_candidates(fixed: &str, original: &str) -> Vec<String> {
 // placement separately. This is deliberately not a bag-of-words similarity test.
 fn request_frame(before:&str,after:&str)->Option<(Vec<String>,Vec<String>)>{
     fn tokens(text:&str)->Option<Vec<String>>{
-        let text=text.replace("today’s","today").replace("today's","today");
+        let text=text.trim_start().replace("today’s","today").replace("today's","today");
+        let text=if let Some(tail)=text.strip_prefix("Once approved"){format!("once approved{tail}")}else if let Some(tail)=text.strip_prefix("Following approval"){format!("following approval{tail}")}else if let Some(tail)=text.strip_prefix("After approval"){format!("after approval{tail}")}else if let Some(tail)=text.strip_prefix("Before approval"){format!("before approval{tail}")}else{text};
         if !text.is_ascii(){return None;}
         Some(text.split(|c:char|!c.is_ascii_alphanumeric()).filter(|s|!s.is_empty())
             .filter(|s|!matches!(*s,"please"|"Please"|"kindly"|"Kindly"|"the"|"a"|"an"))
             .map(str::to_owned).collect())
     }
     let mut content=tokens(before)?;content.push("@target".into());content.extend(tokens(after)?);
-    let mut times=Vec::new();content.retain(|s|{if s=="today"{times.push(s.clone());false}else{true}});
+    let mut times=Vec::new();let mut rest=Vec::new();let mut i=0;
+    while i<content.len(){
+        let tail=&content[i..];
+        let event=if tail.starts_with(&["after".into(),"approval".into()]) || tail.starts_with(&["following".into(),"approval".into()]) || tail.starts_with(&["once".into(),"approved".into()]) {Some((2,"after:approval"))}
+            else if tail.starts_with(&["before".into(),"approval".into()]){Some((2,"before:approval"))}
+            else if tail.starts_with(&["prior".into(),"to".into(),"approval".into()]){Some((3,"before:approval"))}else{None};
+        if let Some((len,event))=event{times.push(event.into());i+=len;}
+        else if content[i]=="today"{times.push(content[i].clone());i+=1;}
+        else{rest.push(content[i].clone());i+=1;}
+    }
+    // Moving an event qualifier across coordination or a second predicate can
+    // change its attachment. Only simple request prefixes qualify for this rule.
+    if times.iter().any(|t:&String|t.ends_with(":approval")) {
+        let target=rest.iter().position(|t|t=="@target").unwrap();
+        if rest[..target].iter().any(|t|!matches!(t.as_str(),"do"|"Do"|"not"|"must"|"may"|"can"|"cannot"))
+            || rest.iter().any(|t|matches!(t.as_str(),"and"|"or"|"then"|"if"|"unless"|"until"|"while"|"when"|"to")){return None;}
+    }
+    content=rest;
     // Require an object/context token, not merely a time and an action.
     if content.len()<2{return None;}
     Some((content,times))
@@ -322,14 +345,9 @@ fn rewritten_request_anchors(original:&str,source_clause:&str,before:&str,after:
     }
     found
 }
-// Mixed substitutions require an exact, unique unchanged clause frame. This
-// establishes position only; the existing writing checks and user review still
-// own semantic quality. Never infer equivalence from a substring elsewhere.
-fn mixed_occurrence_anchor(p:&Value,id:usize,n:usize,word:&str)->Result<Option<(String,String)>,String>{
-    let original=p["original"].as_str().unwrap_or("");
-    let fixed=p["fixed"].as_str().ok_or("gemma_alignment_source")?;
-    let count=|text:&str|if word.is_empty(){0}else{text.char_indices().filter(|(at,_)|text[*at..].starts_with(word)).count()};
-    if count(original)<=1 || count(fixed)==0 || count(original)==count(fixed){return Ok(None);}
+// Resolve the actual marked source occurrence before excluding immutable literals.
+fn marked_occurrence(p:&Value,id:usize,n:usize,word:&str)->Result<usize,String>{
+    let original=p["original"].as_str().ok_or("gemma_alignment_source")?;
     let marked=p["markedOriginal"].as_str().ok_or("gemma_alignment_anchor")?;
     let decode=|s:&str|s.replace("&lt;","<").replace("&gt;",">").replace("&amp;","&");
     let mut rest=marked;let mut plain=String::new();let mut selected=None;let mut seen=0;
@@ -346,7 +364,43 @@ fn mixed_occurrence_anchor(p:&Value,id:usize,n:usize,word:&str)->Result<Option<(
     }
     plain.push_str(&decode(rest));
     if plain!=original{return Err("gemma_alignment_anchor".into());}
-    let at=selected.ok_or("gemma_alignment_anchor")?;
+    selected.ok_or("gemma_alignment_anchor".into())
+
+}
+fn without_literals(text:&str)->Result<String,String>{
+    let mut result=text.to_owned();
+    for range in literal_ranges(text)?.into_iter().rev(){result.replace_range(range.clone(), &" ".repeat(range.len()));}
+    Ok(result)
+}
+fn preserve_nonliteral_body(source:&str,output:&str)->Result<(),String>{
+    if without_literals(source)?.chars().any(char::is_alphanumeric)
+        && !without_literals(output)?.chars().any(char::is_alphanumeric){return Err("gemma_incomplete_output".into());}
+    Ok(())
+}
+// A retained quoted label is not a surviving occurrence of a translated action.
+// Admit only one nonliteral source occurrence and zero nonliteral survivors.
+// Semantic mapping remains model-assisted; identical unquoted actions stay blocked.
+fn literal_only_survivor(p:&Value,id:usize,n:usize,word:&str)->Result<bool,String>{
+    let Some(original)=p["original"].as_str() else{return Ok(false);};
+    let fixed=p["fixed"].as_str().ok_or("gemma_alignment_source")?;
+    if word.is_empty() || !fixed.contains(word){return Ok(false);}
+    let clean=without_literals(original)?;let clean_fixed=without_literals(fixed)?;
+    if !clean_fixed.chars().any(|c|('가'..='힣').contains(&c)) || clean_fixed.chars().any(|c|c.is_ascii_alphabetic()){return Ok(false);}
+    preserve_literals(original,fixed)?;
+    if clean.match_indices(word).count()!=1 || clean_fixed.contains(word) || clean==original{return Ok(false);}
+    let at=marked_occurrence(p,id,n,word)?;
+    Ok(clean.get(at..at+word.len())==Some(word))
+}
+// Mixed substitutions require an exact, unique unchanged clause frame. This
+// establishes position only; the existing writing checks and user review still
+// own semantic quality. Never infer equivalence from a substring elsewhere.
+fn mixed_occurrence_anchor(p:&Value,id:usize,n:usize,word:&str)->Result<Option<(String,String)>,String>{
+    let original=p["original"].as_str().unwrap_or("");
+    let fixed=p["fixed"].as_str().ok_or("gemma_alignment_source")?;
+    let count=|text:&str|if word.is_empty(){0}else{text.char_indices().filter(|(at,_)|text[*at..].starts_with(word)).count()};
+    if count(original)<=1 || count(fixed)==0 || count(original)==count(fixed){return Ok(None);}
+    let at=marked_occurrence(p,id,n,word)?;
+    if literal_only_survivor(p,id,n,word)? { return Ok(None); }
     let mut offset=0;let mut frame=None;let mut source_clause="";
     for clause in original.split_inclusive(['.',';','!','?']) {
         if at>=offset && at+word.len()<=offset+clause.len() {
@@ -382,7 +436,7 @@ fn alignment_slots(paragraphs:&[Value])->Result<Vec<(String,usize,usize,Vec<Stri
                 let word=word.as_str().ok_or("gemma_alignment_source")?;
                 let candidates=match mixed_occurrence_anchor(p,id,n,word)? {
                     Some((_,text))=>vec![text],
-                    None=>lexical_candidates(p["fixed"].as_str().unwrap(),word),
+                    None=>lexical_candidates(&if literal_only_survivor(p,id,n,word)? {without_literals(p["fixed"].as_str().unwrap())?}else{p["fixed"].as_str().unwrap().to_owned()},word),
                 };
                 if candidates.is_empty(){return Err("gemma_alignment_anchor".into());}
                 slots.push((format!("p{i}r{id}n{n}"),i,id,candidates));
@@ -404,7 +458,15 @@ fn slot_contexts(p:&Value,key:&str,id:usize,candidates:&[String])->Result<Vec<St
     let word=f["originalWords"][n].as_str().ok_or("gemma_alignment_source")?;
     Ok(match mixed_occurrence_anchor(p,id,n,word)? {
         Some((context,_))=>vec![context],
-        None=>alignment_contexts(p["fixed"].as_str().unwrap(),candidates),
+        None=>{
+            let fixed=p["fixed"].as_str().unwrap();
+            let mut contexts=alignment_contexts(fixed,candidates);
+            if literal_only_survivor(p,id,n,word)? {
+                // Candidate/context pairs are validated again in the decoder.
+                contexts.retain(|context| without_literals(context).is_ok_and(|clean|candidates.iter().any(|w|clean.match_indices(w.as_str()).count()==1)));
+            }
+            contexts
+        },
     })
 }
 fn alignment_schema(source:&str)->Result<Value,String>{
@@ -440,6 +502,10 @@ fn alignment_replacement(value:Value,source:&str)->Result<String,String>{
             let a=output.get(key).ok_or("gemma_alignment_anchor")?;let fixed=p["fixed"].as_str().unwrap();
             if !slot_contexts(p,key,*id,candidates)?.contains(&a.context)||a.context.chars().count()>512||a.context.chars().any(char::is_control)||!candidates.contains(&a.text){return Err("gemma_alignment_anchor".into());}
             let start=unique(fixed,&a.context)?+unique(&a.context,&a.text)?;
+            let n=key.rsplit('n').next().and_then(|s|s.parse::<usize>().ok()).ok_or("gemma_alignment_source")?;
+            let f=p["find"].as_array().unwrap().iter().find(|f|f["tag"]==format!("r{id}")).ok_or("gemma_alignment_source")?;
+            if literal_only_survivor(p,*id,n,f["originalWords"][n].as_str().ok_or("gemma_alignment_source")?)?
+                && without_literals(fixed)?.get(start..start+a.text.len())!=Some(a.text.as_str()) {return Err("gemma_alignment_anchor".into());}
             let occurrence=fixed.char_indices().filter(|(at,_)|*at<=start&&fixed[*at..].starts_with(&a.text)).count();
             if !(1..=96).contains(&occurrence){return Err("gemma_alignment_anchor".into());}
             let escaped=a.text.replace('&',"&amp;").replace('<',"&lt;").replace('>',"&gt;");
@@ -544,11 +610,11 @@ fn local_prompt(binding: &Binding) -> (String, bool) {
     };
     if binding.intent != Intent::Grammar {
         let instruction = match &binding.intent {
-            Intent::Paraphrase => "Paraphrase naturally in the original language. Preserve the original politeness and register exactly; do not make it more casual or more formal. Preserve all facts; do not summarize or add information. Preserve modal phrases verbatim, including may, might, must not, can and cannot: obligation, prohibition and inability are distinct. Prefer minimal rewording over changing these meanings.",
+            Intent::Paraphrase => "Paraphrase naturally in the original language. Preserve the original politeness and register exactly; do not make it more casual or more formal. Preserve all facts; do not summarize or add information. Preserve modal phrases verbatim, including may, might, must not, can and cannot: obligation, prohibition and inability are distinct. Prefer minimal rewording over changing these meanings. Avoid redundant courtesy: use Please or kindly once per request, never both; keep the same register. Remove a trailing please when the request already starts with Please or Kindly. Example: Kindly send the note, please. becomes Please send the note.",
             Intent::Translate { target: Language::English } => "Translate the complete text into English, including ordinary unquoted words. Preserve proper names, the original register and all facts; do not summarize or add information.",
             Intent::Translate { target: Language::Korean } => "Translate the complete text into Korean, including ordinary unquoted words. Preserve proper names, the original register and all facts; do not summarize or add information.",
             Intent::Concise => "Rewrite more concisely in the original language without losing facts, numbers, conditions or important meaning. Preserve modal phrases verbatim. Do not summarize away details or add information.",
-            Intent::Polite => "Rewrite courteously and professionally in the original language, preserving the original intent, facts, numbers and conditions. Preserve modal phrases verbatim; do not introduce new modal verbs. For an imperative request, use Please rather than changing it into a Could you or Would you question. Keep obligations, uncertainty and negation unchanged. Do not add promises or information.",
+            Intent::Polite => "Rewrite courteously and professionally in the original language, preserving the original intent, facts, numbers and conditions. Preserve modal phrases verbatim; do not introduce new modal verbs. For an imperative request, use Please rather than changing it into a Could you or Would you question. Keep obligations, uncertainty and negation unchanged. Do not add promises or information. Use only one courtesy marker per request: Please or kindly, never Please kindly or kindly please. Remove redundant courtesy without removing conditions or changing obligation. Remove a trailing please when the request already starts with Please or Kindly. Example: Kindly send the note, please. becomes Please send the note.",
             Intent::StyleAlign => "Align styles without changing fixed text.",
             Intent::Grammar => unreachable!(),
         };
@@ -566,6 +632,7 @@ fn local_prompt(binding: &Binding) -> (String, bool) {
         let action = if binding.intent == Intent::Grammar { "correct" } else { "transform" };
         prompt = format!("Read the decoded text field as the source. JSON serialization quotes are NOT part of the source and NEVER make the whole text a literal. ONLY the listed verbatimLiterals are immutable, including their own delimiters. Preserve their exact contents, order and count, even when repeated. {action} all other text normally. Do not wrap the result in quotes or copy the input JSON.\n{prompt}");
     }
+    if quoted { prompt.push_str("\nThe replacement must transform the ENTIRE text field, including EVERY sentence outside the literals. verbatimLiterals is only a preservation constraint, NEVER the requested output. Return the full transformed text, not just the quoted label."); }
     (prompt,sparse)
 }
 
@@ -917,7 +984,10 @@ impl GemmaEngine {
         let result = result.and_then(|replacement| {
             // Alignment returns metadata anchors, not replacement prose. The adapter
             // retains the entire fixed result; ordinary writing still checks literals.
-            if binding.intent != Intent::StyleAlign { preserve_literals(&binding.source, &replacement)?; }
+            if binding.intent != Intent::StyleAlign {
+                preserve_literals(&binding.source, &replacement)?;
+                preserve_nonliteral_body(&binding.source,&replacement)?;
+            }
             if matches!(binding.intent, Intent::Paraphrase | Intent::Concise | Intent::Polite) {
                 preserve_english_modality(&binding.source, &replacement)?;
             }
@@ -1309,7 +1379,7 @@ mod tests {
         let workspace=engine.workspace.as_ref().unwrap().cwd().parent().unwrap().to_owned();
         let base=r#"Do not recheck "DRAFT" before approval; recheck "DRAFT" after approval."#;
         let mut rows=Vec::new();
-        for source in [format!("Keep this note. {base} Keep this tail."),base.into(),format!("{base} Keep this tail.\n\nKeep this note. Do not send the report today. Send the report after approval.")] {
+        for source in [format!("Keep this note. {base} Keep this tail."),base.into(),format!("{base} Keep this tail.\n\nKeep this note. Do not send the report today. Send the report after approval."), r#"Keep the label "check". After approval, please check report 25."#.into(),r#"Keep the label "check". Please do not check report 25 before approval."#.into(),r#"Keep the label "check". Kindly check today's report, please."#.into()] {
           for intent in [Intent::Translate{target:Language::Korean},Intent::Paraphrase,Intent::Polite] {
             let binding=Binding{epoch:"owned-synthetic".into(),revision:1,intent,source:source.clone()};
             let (prompt,_)=local_prompt(&binding);
@@ -1321,7 +1391,7 @@ mod tests {
                 if preserve_literals(&binding.source,&written).is_ok() && written.split("\n\n").count()==binding.source.split("\n\n").count() {
                     let queries:Vec<_>=binding.source.split("\n\n").zip(written.split("\n\n")).enumerate().map(|(i,(original,fixed))|{let word=if i==0{"check"}else{"report"};let tag=if i==0{"r1"}else{"r4"};let at=original.rfind(word).unwrap();let marked=format!("{}<{tag}>{word}</{tag}>{}",&original[..at],&original[at+word.len()..]);json!({"paragraph":format!("p{i}"),"original":original,"markedOriginal":marked,"fixed":fixed,"find":[{"tag":if i==0{"r1"}else{"r4"},"originalWords":[if i==0{"check"}else{"report"}],"sourceOccurrences":[2]}]})}).collect();
                     let b=Binding{intent:Intent::StyleAlign,source:format!("<pencil-align>\n<original>{}</original>\n</pencil-align>",json!(queries)),..binding.clone()};
-                    let p=alignment_prompt(&b.source);alignment=Some(match engine.complete_json(&p,alignment_schema(&b.source).unwrap()).await {Ok(value)=>{raw_alignment=Some(value.clone());alignment_replacement(value,&b.source)},Err(e)=>Err(e)});
+                    let p=alignment_prompt(&b.source);alignment=Some(match alignment_schema(&b.source) {Ok(schema)=>match engine.complete_json(&p,schema).await {Ok(value)=>{raw_alignment=Some(value.clone());alignment_replacement(value,&b.source)},Err(e)=>Err(e)},Err(e)=>Err(e)});
                 }
             }}
             rows.push(json!({"source":binding.source,"intent":binding.intent,"raw":raw,"alignment":alignment,"rawAlignment":raw_alignment}));
@@ -1416,8 +1486,10 @@ mod tests {
     fn writing_prompt_separates_json_encoding_from_actual_literals() {
         let b=Binding{epoch:"e".into(),revision:1,intent:Intent::Translate{target:Language::Korean},source:r#"Do not recheck "DRAFT"; recheck "DRAFT" later. Call `getID()`."#.into()};
         let (prompt,sparse)=local_prompt(&b);assert!(!sparse);
-        let input:Value=serde_json::from_str(prompt.lines().last().unwrap()).unwrap();
-        assert_eq!(input,json!({"text":b.source,"verbatimLiterals":["\"DRAFT\"","\"DRAFT\"","`getID()`"]}));
+        let inputs:Vec<Value>=prompt.lines().filter_map(|line|serde_json::from_str(line).ok()).collect();assert_eq!(inputs.len(),1);
+        let input=&inputs[0];
+        assert!(prompt.lines().last().unwrap().contains("ENTIRE text field"));
+        assert_eq!(*input,json!({"text":b.source,"verbatimLiterals":["\"DRAFT\"","\"DRAFT\"","`getID()`"]}));
         let plain=Binding{source:"Check again.".into(),..b};
         let (prompt,_)=local_prompt(&plain);
         assert_eq!(serde_json::from_str::<Value>(prompt.lines().last().unwrap()).unwrap(),json!(plain.source));
@@ -1593,11 +1665,44 @@ mod tests {
             assert_eq!(schema["properties"]["p0r1n0"]["properties"]["context"]["enum"].as_array().unwrap().len(),1);
         }
         for fixed in ["Keep the label \"check\". Please review the report tomorrow.","Keep the label \"check\". Please do not review the report today.","Keep the label \"check\". Please delete the report today.","Keep the label \"check\". Please review the report today. Kindly verify today's report.","Keep the label \"check\". Please review the invoice today.","Keep the label \"check\". Please review the report today?", "Keep the label \"check\". Please review the report."] {assert!(alignment_schema(&source(fixed)).is_err(),"must refuse {fixed}");}
+        assert_eq!(request_frame("Please "," the report after approval."),request_frame("Following approval, "," the report."));
+        assert_ne!(request_frame("Please "," the report after approval."),request_frame("Before approval, "," the report."));
+        assert_eq!(request_frame("After approval, please "," report 25."),request_frame("Once approved, please "," report 25."));
+        assert_eq!(request_frame(" After approval, please "," report 25."),request_frame("Once approved, please "," report 25."));
+        let original="Keep the label \"check\". After approval, please check report 25.";
+        let marked="Keep the label \"check\". After approval, please <r1>check</r1> report 25.";
+        let fixed="Retain the label \"check\". Once approved, please review report 25.";
+        let p=json!({"paragraph":"p0","original":original,"markedOriginal":marked,"fixed":fixed,"find":[{"tag":"r1","originalWords":["check"]}]});
+        assert_eq!(mixed_occurrence_anchor(&p,1,0,"check").unwrap(),Some(("Once approved, please review report 25.".into(),"review".into())));
+        assert!(request_frame("Please "," report and send it after approval.").is_none());
+        assert!(request_frame("Ask Alice to "," report after approval.").is_none());
         assert_ne!(request_frame("Alice sends "," to Bob today."),request_frame("Bob sends "," to Alice today."));
         assert_ne!(request_frame("must "," report today."),request_frame("may "," report today."));
         assert_ne!(request_frame("", " report 25 today."),request_frame("", " report 50 today."));
         assert_ne!(request_frame("", " report A today."),request_frame("", " report today."));
         assert_ne!(request_frame("", " US report today."),request_frame("", " us report today."));
+    }
+
+    #[test]
+    fn translated_action_never_inherits_quoted_label_emphasis() {
+        let source=|marked:&str,fixed:&str|format!("<pencil-align>\n<original>{}</original>\n</pencil-align>",json!([{
+            "paragraph":"p0","original":"Keep label \"check\". Please check the report after approval.",
+            "markedOriginal":marked,"fixed":fixed,"find":[{"tag":"r1","originalWords":["check"]}]}]));
+        assert!(preserve_nonliteral_body("Translate the label \"check\" after approval.","\"check\"").is_err());
+        assert!(preserve_nonliteral_body("\"check\"","\"check\"").is_ok());
+        assert!(preserve_nonliteral_body("label \"check\"", "레이블 \"check\"").is_ok());
+        let marked="Keep label \"check\". Please <r1>check</r1> the report after approval.";
+        let response=|text:&str,context:&str|json!({"choices":[{"finish_reason":"stop","message":{"content":json!({"p0r1n0":{"text":text,"context":context}}).to_string()}}]});
+        for (fixed,context,word) in [("레이블 \"check\"를 유지하세요. 승인 후 보고서를 검토하세요.","승인 후 보고서를 검토하세요.","검토")] {
+            let input=source(marked,fixed);assert!(alignment_schema(&input).is_ok());
+            assert!(alignment_replacement(response(word,context),&input).is_ok());
+            assert!(alignment_replacement(response("check",fixed.split_inclusive('.').next().unwrap()),&input).is_err());
+        }
+        assert!(alignment_schema(&source("Keep label \"<r1>check</r1>\". Please check the report after approval.","레이블 \"check\"를 유지하세요. 승인 후 보고서를 검토하세요.")).is_err());
+        assert!(alignment_schema(&source(&marked.replace("<r1>","<r2>"),"레이블 \"check\"를 유지하세요. 승인 후 보고서를 검토하세요.")).is_err());
+        // Quoted candidate that also occurs outside quotes must not be selected.
+        let input=source(marked,"Keep label \"check\" and \"review\". After approval, review the report.");
+        assert!(alignment_replacement(response("review","Keep label \"check\" and \"review\"."),&input).is_err());
     }
 
     #[test]
@@ -1639,6 +1744,7 @@ mod tests {
         assert!(alignment_replacement(response(one.clone()),&source).is_err());
         let mut both=one;both["p1r1n0"]=json!({"text":"report","context":"the report later."});assert!(alignment_replacement(response(both),&source).is_ok());
         let duplicate=envelope(json!([p(0,"check. check.","check. check.","check")]));assert!(alignment_schema(&duplicate).is_err());
+        assert_eq!(lexical_candidates("확인해 검토해주세요 점검하고 오해 이해", "check"),vec!["검토","오해","이해","점검","확인"]);
         assert!(!lexical_candidates("다시 확인하십시오.","check").contains(&"확인하십시오".into()));
     }
     #[test]
