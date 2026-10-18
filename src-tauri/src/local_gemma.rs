@@ -250,11 +250,13 @@ fn alignment_source(source: &str) -> Result<Vec<Value>, String> {
     }
     Ok(paragraphs)
 }
+fn korean_action_synonym(word:&str)->Option<&'static str>{match word {"송신"=>Some("전송"),"전송"=>Some("송신"),_=>None}}
 fn repeated_style_source(source:&str)->bool {
     alignment_source(source).ok().is_some_and(|paragraphs|paragraphs.iter().any(|p|{
         let original=p["original"].as_str().unwrap_or("");
         p["find"].as_array().unwrap().iter().any(|f|f["originalWords"].as_array().is_some_and(|words|words.iter().any(|word|{
-            let word=word.as_str().unwrap_or("");!word.is_empty() && original.char_indices().filter(|(at,_)|original[*at..].starts_with(word)).take(2).count()>1
+            let word=word.as_str().unwrap_or("");!word.is_empty() && (original.char_indices().filter(|(at,_)|original[*at..].starts_with(word)).take(2).count()>1
+                || korean_action_synonym(word).is_some_and(|other|p["fixed"].as_str().is_some_and(|fixed|fixed.match_indices(other).count()>1)))
         })))
     }))
 }
@@ -278,6 +280,9 @@ fn lexical_candidates(fixed: &str, original: &str) -> Vec<String> {
         // (오해 and 이해 are nouns whose final syllable must remain).
         for stem in ["확인","검토","점검"] {
             if ["해","해주세요","해주십시오","해주시기","해야","하며","하고"].iter().any(|ending|word==format!("{stem}{ending}")){lexical=stem;break;}
+        }
+        for stem in ["송신","전송"] {
+            if ["했어요","했나요","하셨습니다"].iter().any(|ending|word==format!("{stem}{ending}")){lexical=stem;break;}
         }
         if lexical.chars().count()<=256 {words.insert(lexical.to_owned());}
     }
@@ -421,12 +426,33 @@ fn korean_honorific_words(text:&str)->Result<Vec<String>,String>{
         .filter(|w|["님","께서","께","말씀","드리","드렸","주셨","계시","계셨","뵙","뵈"].iter().any(|marker|w.contains(marker)))
         .map(str::to_owned).collect())
 }
+// Closed equivalence classes: preserve tense, speech level and polarity.
+// No stem stripping or general synonym expansion is performed.
+fn korean_register_word(word:&str)->String {
+    match word {
+        "드렸으며"=>"드렸고".into(),
+        "말씀하셨으며"=>"말씀하셨고".into(),
+        "송신했어요"=>"전송했어요".into(),
+        "송신했나요"=>"전송했나요".into(),
+        "송신하셨습니다"=>"전송하셨습니다".into(),
+        _=>word.to_owned(),
+    }
+}
+fn korean_register_options(word:&str)->Vec<String>{
+    let canonical=korean_register_word(word);
+    let alternative=match canonical.as_str(){
+        "드렸고"=>Some("드렸으며"),"말씀하셨고"=>Some("말씀하셨으며"),
+        "전송했어요"=>Some("송신했어요"),"전송했나요"=>Some("송신했나요"),
+        "전송하셨습니다"=>Some("송신하셨습니다"),_=>None,
+    };
+    let mut options=vec![canonical];if let Some(other)=alternative {options.push(other.into());}options
+}
 fn preserve_korean_register(source:&str,fixed:&str)->Result<(),String>{
     let expected=korean_request_endings(source)?;
     if !expected.is_empty() && korean_request_endings(fixed)?!=expected{return Err("gemma_register_changed".into());}
     let endings=korean_sentence_register(source)?;
-    if !endings.is_empty() && korean_sentence_register(fixed)?!=endings {return Err("gemma_register_changed".into());}
-    if korean_honorific_words(source)?!=korean_honorific_words(fixed)? {return Err("gemma_honorific_changed".into());}
+    if !endings.is_empty() && korean_sentence_register(fixed)?.into_iter().map(|(w,q)|(korean_register_word(&w),q)).collect::<Vec<_>>()!=endings.into_iter().map(|(w,q)|(korean_register_word(&w),q)).collect::<Vec<_>>() {return Err("gemma_register_changed".into());}
+    if korean_honorific_words(source)?.iter().map(|w|korean_register_word(w)).collect::<Vec<_>>()!=korean_honorific_words(fixed)?.iter().map(|w|korean_register_word(w)).collect::<Vec<_>>() {return Err("gemma_honorific_changed".into());}
     Ok(())
 }
 // A retained quoted label is not a surviving occurrence of a translated action.
@@ -436,13 +462,16 @@ fn preserve_korean_register(source:&str,fixed:&str)->Result<(),String>{
 fn literal_excluded_action(p:&Value,id:usize,n:usize,word:&str)->Result<bool,String>{
     let Some(original)=p["original"].as_str() else{return Ok(false);};
     let fixed=p["fixed"].as_str().ok_or("gemma_alignment_source")?;
-    if word.is_empty() || !fixed.contains(word){return Ok(false);}
+    if word.is_empty() || !(fixed.contains(word) || korean_action_synonym(word).is_some_and(|other|fixed.contains(other))){return Ok(false);}
     let clean=without_literals(original)?;let clean_fixed=without_literals(fixed)?;
     if !clean_fixed.chars().any(|c|('가'..='힣').contains(&c)){return Ok(false);}
     if clean_fixed.chars().any(|c|c.is_ascii_alphabetic())
         && (!clean.chars().any(|c|('가'..='힣').contains(&c)) || preserve_korean_identifiers(&clean,&clean_fixed).is_err()){return Ok(false);}
     preserve_literals(original,fixed)?;
     if clean.match_indices(word).count()!=1 || clean_fixed.match_indices(word).count()>1 || clean==original{return Ok(false);}
+    if let Some(other)=korean_action_synonym(word) {
+        if clean_fixed.match_indices(word).count()+clean_fixed.match_indices(other).count()!=1 {return Ok(false);}
+    }
     let at=marked_occurrence(p,id,n,word)?;
     Ok(clean.get(at..at+word.len())==Some(word))
 }
@@ -453,6 +482,8 @@ fn mixed_occurrence_anchor(p:&Value,id:usize,n:usize,word:&str)->Result<Option<(
     let original=p["original"].as_str().unwrap_or("");
     let fixed=p["fixed"].as_str().ok_or("gemma_alignment_source")?;
     let count=|text:&str|if word.is_empty(){0}else{text.char_indices().filter(|(at,_)|text[*at..].starts_with(word)).count()};
+    if korean_action_synonym(word).is_some_and(|other|fixed.match_indices(other).count()>1)
+        && !literal_excluded_action(p,id,n,word)? {return Err("gemma_alignment_anchor".into());}
     if count(original)<=1 || count(fixed)==0 || count(original)==count(fixed){return Ok(None);}
     let at=marked_occurrence(p,id,n,word)?;
     if literal_excluded_action(p,id,n,word)? { return Ok(None); }
@@ -491,7 +522,12 @@ fn alignment_slots(paragraphs:&[Value])->Result<Vec<(String,usize,usize,Vec<Stri
                 let word=word.as_str().ok_or("gemma_alignment_source")?;
                 let candidates=match mixed_occurrence_anchor(p,id,n,word)? {
                     Some((_,text))=>vec![text],
-                    None=>lexical_candidates(&if literal_excluded_action(p,id,n,word)? {without_literals(p["fixed"].as_str().unwrap())?}else{p["fixed"].as_str().unwrap().to_owned()},word),
+                    None=>{
+                        let excluded=literal_excluded_action(p,id,n,word)?;
+                        let text=if excluded {without_literals(p["fixed"].as_str().unwrap())?}else{p["fixed"].as_str().unwrap().to_owned()};
+                        if let Some(other)=korean_action_synonym(word).filter(|other|excluded && !text.contains(word) && text.match_indices(other).count()==1){vec![other.into()]}
+                        else {lexical_candidates(&text,word)}
+                    },
                 };
                 if candidates.is_empty(){return Err("gemma_alignment_anchor".into());}
                 slots.push((format!("p{i}r{id}n{n}"),i,id,candidates));
@@ -708,8 +744,10 @@ fn local_prompt(binding: &Binding) -> (String, bool) {
         }}
     }
     if binding.intent==Intent::Paraphrase && binding.source.chars().any(|c|('가'..='힣').contains(&c)) {
-        let boundaries=json!({"terminalPredicates":korean_sentence_register(&binding.source).unwrap_or_default(),"honorificWords":korean_honorific_words(&binding.source).unwrap_or_default()});
-        prompt.push_str(&format!("\n한국어 말투 경계: {}. terminalPredicates의 각 종결 서술어를 원래 순서와 철자로 유지하세요. true는 의문문이며 물음표를 유지하세요. 평서문을 질문으로, 질문을 평서문으로 바꾸지 마세요. honorificWords는 바꿀 수 없는 완전한 어절입니다. 조사와 연결 어미까지 철자·순서·횟수 그대로 복사하세요. 예: 드렸고를 드렸으며로 바꾸거나 선생님께를 선생님에게로 바꾸면 안 됩니다. 높임말이 아닌 주변 표현에 새로운 높임을 추가하지 마세요. 서로 다른 문장의 반말·존댓말을 하나로 통일하지 마세요. 그 외 본문을 자연스럽게 다듬되 부정·시제·주체·대상은 바꾸지 마세요.",boundaries));
+        let predicates:Vec<Value>=korean_sentence_register(&binding.source).unwrap_or_default().into_iter().map(|(w,q)|json!({"allowed":korean_register_options(&w),"question":q})).collect();
+        let honorifics:Vec<Value>=korean_honorific_words(&binding.source).unwrap_or_default().iter().map(|w|json!({"allowed":korean_register_options(w)})).collect();
+        let boundaries=json!({"terminalPredicates":predicates,"honorificWords":honorifics});
+        prompt.push_str(&format!("\n한국어 말투 경계: {}. 각 항목의 allowed 중 하나만 사용하고 항목 순서와 횟수를 유지하세요. 같은 의미의 허용 표현은 문맥에 맞게 선택하세요. 정보 전달의 송신/전송 동등 표현에서는 자연 재작성에 더 일상적인 전송을 우선하세요. 인용문 속 용어는 절대 바꾸지 마세요. 그 밖의 불필요한 단어 변경은 피하세요. question=true이면 의문문과 물음표를 유지하세요. 평서문과 의문문을 서로 바꾸지 마세요. 서로 다른 문장의 반말·존댓말을 통일하지 마세요. 인명과 호칭은 원문 그대로입니다. 님이 없는 이름에 님을 붙이지 마세요. 원문에 없는 존칭이나 높임 표현을 추가하지 마세요. 나머지 본문을 다듬되 부정·시제·주체·대상은 바꾸지 마세요.",boundaries));
     }
     (prompt,sparse)
 }
@@ -1460,6 +1498,7 @@ mod tests {
         let mut cases:Vec<Value>=serde_json::from_str(include_str!("../../scripts/mission/rhwp-korean-names-cases.json")).unwrap();
         cases.extend(serde_json::from_str::<Vec<Value>>(include_str!("../../scripts/mission/rhwp-korean-register-cases.json")).unwrap());
         cases.extend(serde_json::from_str::<Vec<Value>>(include_str!("../../scripts/mission/rhwp-korean-speech-cases.json")).unwrap());
+        cases.extend(serde_json::from_str::<Vec<Value>>(include_str!("../../scripts/mission/rhwp-korean-equivalence-cases.json")).unwrap());
         let mut rows=Vec::new();
         for case in cases { for intent in [Intent::Paraphrase,Intent::Polite] {
             if case["modes"].as_array().is_some_and(|m|m.len()==1) && intent!=Intent::Paraphrase {continue;}
@@ -1805,6 +1844,20 @@ mod tests {
     }
 
     #[test]
+    fn korean_closed_equivalence_preserves_register() {
+        for (a,b) in [("선생님께 자료를 드렸고 보고서를 검토했어요.","선생님께 자료를 드렸으며 보고서를 검토했어요."),("교수님께서 말씀하셨고 보고서를 검토했나요?","교수님께서 말씀하셨으며 보고서를 검토했나요?"),("자료를 송신했어요.","자료를 전송했어요."),("자료를 송신했나요?","자료를 전송했나요?"),("교수님께서 송신하셨습니다.","교수님께서 전송하셨습니다.")] {
+            assert!(preserve_korean_register(a,b).is_ok());
+            assert!(preserve_korean_register(b,a).is_ok());
+        }
+        for changed in ["드렸지만","드렸으면","드렸으므로","드리고","줬고"] {
+            assert!(preserve_korean_register("선생님께 드렸고 확인했어요.",&format!("선생님께 {changed} 확인했어요.")).is_err());
+        }
+        for changed in ["전송했어요?","전송했습니다.","전송해요.","전송하지 않았어요.","수신했어요."] {
+            assert!(preserve_korean_register("송신했어요.",changed).is_err());
+        }
+    }
+
+    #[test]
     fn korean_statement_question_and_honorific_boundaries() {
         for (source,fixed) in [("보고서를 검토했어요.","보고서를 검토했습니다."),("보고서를 검토했나요?","보고서를 검토했나요."),("보고서를 검토했어요.","보고서를 검토했어요?"),("교수님께서 검토하셨습니다.","교수님이 검토하셨습니다."),("선생님께 자료를 드렸고 저는 검토했어요.","선생님께 자료를 보냈고 저는 검토했어요."),("교수님께서 검토하셨습니다. 나는 확인했어.","교수님께서 검토하셨습니다. 나는 확인했어요.")] {
             assert!(preserve_korean_register(source,fixed).is_err(),"{source} -> {fixed}");
@@ -1903,6 +1956,23 @@ mod tests {
         assert!(alignment_schema(&duplicate).is_err());
         assert!(alignment_schema(&source("Do not check; check later.")).is_ok());
         assert!(alignment_schema(&source("Do not verify; verify later.")).is_ok());
+    }
+
+    #[test]
+    fn synonym_created_quote_collision_uses_exact_unquoted_anchor() {
+        let original="Pencil의 \"전송\" 표시는 유지하고 자료를 송신했어요.";
+        let fixed="Pencil의 \"전송\" 표시는 유지하고 자료를 전송했어요.";
+        let input=format!("<pencil-align>\n<original>{}</original>\n</pencil-align>",json!([{"paragraph":"p0","original":original,"markedOriginal":original.replace("송신","<r1>송신</r1>"),"fixed":fixed,"find":[{"tag":"r1","originalWords":["송신"]}]}]));
+        assert!(repeated_style_source(&input));
+        assert!(alignment_schema(&input).is_ok());
+        let response=|context:&str|json!({"choices":[{"finish_reason":"stop","message":{"content":json!({"p0r1n0":{"text":"전송","context":context}}).to_string()}}]});
+        let schema=alignment_schema(&input).unwrap();
+        assert_eq!(schema["properties"]["p0r1n0"]["properties"]["text"]["enum"],json!(["전송"]));
+        assert!(!schema["properties"]["p0r1n0"]["properties"]["context"]["enum"].as_array().unwrap().contains(&json!(fixed)));
+        assert_eq!(alignment_replacement(response("표시는 유지하고 자료를 전송했어요."),&input).unwrap(),"<p0><r1 occurrence=\"2\">전송</r1></p0>");
+        assert!(alignment_replacement(response("\"전송\""),&input).is_err());
+        let ambiguous=input.replace("자료를 전송했어요.","자료를 전송했어요. 전송했어요.");
+        assert!(alignment_schema(&ambiguous).is_err());
     }
 
     #[test]
