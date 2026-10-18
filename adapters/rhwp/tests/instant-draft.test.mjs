@@ -57,3 +57,17 @@ test('caller mutation cannot change in-flight mode binding',async()=>{
  const intent={mode:'translate',target:'ko'},pending=run(capture,signal(),intent);
  intent.target='en';finish();assert.equal(await pending,'😀 separate');
 });
+
+
+test('rich writing uses plain context then exact style alignment, never outside text',async()=>{
+ const rich={id:'rich',source:'<p0><r0>re</r0><r1>check</r1></p0>',richParagraphs:[{text:'private outside text',runs:[{id:0,text:'re'},{id:1,text:'check'}]}]};let calls=0;
+ const run=createInstantDraft(async r=>{calls++;assert.equal(JSON.stringify(r).includes('private outside'),false);if(calls===1)assert.equal(r.text,'recheck');else assert.match(r.text,/\"fixed\":\"check again\"/);return {...r,suggestions:[{start:0,end:r.text.length,replacement:calls===1?'check again':'<p0><r0>again</r0></p0>',rule:'rewrite'}]};},GrammarCore,{writing:true});
+ assert.deepEqual(await run(rich,signal(),{mode:'paraphrase'}),{text:'check \nagain',runOrder:[[1,0]]});assert.equal(calls,2);
+});
+test('style alignment cannot change the fluent result or silently retry',async()=>{
+ const c={id:'rich',source:'<p0><r0>source</r0><r1>x</r1></p0>',richParagraphs:[{runs:[{id:0,text:'source'},{id:1,text:'x'}]}]};let calls=0;
+ const run=createInstantDraft(async r=>({...r,suggestions:[{start:0,end:r.text.length,replacement:++calls===1?'result':'<p0><r1>different</r1></p0>',rule:'rewrite'}]}),GrammarCore,{writing:true});
+ await assert.rejects(run(c,signal(),{mode:'polite'}),/RICH_ALIGNMENT_CHANGED_TEXT/);assert.equal(calls,2);
+});
+
+test('cancelled rich writing never dispatches alignment or replays the first stage',async()=>{const c={id:'rich',source:'<p0><r0>source</r0></p0>',richParagraphs:[{runs:[{id:0,text:'source'}]}]},abort=new AbortController();let calls=0;const run=createInstantDraft(async r=>{calls++;abort.abort();return {...r,suggestions:[]};},GrammarCore,{writing:true});await assert.rejects(run(c,abort.signal,{mode:'polite'}),/CANCELLED/);assert.equal(calls,1);});

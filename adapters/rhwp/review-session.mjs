@@ -15,19 +15,21 @@ export function createReviewSession(Controller, collectEvidence, deps, eligible,
       try{allowed();if(!current||current.id!==id)return false;return current.rich ? current.rich.valid() : current.gate.validate(current.token);}
       catch{clear();return false;}
     },
+    bindRichDraft(id,draft){allowed();if(!current||current.id!==id||!current.rich)fail('STALE_REVIEW');return current.rich.bindDraft(draft);},
     capture(){
       if(busy)fail('BUSY');clear();allowed();
       const selection=deps.input.getSelection();
       if(!selection)fail('SELECT_WHOLE_PLAIN_PARAGRAPH');
       const {start,end}=selection;
       const richCapture=()=>{const rich=createRichReview(Controller,deps,allowed,now);const id=crypto.randomUUID();current={id,rich};return Object.freeze({id,source:rich.source,reviewSource:rich.reviewSource,richParagraphs:structuredClone(rich.richParagraphs)});};
-      if(start?.paragraphIndex!==end?.paragraphIndex)return richCapture();
+      if(start?.paragraphIndex!==end?.paragraphIndex||start?.charOffset!==0)return richCapture();
       if(!start||!end||start.parentParaIndex!==undefined||end.parentParaIndex!==undefined||
          start.sectionIndex!==end.sectionIndex||start.paragraphIndex!==end.paragraphIndex||
          !Number.isSafeInteger(start.sectionIndex)||start.sectionIndex<0||
          !Number.isSafeInteger(start.paragraphIndex)||start.paragraphIndex<0||start.charOffset!==0)fail('SELECT_WHOLE_PLAIN_PARAGRAPH');
       const length=deps.wasm.getParagraphLength(start.sectionIndex,start.paragraphIndex);
-      if(!Number.isSafeInteger(length)||length<1||length>4000||end.charOffset!==length)fail('SELECT_WHOLE_PLAIN_PARAGRAPH');
+      if(end.charOffset!==length)return richCapture();
+      if(!Number.isSafeInteger(length)||length<1||length>4000)fail('SELECT_WHOLE_PLAIN_PARAGRAPH');
       const target={kind:'body_paragraph',section:start.sectionIndex,paragraph:start.paragraphIndex,charOffset:0,length};
       // collectEvidence refuses fields/controls/mixed formatting before target text.
       let evidence;

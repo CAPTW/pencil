@@ -1,4 +1,13 @@
-# rHWP investigation — not an enabled Grammar adapter
+# rHWP adapter — scoped installed candidate
+
+Current 2026-10-18: installed Native Messaging + actual Gemma is qualified only
+for the bounded synthetic body selections recorded in HANDOFF: word-internal
+emphasis and partial single/cross-paragraph HWP/HWPX selection, explicit Accept,
+Undo and save/reopen. General Hancom/IME/complex-document support is not claimed.
+Earlier sections below are preserved chronological investigation records; their
+not-installed/not-implemented statements are historical, not current status.
+
+## Historical investigation (2026-10-07)
 
 Owner suggested rHWP as the synthetic HWP/HWPX application. Pin: upstream
 edwardkim/rhwp 0.8.7, commit in upstream.json, MIT. No production dependency or
@@ -275,7 +284,7 @@ a clean native rebuild from the addon commit. No personal-install update, releas
 or general support claim follows from this candidate.
 
 
-## Sentence-aligned rich-selection candidate (2026-10-16)
+## Historical sentence-aligned rich-selection checkpoint (2026-10-16)
 
 The new rich-review path binds complete selected body paragraphs and their original
 character-format runs. It sends one full-context, escaped run/paragraph envelope
@@ -301,3 +310,56 @@ inference share that single deadline. The 1s recommendation, 3s paragraph and
 500ms Accept performance targets remain unchanged and misses must be reported.
 See the dated HANDOFF and external receipts for actual qualification and failures;
 this section does not establish general Hancom or whole-document compatibility.
+
+
+## Inline emphasis and partial body selections (current candidate)
+
+The rich path now captures bounded partial first/last paragraphs, including a
+format change inside a word. Only selected text enters the local model request.
+Prefix/suffix text and character properties stay local and are checked exactly
+alongside all other paragraphs. One synchronous target-side operation preserves
+paragraph count, paragraph properties and styles; existing stale/permission,
+protected document and uncertain-render guards remain.
+
+Run IDs may move within their original paragraph for translated word order.
+Identical full character properties share one style ID within a paragraph. Every original style class must occur at least once. A style can split into multiple
+spans of the same ID when translated meaning becomes noncontiguous; at most96
+nonempty spans per paragraph. Missing, foreign or cross-paragraph IDs refuse. A validated output order is bound to the capture
+before displaying it. Review lines follow that order; a preview shows joined
+text with bold/italic and original-text tooltips. Other saved properties retain
+the exact original style object even where the preview does not visualize them.
+The model can still assign meaning incorrectly: this is not universal semantic
+alignment. Review the suggestion before explicit Accept. Empty runs, empty
+selected paragraphs, tables/fields and changed paragraph topology remain refused.
+
+History still compares the entire serialized document. HWP Save stamps the view
+caret, so the comparison temporarily uses the exact recorded caret metadata and
+synchronously restores the current caret, including on export failure. Unsupported
+caret representations refuse before writes. No content/format bytes are excluded,
+no snapshot is restored by the comparison, and no asynchronous callback runs in
+that normalization interval. This does not remove the user-edit Undo fence.
+
+Installed synthetic results and limitations are recorded in the latest HANDOFF.
+No general Hancom, all-word linguistic quality or physical IME qualification is
+implied. The candidate adds a rebuilt broker with typed style-anchor instructions;
+host also adds the typed internal alignment intent; app and model remain those
+of the previous composite package.
+
+Rich writing uses two explicit local stages: ordinary translation/rewrite of
+selected plain text, then typed `style_align` returning exact non-default substrings of that fixed
+result. The most prevalent original style is the paragraph default. Unknown,
+missing, overlapping or ambiguous repeated anchors refuse. The adapter assembles
+styles over the immutable first result; removing review separators must recover
+that result exactly, including whitespace and paragraph breaks. This prevents formatting guidance from
+lowering the ordinary writing quality. Both stages share one eight-second abort
+budget, one UI slot and the same capture lifecycle. No retry, per-run inference,
+cloud request or outside-context text is introduced. The second stage adds latency;
+performance targets are unchanged. Ordinary document text cannot select alignment
+mode merely by containing an envelope-looking prefix. Ordinary writing retains its literal guard. The typed alignment response is
+metadata, so its JSON quotation marks are not treated as document literals;
+the adapter retains every character of the already validated fixed result.
+
+Splitting style IDs is an output representation change, not permission to duplicate
+meaning; semantic anchoring remains model-dependent and requires review separately
+from exact range/format safety. Earlier failed prompt/representation trials remain
+recorded; mechanical file equality alone is never language-quality acceptance.
