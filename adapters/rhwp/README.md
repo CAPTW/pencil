@@ -418,3 +418,16 @@ Actual Gemma installed synthetic HWP/HWPX new18 + repeated18 cases passed Accept
 full saved-format comparison, Undo and reopen. This is candidate scope only, not
 real Hancom/general-document acceptance. See HANDOFF and the multilingual receipt
 for failures, current language limits and timings; recommendation1s remains unmet.
+
+
+### Korean compound names (2026-10-18 candidate)
+Korean natural/polite rewriting now distinguishes a quoted label from the same
+styled action in one compound sentence. A unique nonliteral source occurrence,
+exact unquoted output context and decoder quote-exclusion check are required.
+Embedded ASCII identifiers must keep spelling, case, order and count during
+Korean rewriting. This is conservative, not general named-entity recognition.
+Three synthetic templates with Pencil/Gemma and Korean names passed installed
+HWP/HWPX Accept/full-format/Undo/save/reopen (12 new cases;36 prior cases repeated).
+All new live cases retained the action 검토; broader synonym/role inference remains
+model-assisted. Natural rewrite can increase formality (해 주세요 -> 해 주시기 바랍니다);
+Q18 tracks that limit. General documents/Hancom/physical IME remain unqualified.

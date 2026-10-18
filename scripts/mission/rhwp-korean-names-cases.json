@@ -1,0 +1,86 @@
+[
+  {
+    "id": "ko-names-approval",
+    "body": "Pencil의 \"검토\" 표시는 유지하고, 김민수가 승인한 뒤 Gemma 보고서 25를 검토해 주세요.",
+    "required": [
+      "김민수",
+      "승인",
+      "뒤|후|승인하면",
+      "보고서",
+      "25"
+    ],
+    "forbidden": [
+      "승인 전",
+      "김민수가 아닌"
+    ],
+    "names": [
+      "Pencil",
+      "김민수",
+      "Gemma"
+    ],
+    "styledWord": "검토",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase",
+      "polite"
+    ],
+    "expectedEmphasis": "^(검토|점검|확인)$",
+    "literal": "\"검토\""
+  },
+  {
+    "id": "ko-names-negative",
+    "body": "Pencil의 \"검토\" 표시는 유지하되, 김민수가 승인하기 전에는 Gemma 보고서 25를 검토하지 마세요.",
+    "required": [
+      "김민수",
+      "승인",
+      "전",
+      "보고서",
+      "25",
+      "지 마|지 않|안 됩니다"
+    ],
+    "forbidden": [
+      "승인 후에만 금지"
+    ],
+    "names": [
+      "Pencil",
+      "김민수",
+      "Gemma"
+    ],
+    "styledWord": "검토",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase",
+      "polite"
+    ],
+    "expectedEmphasis": "^(검토|점검|확인)$",
+    "literal": "\"검토\""
+  },
+  {
+    "id": "ko-names-roles",
+    "body": "Pencil의 \"검토\" 표시는 유지하고, 김민수가 Gemma 보고서 25를 보내면 이서연은 해당 보고서를 검토해 주세요.",
+    "required": [
+      "김민수",
+      "보내면|전송하면|전달하면|보낸 후|보낸 뒤",
+      "이서연",
+      "보고서",
+      "25"
+    ],
+    "forbidden": [
+      "이서연이 보내|김민수가 검토"
+    ],
+    "names": [
+      "Pencil",
+      "김민수",
+      "Gemma",
+      "이서연"
+    ],
+    "styledWord": "검토",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase",
+      "polite"
+    ],
+    "expectedEmphasis": "^(검토|점검|확인)$",
+    "literal": "\"검토\""
+  }
+]

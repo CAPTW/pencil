@@ -30,6 +30,7 @@ remaining defects and the next executable item here. Do not rewrite historical F
 | Q14 | P3 / TODO | MSI/NSIS packaging, signing, updates/removal | Evaluate reproducible packaging, settings-preserving upgrade/rollback/uninstall with owned data; signing identity/distribution authorization separate. Keep working PowerShell path until replacement qualified. |
 | Q15 | P3 / TODO | Incremental responsibility separation | Extract tested seams from App.tsx/main.rs/codex_client.rs one at a time; preserve API and behavior, avoid broad rewrite. |
 | Q16 | P3 / TODO | Protocol/tool/evidence/runtime boundaries | Document generation ownership and consistency checks; exclude private evidence/tooling from user package, preserve source-to-artifact traceability. |
+| Q18 | P2 / TODO | Korean rewrite register and wider entity/role coverage; Q11 local Gemma corpus | Preserve 해 주세요 register in natural rewrites without forced paraphrases or weaker meaning/style guards. Add held-out names/compound roles and verify installed HWP/HWPX Accept, full formatting, Undo and reopen. Current three-template synthetic qualification is not general semantic or Hancom acceptance. |
 
 ## Historical initial slice
 Q01/Q02 are parallel to ongoing Q04/Q05 and adapter development. Existing deep
@@ -200,3 +201,15 @@ Next: current-Gemma multi-paragraph DOCX qualification; general activation pendi
 
 
 2026-10-15 checkpoint: 2026-10-15 Actual Gemma Writer cross-paragraph DOCX: e6ff394 binaries plus package-verified span-enabled OXT, selection from inside paragraph1 to inside paragraph4 including empty paragraph3. Final10 widget+5 enclosing checks PASS: EN-KO/natural/polite Accept and Undo, full text/portion bold/RGB/alignment preservation, edited span, removed-boundary refusal unchanged, source-change and Disable. Two sequential trials PASS with natural app/Office exit and supervisor0 before/after; owned uninstall complete. Final recommendation1098-1471ms and Accept455-958ms; across6 samples Accept500ms missed5, short1s missed6, no result over3s. Latency unresolved, no relaxed targets. No production defect found or core change. Personal install unchanged; general DOCX/Word/current-Gemma merge-split unqualified. Evidence writer-gemma-span-20261015/FINAL_RECEIPT.json.
+
+
+## Korean compound/name checkpoint — 2026-10-18
+Q11: the same-clause quoted label/action ambiguity was reproduced with an actual
+Gemma response and a red production-alignment regression. Quoted content is now
+excluded only after validating the unique nonliteral source occurrence; decoder
+quote overlap and exact target mutation fences remain. Q18 records observed
+natural rewrite `해 주세요` -> `해 주시기 바랍니다`: meaning and action emphasis
+survive, but exact register preservation is not proved. ASCII identifier checks
+are conservative ordered-token checks, not general proper-name recognition.
+See HANDOFF and rhwp-korean-names-20261018 evidence for final installed outcomes.
+Q04 remains deferred per Owner; model, time budgets and integrity checks unchanged.
