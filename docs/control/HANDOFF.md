@@ -4324,7 +4324,8 @@ Unproven translation/rewrite retains the model path. Two new Rust tests cover cl
 Korean forms, role/number changes, repeated words and lazy inference (zero polls for
 proven frames; one for fallback). First test attempts failed on a missing internal
 completion envelope field, repaired without changing assertions. Gemma unit suite
-40 passed/8 ignored; rHWP 62 passed, frontend/branding/governance passed. Installed
+40 passed/8 ignored, but strict native supervisor FAIL_LEFTOVER_CHILDREN with one
+owned child, actual cleanup COMPLETE/0; rHWP 62 passed, frontend/branding/governance passed. Installed
 actual Gemma and hosted CI are pending, not yet qualified by this change.
 Public display name is Pencil; legacy executable/settings/native-host IDs and the
 Grammar correction mode remain compatible. Remote main has two README commits

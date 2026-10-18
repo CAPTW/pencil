@@ -8,7 +8,7 @@ CURRENT_PRODUCT_TARGET=P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST
 
 ## 정체성과 경계
 
-Grammar는 개인용 Windows promptless writing assistant다. 자유형 AI prompt 입력창을 핵심 UI로 만들지 않고 고정 writing intent, language, format, terminology profile, Provider를 선택한다. 다른 제품의 proprietary code, model, asset, wording, visual trade dress는 복제하지 않는다.
+Pencil은 개인용 Windows promptless writing assistant다. 자유형 AI prompt 입력창을 핵심 UI로 만들지 않고 고정 writing intent, language, format, terminology profile, Provider를 선택한다. 다른 제품의 proprietary code, model, asset, wording, visual trade dress는 복제하지 않는다.
 
 영구 보존하는 P3-A 흐름은 `explicit selection → shortcut → local Instant → optional selected-Provider Deep → review/edit → explicit Apply or Copy`다. 지원하지 않는 앱, adapter 실패, monitoring disable에서는 사용자 재선택에 의한 P3-A 또는 Copy-only를 제공한다. 보호·민감 필드는 P3-A에도 우회 허용하지 않으며 텍스트를 처리하지 않는다.
 
@@ -86,3 +86,8 @@ external account/cost/release/license/security decisions remain separately gated
 The backlog carries dependencies, completion criteria, status and next actions;
 CI green is not native user acceptance. Latest local D-drive startup timeout and
 intermittent Accept input-delivery cause remain open, despite warm synthetic passes.
+
+## Public product name (2026-10-18)
+The user-facing application name is Pencil. Historical Grammar/Codex Pencil names
+remain provenance only. Legacy executable, settings directory and Native Messaging
+identifiers remain stable for installation compatibility; they are not public names.
