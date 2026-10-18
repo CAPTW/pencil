@@ -4021,3 +4021,26 @@ No host user data/settings/dictionary, personal install, main adoption, push or
 release. Prior AppData recovery unresolved. Mission INCOMPLETE and Project Source
 stale. Next: broader semantic/format corpus and remaining application adapters,
 then optional Provider stability; do not extrapolate this corpus to general HWP.
+
+
+## 2026-10-18 mixed repeated-word refusal checkpoint
+
+2026-10-18 mixed repeated-word guard: reproduced unsafe candidate forcing when only some repeated source words survive rewriting (red unit FAIL retained). Production schema and decoder now refuse changed nonzero occurrence counts; this narrows coverage, does not implement mixed-synonym mapping. Same-count and all-replaced paths unchanged, identical clauses remain ambiguous. New actual-Gemma installed rHWP repeated corpus18 cases57 checks PASS on updated host/broker: emphasis, translation/natural/polite, Accept/Undo/full-format save/reopen and protected admission. Recommendation1915-2481ms, p50=1951,p95/p99=2481,1s misses18/18,3s0; Accept41-104ms,p50=61,p95/p99=104,500ms0. Asset staging78.590s and readiness12.216s separate. Adapter61, Gemma27PASS7ignored and nativeHost29PASS1ignored; native build exit0, compiler-helper residuals scoped cleanup COMPLETE0 (supervisor FAIL_LEFTOVER_CHILDREN). Single Sandbox8711ebb7-146b-4446-8812-b1cf0ba9fb4b stopped; product natural exit0, uninstall/process/profile/registration0. No host user data/personal install/push/main/release. Evidence rhwp-mixed-20261018/FINAL_RECEIPT.json; mission INCOMPLETE,Source stale.
+
+Review: same integrator, not independent review. The new regression fails on the
+previous implementation and passes unchanged after repair. Both schema construction
+(before alignment inference) and response decoding call alignment_slots. Ordinary
+writing may already have run; this is not a claim of zero total inference. No
+mutation protocol, prompt, model, token cap or timing threshold changed. Mixed
+substitution/deletion/addition stays unqualified and may reject valid rewrites.
+The existing non-repeated corpus was NOT rerun on these bytes (previous evidence
+remains historical); current actual installed qualification is repeated18 only.
+Actual outputs preserve negation/order/quotes/emphasis in this synthetic corpus.
+Korean literal 'tail' wording remains unnatural and some rewrites remain close to
+source. Mechanical PASS is not broad language-quality acceptance or Hancom support.
+Next: occurrence-aware mixed-synonym alignment with adversarial meaning checks,
+including identical clauses, before expanding support. Then qualify against both
+corpora on one package. Saved reread uses pinned rHWP, not independent Hancom.
+Composite package retains e6ff394 app/target DLL and prior extension; only rebuilt
+host/broker are new, with local_gemma.rs hash and file hashes in MANIFEST. No claim
+that the entire app was rebuilt. Previous AppData recovery remains unresolved.

@@ -215,3 +215,8 @@ Compiler-helper residuals scoped cleanup0; final product natural exit/uninstall0
 one Sandbox stopped/inventory0. No user data/personal install/main/push/release.
 Scoped rHWP synthetic qualification only; mission INCOMPLETE,Source stale.
 Evidence rhwp-slots-20261018/FINAL_RECEIPT.json; see HANDOFF for limits and next work.
+
+
+## 2026-10-18 mixed repeated-word refusal checkpoint
+
+2026-10-18 mixed repeated-word guard: reproduced unsafe candidate forcing when only some repeated source words survive rewriting (red unit FAIL retained). Production schema and decoder now refuse changed nonzero occurrence counts; this narrows coverage, does not implement mixed-synonym mapping. Same-count and all-replaced paths unchanged, identical clauses remain ambiguous. New actual-Gemma installed rHWP repeated corpus18 cases57 checks PASS on updated host/broker: emphasis, translation/natural/polite, Accept/Undo/full-format save/reopen and protected admission. Recommendation1915-2481ms, p50=1951,p95/p99=2481,1s misses18/18,3s0; Accept41-104ms,p50=61,p95/p99=104,500ms0. Asset staging78.590s and readiness12.216s separate. Adapter61, Gemma27PASS7ignored and nativeHost29PASS1ignored; native build exit0, compiler-helper residuals scoped cleanup COMPLETE0 (supervisor FAIL_LEFTOVER_CHILDREN). Single Sandbox8711ebb7-146b-4446-8812-b1cf0ba9fb4b stopped; product natural exit0, uninstall/process/profile/registration0. No host user data/personal install/push/main/release. Evidence rhwp-mixed-20261018/FINAL_RECEIPT.json; mission INCOMPLETE,Source stale.
