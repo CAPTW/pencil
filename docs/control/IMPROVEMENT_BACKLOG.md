@@ -234,3 +234,7 @@ Natural rewrite preserves tested terminal predicates, question punctuation, mixe
 ## Q18 closed-equivalence checkpoint — 2026-10-18
 The former exact-word limitation is relaxed only for five closed pairs: 드렸고/드렸으며, 말씀하셨고/말씀하셨으며, and 송신/전송 with 했어요, 했나요 or 하셨습니다. Final installed Korean40/132 passed, including2 actual connective and10 actual synonym changes with full saved formatting/Undo/reopen. 말씀 pair remains unit-only. Newly created quote collisions route through unique unquoted anchors; duplicate actions fail closed. Earlier English-source36/114 belongs to an earlier candidate, not the final-binary suite.
 Q18 stays IN_PROGRESS: held-out tense/negation/role combinations, broader synonyms and morphology, technical terminology preferences and independent linguistic review. Do not generalize the tested pairs into automatic semantic equivalence. Q04 remains deferred; final requests still miss1s. See HANDOFF and rhwp-korean-equivalence-20261018 receipts.
+
+## Q18 semantic-boundary checkpoint — 2026-10-18
+
+Final same-binary installed Korean60/198 PASS, including20 new cases. Real connector drift and added honorific/request defects repaired; earlier automatic PASS remains semantic-review FAIL. Q18 IN_PROGRESS for broader inflection, role and nested-condition qualification, contextual terminology preferences and independent linguistic review. Conservative refusals remain outside the closed inventory. Q04 deferred; no general Hancom or whole-product acceptance. See HANDOFF and rhwp-korean-semantic-20261018/FINAL_RECEIPT.json.
