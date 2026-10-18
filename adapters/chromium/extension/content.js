@@ -161,7 +161,7 @@
     if (!panel) return;
     panel.hidden = !visible; scheduleLayout();
     panelToggle.setAttribute('aria-expanded', String(visible));
-    panelToggle.textContent = visible ? 'Hide Grammar panel' : 'Grammar enabled · Show panel';
+    panelToggle.textContent = visible ? 'Hide Pencil panel' : 'Pencil enabled · Show panel';
     if (!visible) {
       // Retain the draft/cache, but release focus and pointer access to the page.
       if (supported(editor)) editor.focus({preventScroll:true});
@@ -599,8 +599,8 @@
     root.style.cssText='position:fixed;right:12px;top:12px;z-index:2147483647;width:340px;max-width:calc(100vw - 16px);pointer-events:none;';
     shadow=root.attachShadow({mode:'open'});
     const style=document.createElement('style');style.textContent=':host{all:initial}section,button{pointer-events:auto}section[hidden]{display:none}section{box-sizing:border-box;font:13px system-ui;color:#15202b;background:#fff;border:2px solid #18684b;border-radius:10px;padding:10px;box-shadow:0 4px 16px #0003;max-height:50vh;overflow:auto}button{font:inherit;margin:3px;padding:6px;border:1px solid #779;border-radius:4px;background:#f4f8f6;color:#15202b;cursor:pointer}button:focus-visible,textarea:focus-visible{outline:3px solid #2065cd}textarea{box-sizing:border-box;width:100%;min-height:55px}p{margin:5px 0}';
-    panel=document.createElement('section');panel.id='grammar-panel';panel.setAttribute('aria-label','Grammar local writing assist');
-    panelToggle=button('Hide Grammar panel',()=>setPanelVisible(panel.hidden));
+    panel=document.createElement('section');panel.id='grammar-panel';panel.setAttribute('aria-label','Pencil local writing assist');
+    panelToggle=button('Hide Pencil panel',()=>setPanelVisible(panel.hidden));
     panelToggle.setAttribute('aria-controls','grammar-panel');panelToggle.setAttribute('aria-expanded','true');
     status=document.createElement('p');status.setAttribute('role','status');status.textContent='Document enabled. Select a non-sensitive field, then enable it.';
     list=document.createElement('div');list.setAttribute('aria-label','Cached suggestions');card=document.createElement('div');

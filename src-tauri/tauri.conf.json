@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Codex Pencil",
+  "productName": "Pencil",
   "version": "0.1.0",
   "identifier": "com.local.codexpencil",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Codex Pencil",
+        "title": "Pencil",
         "width": 420,
         "height": 460,
         "minWidth": 360,

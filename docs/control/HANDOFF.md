@@ -4314,3 +4314,19 @@ Korean nested-role checkpoint: ordered full surface frames preserve actors, reci
   per-request GPU attribution and cold-storage causality remain unproven.
 - See the external PERFORMANCE_REVIEW.md, resource-summary.json and numeric raw
   diagnostic-phase-metrics.json. New CUDA/speculative/prefix-cache options are NOT_RUN.
+
+
+## 2026-10-18 Deterministic alignment and Pencil publication candidate
+Owner authorizes current source push and safe main merge; no new binary release.
+Proven ordered lexical frames can compute emphasis without polling model inference;
+all existing alignment decoding, source binding, meaning/register checks remain.
+Unproven translation/rewrite retains the model path. Two new Rust tests cover closed
+Korean forms, role/number changes, repeated words and lazy inference (zero polls for
+proven frames; one for fallback). First test attempts failed on a missing internal
+completion envelope field, repaired without changing assertions. Gemma unit suite
+40 passed/8 ignored; rHWP 62 passed, frontend/branding/governance passed. Installed
+actual Gemma and hosted CI are pending, not yet qualified by this change.
+Public display name is Pencil; legacy executable/settings/native-host IDs and the
+Grammar correction mode remain compatible. Remote main has two README commits
+(31a927a, df48758); preserve them during integration, no force push.
+Evidence: D:/dev/grammar-evidence/rhwp-deterministic-pencil-20261018.

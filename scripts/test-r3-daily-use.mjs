@@ -10,10 +10,10 @@ const diagnostics = readFileSync(join(root, "src-tauri/src/diagnostics.rs"), "ut
 assert.match(app, /Test connection/);
 assert.match(app, /Copy diagnostics/);
 assert.match(app, /Start hidden to tray/);
-assert.match(app, /Welcome to Grammar/);
+assert.match(app, /Welcome to Pencil/);
 assert.match(app, /test_provider_connection/);
 assert.doesNotMatch(app, /Apply self-test|applySelfTest/);
-assert.match(main, /Show Grammar/);
+assert.match(main, /Show Pencil/);
 assert.match(main, /Provider Status/);
 assert.match(main, /test_provider_connection/);
 assert.match(main, /diagnostic_snapshot/);

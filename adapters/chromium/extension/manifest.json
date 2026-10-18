@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Grammar — local writing assist (candidate)",
+  "name": "Pencil",
   "version": "0.1.0",
   "description": "Explicit current-document local Instant suggestions. Candidate, restricted editor support.",
   "permissions": ["activeTab", "scripting", "nativeMessaging", "storage"],

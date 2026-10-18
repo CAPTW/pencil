@@ -78,7 +78,7 @@ Write-Utf8 (Join-Path $bundle 'MANUAL_SMOKE_CHECKLIST.md') @'
 1. Verify bundle
 2. Check prerequisites
 3. Launch
-4. Show Grammar
+4. Show Pencil
 5. Open Settings
 6. Confirm all three Provider cards
 7. Select a short synthetic sentence
