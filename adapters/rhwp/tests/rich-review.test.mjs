@@ -44,3 +44,12 @@ test('alignment retains quoted fixed text byte for byte while styling a word',as
 
 
 test('style anchors cannot split a surrogate pair or cross paragraph IDs',async()=>{const {parseRichAlignment}=await import('../rich-review.mjs');const p=[{runs:[{id:0,text:'normal surrounding text'},{id:1,text:'x'}]}];assert.throws(()=>parseRichAlignment('<p0><r1>\uD83D</r1></p0>',p,'a \uD83D\uDE00 b'),/RICH_/);assert.deepEqual(parseRichAlignment('<p0><r1>\uD83D\uDE00</r1></p0>',p,'a \uD83D\uDE00 b'),{text:'a \n\uD83D\uDE00\n b',runOrder:[[0,1,0]]});assert.throws(()=>parseRichAlignment('<p0><r2>x</r2></p0><p1><r1>y</r1></p1>',[...p,{runs:[{id:2,text:'y'}]}],'a x b\n\ny'),/RICH_/);});
+
+
+test('repeated anchors require explicit bounded occurrence and retain other instances',async()=>{const {parseRichAlignment}=await import('../rich-review.mjs');const p=[{runs:[{id:0,text:'check first; then '},{id:1,text:'check'},{id:0,text:' last.'}]}];const fixed='check first; then check last.';assert.deepEqual(parseRichAlignment('<p0><r1 occurrence="2">check</r1></p0>',p,fixed),{text:'check first; then \ncheck\n last.',runOrder:[[0,1,0]]});for(const v of ['0','3','97','-1','1.5','01'])assert.throws(()=>parseRichAlignment(`<p0><r1 occurrence="${v}">check</r1></p0>`,p,fixed),/RICH_/);assert.throws(()=>parseRichAlignment('<p0><r1>check</r1></p0>',p,fixed),/RICH_/);assert.throws(()=>parseRichAlignment('<p0><r1 occurrence="2">check</r1><r1 occurrence="2">check</r1></p0>',p,fixed),/RICH_/);});
+
+
+test('alignment refuses surrounding prose even when the model wraps a correct anchor',async()=>{
+ const {parseRichAlignment}=await import('../rich-review.mjs');const p=[{runs:[{id:0,text:'Do not check; '},{id:1,text:'check'},{id:0,text:' later.'}]}];
+ assert.throws(()=>parseRichAlignment('<p0>Do not check; <r1 occurrence="2">check</r1> later.</p0>',p,'Do not check; check later.'),/RICH_/);
+});

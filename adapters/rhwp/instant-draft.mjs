@@ -1,4 +1,5 @@
 import {parseRichDraft,parseRichAlignment,alignmentDefaults} from './rich-review.mjs';
+const markedOriginal=(p,defaultId)=>p.runs.map(r=>{const t=r.text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');return r.id===defaultId?t:`<r${r.id}>${t}</r${r.id}>`;}).join('');
 // Reuses Chromium's validated UTF-16 cache/review assembly. Transport is injected
 // by a trusted local host; this component has no Provider or network capability.
 export function createInstantDraft(analyze, Core, {writing=false}={}) {
@@ -32,20 +33,10 @@ export function createInstantDraft(analyze, Core, {writing=false}={}) {
       // Two explicit stages: unchanged ordinary writing, then style-only alignment.
       // No retry/fallback; both stages share one cancellation/deadline and slot.
       const plain=capture.richParagraphs.map(p=>p.runs.map(r=>r.text).join('')).join('\n\n');
-      // Repeated styled source words are not qualified: the model can bind the
-      // opposite (negated) occurrence. Refuse before inference or document change.
-      const sourceDefaults=alignmentDefaults(capture.richParagraphs);
-      for(const [i,p] of capture.richParagraphs.entries()){
-        const text=p.runs.map(r=>r.text).join('');
-        for(const r of p.runs.filter(r=>r.id!==sourceDefaults[i])){
-          const first=text.indexOf(r.text);
-          if(first!==-1&&text.indexOf(r.text,first+1)!==-1)throw new Error('RICH_REPEATED_STYLE_UNQUALIFIED');
-        }
-      }
       const written=await infer(plain,capture.id);
       if(written.split('\n\n').length!==capture.richParagraphs.length||Array.from(written).length>4000)throw new Error('RICH_STRUCTURE_CHANGED');
       const defaults=alignmentDefaults(capture.richParagraphs);
-      const queries=capture.richParagraphs.map((p,i)=>({paragraph:`p${i}`,original:p.runs.map(r=>r.text).join(''),fixed:written.split('\n\n')[i],find:[...new Set(p.runs.map(r=>r.id))].filter(id=>id!==defaults[i]).map(id=>({tag:`r${id}`,originalWords:p.runs.filter(r=>r.id===id).map(r=>r.text)}))}));
+      const queries=capture.richParagraphs.map((p,i)=>({paragraph:`p${i}`,original:p.runs.map(r=>r.text).join(''),markedOriginal:markedOriginal(p,defaults[i]),fixed:written.split('\n\n')[i],find:[...new Set(p.runs.map(r=>r.id))].filter(id=>id!==defaults[i]).map(id=>({tag:`r${id}`,originalWords:p.runs.filter(r=>r.id===id).map(r=>r.text)}))}));
       const envelope='<pencil-align>\n<original>'+JSON.stringify(queries)+'</original>\n</pencil-align>';
       const draft=parseRichAlignment(await infer(envelope,capture.id+'-format',{mode:'style_align'}),capture.richParagraphs,written);
       const joined=draft.text.split('\n\n').map(p=>p.split('\n').join('')).join('\n\n');

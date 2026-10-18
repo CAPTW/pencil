@@ -97,20 +97,36 @@ export function createRichReview(Controller,deps,allowed,now=()=>performance.now
 // Ambiguous repeated text, overlap and unknown styles refuse; never fuzzy-match.
 export function alignmentDefaults(paragraphs){return paragraphs.map(p=>{const counts=new Map();for(const r of p.runs)counts.set(r.id,(counts.get(r.id)??0)+cp(r.text));return [...counts].sort((a,b)=>b[1]-a[1])[0][0];});}
 export function parseRichAlignment(text,paragraphs,written){
- const blocks=written.split('\n\n'),defaults=alignmentDefaults(paragraphs);if(blocks.length!==paragraphs.length||typeof text!=='string'||cp(text)>6000)fail('RICH_STRUCTURE_CHANGED');
+ const blocks=written.split('\n\n'),defaults=alignmentDefaults(paragraphs);
+ if(blocks.length!==paragraphs.length||typeof text!=='string'||cp(text)>6000)fail('RICH_STRUCTURE_CHANGED');
  let rest=text.trim();const result=[];
  for(let i=0;i<paragraphs.length;i++){
-  const open=`<p${i}>`,close=`</p${i}>`;if(!rest.startsWith(open))fail('RICH_STRUCTURE_CHANGED');rest=rest.slice(open.length);const anchors=[];const seen=new Set();
+  const open=`<p${i}>`,close=`</p${i}>`;
+  if(!rest.startsWith(open))fail('RICH_STRUCTURE_CHANGED');
+  rest=rest.slice(open.length);const anchors=[],seen=new Set();
   while(!rest.startsWith(close)){
-   const match=/^<r(\d+)>([^<>]*)<\/r\1>/.exec(rest);if(!match||anchors.length>=96)fail('RICH_STRUCTURE_CHANGED');rest=rest.slice(match[0].length);
-   const id=Number(match[1]),run=paragraphs[i].runs.find(r=>r.id===id);if(!run||id===defaults[i]||/&(?!amp;|lt;|gt;)/u.test(match[2]))fail('RICH_STRUCTURE_CHANGED');
-   const value=unesc(match[2]);if(!value.trim()||/[\r\n\u0000-\u001f\u007f]/u.test(value))fail('RICH_STRUCTURE_CHANGED');const start=blocks[i].indexOf(value);if(start<0||blocks[i].indexOf(value,start+1)!==-1)fail('RICH_ALIGNMENT_CHANGED_TEXT');
-   // Boundaries must not split a surrogate pair.
-   for(const x of [start,start+value.length])if(x>0&&x<blocks[i].length&&/[\uD800-\uDBFF]/.test(blocks[i][x-1])&&/[\uDC00-\uDFFF]/.test(blocks[i][x]))fail('RICH_STRUCTURE_CHANGED');
-   anchors.push({start,end:start+value.length,id,text:value});seen.add(id);
+   const match=/^<r(0|[1-9]\d*)(?: occurrence="([1-9]\d*)")?>([^<>]*)<\/r\1>/.exec(rest);
+   if(!match||anchors.length>=96)fail('RICH_STRUCTURE_CHANGED');rest=rest.slice(match[0].length);
+   const id=Number(match[1]),run=paragraphs[i].runs.find(r=>r.id===id);
+   if(!run||id===defaults[i]||/&(?!amp;|lt;|gt;)/u.test(match[3]))fail('RICH_STRUCTURE_CHANGED');
+   const value=unesc(match[3]),occurrence=match[2]===undefined?null:Number(match[2]);
+   if(!value.trim()||/[\r\n\u0000-\u001f\u007f]/u.test(value))fail('RICH_STRUCTURE_CHANGED');
+   if(occurrence!==null&&(!Number.isSafeInteger(occurrence)||occurrence>96))fail('RICH_ALIGNMENT_CHANGED_TEXT');
+   anchors.push({id,text:value,occurrence});seen.add(id);
   }
-  rest=rest.slice(close.length).trimStart();if(!paragraphs[i].runs.every(r=>r.id===defaults[i]||seen.has(r.id)))fail('RICH_STRUCTURE_CHANGED');
-  anchors.sort((a,b)=>a.start-b.start);const runs=[];let offset=0;for(const a of anchors){if(a.start<offset)fail('RICH_STRUCTURE_CHANGED');if(a.start>offset)runs.push({id:defaults[i],text:blocks[i].slice(offset,a.start)});runs.push(a);offset=a.end;}if(offset<blocks[i].length)runs.push({id:defaults[i],text:blocks[i].slice(offset)});
+  rest=rest.slice(close.length).trimStart();
+  if(!paragraphs[i].runs.every(r=>r.id===defaults[i]||seen.has(r.id)))fail('RICH_STRUCTURE_CHANGED');
+  for(const a of anchors){
+   const positions=[];for(let at=blocks[i].indexOf(a.text);at!==-1;at=blocks[i].indexOf(a.text,at+1))positions.push(at);
+   if(!positions.length||a.occurrence!==null&&a.occurrence>positions.length)fail('RICH_ALIGNMENT_CHANGED_TEXT');
+   if(a.occurrence===null&&positions.length!==1)fail('RICH_ALIGNMENT_CHANGED_TEXT');
+   a.start=positions[(a.occurrence??1)-1];
+   a.end=a.start+a.text.length;
+   for(const x of [a.start,a.end])if(x>0&&x<blocks[i].length&&/[\uD800-\uDBFF]/.test(blocks[i][x-1])&&/[\uDC00-\uDFFF]/.test(blocks[i][x]))fail('RICH_STRUCTURE_CHANGED');
+  }
+  anchors.sort((a,b)=>a.start-b.start);const runs=[];let offset=0;
+  for(const a of anchors){if(a.start<offset)fail('RICH_STRUCTURE_CHANGED');if(a.start>offset)runs.push({id:defaults[i],text:blocks[i].slice(offset,a.start)});runs.push(a);offset=a.end;}
+  if(offset<blocks[i].length)runs.push({id:defaults[i],text:blocks[i].slice(offset)});
   if(!runs.length||runs.length>96||runs.some(r=>!r.text.trim())||!runs.some(r=>r.id===defaults[i]))fail('RICH_STRUCTURE_CHANGED');result.push(runs);
  }
  if(rest)fail('RICH_STRUCTURE_CHANGED');return {text:result.map(rs=>rs.map(r=>r.text).join('\n')).join('\n\n'),runOrder:result.map(rs=>rs.map(r=>r.id))};
