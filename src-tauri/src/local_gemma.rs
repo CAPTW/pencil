@@ -285,7 +285,20 @@ fn alignment_slots(paragraphs:&[Value])->Result<Vec<(String,usize,usize,Vec<Stri
         for f in p["find"].as_array().ok_or("gemma_alignment_source")? {
             let id=f["tag"].as_str().and_then(|t|t.strip_prefix('r')).and_then(|t|t.parse::<usize>().ok()).filter(|n|*n<=23).ok_or("gemma_alignment_source")?;
             for (n,word) in f["originalWords"].as_array().ok_or("gemma_alignment_source")?.iter().enumerate(){
-                let candidates=lexical_candidates(p["fixed"].as_str().unwrap(),word.as_str().ok_or("gemma_alignment_source")?);
+                let word=word.as_str().ok_or("gemma_alignment_source")?;
+                let fixed=p["fixed"].as_str().unwrap();
+                let original=p["original"].as_str().unwrap_or("");
+                let occurrences=|text:&str| text.char_indices().filter(|(at,_)|text[*at..].starts_with(word)).count();
+                // A surviving exact word is not proof that the styled occurrence
+                // survived. Partial substitution/deletion/addition can otherwise
+                // force emphasis onto an unrelated (even prohibited) action.
+                // Refuse this ambiguous metadata; never rewrite or guess a span.
+                let source_count=if word.is_empty(){0}else{occurrences(original)};
+                let fixed_count=if word.is_empty(){0}else{occurrences(fixed)};
+                if source_count>1 && fixed_count>0 && source_count!=fixed_count {
+                    return Err("gemma_alignment_anchor".into());
+                }
+                let candidates=lexical_candidates(fixed,word);
                 if candidates.is_empty(){return Err("gemma_alignment_anchor".into());}
                 slots.push((format!("p{i}r{id}n{n}"),i,id,candidates));
             }
@@ -1459,6 +1472,23 @@ mod tests {
         assert!(!local_prompt(&Binding {intent:Intent::Grammar,..b}).0.contains("ONLY style alignment"));
     }
 
+
+    #[test]
+    fn mixed_repeated_lexemes_cannot_force_emphasis_onto_surviving_word() {
+        let source = |fixed: &str| format!("<pencil-align>\n<original>{}</original>\n</pencil-align>",
+            json!([{"paragraph":"p0","original":"Do not check; check later.",
+                "markedOriginal":"Do not check; <r1>check</r1> later.","fixed":fixed,
+                "find":[{"tag":"r1","originalWords":["check"]}]}]));
+        for fixed in ["Do not check; verify later.", "Do not verify; check later.",
+            "Do not check; check later, then check again."] {
+            assert!(alignment_schema(&source(fixed)).is_err(), "mixed occurrence count must refuse: {fixed}");
+            let response=json!({"choices":[{"finish_reason":"stop","message":{"content":
+                json!({"p0r1n0":{"text":"check","context":"Do not check;"}}).to_string()}}]});
+            assert!(alignment_replacement(response,&source(fixed)).is_err());
+        }
+        assert!(alignment_schema(&source("Do not check; check later.")).is_ok());
+        assert!(alignment_schema(&source("Do not verify; verify later.")).is_ok());
+    }
 
     #[test]
     fn required_alignment_is_scoped_and_never_omits_requested_styles() {

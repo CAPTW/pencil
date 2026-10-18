@@ -379,3 +379,13 @@ The prior non-repeated18-case corpus also passes. Recommendation was1.90-2.46s,
 Accept38-76ms; the1s recommendation goal is still missed. Identical repeated clauses,
 other languages/morphology, arbitrary rich documents and actual Hancom remain
 unqualified. See the required-style-slots checkpoint in docs/control/HANDOFF.md.
+
+
+Mixed repeated-word substitutions are not qualified. If a repeated styled source
+word survives in the fixed text but its occurrence count changes, alignment now
+refuses before the metadata inference request. The decoder checks the same rule.
+This prevents the remaining original spelling from forcing emphasis onto a
+non-target action. It also conservatively rejects some valid rewrites; it is not
+semantic equivalence proof or a claim of unchanged coverage. Completely replaced
+words still require model alignment and review; identical ambiguous clauses remain
+refused. Supporting mixed synonyms needs separate occurrence-aware qualification.
