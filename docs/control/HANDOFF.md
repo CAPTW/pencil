@@ -4205,3 +4205,40 @@ retain document compatibility priority before Provider stabilization/HDD work.
   and larger selections; then qualify wider mixed-name translations/rewrites with
   the same full-document checks. Unknown semantic alignment stays fail-closed.
   Do not infer general Hancom support, user-data recovery or desktop bug closure.
+
+
+## 2026-10-18 Korean request register and wider conditions
+
+2026-10-18 Korean natural-request register checkpoint: natural paraphrase now carries recognized source terminal request endings in its prompt and rejects changed ending sequences before publication; no destructive postprocessing/retry, polite mode unchanged. Actual prior7258aaf roles case 해 주세요->해 주시기 바랍니다 is repaired on installed HWP/HWPX. Wider synthetic names with conjunction, missing-condition disjunction, nested approval and concessive prohibition: new8/27 + prior Korean12/39 + multilingual18/57 + repeated18/57 PASS (56 cases180 checks). Actual Gemma4 12B via installed Native Messaging; exact emphasis/full saved char/paragraph/style/outside selection, explicit Accept, Undo and reopen. New endings 해 주세요/하지 마세요/해 줘/하지 마십시오 and tested names/roles/numbers/conditions preserved. Raw10/10 guard+alignment checked separately, not installed acceptance. Recommendation1409-2960ms,p50=1963,p95=2959,1s misses56/56,3s0;Accept35-96ms,p50=61,p95=80,500ms0. Final stage19.511s,ready12.443s,not cold-storage proof. Gemma32PASS8ignored,host29PASS1ignored,adapter62PASS; native supervisors PASS cleanup COMPLETE0. First fixture FAIL lacked equivalent 없다면; retained and broadened only to reviewed equivalent conditional expressions, with negation/roles/endings retained. One overlapping build attempt was refused before launch; next serial build passed. Single Sandbox5acd098d-ec31-4f82-b973-4d2576097a60 stopped, viewer0; final app natural0, owned product/install/profile/registration0. Host user data untouched. Bounded endings are not full Korean register/entity/semantic qualification; Q18 remains IN_PROGRESS. Composite new host/broker with e6ff394 app/extension unchanged; no main/push/release/personal install. Evidence rhwp-korean-register-20261018/FINAL_RECEIPT.json; mission INCOMPLETE,Source stale.
+
+- Before/after: `register-before-after.json` binds actual installed roles-case
+  outputs from7258aaf and this candidate. Natural rewrite now ends 해 주세요;
+  explicitly selected Polite still produces 해 주시기 바랍니다, as expected.
+- Implementation is a bounded list of terminal request endings, extracted outside
+  straight-quote/backtick literals. Only Paraphrase gets the prompt constraint and
+  guard. Unknown declarative/question endings and interior honorific changes are
+  not covered. No post-generation ending replacement or automatic model retry.
+- New fixtures use Naver Cloud/Orion-7, 한빛연구소/Mira-2, 서울연구팀/Atlas and
+  OpenAI/Vega-3 with synthetic Korean names. The actual output review checks who
+  sends/approves/reviews, AND completion, missing either prerequisite, approval
+  ordering and prohibition despite sending. Full saved text/format/Undo/reopen
+  checks are unchanged. All action stems stayed 검토; no new synonym claim.
+- First installed run passed two cases then the test rejected 없다면 although
+  equivalent to source 없으면. Raw output review also justified 보내고 and 없는 경우
+  as condition-preserving variants. Added these alternatives before the final full
+  run; did not drop negation, only-if, name, numeric or ending assertions. The
+  failed receipt is retained in attempt1-fixture-FAIL. This is a fixture failure,
+  not evidence of a product mutation defect or a passed initial run.
+- Raw diagnostic10/10 was observed in the first attempt; the final installed run
+  did not repeat it. Model staging61.567s then19.511s remains separate from ready
+  and request timing; no HDD/cold-start improvement claim. One early build attempt
+  returned SESSION_ALREADY_RUNNING with no child launch; serialized build2 passed.
+- Final package manifest hashes all files; unchanged e6ff394 app/extension plus
+  local_gemma.rs-SHA-bound host/broker from build2. Final source commit is written
+  only to the external receipt after commit. No full frontend/app rebuild or CI.
+- Same-integrator source/guard and output review, no independent human review.
+  Existing compiler warnings remain; this is not a lint-clean/full-suite claim.
+- Next Q18: held-out declarative/question registers, mixed speech levels and
+  interior honorifics; qualify with real local model and the same full-document
+  acceptance checks. Preserve unknown-alignment refusal. General Hancom, physical
+  IME, real user documents and earlier AppData recovery remain unqualified/open.

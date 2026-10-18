@@ -388,6 +388,24 @@ fn preserve_korean_identifiers(source:&str,fixed:&str)->Result<(),String>{
         && ascii_identifiers(source)!=ascii_identifiers(fixed){return Err("gemma_identifier_changed".into());}
     Ok(())
 }
+// Bounded request-ending preservation for natural Korean rewriting only.
+// Keep source speech level without rewriting the generated text after inference.
+fn korean_request_endings(text:&str)->Result<Vec<String>,String>{
+    let clean=without_literals(text)?;
+    let mut result=Vec::new();
+    for sentence in clean.split(['.','!','?','\n']) {
+        let tail=sentence.trim_end();
+        for ending in ["해 주시기 바랍니다","해 주십시오","하지 마십시오","하지 마세요","해 주세요","해주세요","해 줘","해줘","하십시오","하세요","주세요"] {
+            if tail.ends_with(ending){result.push(ending.to_owned());break;}
+        }
+    }
+    Ok(result)
+}
+fn preserve_korean_register(source:&str,fixed:&str)->Result<(),String>{
+    let expected=korean_request_endings(source)?;
+    if !expected.is_empty() && korean_request_endings(fixed)?!=expected{return Err("gemma_register_changed".into());}
+    Ok(())
+}
 // A retained quoted label is not a surviving occurrence of a translated action.
 // Admit only one nonliteral source occurrence and at most one fixed survivor.
 // A same-clause quoted label may survive alongside the actual action.
@@ -660,6 +678,11 @@ fn local_prompt(binding: &Binding) -> (String, bool) {
     if quoted { prompt.push_str("\nThe replacement must transform the ENTIRE text field, including EVERY sentence outside the literals. verbatimLiterals is only a preservation constraint, NEVER the requested output. Return the full transformed text, not just the quoted label."); }
     if matches!(binding.intent,Intent::Paraphrase|Intent::Concise|Intent::Polite) && binding.source.chars().any(|c|('가'..='힣').contains(&c)) {
         prompt.push_str("\n한국어 재작성: 고유명사와 영문 식별자의 철자, 대소문자, 순서, 횟수를 그대로 유지하세요. 조건절의 적용 대상, 행동 주체와 대상, 부정과 승인 전후의 관계를 바꾸지 마세요. 부탁 표현을 중복하지 마세요. 강조 정렬은 별도 단계이므로 본문에 서식 태그를 추가하지 마세요.");
+    }
+    if binding.intent==Intent::Paraphrase {
+        if let Ok(endings)=korean_request_endings(&binding.source) {if !endings.is_empty(){
+            prompt.push_str(&format!("\n자연 재작성의 필수 조건: 각 요청 문장의 종결 표현을 순서대로 {} 그대로 유지하세요. 예: 해 주세요는 해 주세요, 해 줘는 해 줘로 끝내세요. 해 주시기 바랍니다나 해 주십시오로 격식을 올리지 말고 반말로 낮추지도 마세요. 본문만 자연스럽게 다듬되 조건·주체·대상은 유지하세요.",json!(endings)));
+        }}
     }
     (prompt,sparse)
 }
@@ -1020,6 +1043,7 @@ impl GemmaEngine {
                 preserve_english_modality(&binding.source, &replacement)?;
                 preserve_korean_identifiers(&binding.source,&replacement)?;
             }
+            if binding.intent==Intent::Paraphrase {preserve_korean_register(&binding.source,&replacement)?;}
             Ok(replacement)
         });
         match result {
@@ -1406,9 +1430,11 @@ mod tests {
         assert_eq!(format!("{:x}",hash.finalize()),"93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b");
         let mut engine=GemmaEngine::start(&root.join("runtime/llama-server.exe"),&model,Instant::now()+Duration::from_secs(180)).await.unwrap();
         let workspace=engine.workspace.as_ref().unwrap().cwd().parent().unwrap().to_owned();
-        let cases:Vec<Value>=serde_json::from_str(include_str!("../../scripts/mission/rhwp-korean-names-cases.json")).unwrap();
+        let mut cases:Vec<Value>=serde_json::from_str(include_str!("../../scripts/mission/rhwp-korean-names-cases.json")).unwrap();
+        cases.extend(serde_json::from_str::<Vec<Value>>(include_str!("../../scripts/mission/rhwp-korean-register-cases.json")).unwrap());
         let mut rows=Vec::new();
         for case in cases { for intent in [Intent::Paraphrase,Intent::Polite] {
+            if case["modes"].as_array().is_some_and(|m|m.len()==1) && intent!=Intent::Paraphrase {continue;}
             let source=case["body"].as_str().unwrap();
             let binding=Binding{epoch:"owned-synthetic".into(),revision:1,intent,source:source.into()};
             let (prompt,_)=local_prompt(&binding);
@@ -1416,7 +1442,7 @@ mod tests {
             let raw=tokio::time::timeout(Duration::from_secs(10),engine.complete_json(&prompt,schema)).await.ok();
             let mut guard=None;let mut alignment=None;let mut raw_alignment=None;
             if let Some(Ok(value))=&raw {if let Ok(written)=short_replacement(value.clone(),source){
-                guard=Some(preserve_literals(source,&written).and_then(|_|preserve_nonliteral_body(source,&written)).and_then(|_|preserve_korean_identifiers(source,&written)).and_then(|_|preserve_english_modality(source,&written)));
+                guard=Some(preserve_literals(source,&written).and_then(|_|preserve_nonliteral_body(source,&written)).and_then(|_|preserve_korean_identifiers(source,&written)).and_then(|_|preserve_english_modality(source,&written)).and_then(|_|if binding.intent==Intent::Paraphrase {preserve_korean_register(source,&written)}else{Ok(())}));
                 let word=case["styledWord"].as_str().unwrap();let at=source.rfind(word).unwrap();
                 let marked=format!("{}<r1>{word}</r1>{}",&source[..at],&source[at+word.len()..]);
                 let query=json!([{"paragraph":"p0","original":source,"markedOriginal":marked,"fixed":written,"find":[{"tag":"r1","originalWords":[word]}]}]);
@@ -1748,6 +1774,17 @@ mod tests {
         assert_ne!(request_frame("", " report 25 today."),request_frame("", " report 50 today."));
         assert_ne!(request_frame("", " report A today."),request_frame("", " report today."));
         assert_ne!(request_frame("", " US report today."),request_frame("", " us report today."));
+    }
+
+    #[test]
+    fn natural_korean_request_register_rejects_formality_drift() {
+        let source="김민수가 보고서를 보내면 이서연은 검토해 주세요.";
+        assert!(preserve_korean_register(source,"김민수가 보고서를 전송하면 이서연은 확인해 주세요.").is_ok());
+        for ending in ["검토해 주시기 바랍니다.","검토해 주십시오.","검토해 줘.","검토하세요."] {assert!(preserve_korean_register(source,&format!("김민수가 보고서를 보내면 이서연은 {ending}")).is_err());}
+        assert!(preserve_korean_register("보고서를 검토해 줘.","보고서를 확인해 줘.").is_ok());
+        assert!(preserve_korean_register("보고서를 검토하지 마십시오.","보고서를 검토하지 마세요.").is_err());
+        assert_eq!(korean_request_endings("레이블 \"해 주세요.\"를 유지하고 검토해 줘.").unwrap(),vec!["해 줘"]);
+        assert!(preserve_korean_register("검토해 주세요. 보내지 마십시오.","검토해 주십시오. 보내지 마세요.").is_err());
     }
 
     #[test]

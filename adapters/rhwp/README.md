@@ -429,5 +429,19 @@ Korean rewriting. This is conservative, not general named-entity recognition.
 Three synthetic templates with Pencil/Gemma and Korean names passed installed
 HWP/HWPX Accept/full-format/Undo/save/reopen (12 new cases;36 prior cases repeated).
 All new live cases retained the action 검토; broader synonym/role inference remains
-model-assisted. Natural rewrite can increase formality (해 주세요 -> 해 주시기 바랍니다);
-Q18 tracks that limit. General documents/Hancom/physical IME remain unqualified.
+model-assisted. Candidate7258aaf showed formality drift (해 주세요 -> 해 주시기 바랍니다);
+the later request-register checkpoint below repairs that observed case. Q18
+continues tracking registers beyond its bounded request endings. General documents/Hancom/physical IME remain unqualified.
+
+
+### Natural Korean request register (2026-10-18 candidate)
+Natural rewrite now preserves recognized terminal request expressions such as
+해 주세요, 해 줘 and 하지 마십시오. Changed recognized endings refuse publication;
+no generated prose is patched afterward. Explicit Polite mode remains separate.
+Installed actual-Gemma HWP/HWPX synthetic checks cover four additional compound
+condition templates and repeat48 prior cases (56 total): exact Accept, formatting,
+Undo and save/reopen. The prior two-person natural rewrite formality drift is
+repaired in both formats. Declarative/question endings, interior honorifics and
+arbitrary Korean register are not generally qualified; Q18 remains in progress.
+See HANDOFF and register receipts for output review, retained fixture failure and
+latency misses. No general Hancom or user-document acceptance is implied.

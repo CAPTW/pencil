@@ -1,0 +1,122 @@
+[
+  {
+    "id": "ko-and",
+    "body": "Naver Cloud의 \"검토\" 표시는 유지하고, 박지윤이 Orion-7 보고서 42를 보내고 최민호가 승인한 경우에만 해당 보고서를 검토해 주세요.",
+    "required": [
+      "박지윤",
+      "최민호",
+      "승인",
+      "경우에만|때에만|후에만|경우만",
+      "보고서",
+      "42"
+    ],
+    "forbidden": [
+      "승인 전",
+      "승인하지 않아도"
+    ],
+    "names": [
+      "Naver Cloud",
+      "박지윤",
+      "Orion-7",
+      "최민호"
+    ],
+    "expectedEnding": "해 주세요",
+    "styledWord": "검토",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(검토|점검|확인)$",
+    "literal": "\"검토\""
+  },
+  {
+    "id": "ko-missing-condition",
+    "body": "한빛연구소의 \"검토\" 표시는 유지하되, 이도현의 승인이나 Mira-2의 검증 중 하나라도 없으면 보고서 17을 검토하지 마세요.",
+    "required": [
+      "이도현",
+      "승인",
+      "검증",
+      "하나라도",
+      "없으면|없다면|없을 경우|없을 때|없는 경우",
+      "보고서",
+      "17",
+      "지 마"
+    ],
+    "forbidden": [
+      "모두 없으면"
+    ],
+    "names": [
+      "한빛연구소",
+      "이도현",
+      "Mira-2"
+    ],
+    "expectedEnding": "하지 마세요",
+    "styledWord": "검토",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(검토|점검|확인)$",
+    "literal": "\"검토\""
+  },
+  {
+    "id": "ko-casual",
+    "body": "서울연구팀의 \"검토\" 표시는 그대로 두고, 윤하가 Atlas 보고서 8을 보내면 지우가 승인한 뒤에만 검토해 줘.",
+    "required": [
+      "윤하",
+      "보내면|보내고|전송하면|전달하면|보낸 뒤",
+      "지우",
+      "승인",
+      "뒤에만|후에만|경우에만",
+      "8"
+    ],
+    "forbidden": [
+      "승인 전",
+      "검토해 주세요"
+    ],
+    "names": [
+      "서울연구팀",
+      "윤하",
+      "Atlas",
+      "지우"
+    ],
+    "expectedEnding": "해 줘",
+    "styledWord": "검토",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(검토|점검|확인)$",
+    "literal": "\"검토\""
+  },
+  {
+    "id": "ko-formal",
+    "body": "OpenAI의 \"검토\" 표시는 유지하고, 정서윤이 Vega-3 보고서 16을 보내더라도 강하늘의 승인이 없으면 검토하지 마십시오.",
+    "required": [
+      "정서윤",
+      "보내더라도|전송하더라도|전달하더라도",
+      "강하늘",
+      "승인",
+      "없으면|없을 경우|없을 때|없는 경우",
+      "16",
+      "지 마십시오"
+    ],
+    "forbidden": [
+      "승인이 있으면 검토하지"
+    ],
+    "names": [
+      "OpenAI",
+      "정서윤",
+      "Vega-3",
+      "강하늘"
+    ],
+    "expectedEnding": "하지 마십시오",
+    "styledWord": "검토",
+    "styledOccurrence": 2,
+    "modes": [
+      "paraphrase"
+    ],
+    "expectedEmphasis": "^(검토|점검|확인)$",
+    "literal": "\"검토\""
+  }
+]
