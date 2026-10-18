@@ -191,3 +191,14 @@ Next: word-level style anchoring/reordering and partial/empty rich ranges; prese
 
 
 2026-10-18 current checkpoint: 2026-10-18 rHWP inline/partial selection candidate: actual Gemma4 12B installed Native Messaging, one offline GPU Sandbox at a time, final18 HWP/HWPX EN-KO/natural/polite cases and57 checks PASS. Word-internal emphasis, partial paragraph and partial cross-paragraph selection; saved full text/char/paragraph/style/outside equality, Undo and reopen. Plain writing followed by typed exact-substring style alignment, ambiguous/overlap/missing anchors refuse. Repetition and check/report emphasis verified; some conservative rewrites unchanged. HWP Save caret-only metadata normalization repairs Undo while retaining full serialized-content fence. Final recommendation1385-2426ms (18/18 miss1s,0/18 over3s); Accept34-93ms (0/18 miss500ms); staging138.963s,readiness11.937s separate. Adapter58PASS, Native Host29PASS1ignored, native Gemma22PASS6ignored after one retained3s startup fixture failure under concurrent work; serial rerun passes without threshold change. Actual WASM4PASS. Compiler helper residuals caused supervisor FAIL_LEFTOVER_CHILDREN, scoped cleanup COMPLETE0, not natural compiler cleanup PASS. Final guest app natural0, uninstall complete/stopped0, product/install/profile/registration0, Sandbox0. Earlier mechanical57PASS with language/style failures is NOT quality acceptance. Source-hashed composite newbroker/newhost plus existing e6ff394 app; no host user data/personal install/main/push/release. General Hancom/IME/ambiguous repeated anchors/empty-table-field/richer cases unqualified; previous AppData loss unresolved; mission INCOMPLETE,Source stale. Evidence rhwp-inline-sandbox-20261018/FINAL_RECEIPT.json and rhwp-inline-sandbox-20261016 failed trials.
+
+
+2026-10-18 rHWP repeated/quoted/negated selection: NOT_QUALIFIED. Actual Gemma
+installed attempts exposed literal framing, wrong repeated emphasis and missing/
+over-broad style anchors. Retained product fixes literal input framing and refuses
+repeated styled source before inference; candidate alignment is cfg(test) only.
+No new Accept/Undo/save/reopen qualification. Adapter59PASS; native focused results
+in rhwp-repeat-sandbox-20261018/FINAL_RECEIPT.json. One Sandbox stopped/inventory0;
+owned guest uninstall/profile/process0. No user data/personal install/main/push/
+release. Mission INCOMPLETE. Next required per-style semantic-anchor experiment,
+then18 installed cases plus previous corpus. See HANDOFF for failures and limits.

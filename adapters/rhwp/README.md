@@ -363,3 +363,13 @@ Splitting style IDs is an output representation change, not permission to duplic
 meaning; semantic anchoring remains model-dependent and requires review separately
 from exact range/format safety. Earlier failed prompt/representation trials remain
 recorded; mechanical file equality alone is never language-quality acceptance.
+
+
+Repeated styled source substrings are currently refused before local writing
+(`RICH_REPEATED_STYLE_UNQUALIFIED`). Actual Gemma testing found that a repeated
+word in a permitted clause could be mapped to the same word in a negated clause.
+Quoted-input framing is improved, but repeated/quoted/negated mixed-format writing
+is NOT qualified end to end. The unique-context alignment experiment is test-only,
+not a release capability. Accept/Undo/save/reopen support must not be inferred from
+raw model diagnostics or mechanical file equality. See the2026-10-18 repeated
+selection checkpoint in docs/control/HANDOFF.md.

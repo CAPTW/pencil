@@ -3902,3 +3902,61 @@ Next: broaden semantic-style corpus (negation, quoted/duplicated words, addition
 character properties/languages) without weakening ambiguous-anchor refusal;
 qualify remaining document adapters and optional Provider stability per roadmap.
 Do not silently promote this candidate into personal installation/main/release.
+
+
+## 2026-10-18 repeated/quoted/negated rHWP selection — NOT QUALIFIED
+
+Owner requested actual Gemma HWP/HWPX translation/natural/polite writing with
+repeated words, quotes, negation, word-internal emphasis, partial paragraph and
+partial-span selection. Evidence: `D:/dev/grammar-evidence/rhwp-repeat-sandbox-20261018`.
+One GPU Sandbox was reused sequentially and stopped; final inventory0. No host
+user settings/dictionary/documents or personal installation were read/modified.
+
+Actual installed attempts failed; there is NO new18-case/57-check acceptance.
+Retained failures include literal_changed, placeholder-induced Korean particle
+error, truncated segmented output, first-occurrence instead of second-occurrence
+emphasis, altered fixed text, and invalid/missing style anchors. Earlier12-case
+mechanical success is NOT semantic acceptance. Saved files left in reused output
+folders have old timestamps; only each attempt's own receipt identifies its
+results. Raw diagnostics also carry stale installed receipts: their scope is
+RAW_SYNTHETIC_DIAGNOSTIC_NOT_PRODUCT_ACCEPTANCE, never an installed test PASS.
+
+Confirmed cause: JSON serialization quotes could be confused with source literals,
+producing the whole unchanged source wrapped in quotes. The retained writing
+prompt separates decoded text from verbatimLiterals. Exact quote contents,
+delimiters, order and count are still guarded. Three synthetic Korean translations
+preserved quoted DRAFT twice, negation, before/after approval and repetition in raw
+model diagnostics; this small corpus does not prove broad quality.
+
+Style alignment is unresolved. Numeric occurrence output chose the wrong repeat.
+Unique-context metadata avoided model-counted offsets, but actual outputs included
+invented suffixes. A subsequent schema/prompt variant removed these suffixes yet
+expanded emphasis to a Korean verb ending and omitted the second paragraph's style.
+The joint change does not isolate schema versus prompt causality. Failed alignment
+implementations and packages remain external evidence, NOT a deployable candidate.
+
+Retained product change: ambiguous repeated non-default source spans now refuse
+with RICH_REPEATED_STYLE_UNQUALIFIED before inference. Prior sparse-anchor product
+protocol is preserved. Experimental context decoder/prompt is cfg(test) only;
+the ignored raw diagnostic requires WDAGUtilityAccount, explicit owned-synthetic
+marker, pinned runtime and full model hash, and fixed synthetic inputs. It is not
+callable through the release product. A partial metadata response now fails the
+experimental decoder if any requested style is missing. Mutation protocol, original
+8s bound, model12B Q4_0 and1s/3s/500ms targets were not weakened.
+
+Final focused adapter59PASS; native Gemma25PASS7ignored (including preserved prior prompt contract). Native host results and
+compiler-helper cleanup receipts are in FINAL_RECEIPT.json. This is not a full Rust
+suite, Windows CI, final installed-package qualification or release. Earlier
+experimental adapter62PASS and host tests must not be substituted for retained-code
+results. Compiler helper residuals were terminated by the owned Job supervisor;
+FAIL_LEFTOVER_CHILDREN with cleanup COMPLETE0 is not natural compiler cleanup PASS.
+
+No main adoption, push, release, personal install or refreshed Project Source.
+Mission remains INCOMPLETE and Source stale; prior AppData recovery remains
+unresolved. Review was by the same integrator; no independent reviewer.
+
+Next: replace free-form style allocation with required per-style semantic anchors,
+verify minimal emphasis boundaries and clause identity, then rerun the18 installed
+cases plus previous non-repeated corpus. Do not enable repeated-style inference
+until actual model semantic review and Accept/Undo/save/reopen checks pass. Current
+retained guard is unit-tested; its new GUI refusal was NOT_RUN after final cleanup.
