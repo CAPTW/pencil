@@ -30,7 +30,7 @@ remaining defects and the next executable item here. Do not rewrite historical F
 | Q14 | P3 / TODO | MSI/NSIS packaging, signing, updates/removal | Evaluate reproducible packaging, settings-preserving upgrade/rollback/uninstall with owned data; signing identity/distribution authorization separate. Keep working PowerShell path until replacement qualified. |
 | Q15 | P3 / TODO | Incremental responsibility separation | Extract tested seams from App.tsx/main.rs/codex_client.rs one at a time; preserve API and behavior, avoid broad rewrite. |
 | Q16 | P3 / TODO | Protocol/tool/evidence/runtime boundaries | Document generation ownership and consistency checks; exclude private evidence/tooling from user package, preserve source-to-artifact traceability. |
-| Q18 | P2 / TODO | Korean rewrite register and wider entity/role coverage; Q11 local Gemma corpus | Preserve 해 주세요 register in natural rewrites without forced paraphrases or weaker meaning/style guards. Add held-out names/compound roles and verify installed HWP/HWPX Accept, full formatting, Undo and reopen. Current three-template synthetic qualification is not general semantic or Hancom acceptance. |
+| Q18 | P2 / IN_PROGRESS | Korean rewrite register and wider entity/role coverage; Q11 local Gemma corpus | Preserve 해 주세요 register in natural rewrites without forced paraphrases or weaker meaning/style guards. Add held-out names/compound roles and verify installed HWP/HWPX Accept, full formatting, Undo and reopen. Current three-template synthetic qualification is not general semantic or Hancom acceptance. |
 
 ## Historical initial slice
 Q01/Q02 are parallel to ongoing Q04/Q05 and adapter development. Existing deep
@@ -213,3 +213,15 @@ survive, but exact register preservation is not proved. ASCII identifier checks
 are conservative ordered-token checks, not general proper-name recognition.
 See HANDOFF and rhwp-korean-names-20261018 evidence for final installed outcomes.
 Q04 remains deferred per Owner; model, time budgets and integrity checks unchanged.
+
+
+## Q18 bounded request-register checkpoint — 2026-10-18
+The observed natural rewrite 해 주세요 -> 해 주시기 바랍니다 is repaired with
+source-derived terminal-ending instructions plus rejection, not postprocessing.
+Actual installed before/after proof exists for HWP and HWPX. Four wider synthetic
+condition/name templates passed, with prior48 repeated (56 cases180 checks).
+Q18 remains IN_PROGRESS: declarative/question endings, mixed sentence registers,
+interior honorifics and broader names/roles need held-out model/document tests.
+Known narrow ending checks must not be marketed as a complete Korean register
+classifier. Q11 editor safety and full save/Undo/reopen checks remain unchanged.
+See rhwp-korean-register-20261018/FINAL_RECEIPT.json; Q04 remains deferred.

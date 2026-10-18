@@ -52,6 +52,7 @@ if(config.corpus==='repeated'){assert.equal((text.match(/\"DRAFT\"/g)??[]).lengt
   assert.match(emphasized.map(s=>s.text).join(''),fixture.expectedEmphasis?new RegExp(fixture.expectedEmphasis):mode==='ko'?/^(확인|검토)$/:/check|verif|review/i);
   assert.doesNotMatch(emphasized.map(s=>s.text).join(''),/25|달러|dollar|report|보고서/i); // A word's emphasis must not spread onto facts or a different noun.
   if(scenario==='partial-span'){const report=spans.filter(s=>s.original==='Original styled text: report').map(s=>s.text).join('');assert.match(report,mode==='ko'?/^보고서$/:/report/i);assert.doesNotMatch(report,/25|달러|dollar/i);}
+  if(mode==='paraphrase'&&fixture.expectedEnding)assert.ok(text.replaceAll('\n','').replace(/[.!?]$/,'').endsWith(fixture.expectedEnding),'natural rewrite preserves request ending');
   const joined=text.split('\n').join('');assert.deepEqual(joined.match(/\d+/g)??[],source.match(/\d+/g)??[],'preserve exact numeric tokens');for(const clause of joined.replace(/"[^"]*"/g,'').split(/[.;!?]/))assert.ok((clause.match(/\b(?:please|kindly)\b/gi)??[]).length<=1,'no redundant courtesy markers in the same request');if(!['mixed','korean-names'].includes(config.corpus))assert.match(joined,mode==='ko'?/다시/:/recheck|double-check|again/i);
   if(!['mixed','korean-names'].includes(config.corpus)&&mode!=='ko'&&joined.includes('check'))assert.equal(emphasized.map(s=>s.text).join(''),'check');
   if(config.corpus==='repeated'){
