@@ -17,7 +17,8 @@ export function createNativeTransport({runtime,location,host,allowed,timeoutMs=1
     const envelope={version:1,op:'analyze',id:request.id,epoch:request.epoch,revision:request.revision,text:request.text};
     if(request.intent){
       const {mode,target}=request.intent;
-      if(['paraphrase','polite'].includes(mode)&&Object.keys(request.intent).length===1)envelope.intent={mode};
+      if(mode==='style_align'&&Object.keys(request.intent).length===1&&request.text.startsWith('<pencil-align>\n<original>'))envelope.intent={mode};
+      else if(['paraphrase','polite'].includes(mode)&&Object.keys(request.intent).length===1)envelope.intent={mode};
       else if(mode==='translate'&&['ko','en'].includes(target)&&Object.keys(request.intent).length===2)envelope.intent={mode,target};
       else return Promise.reject(new Error('NATIVE_INTENT_REFUSED'));
     }

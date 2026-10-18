@@ -50,3 +50,5 @@ test('one request only and terminal close cancels pending work',async()=>{
 test('deadline closes native connection without automatic retry',async()=>{
  const f=fixture({timeoutMs:5});await assert.rejects(f.transport.analyze(request),/TIMEOUT/);assert.equal(f.calls,1);assert.equal(f.disconnects,1);
 });
+
+test('internal alignment requires explicit mode and a bounded alignment envelope',async()=>{const f=fixture();await assert.rejects(f.transport.analyze({...request,intent:{mode:'style_align'}}),/INTENT/);assert.equal(f.calls,0);const r={...request,text:'<pencil-align>\n<original>source</original><result>fixed</result></pencil-align>',intent:{mode:'style_align'}};const pending=f.transport.analyze(r);assert.deepEqual(f.sent,r);f.port.onMessage.emit({...r,suggestions:[]});await pending;assert.equal(f.calls,1);});

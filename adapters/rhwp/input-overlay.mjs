@@ -1,5 +1,5 @@
 // Narrow source overlay for the pinned rHWP InputHandler. Fail on source drift.
-// No change to non-Grammar operations. Not installed in the shipped product.
+// No change to non-Grammar operations. Included in the pinned editor addon.
 export function overlayInput(source) {
   const replacements=[
     ['  async executeDocumentAgentOperation(', '  get grammarNoRenderRollback() { return true; }\n\n  async executeDocumentAgentOperation('],
@@ -16,18 +16,18 @@ export function overlayInput(source) {
 export function overlayHistory(source) {
   const edits=[
     ['export class CommandHistory {', `export class CommandHistory {
-  private grammarImages = new WeakMap<EditCommand, {before: string; after: string}>();
-  private grammarImage(wasm: WasmBridge): string {
+  private grammarImages = new WeakMap<EditCommand, {before: any; after: any}>();
+  private grammarImage(wasm: WasmBridge, caret: any = null): any {
     const doc = wasm.borrowDocumentHandle();
     if (!doc) throw new Error('GRAMMAR_DOCUMENT_UNAVAILABLE');
     const format = wasm.getSourceFormat();
     if (format !== 'hwp' && format !== 'hwpx') throw new Error('GRAMMAR_FORMAT_UNAVAILABLE');
-    return grammarHex(grammarSha256(format === 'hwp' ? doc.exportHwp() : doc.exportHwpx()));
+    return grammarHistoryImage(doc, format, (bytes: Uint8Array) => grammarHex(grammarSha256(bytes)), caret);
   }
   private checkGrammarHistory(command: EditCommand, wasm: WasmBridge, side: 'before' | 'after'): void {
     if (command.type !== 'snapshot:grammar:apply') return;
     const images = this.grammarImages.get(command);
-    if (!images || images[side] !== this.grammarImage(wasm)) throw new Error('GRAMMAR_HISTORY_SOURCE_CHANGED');
+    if (!images || images[side].hash !== this.grammarImage(wasm, images[side].caret).hash) throw new Error('GRAMMAR_HISTORY_SOURCE_CHANGED');
   }`],
     ['      cursorAfter = command.execute(wasm);\n    } catch (error)', `      const before = command.type === 'snapshot:grammar:apply' ? this.grammarImage(wasm) : null;
       cursorAfter = command.execute(wasm);
@@ -47,7 +47,7 @@ export function overlayHistory(source) {
     if(source.split(before).length!==2)throw new Error('RHWP_HISTORY_FENCE_SOURCE_DRIFT');
     source=source.replace(before,after);
   }
-  source="import {sha256 as grammarSha256} from '@noble/hashes/sha2.js';\nimport {bytesToHex as grammarHex} from '@noble/hashes/utils.js';\n"+source;
+  source="import {historyImage as grammarHistoryImage} from '/grammar-review/history-image.mjs';\nimport {sha256 as grammarSha256} from '@noble/hashes/sha2.js';\nimport {bytesToHex as grammarHex} from '@noble/hashes/utils.js';\n"+source;
   const marker='  rollbackUncommittedSnapshot(';
   if(source.split(marker).length!==2)throw new Error('RHWP_HISTORY_SOURCE_DRIFT');
   return source.replace(marker,`  discardFailedGrammarSnapshot(command: EditCommand, wasm: WasmBridge): void {

@@ -3845,3 +3845,60 @@ Pencil-rich-selection-candidate.zip, attempt1, output, host-build/test receipts.
 Next: semantic style anchoring for word-level emphasis and reordered translated
 spans; keep unsupported cases denied. Broader formatting/IME/real Hancom remains
 separate from this scoped synthetic acceptance.
+
+
+## 2026-10-18 — word-internal emphasis and partial HWP/HWPX selection
+
+2026-10-18 rHWP inline/partial selection candidate: actual Gemma4 12B installed Native Messaging, one offline GPU Sandbox at a time, final18 HWP/HWPX EN-KO/natural/polite cases and57 checks PASS. Word-internal emphasis, partial paragraph and partial cross-paragraph selection; saved full text/char/paragraph/style/outside equality, Undo and reopen. Plain writing followed by typed exact-substring style alignment, ambiguous/overlap/missing anchors refuse. Repetition and check/report emphasis verified; some conservative rewrites unchanged. HWP Save caret-only metadata normalization repairs Undo while retaining full serialized-content fence. Final recommendation1385-2426ms (18/18 miss1s,0/18 over3s); Accept34-93ms (0/18 miss500ms); staging138.963s,readiness11.937s separate. Adapter58PASS, Native Host29PASS1ignored, native Gemma22PASS6ignored after one retained3s startup fixture failure under concurrent work; serial rerun passes without threshold change. Actual WASM4PASS. Compiler helper residuals caused supervisor FAIL_LEFTOVER_CHILDREN, scoped cleanup COMPLETE0, not natural compiler cleanup PASS. Final guest app natural0, uninstall complete/stopped0, product/install/profile/registration0, Sandbox0. Earlier mechanical57PASS with language/style failures is NOT quality acceptance. Source-hashed composite newbroker/newhost plus existing e6ff394 app; no host user data/personal install/main/push/release. General Hancom/IME/ambiguous repeated anchors/empty-table-field/richer cases unqualified; previous AppData loss unresolved; mission INCOMPLETE,Source stale. Evidence rhwp-inline-sandbox-20261018/FINAL_RECEIPT.json and rhwp-inline-sandbox-20261016 failed trials.
+
+Entry candidate 3636472d7b5f2e10cfcb9cac88887830ea49a1d2; same isolated
+codex/grammar-local-trial-ba58b7d worktree. Canonical main was not edited.
+The new operation preserves unselected prefixes/suffixes and their original
+properties locally. Equivalent original style objects share an ID per paragraph.
+Ordinary writing receives selected plain text once, then typed style_align finds
+exact non-default substrings in that immutable result. No fuzzy or proportional
+mapping, silent retry, per-run translation, model downgrade, or cloud request.
+Two stages share one8s cancellation budget; Accept does not infer. Ordinary
+literal/modality guards remain. Alignment is metadata rather than prose; JSON
+quotes are not interpreted as user literals, and the adapter cannot change the
+fixed output text. Semantic equivalence still needs user review; this corpus is
+not proof for every word/language/document. Repeated ambiguous anchors refuse.
+
+Observed failures are preserved, not overwritten:
+- 20261016 attempt1 partial HWP Save/Undo rejected caret metadata drift. Full-byte
+  history comparison now normalizes only stored caret synchronously and restores
+  it even on export error; actual content changes continue to refuse Undo.
+- 20261016 attempts2-8: wrong semantic emphasis, untranslated fragments, awkward
+  Korean, wrapper output and structural refusal. attempt5 had57 mechanical PASS
+  but failed language quality. No qualified performance claim from those trials.
+- 20261018 attempt1:3 checks then fixed text changed during formatting; attempt2:
+  default instead of requested style; attempt3: JSON quote/literal guard conflict,
+  launcher1 then scoped uninstall cleaned all resources. attempt4:57 mechanical
+  PASS but recheck lost repetition and emphasis widened. Only final output is the
+  current scoped qualification. Debugger was disabled in the final trial.
+- final-native-tests:21PASS/1FAIL/6ignored; unchanged startup fixture did not reach
+  warmup within its3s deadline. Later final-native-serial-tests22PASS/6ignored.
+  Failure remains in evidence; no claim of universal timing stability. Native
+  compiler helpers required owned-Job termination; remainingAfterCleanup0.
+
+Final18 outputs reviewed by the same integrator (no independent reviewer).
+Numbers25, repetition/again, today/deadline and check/report emphasis preserved;
+some rewrite/polite results conservatively retain original wording. Sentence
+quality on this small artificial corpus is not broad language-quality acceptance.
+Recommendation p50=1430ms,p95/p99=2426ms; Accept p50=59ms,p95/p99=93ms.
+Measures are capture-click to complete result and Accept to Applied; saved
+reread is separately checked. Original1s/3s/500ms targets remain unchanged.
+
+Package-final is composite: existing e6ff394 app/target DLL, rebuilt host/broker,
+source-hashed rHWP extension. Not a fresh whole-native build or release. Manifest
+addon hashes and build receipts distinguish the layers. Full Rust suite/hosted CI,
+previous broad language corpora and real Hancom/physical IME were not rerun.
+Current Source package is stale. Historical AppData recovery is still unresolved;
+this work never read/changed host settings/dictionary/user documents. Guest cleanup
+was restricted to the marked C:/PencilTrialScope tree; installation/profiles and
+registration0, product processes0, exact Sandbox stopped and inventory0.
+
+Next: broaden semantic-style corpus (negation, quoted/duplicated words, additional
+character properties/languages) without weakening ambiguous-anchor refusal;
+qualify remaining document adapters and optional Provider stability per roadmap.
+Do not silently promote this candidate into personal installation/main/release.
