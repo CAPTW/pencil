@@ -459,3 +459,7 @@ Final actual-Gemma HWP/HWPX Korean40/132 checks include2 connective changes and1
 ## Bounded Korean semantic checkpoint (2026-10-18)
 
 The local candidate adds closed reply/question synonyms and additive/conditional forms, retaining recognised negation, tense, speech level and emphasis anchors. Actual installed Gemma HWP/HWPX60 cases/198 checks passed Accept, saved formatting, Undo and reopen on synthetic documents. Evidence: `rhwp-korean-semantic-20261018/FINAL_RECEIPT.json`. This is not general Korean semantic proof or Hancom qualification; unlisted legitimate forms can refuse. Host settings/user documents were untouched. Recommendation1s misses60/60, paragraph3s misses0/60;Accept500ms misses0/60. Earlier document-PASS/semantic-review-FAIL attempts are preserved.
+
+## Nested Korean natural rewrite candidate (2026-10-18)
+
+The candidate preserves an ordered word/particle/punctuation frame for reply/question prose with two recognised condition markers, allowing closed same-tense connective and action synonyms. Actual installed Gemma synthetic HWP/HWPX36 cases/120 checks passed, including8 new actor/recipient/negative/past/honorific/question cases, full formatting, explicit Accept, Undo and reopen. This conservative qualification does not permit arbitrary clause reordering or establish general Korean/Hancom support. Recommendation1.89-2.98s (1s target missed36/36); Accept37-95ms. Evidence: rhwp-korean-nested-20261018/FINAL_RECEIPT.json. Host user settings/documents were untouched.

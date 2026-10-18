@@ -431,6 +431,7 @@ const KOREAN_CONNECTIVES: &[(&str,&str)] = &[
     ("드렸고","드렸으며"),("말씀하셨고","말씀하셨으며"),
     ("확인했고","확인했으며"),("확인하셨고","확인하셨으며"),("유지하고","유지하며"),
     ("승인하면","승인한다면"),("승인했으면","승인했다면"),
+    ("확인하면","확인한다면"),("확인했으면","확인했다면"),
 ];
 const KOREAN_ACTION_ENDINGS: &[&str] = &["했어요","했나요","하셨습니다","하지","했고","했으며","하셨고","하셨으며"];
 fn korean_register_options(word:&str)->Vec<String>{
@@ -467,7 +468,25 @@ fn korean_bounded_scope(text:&str)->bool {
     without_literals(text).unwrap_or_default().split(|c:char|!c.is_alphanumeric())
         .any(|w|["회신","답신","질의","질문"].iter().any(|stem|w.starts_with(stem)))
 }
+// Nested reply/question clauses are qualified only for closed lexical substitutions.
+// Preserve the complete ordered surface frame (including particles and punctuation)
+// rather than pretending a bag of condition words establishes semantic roles.
+fn korean_nested_scope(text:&str)->bool {
+    korean_bounded_scope(text) && without_literals(text).unwrap_or_default()
+        .split(|c:char|!c.is_alphanumeric())
+        .filter(|w|w.ends_with("면") || w.ends_with("더라도") || *w=="경우에만").count()>=2
+}
+fn korean_nested_frame(text:&str)->Result<Vec<String>,String>{
+    let _=without_literals(text)?;let mut frame=Vec::new();let mut word=String::new();
+    for c in text.chars().chain(std::iter::once(' ')) {
+        if c.is_alphanumeric() || c=='_' {word.push(c);continue;}
+        if !word.is_empty(){frame.push(korean_register_word(&word));word.clear();}
+        if !c.is_whitespace(){frame.push(c.to_string());}
+    }
+    Ok(frame)
+}
 fn preserve_korean_register(source:&str,fixed:&str)->Result<(),String>{
+    if korean_nested_scope(source) && korean_nested_frame(source)?!=korean_nested_frame(fixed)? {return Err("gemma_semantic_changed".into());}
     let connectors=korean_connective_tokens(source)?;
     if !connectors.is_empty() && connectors.iter().map(|w|korean_register_word(w)).collect::<Vec<_>>()
         !=korean_connective_tokens(fixed)?.iter().map(|w|korean_register_word(w)).collect::<Vec<_>>() {return Err("gemma_semantic_changed".into());}
@@ -776,6 +795,9 @@ fn local_prompt(binding: &Binding) -> (String, bool) {
         let semantic_words=if korean_bounded_scope(&binding.source){korean_bounded_tokens(&binding.source)}else{korean_connective_tokens(&binding.source)}.unwrap_or_default();
         let protected:Vec<Value>=semantic_words.iter().map(|w|json!({"allowed":korean_register_options(w)})).collect();
         let boundaries=json!({"terminalPredicates":predicates,"honorificWords":honorifics,"orderedSemanticTerms":protected});
+        if korean_nested_scope(&binding.source) {
+            prompt.push_str("\n중첩 조건문: 원문의 모든 단어 순서, 조사, 문장부호, 조건의 범위와 주체·수신자·대상을 그대로 유지하세요. 아래 allowed에 있는 동의어와 연결 어미만 교체할 수 있습니다. 절을 옮기거나 합치거나 나누지 마세요.");
+        }
         prompt.push_str(&format!("\n한국어 말투 경계: {}. 각 항목의 allowed 중 하나만 사용하고 항목 순서와 횟수를 유지하세요. 같은 의미의 허용 표현은 문맥에 맞게 선택하세요. 정보 전달의 송신/전송은 전송, 답신/회신은 회신, 질의/질문은 질문을 우선하세요. allowed에 함께 있는 고/으며, 하면/한다면은 같은 관계를 유지하는 경우에만 선택하세요. orderedSemanticTerms의 부정·조건·시제와 행동 순서는 그대로 유지하세요. 인용문 속 용어는 절대 바꾸지 마세요. 그 밖의 불필요한 단어 변경은 피하세요. question=true이면 의문문과 물음표를 유지하세요. 평서문과 의문문을 서로 바꾸지 마세요. 서로 다른 문장의 반말·존댓말을 통일하지 마세요. 인명과 호칭은 원문 그대로입니다. 님이 없는 이름에 님을 붙이지 마세요. 원문에 없는 존칭이나 높임 표현을 추가하지 마세요. 나머지 본문을 다듬되 부정·시제·주체·대상은 바꾸지 마세요.",boundaries));
     }
     (prompt,sparse)
@@ -1528,6 +1550,9 @@ mod tests {
         cases.extend(serde_json::from_str::<Vec<Value>>(include_str!("../../scripts/mission/rhwp-korean-register-cases.json")).unwrap());
         cases.extend(serde_json::from_str::<Vec<Value>>(include_str!("../../scripts/mission/rhwp-korean-speech-cases.json")).unwrap());
         cases.extend(serde_json::from_str::<Vec<Value>>(include_str!("../../scripts/mission/rhwp-korean-equivalence-cases.json")).unwrap());
+        if std::env::var("GRAMMAR_GEMMA_DIAGNOSTIC_CORPUS").as_deref()==Ok("nested") {
+            cases=serde_json::from_str(include_str!("../../scripts/mission/rhwp-korean-nested-cases.json")).unwrap();
+        }
         let mut rows=Vec::new();
         for case in cases { for intent in [Intent::Paraphrase,Intent::Polite] {
             if case["modes"].as_array().is_some_and(|m|m.len()==1) && intent!=Intent::Paraphrase {continue;}
@@ -1886,6 +1911,29 @@ mod tests {
         }
     }
 
+    #[test]
+    fn korean_nested_roles_and_condition_attachment_are_preserved() {
+        let source="김민수가 승인하면 이서연이 확인하면 박지훈은 교수님께 Atlas 자료를 답신했어요.";
+        assert!(preserve_korean_register(source,&source.replace("승인하면","승인한다면").replace("확인하면","확인한다면").replace("답신","회신")).is_ok());
+        let past="김민수가 승인했으면 이서연이 확인했으면 교수님께서 박지훈에게 답신하셨습니다.";
+        assert!(preserve_korean_register(past,&past.replace("했으면","했다면").replace("답신","회신")).is_ok());
+        assert!(preserve_korean_register(past,&past.replace("확인했으면","확인하면")).is_err());
+        for changed in [
+            source.replace("김민수가","이서연이").replacen("이서연이 확인", "김민수가 확인",1),
+            source.replace("박지훈은 교수님께","교수님께 박지훈은"),
+            source.replace("박지훈은","박지훈에게"),
+            source.replace("Atlas 자료를","Atlas 자료가"),
+            source.replace("확인하면","확인하지 않으면"),
+            source.replace("승인하면","승인하므로"),
+            source.replace("확인하면", "확인하면, 그렇지 않으면"),
+            source.replace("확인하면", "확인하면."),
+        ] {assert_eq!(preserve_korean_register(source,&changed),Err("gemma_semantic_changed".into()),"{changed}");}
+        let quoted="김민수가 승인하면 이서연이 확인하면 박지훈은 \"자료\"를 교수님께 답신했어요.";
+        assert!(preserve_korean_register(quoted,"김민수가 승인하면 이서연이 확인하면 박지훈은 를 교수님께 \"자료\" 답신했어요.").is_err());
+        let negative="김민수가 승인하지 않으면 이서연이 확인하더라도 박지훈은 교수님께 답신하지 않았어요.";
+        assert!(preserve_korean_register(negative,&negative.replace("답신","회신")).is_ok());
+        assert!(preserve_korean_register(negative,&negative.replace("승인하지 않으면 이서연이 확인하더라도","승인하면 이서연이 확인하지 않더라도")).is_err());
+    }
     #[test]
     fn korean_reply_question_equivalence_preserves_semantics() {
         for (a,b) in [
