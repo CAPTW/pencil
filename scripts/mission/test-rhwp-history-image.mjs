@@ -22,4 +22,3 @@ for(const format of ['hwp','hwpx']){
  }finally{d.free();}
 }
 await writeFile(out,JSON.stringify({status:'PASS',checks},null,2));console.log('PASS',checks.length);
-
