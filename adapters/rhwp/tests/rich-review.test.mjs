@@ -53,3 +53,15 @@ test('alignment refuses surrounding prose even when the model wraps a correct an
  const {parseRichAlignment}=await import('../rich-review.mjs');const p=[{runs:[{id:0,text:'Do not check; '},{id:1,text:'check'},{id:0,text:' later.'}]}];
  assert.throws(()=>parseRichAlignment('<p0>Do not check; <r1 occurrence="2">check</r1> later.</p0>',p,'Do not check; check later.'),/RICH_/);
 });
+
+
+test('mixed lexical anchor preserves unstyled repetition and styled subword boundary',async()=>{
+ const {parseRichAlignment}=await import('../rich-review.mjs');
+ for(const prefix of ['', 're']){
+  const paragraphs=[{runs:[{id:0,text:`Do not ${prefix}check; ${prefix}`},{id:1,text:'check'},{id:0,text:' later.'}]}];
+  const fixed=`Do not ${prefix}check; ${prefix}verify later.`;
+  const draft=parseRichAlignment('<p0><r1 occurrence="1">verify</r1></p0>',paragraphs,fixed);
+  assert.deepEqual(draft,{text:`Do not ${prefix}check; ${prefix}\nverify\n later.`,runOrder:[[0,1,0]]});
+  assert.equal(draft.text.split('\n').join(''),fixed);
+ }
+});

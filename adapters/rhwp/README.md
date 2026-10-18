@@ -381,11 +381,14 @@ other languages/morphology, arbitrary rich documents and actual Hancom remain
 unqualified. See the required-style-slots checkpoint in docs/control/HANDOFF.md.
 
 
-Mixed repeated-word substitutions are not qualified. If a repeated styled source
-word survives in the fixed text but its occurrence count changes, alignment now
-refuses before the metadata inference request. The decoder checks the same rule.
-This prevents the remaining original spelling from forcing emphasis onto a
-non-target action. It also conservatively rejects some valid rewrites; it is not
-semantic equivalence proof or a claim of unchanged coverage. Completely replaced
-words still require model alignment and review; identical ambiguous clauses remain
-refused. Supporting mixed synonyms needs separate occurrence-aware qualification.
+Mixed repeated-word substitutions can use an exact unique clause frame. The
+marked original must reconstruct the original text exactly and identify the
+requested styled occurrence. Its unchanged prefix/suffix must identify exactly
+one fixed clause and one alphanumeric replacement. Both schema and decoder bind
+that same clause; a surviving word in another clause cannot receive the emphasis.
+Repeated identical source clauses, changed negation/context, multiple matches,
+missing metadata and punctuation-spanning replacements still refuse. This is
+position evidence, not a general proof of synonym equivalence: meaning remains
+subject to writing-quality checks and explicit review. Arbitrary clause rewrites,
+translations retaining quoted source words, and broader mixed-language alignment
+are not qualified by this narrow English-frame rule.
