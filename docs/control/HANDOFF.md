@@ -4083,3 +4083,47 @@ Next: broaden mixed-synonym clause rewriting only with source/meaning/occurrence
 counterexamples; retained-source literals in translated clauses need separate
 qualification. Preserve exact-context rejection until that evidence exists. Global
 adapter work and Provider stabilization remain priorities; HDD latency is deferred.
+
+
+## 2026-10-18 rewritten request-context checkpoint
+
+2026-10-18 bounded rewritten-request context: mixed check/verify/review can align through polite/article changes and today placement while ordered content, negation/modality/numbers, case-sensitive identifiers, question status and literals remain checked. Union exact and normalized candidates; ambiguity refuses. Final actual Gemma installed HWP/HWPX: repeated18/57 PASS, changed-prefix2/9 PASS, both-side-context2/9 PASS (22 successful cases75 checks). In final both-side case Kindly check today's report, please became Please kindly review today's report; literal check unchanged and emphasis only on review. Accept/full format/Undo/save/reopen confirmed. Recommendation1914-2568ms,1s misses22/22,3s0;Accept40-81ms,500ms0. New scope English requests only,not arbitrary/multilingual semantic mapping; Please kindly redundancy remains a fluency limit. One other case retained check and failed the strict synonym-exercised fixture before Accept; not counted as new-feature PASS. Unit ambiguity failure repaired; final adapter62,Gemma28PASS7ignored,host29PASS1ignored. Build/tests exit0 with compiler helper FAIL_LEFTOVER_CHILDREN, supervisor cleanup COMPLETE0. Single Sandbox stopped; installed product natural exit0, owned install/profile/process/registration0. No user data/personal install/main/push/release. Evidence rhwp-context-20261018/FINAL_RECEIPT.json; mission INCOMPLETE,Source stale.
+
+Current qualification is scoped: prefix and both-side changes exercised natural
+English rewriting in installed HWP/HWPX; the previous18 corpus supplies Korean
+translation/natural/polite regression evidence. Do not describe this as new mixed
+Korean-frame qualification. The normalized rule is deliberately finite, not fuzzy
+semantic similarity or unrestricted synonym inference. Before/after markers,
+role tokens, numbers and negation cannot be discarded; meaningful token case and
+uppercase identifiers (A, US) are retained. Exact-frame and normalized candidates
+are combined and deduplicated before requiring one match. Tests cover added
+negation, changed day/object/numbers/modality, swapped actors, question changes and
+multiple plausible clauses. Question punctuation retained on broadened path.
+
+Initial unit failure selected an exact-frame candidate while another normalized
+candidate existed; fixed before installation. Raw actual-model alignment5 cases
+passed before the case-sensitive identifier tightening; those receipts are marked
+pre-case-review and are NOT final runtime qualification. Final build/source hashes
+and installed tests are separate. No model/prompt/token/deadline relaxation, added
+inference request or synthetic response bridge. The unchanged-word trial is
+attempt4-synonym-not-exercised: model kept check, so strict coverage assertion failed
+before Accept (HWPX not reached). Its source files and failure remain. A distinct
+Kindly...please synthetic input was then tested, with assertions still requiring
+both changed target context sides AND a synonym. Never count the retained-word
+case as that feature's PASS. All recorded output language checked by the same
+integrator, not an independent reviewer; Please kindly and Korean literal tail
+phrasing show fluency limitations. No broad language-quality acceptance claim.
+
+Final runtime is source-hashed new host/broker plus unchanged prior e6ff394 app,
+DLL and extension, not a full app rebuild. Package files and source hash verified;
+final harness hash is recorded separately. Asset staging and readiness are in
+receipts separately from recommendation/Accept timing. Adapter62 + nativeGemma28
+(7 ignored) + host29 (1 ignored), not full Rust/hosted CI. Non-repeated corpus,
+physical IME, user profiles, arbitrary rich documents and actual Hancom NOT_RUN.
+Single Sandbox d1fe3683-4c70-4b5c-b486-6e9c50a56d9f reused serially and stopped;
+guest cleanup0 after every attempt. Host AppData recovery remains unresolved.
+
+Next: wider clause paraphrases and bilingual retained-literal alignment need
+separate meaning/occurrence evidence before activation; current unknown/ambiguous
+cases refuse. Improve phrasing quality independently of format/Apply checks.
+Keep document compatibility ahead of Provider stabilization and deferred HDD tuning.

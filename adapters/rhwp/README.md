@@ -392,3 +392,13 @@ position evidence, not a general proof of synonym equivalence: meaning remains
 subject to writing-quality checks and explicit review. Arbitrary clause rewrites,
 translations retaining quoted source words, and broader mixed-language alignment
 are not qualified by this narrow English-frame rule.
+
+
+A bounded English request-context rule additionally supports check/verify/review
+when polite words/articles or today's placement change around the action. It keeps
+ordered content tokens, negation, modality, numbers, case-sensitive identifiers,
+question status and quoted literals, and requires one source and one result match.
+Exact-frame and normalized-frame candidates are considered together; multiple
+matches refuse. This is a small qualified request pattern, not general semantic
+similarity, arbitrary word-order changes or multilingual equivalence. No new model
+call or relaxed inference/Accept deadline is introduced.

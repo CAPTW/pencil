@@ -279,6 +279,49 @@ fn lexical_candidates(fixed: &str, original: &str) -> Vec<String> {
     if words.len()>128 {return Vec::new();}
     words.into_iter().collect()
 }
+// Bounded English request paraphrases only. Keep ordered content/role tokens,
+// negation, modality and numbers; normalize polite determiners and today's
+// placement separately. This is deliberately not a bag-of-words similarity test.
+fn request_frame(before:&str,after:&str)->Option<(Vec<String>,Vec<String>)>{
+    fn tokens(text:&str)->Option<Vec<String>>{
+        let text=text.replace("today’s","today").replace("today's","today");
+        if !text.is_ascii(){return None;}
+        Some(text.split(|c:char|!c.is_ascii_alphanumeric()).filter(|s|!s.is_empty())
+            .filter(|s|!matches!(*s,"please"|"Please"|"kindly"|"Kindly"|"the"|"a"|"an"))
+            .map(str::to_owned).collect())
+    }
+    let mut content=tokens(before)?;content.push("@target".into());content.extend(tokens(after)?);
+    let mut times=Vec::new();content.retain(|s|{if s=="today"{times.push(s.clone());false}else{true}});
+    // Require an object/context token, not merely a time and an action.
+    if content.len()<2{return None;}
+    Some((content,times))
+}
+fn rewritten_request_anchors(original:&str,source_clause:&str,before:&str,after:&str,word:&str,fixed:&str)->Vec<(String,String)>{
+    const FAMILY:[&str;3]=["check","verify","review"];
+    if !FAMILY.contains(&word.to_ascii_lowercase().as_str()){return Vec::new();}
+    let Some(signature)=request_frame(before,after) else{return Vec::new();};
+    // Equivalent source frames must themselves be unique: never resolve a
+    // repeated identical request by choosing whichever result survives.
+    let source_matches=original.split_inclusive(['.',';','!','?']).flat_map(|c|c.match_indices(word).map(move |(at,_)|(c,at))).filter(|(c,at)|request_frame(&c[..*at],&c[*at+word.len()..]).as_ref()==Some(&signature)).count();
+    if source_matches!=1{return Vec::new();}
+    let mut found=Vec::new();
+    for context in fixed.split_inclusive(['.',';','!','?']).map(str::trim){
+        if context.len()>512 || fixed.match_indices(context).count()!=1
+            || source_clause.trim().ends_with('?')!=context.ends_with('?')
+            || preserve_literals(source_clause,context).is_err(){continue;}
+        for word in FAMILY {
+            for (at,_) in context.match_indices(word){
+                // Whole lexical words only on this broadened path. Subword
+                // emphasis still needs the existing exact surrounding frame.
+                let end=at+word.len();
+                if context[..at].chars().next_back().is_some_and(char::is_alphanumeric)
+                    || context[end..].chars().next().is_some_and(char::is_alphanumeric){continue;}
+                if request_frame(&context[..at],&context[end..]).as_ref()==Some(&signature){found.push((context.to_owned(),word.to_owned()));}
+            }
+        }
+    }
+    found
+}
 // Mixed substitutions require an exact, unique unchanged clause frame. This
 // establishes position only; the existing writing checks and user review still
 // own semantic quality. Never infer equivalence from a substring elsewhere.
@@ -304,11 +347,11 @@ fn mixed_occurrence_anchor(p:&Value,id:usize,n:usize,word:&str)->Result<Option<(
     plain.push_str(&decode(rest));
     if plain!=original{return Err("gemma_alignment_anchor".into());}
     let at=selected.ok_or("gemma_alignment_anchor")?;
-    let mut offset=0;let mut frame=None;
+    let mut offset=0;let mut frame=None;let mut source_clause="";
     for clause in original.split_inclusive(['.',';','!','?']) {
         if at>=offset && at+word.len()<=offset+clause.len() {
             if original.match_indices(clause.trim()).count()!=1{return Err("gemma_alignment_anchor".into());}
-            let local=at-offset;
+            let local=at-offset;source_clause=clause;
             frame=Some((clause[..local].trim_start(),clause[local+word.len()..].trim_end()));break;
         }
         offset+=clause.len();
@@ -325,6 +368,8 @@ fn mixed_occurrence_anchor(p:&Value,id:usize,n:usize,word:&str)->Result<Option<(
             }
         }
     }
+    matches.extend(rewritten_request_anchors(original,source_clause,before,after,word,fixed));
+    matches.sort();matches.dedup();
     if matches.len()!=1{return Err("gemma_alignment_anchor".into());}
     Ok(matches.pop())
 }
@@ -1287,6 +1332,8 @@ mod tests {
             ("Do not check; check later.","Do not check; <r1>check</r1> later.","Do not check; verify later.","check","verify"),
             ("Do not check; check later.","Do not check; <r1>check</r1> later.","Do not verify; check later.","check","check"),
             ("Do not recheck; recheck later.","Do not recheck; re<r1>check</r1> later.","Do not recheck; reverify later.","check","verify"),
+            ("Keep the label \"check\". Kindly check today's report.","Keep the label \"check\". Kindly <r1>check</r1> today's report.","Keep the label \"check\". Please review the report today.","check","review"),
+            ("Keep the label \"check\". Please check the report today.","Keep the label \"check\". Please <r1>check</r1> the report today.","Keep the label \"check\". Kindly verify today's report.","check","verify"),
         ] {
             let source=format!("<pencil-align>\n<original>{}</original>\n</pencil-align>",json!([{"paragraph":"p0","original":original,"markedOriginal":marked,"fixed":fixed,"find":[{"tag":"r1","originalWords":[word]}]}]));
             let began=Instant::now();
@@ -1537,6 +1584,21 @@ mod tests {
         assert!(!local_prompt(&Binding {intent:Intent::Grammar,..b}).0.contains("ONLY style alignment"));
     }
 
+
+    #[test]
+    fn rewritten_mixed_request_preserves_roles_negation_time_and_literals() {
+        let source=|fixed:&str|format!("<pencil-align>\n<original>{}</original>\n</pencil-align>",json!([{"paragraph":"p0","original":"Keep the label \"check\". Kindly check today's report.","markedOriginal":"Keep the label \"check\". Kindly <r1>check</r1> today's report.","fixed":fixed,"find":[{"tag":"r1","originalWords":["check"]}]}]));
+        for fixed in ["Keep the label \"check\". Please review the report today.","Keep the label \"check\". Please verify today's report."] {
+            let schema=alignment_schema(&source(fixed)).unwrap();
+            assert_eq!(schema["properties"]["p0r1n0"]["properties"]["context"]["enum"].as_array().unwrap().len(),1);
+        }
+        for fixed in ["Keep the label \"check\". Please review the report tomorrow.","Keep the label \"check\". Please do not review the report today.","Keep the label \"check\". Please delete the report today.","Keep the label \"check\". Please review the report today. Kindly verify today's report.","Keep the label \"check\". Please review the invoice today.","Keep the label \"check\". Please review the report today?", "Keep the label \"check\". Please review the report."] {assert!(alignment_schema(&source(fixed)).is_err(),"must refuse {fixed}");}
+        assert_ne!(request_frame("Alice sends "," to Bob today."),request_frame("Bob sends "," to Alice today."));
+        assert_ne!(request_frame("must "," report today."),request_frame("may "," report today."));
+        assert_ne!(request_frame("", " report 25 today."),request_frame("", " report 50 today."));
+        assert_ne!(request_frame("", " report A today."),request_frame("", " report today."));
+        assert_ne!(request_frame("", " US report today."),request_frame("", " us report today."));
+    }
 
     #[test]
     fn mixed_repeated_lexemes_cannot_force_emphasis_onto_surviving_word() {

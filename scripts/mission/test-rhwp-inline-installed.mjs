@@ -58,6 +58,16 @@ try{
    assert.match(joined,/report|document/i);assert.match(joined,/today/i);
    assert.doesNotMatch(joined,/\b(?:not|never|tomorrow)\b/i);
    if(config.requireSynonym)assert.match(emphasized.map(s=>s.text).join(''),/^(verify|review)$/i);
+   if(config.requireContextRewrite){
+    const before=spans.slice(0,highlight).map(s=>s.text).join('').split(/[.;!?]/).at(-1).trimStart();
+    const after=spans.slice(highlight+1).map(s=>s.text).join('').split(/[.;!?]/)[0].trimEnd();
+    const at=source.lastIndexOf('check');assert.ok(at>=0);
+    const originalBefore=source.slice(0,at).split(/[.;!?]/).at(-1).trimStart();
+    const originalAfter=source.slice(at+5).split(/[.;!?]/)[0].trimEnd();
+    assert.notEqual(before+'@'+after,originalBefore+'@'+originalAfter,'must exercise changed target-clause context, not only changed surrounding paragraphs');
+    if(config.requireBothContextRewrite){assert.notEqual(before,originalBefore);assert.notEqual(after,originalAfter);}
+    assert.match(joined,/today(?:'s)?/);
+   }
   }else assert.match(text,mode==='ko'?/달러/:/dollar/i);
   const t=performance.now();await page.getByRole('button',{name:'Accept',exact:true}).click();await page.locator('#grammar-review-host [role=status]').filter({hasText:/^Applied$/}).waitFor();sample.acceptMs=performance.now()-t;
   const save=async suffix=>{const download=page.waitForEvent('download',{timeout:15000});await inputBox.focus();await inputBox.press('Control+s');const d=await download;const path=r+'/'+scenario+'-'+format+'-'+mode+'-'+suffix+'.'+format;await d.saveAs(path);return path;};
