@@ -4533,3 +4533,67 @@ Next: unmodified installed extension/native pair and actual toolbar opt-in,
 continuous typing/IME and longer changed windows; measure cold/warm tails with
 the same fixed targets. Current6-case fixture is not general1s qualification,
 installed acceptance, main adoption or release. Mission INCOMPLETE; Source stale.
+
+## 2026-10-20 Q19 unmodified installed Chromium qualification
+
+Built clean bf2260a0daab7e7be5904c769c2aa8d39197cb45 into a fresh release target,
+then generated the source-bound trial package. Build and package supervisors PASS,
+natural remainingBefore/After0. Package ZIP SHA256
+7fc863f3d450032c8d070ead2a3617d0150ad3e292c201c5bc4302c8d8ee00f1.
+This Chromium-scoped trial package has no Writer binding: it is NOT a general
+replacement personal release. Existing user installation/settings were untouched.
+
+One Sandbox at a time, networking/clipboard redirection disabled, GPU enabled,
+read-only source assets, explicit marked C:/PencilTrialScope install/profile/assets.
+Final r5 loads the installer-written extension unchanged, with packaged key/ID,
+activeTab/no host permissions and exact installer registration/host hash. Both
+activations used real keyboard toolbar and popup actions (no permission injection).
+Worker observation wrappers count messages; extension files stay unchanged.
+Real Gemma12B: quantity, negation and past-date in textarea/simple contenteditable,
+6/6 latest-source suggestions and exact Accept rereads PASS, six supersessions and
+cancelled replies, no new inference for cached card/Accept. Disable/storage,
+cross-origin revocation, fresh field opt-in and same-origin reload checks PASS.
+
+Timing is NOT PASS: recommendations816-1330ms, p50=826,p95/p99/max=1330;
+1s misses1/6 (contenteditable past-date). Accept62-80ms,p50=63,p95/max=80,
+500ms misses0/6. Browser receipt status=PASS denotes functional checks only;
+its incremental.latencyPass=false, child exit1 and app/guest/sandbox result FAIL
+preserve the overall timing failure. Do not remove that case or infer its cause
+from the approximately500ms difference. Next fixture records bounded native
+request/supersession/response timestamps to distinguish scheduling/drain/inference.
+No product timeout, model, prompt, integrity check or quality setting changed.
+
+Environment failures preserved: initial overlapping read-only mappings returned
+E_ACCESSDENIED; independent mappings started. Captured connect stdout stayed open
+in the viewer, hanging subprocess communication: controller now uses file output.
+r1 module directory lacked node_modules naming, r2 login session was not ready,
+r3 mapped-asset validation failed before runtime launch (specific broker error
+was discarded by launcher; not proven hash mismatch or proven storage cause),
+r4 PowerShell5.1 policy blocked gesture script. No policy change: r5 uses existing
+PowerShell7 for the helper. Same assets staged inside guest before normal full
+product validation: copy69.420s/r4,211.653s/r5; app ready19.623s/r4,17.317s/r5.
+These are deployment/startup timings, not recommendation timings or a resolved
+D-drive contention claim. Earlier failures are separate from final functionality.
+
+Final browser closed, native host0, profile removed, extension unchanged; app
+launcher exit0. Uninstaller stopped0 processes and reports installation,
+registration, explicit profile/assets and processes0, complete=true. Exact Sandbox
+stopped, inventory0. No concurrent test sessions or user data cleanup. Initial
+failed supervised Sandbox start had one child then cleanup0; do not conflate it
+with the final natural product cleanup. Same-integrator review only.
+Evidence: D:/dev/grammar-evidence/chromium-installed-incremental-20261020/
+FINAL_RECEIPT.json, build-receipt.json, guest-r1 through guest-r5 (first guest is
+named guest), sandbox-result*.json, fixture/, trial.wsb, run-sandbox.py.
+
+Repository installed-package test now optionally runs the shared incremental
+corpus via GRAMMAR_INSTALLED_INCREMENTAL=1 against an already prepared real-Gemma
+installation; default CI spelling checks and owned-CI guards remain. Optional
+GRAMMAR_GESTURE_POWERSHELL selects a trusted test shell without policy changes.
+Native timestamps are bounded to64 entries with no document text; functional and
+overall timing status are distinct. Syntax/diff/governance and both unauthorized
+mode refusal checks PASS. Exact newly parameterized harness Windows CI NOT_RUN;
+actual Sandbox used the recorded equivalent generated fixture, not spoofed CI.
+
+Next: reproduce the1.33s tail with timing probes, then continuous typing/IME and
+longer changed windows, preserving fixed1s/500ms targets. No general editor or
+whole-product completion, no push/main/release; mission INCOMPLETE, Source stale.
