@@ -33,6 +33,8 @@ assert.ok(OWNED_REFS.includes(process.env.GITHUB_REF), 'owned desktop opt-in: GI
 
 const incrementalGemma = process.env.GRAMMAR_INSTALLED_INCREMENTAL === '1';
 const inputStress = process.env.GRAMMAR_INSTALLED_INPUT_STRESS === '1';
+const paragraphGemma = process.env.GRAMMAR_INSTALLED_PARAGRAPH === '1';
+assert.ok(!paragraphGemma || incrementalGemma, 'paragraph review requires explicit installed Gemma mode');
 assert.ok(!inputStress || incrementalGemma, 'input stress requires explicit installed Gemma mode');
 const gesturePowerShell = process.env.GRAMMAR_GESTURE_POWERSHELL || 'powershell.exe';
 const require = createRequire(import.meta.url);
@@ -245,7 +247,7 @@ try {
   if (incrementalGemma) await worker.evaluate(() => {
     // Observation only: never grant permission, alter a message or start inference.
     globalThis.gemmaMetrics = {requests: 0, responses: 0, supersessions: 0, cancelled: 0, timing: []};
-    chrome.runtime.onMessage.addListener(m => { if (m.op === 'analyze') { gemmaMetrics.requests++; gemmaMetrics.lastSource = m.text; } });
+    chrome.runtime.onMessage.addListener(m => { if (m.op === 'analyze') { gemmaMetrics.requests++; gemmaMetrics.lastSource = m.text; gemmaMetrics.lastIntent = m.intent; } });
     const stamp = (op, id) => {
       gemmaMetrics.timing.push({op, id, at: performance.now()});
       if (gemmaMetrics.timing.length > 64) gemmaMetrics.timing.shift();
@@ -335,6 +337,14 @@ try {
     observations.stress = {};
     await runInputStress(page, worker, observations.stress);
     assert.ok(observations.stress.functionalPass, 'input stress quality and safety');
+  }
+
+  if (paragraphGemma) {
+    const {runParagraphUI} = await import('../../../scripts/mission/gemma-paragraph-browser.mjs');
+    const corpus = JSON.parse(await readFile(new URL('../../../scripts/mission/gemma-paragraph-corpus.json', import.meta.url), 'utf8'));
+    observations.paragraph = {};
+    await runParagraphUI(page, worker, corpus, observations.paragraph);
+    assert.ok(observations.paragraph.functionalPass, 'paragraph and stale-source functional checks; semantic review separate');
   }
 
   // 6. Disable: UI removed, later edits never analysed, storage holds no text.
@@ -430,7 +440,7 @@ try {
     pass('browser closed, installed host exited, profile removed, installed extension unchanged');
   }
   const functionalStatus = status;
-  if (status === 'PASS' && (observations.incremental?.latencyPass === false || observations.stress?.latencyPass === false)) {
+  if (status === 'PASS' && (observations.incremental?.latencyPass === false || observations.stress?.latencyPass === false || observations.paragraph?.latencyPass === false)) {
     status = 'FAIL';
     failure = 'Incremental recommendation/Accept latency target missed';
   }
@@ -459,6 +469,7 @@ try {
     profile_setup: 'fresh profile; extension action pinned to the toolbar (user UI preference); extension files unchanged',
     incremental: observations.incremental ?? null,
     stress: observations.stress ?? null,
+    paragraph: observations.paragraph ?? null,
     checks,
     not_run_cause: notRunCause,
     failure,
@@ -467,5 +478,5 @@ try {
   };
   await writeFile(join(out, 'result.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result));
-  process.exitCode = status === 'FAIL' || observations.incremental?.latencyPass === false || observations.stress?.latencyPass === false ? 1 : 0;
+  process.exitCode = status === 'FAIL' || observations.incremental?.latencyPass === false || observations.stress?.latencyPass === false || observations.paragraph?.latencyPass === false ? 1 : 0;
 }

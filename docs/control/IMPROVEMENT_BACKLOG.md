@@ -285,3 +285,18 @@ after retained DIV-markup refusal; rich markup remains unsupported. Physical IME
 long free-form rewriting, low-GPU/cold behavior and other adapters remain open.
 One Sandbox at a time; final owned processes/profile/install/Sandbox0. See HANDOFF
 and chromium-input-latency-20261020/FINAL_RECEIPT.json. Q19 remains IN_PROGRESS.
+
+## Q18/Q19 paragraph qualification — 2026-10-20
+
+Not all PASS. Installed real Gemma four-sentence EN->KO and English rewrite4
+normal cases quality/Accept PASS; KO->EN2 functional cases fail conservative
+source-fidelity review (explicit You and future budget). Korean natural textarea
+refused and stopped model twice; later editable is unavailable, not independent
+quality evidence. Four stale races PASS. Successful functional recommendation
+1026-1153ms, Accept55-63ms; paragraph3s target met only for those returned outputs.
+Do not weaken checks or hide unavailable cases. Next executable work: capture
+bounded internal refusal/raw synthetic output, repair Korean paragraph availability
+and translation actor/tense fidelity, repeat identical installed corpus. Newly
+strengthened output oracle is offline-verified, not re-run installed. Both sequential
+Sandboxes and owned install/profile/processes cleaned0; launcher failure retained.
+See HANDOFF and chromium-paragraph-20261020/FINAL_RECEIPT.json. Q18/Q19 IN_PROGRESS.

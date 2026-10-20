@@ -1,0 +1,55 @@
+[
+  {
+    "id": "en-ko",
+    "choice": "ko",
+    "source": "Mina reviewed 3 files on Monday. She must not send the report before Joon approves it. If approval arrives by Friday, she will send the report to Sora. The budget remains 120 dollars.",
+    "quality": "Korean; Mina reviewed 3 files in past on Monday; no sending before Joon approval; conditional Friday approval then send to Sora; budget120 unchanged.",
+    "required": [
+      "3",
+      "120"
+    ],
+    "forbidden": []
+  },
+  {
+    "id": "ko-en",
+    "choice": "en",
+    "source": "민수는 월요일에 파일 3개를 검토했습니다. 지연이 승인하기 전에는 보고서를 보내면 안 됩니다. 금요일까지 승인이 오면 민수는 수진에게 보고서를 보낼 예정입니다. 예산은 120달러로 유지됩니다.",
+    "quality": "English; Minsu reviewed3 files Monday; prohibited before Jiyeon approval; Friday deadline conditional then Minsu sends to Sujin; budget120. No invented certainty or swapped recipient.",
+    "required": [
+      "3",
+      "120"
+    ],
+    "forbidden": [
+      "You must not send",
+      "budget will be maintained"
+    ]
+  },
+  {
+    "id": "en-natural",
+    "choice": "paraphrase",
+    "source": "Mina has completed the review of 3 files on Monday. It is necessary for her to wait for approval from Joon before she sends the report. If approval does not arrive by Friday, she must not send it to Sora. The budget is still 120 dollars.",
+    "quality": "English natural rewrite; same Mina3files Monday completed review, Joon approval before send, no Friday approval means no send to Sora, budget120.",
+    "required": [
+      "Mina",
+      "Joon",
+      "Sora",
+      "3",
+      "120"
+    ],
+    "forbidden": []
+  },
+  {
+    "id": "ko-natural",
+    "choice": "paraphrase",
+    "source": "민수는 파일 3개를 확인했어요. 지연이 승인하면 수진에게 답신을 보내 주세요. 승인이 없으면 보고서를 전송하지 마세요. 예산은 120달러입니다.",
+    "quality": "Korean natural rewrite; Minsu checked3files past casual polite statement; Jiyeon approval conditional reply to Sujin polite request; no approval means do not transmit report; budget120, preserve mixed original endings/honorifics.",
+    "required": [
+      "민수",
+      "지연",
+      "수진",
+      "3",
+      "120"
+    ],
+    "forbidden": []
+  }
+]

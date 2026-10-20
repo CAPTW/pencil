@@ -4646,3 +4646,60 @@ remain open. Q19 IN_PROGRESS, mission INCOMPLETE, Project Source stale.
 
 Final local validation: node syntax3 modules PASS, scheduling7/7 PASS, governance
 PASS, git diff --check PASS. Host Sandbox viewer/client process inventory0.
+
+## 2026-10-20 Q19 four-sentence translation/rewrite checkpoint — PARTIAL, NOT ALL PASS
+
+Entry14b93bf; production remains unchanged bf2260a package, ZIP
+7fc863f3d450032c8d070ead2a3617d0150ad3e292c201c5bc4302c8d8ee00f1.
+Actual managed Gemma4 12B QAT Q4_0 in installed Chromium, synthetic textarea and
+simple contenteditable. Four-sentence sources: English183/237 characters and
+Korean107/80 characters (see exact corpus). Paragraph target3s; Accept500ms.
+Review-click to layout-visible rAF, not physical display scan-out; warm times.
+No model/prompt/quality guard/deadline or production change.
+
+Final r2: English->Korean2 and English natural rewrite2 passed functional Accept
+and same-integrator semantic review. Korean->English2 passed functional Accept
+but FAILED fidelity review: explicit second-person You added to an implicit-subject
+prohibition in Minsu context; current budget 유지됩니다 rendered will be maintained.
+This is a conservative source-fidelity judgement, not a general translation score.
+All six functional rows: recommendation1026.4-1153.0ms, Accept55.2-62.1ms; all
+within3s/500ms, none establishes general1s or broader paragraph acceptance.
+Korean natural rewrite in textarea returned analysis_unavailable and stopped the
+managed model, reproduced across both trials. Subsequent contenteditable returned
+gemma_required after shutdown: NOT independent Korean quality evidence, no Accept.
+Exact internal refusal reason/raw rejected output remains unresolved; generic
+analysis_unavailable alone cannot prove a specific register/meaning guard caused it.
+Production error path stops the engine; this was confirmed cleanup, not success.
+
+Four stale checks PASS before the Korean refusal: in-flight paragraph translation
+plus two source edits, and source mutation on Accept mousedown, each in both fields.
+Old cache absent after edits; fresh explicit review reflects5 files/140 dollars
+instead of3/120 and exact applied text is reread. Final-gesture stale Accept retains
+the newer English source byte-for-byte. Cache and Accept do not infer. Updated
+latest-source translations preserve actors, recipients, negation and condition.
+
+R1 fixture mistake retained: selectOption generated untrusted change; product
+correctly kept paraphrase even though select DOM value changed. Replaced with
+Home/ArrowDown keyboard events, without weakening product trusted-input guard.
+R2 executes safety cases and other supported modes before the known refusal to
+separate independent results. All original cases retained. Additional case-specific
+forbidden-output checks now reject the two recorded KO->EN outputs offline;
+final strengthened corpus has NOT been rerun installed. New optional
+GRAMMAR_INSTALLED_PARAGRAPH=1 requires existing explicit installed Gemma mode.
+Harness results remain functional/quality-pending until separate semantic review.
+
+Both Sandboxes sequential, exact IDs stopped and inventory0. Final browser/host0,
+profile removed, installed extension unchanged; guest install/profile/process0.
+Launcher exit1 (model failed, cleanup confirmed), NOT natural successful exit0.
+Final staging157.667s, model readiness12.324s reported separately. User data and
+personal install untouched. No additional worker/Command windows left. No push,
+main, release or CI. Syntax2 modules, scheduling7/7, governance and diff checks PASS.
+Same-integrator review only; physical IME/other hardware/general editors NOT_RUN.
+
+Evidence: D:/dev/grammar-evidence/chromium-paragraph-20261020/FINAL_RECEIPT.json,
+actual-output-review.json, oracle-regression.json, original guest and guest-r2.
+Next priority within Q18/Q19: retain exact failed corpus; capture bounded refusal
+codes and synthetic rejected output, repair Korean paragraph availability without
+loosening semantic/register checks; preserve implicit actors and tense in translation,
+then repeat full installed corpus including stale races. Mission INCOMPLETE;
+Project Source stale; test completion is not paragraph feature acceptance.
