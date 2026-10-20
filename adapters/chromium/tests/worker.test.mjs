@@ -639,11 +639,30 @@ test('local supersession discards its reply without stopping the warm model or n
  const old=f.dispatch(req,f.sender());await tick();const port=f.ports.at(-1);
  await f.dispatch({op:'cancel-local',epoch:req.epoch,id:req.id,revision:req.revision},f.sender());
  assert.equal(port.closed,0);
+ assert.equal(port.posted.length,2);
+ assert.deepEqual(JSON.parse(JSON.stringify(port.posted[1])),{version:1,op:'supersede',id:req.id,epoch:req.epoch,revision:req.revision,text:''});
+ await f.dispatch({op:'cancel-local',epoch:req.epoch,id:req.id,revision:req.revision},f.sender());
+ assert.equal(port.posted.length,2,'duplicate cancellation is not replayed');
  port.onMessage.emit({...req,suggestions:[{replacement:'stale'}]});assert.equal((await old).error,'cancelled');
  const nextReq=f.request('next');const next=f.dispatch(nextReq,f.sender());await tick();const nextPort=f.ports.at(-1);
  await f.dispatch({op:'cancel-local',epoch:req.epoch,id:req.id,revision:req.revision},f.sender());
  assert.equal(nextPort.closed,0);
+ assert.equal(nextPort.posted.length,3,'late cancellation must not send another control frame');
  nextPort.onMessage.emit({...nextReq,suggestions:[]});assert.equal((await next).id,'next');
+});
+test('field permission removal hard-disconnects even after soft supersession',async()=>{
+ const f=fixture();await f.command('enable');const req=f.request('owned');
+ const pending=f.dispatch(req,f.sender());await tick();const port=f.ports.at(-1);
+ await f.dispatch({op:'cancel-local',epoch:req.epoch,id:req.id,revision:req.revision},f.sender());
+ await f.dispatch({op:'cancel-local',epoch:req.epoch,id:req.id,revision:req.revision,hard:true},f.sender());
+ assert.equal(port.closed,1);assert.equal((await pending).error,'cancelled');assert.equal(f.timers.size,0);
+});
+test('field stop revokes a draining operation without retaining its old request ID',async()=>{
+ const f=fixture();await f.command('enable');const req=f.request('owned');
+ const pending=f.dispatch(req,f.sender());await tick();const port=f.ports.at(-1);
+ await f.dispatch({op:'cancel-local',epoch:req.epoch,id:req.id,revision:req.revision},f.sender());
+ await f.dispatch({op:'stop-local',epoch:req.epoch},f.sender());
+ assert.equal(port.closed,1);assert.equal((await pending).error,'cancelled');assert.equal(f.timers.size,0);
 });
 test('cancel during local admission prevents a native inference from starting',async()=>{
  const f=fixture();await f.command('enable');const gate=f.delayStorage(),req=f.request('pending');

@@ -14,6 +14,7 @@ use tokio::{
 struct Request {
     binding: Binding,
     supersedable: bool,
+    superseded: Option<Arc<AtomicBool>>,
     cancel: Arc<AtomicBool>,
     deadline: Instant,
     reply: oneshot::Sender<Result<Recommendation, String>>,
@@ -46,17 +47,21 @@ impl Service {
                     _ = revoked(&closing) => break,
                     request = receiver.recv() => match request { Some(r) => r, None => break },
                 };
-                if request.reply.is_closed() || request.cancel.load(Ordering::SeqCst) {
+                if request.reply.is_closed() || request.cancel.load(Ordering::SeqCst)
+                    || request.superseded.as_ref().is_some_and(|flag| flag.load(Ordering::SeqCst)) {
+                    let _ = request.reply.send(Err("gemma_cancelled_before_admission".into()));
                     continue;
                 }
                 let cancellation = request.cancel.clone();
+                let controlled = request.superseded.is_some();
+                let soft = request.superseded.unwrap_or_else(|| cancellation.clone());
                 let result = {
                     let operation = async {
-                        if request.supersedable {
+                        if request.supersedable || controlled {
                             engine
                                 .recommend_supersedable(
                                     request.binding,
-                                    cancellation.clone(),
+                                    soft,
                                     request.deadline,
                                 )
                                 .await
@@ -75,12 +80,16 @@ impl Service {
                             cancellation.store(true, Ordering::SeqCst);
                             Err("gemma_service_closed".into())
                         },
+                        _ = revoked(&cancellation), if controlled => Err("gemma_cancelled".into()),
                         result = &mut operation => result,
                     }
                 };
-                let result = if closing.load(Ordering::SeqCst) {
+                let result = if closing.load(Ordering::SeqCst)
+                    || (controlled && cancellation.load(Ordering::SeqCst)) {
                     engine.stop().await?;
-                    Err("gemma_service_closed".into())
+                    Err(if closing.load(Ordering::SeqCst) {
+                        "gemma_service_closed"
+                    } else { "gemma_cancelled" }.into())
                 } else {
                     result
                 };
@@ -127,7 +136,7 @@ impl Client {
         binding: Binding,
         deadline: Instant,
     ) -> Result<Recommendation, String> {
-        self.request(binding, deadline, false).await
+        self.request(binding, deadline, false, None).await
     }
     /// Only use for source supersession while permission remains granted.
     /// Disable/revocation must retain the hard-cancellation/close path.
@@ -136,13 +145,25 @@ impl Client {
         binding: Binding,
         deadline: Instant,
     ) -> Result<Recommendation, String> {
-        self.request(binding, deadline, true).await
+        self.request(binding, deadline, true, None).await
+    }
+    /// Soft supersession retains the waiter until idle is confirmed. Dropping
+    /// this future (EOF/revocation/deadline) still requests physical hard cleanup,
+    /// including when soft cancellation is already draining.
+    pub async fn recommend_controlled(
+        &self,
+        binding: Binding,
+        deadline: Instant,
+        superseded: Arc<AtomicBool>,
+    ) -> Result<Recommendation, String> {
+        self.request(binding, deadline, false, Some(superseded)).await
     }
     async fn request(
         &self,
         binding: Binding,
         deadline: Instant,
         supersedable: bool,
+        superseded: Option<Arc<AtomicBool>>,
     ) -> Result<Recommendation, String> {
         if Instant::now() >= deadline {
             return Err("gemma_deadline".into());
@@ -154,6 +175,7 @@ impl Client {
             .try_send(Request {
                 binding,
                 supersedable,
+                superseded,
                 cancel: cancellation,
                 deadline,
                 reply,
@@ -175,6 +197,23 @@ impl Client {
             result
         }
     }
+}
+
+#[cfg(test)]
+pub(super) fn controlled_test_client() -> (
+    Client,
+    oneshot::Receiver<(Arc<AtomicBool>, Arc<AtomicBool>)>,
+    oneshot::Sender<Result<Recommendation, String>>,
+) {
+    let (queue, mut receiver) = mpsc::channel::<Request>(1);
+    let (observe, observed) = oneshot::channel();
+    let (complete, completed) = oneshot::channel();
+    tokio::spawn(async move {
+        let request = receiver.recv().await.unwrap();
+        let _ = observe.send((request.superseded.unwrap(), request.cancel));
+        if let Ok(result) = completed.await { let _ = request.reply.send(result); }
+    });
+    (Client { queue }, observed, complete)
 }
 
 #[cfg(test)]
@@ -206,6 +245,25 @@ pub(super) fn closable_test_client() -> (Client, oneshot::Sender<()>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn controlled_deadline_remains_hard_after_soft_supersession() {
+        let (client, observed, complete) = controlled_test_client();
+        let soft = Arc::new(AtomicBool::new(false));
+        let signal = soft.clone();
+        let waiter = tokio::spawn(async move {
+            client.recommend_controlled(Binding {
+                intent: crate::local_gemma::Intent::Grammar, epoch: "owned".into(),
+                revision: 1, source: "synthetic".into(),
+            }, Instant::now() + std::time::Duration::from_millis(100), signal).await
+        });
+        let (owner_soft, owner_hard) = observed.await.unwrap();
+        soft.store(true, Ordering::SeqCst);
+        assert!(owner_soft.load(Ordering::SeqCst));
+        assert!(!owner_hard.load(Ordering::SeqCst));
+        assert_eq!(waiter.await.unwrap().unwrap_err(), "gemma_deadline");
+        assert!(owner_hard.load(Ordering::SeqCst));
+        drop(complete);
+    }
     #[tokio::test]
     async fn bounded_queue_and_dropped_waiter_revoke_request() {
         let (queue, mut receiver) = mpsc::channel(1);

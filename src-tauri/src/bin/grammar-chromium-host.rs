@@ -16,7 +16,7 @@ use std::{
     future::Future,
     io::{self, Read, Write},
     pin::Pin,
-    sync::{mpsc, Arc},
+    sync::{mpsc, Arc, atomic::{AtomicBool, Ordering as AtomicOrdering}},
     time::Duration,
 };
 use tokio::sync::{mpsc as channel, oneshot};
@@ -242,14 +242,14 @@ fn analyze(body: &[u8]) -> Result<Response, &'static str> {
 fn gemma_failure(deadline: tokio::time::Instant) -> &'static str {
     if tokio::time::Instant::now() >= deadline { "analysis_deadline" } else { "analysis_unavailable" }
 }
-async fn analyze_gemma(body: &[u8], ticket: &codex_pencil::local_gemma::pipe::Ticket, deadline: tokio::time::Instant) -> Result<Response, &'static str> {
+async fn analyze_gemma(body: &[u8], ticket: &codex_pencil::local_gemma::pipe::Ticket, deadline: tokio::time::Instant, superseded: Arc<AtomicBool>) -> Result<Response, &'static str> {
     let request = parse_request(body)?;
     if request.op != "analyze" || request.provider.is_some() || request.consent.is_some()
         || request.cleanup_token.is_some() || request.cleanup_ticket.is_some() {
         return Err("invalid_request");
     }
     let binding = codex_pencil::local_gemma::Binding {intent: request.intent.clone().unwrap_or(codex_pencil::local_gemma::Intent::Grammar),epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
-    let result = codex_pencil::local_gemma::pipe::recommend(ticket,binding.clone(),deadline).await.map_err(|_| gemma_failure(deadline))?;
+    let result = codex_pencil::local_gemma::pipe::recommend_controlled(ticket,binding.clone(),deadline,superseded).await.map_err(|_| gemma_failure(deadline))?;
     gemma_response(request,result)
 }
 fn gemma_response(request:Request,result:codex_pencil::local_gemma::Recommendation)->Result<Response,&'static str>{
@@ -262,12 +262,12 @@ fn gemma_response(request:Request,result:codex_pencil::local_gemma::Recommendati
     Ok(response)
 }
 
-async fn analyze_gemma_broker(body:&[u8],broker:&codex_pencil::local_gemma::broker::Connection,deadline:tokio::time::Instant)->Result<Response,&'static str>{
+async fn analyze_gemma_broker(body:&[u8],broker:&codex_pencil::local_gemma::broker::Connection,deadline:tokio::time::Instant,superseded:Arc<AtomicBool>)->Result<Response,&'static str>{
     let request=parse_request(body)?;
     if request.op!="analyze" || request.provider.is_some() || request.consent.is_some() || request.cleanup_token.is_some() || request.cleanup_ticket.is_some(){return Err("invalid_request");}
     let binding=codex_pencil::local_gemma::Binding{intent:request.intent.clone().unwrap_or(codex_pencil::local_gemma::Intent::Grammar),epoch:request.epoch.clone(),revision:request.revision,source:request.text.clone()};
     let grant=broker.acquire(&request.epoch,deadline).await.map_err(|_|gemma_failure(deadline))?;
-    let result=grant.recommend(binding,deadline).await.map_err(|_|gemma_failure(deadline))?;
+    let result=grant.recommend_controlled(binding,deadline,superseded).await.map_err(|_|gemma_failure(deadline))?;
     gemma_response(request,result)
 }
 
@@ -286,16 +286,16 @@ trait DeepService {
     fn local_unavailable(&self) -> bool { false }
     fn local_broker(&self)->Option<codex_pencil::local_gemma::broker::Connection>{None}
     fn local_ticket(&self) -> Option<codex_pencil::local_gemma::pipe::Ticket> { None }
-    fn local(&self, body: Vec<u8>) -> LocalFuture {
+    fn local(&self, body: Vec<u8>, superseded: Arc<AtomicBool>) -> LocalFuture {
         let ticket = self.local_ticket();
         let broker = self.local_broker();
         let unavailable = self.local_unavailable();
         Box::pin(async move {
             if unavailable { return Err("gemma_configuration_unavailable"); }
             let deadline=tokio::time::Instant::now()+local_request_budget(&body)?;
-            if let Some(broker)=broker {return analyze_gemma_broker(&body,&broker,deadline).await;}
+            if let Some(broker)=broker {return analyze_gemma_broker(&body,&broker,deadline,superseded).await;}
             match ticket {
-                Some(ticket) => analyze_gemma(&body, &ticket, deadline).await,
+                Some(ticket) => analyze_gemma(&body, &ticket, deadline, superseded).await,
                 None => analyze(&body),
             }
         })
@@ -504,6 +504,10 @@ async fn run_actor<S: DeepService>(
             }
             continue;
         }
+        if request.op == "supersede" {
+            // A completed local request has no owner left to cancel.
+            continue;
+        }
         if request.op == "cancel" {
             if request.text.is_empty()
                 && request.provider.is_none()
@@ -566,18 +570,43 @@ async fn run_actor<S: DeepService>(
                 });
             }
             "analyze" => {
-                let response = tokio::select! {
-                    biased;
-                    // Local ports admit one request at a time. EOF or an extra
-                    // message invalidates this operation; dropping pipe transport
-                    // notifies the separate owner, which retains physical cleanup.
-                    _ = input.recv() => break Err(()),
-                    response = service.local(body) => match response {
-                        Ok(response) => response,
-                        Err(error) if request.intent.is_some() => response_for(&request,Some(error)),
-                        Err(_) => break Err(()),
-                    },
+                let budget = match local_request_budget(&body) { Ok(b)=>b, Err(_)=>break Err(()) };
+                let expiry = tokio::time::sleep(budget);
+                tokio::pin!(expiry);
+                let superseded = Arc::new(AtomicBool::new(false));
+                let operation = service.local(body, superseded.clone());
+                tokio::pin!(operation);
+                let response = loop {
+                    tokio::select! {
+                        biased;
+                        _ = &mut expiry => break Some(response_for(&request, Some("analysis_deadline"))),
+                        incoming = input.recv() => {
+                            let cancel = match incoming {
+                                Some(Ok(body)) => match parse_request(&body) { Ok(r)=>r, Err(_)=>break None },
+                                _ => break None,
+                            };
+                            if cancel.op != "supersede" || !cancel.text.is_empty()
+                                || cancel.provider.is_some() || cancel.consent.is_some()
+                                || cancel.cleanup_ticket.is_some() || cancel.cleanup_token.is_some() {
+                                break None;
+                            }
+                            if cancel.id == request.id && cancel.epoch == request.epoch
+                                && cancel.revision == request.revision {
+                                superseded.store(true, AtomicOrdering::SeqCst);
+                            }
+                        },
+                        response = &mut operation => {
+                            break Some(if superseded.load(AtomicOrdering::SeqCst) {
+                                response_for(&request, Some("cancelled"))
+                            } else { match response {
+                                Ok(response) => response,
+                                Err(error) if request.intent.is_some() => response_for(&request,Some(error)),
+                                Err(_) => break None,
+                            }});
+                        },
+                    }
                 };
+                let Some(response) = response else { break Err(()); };
                 if output.send(&response).await.is_err() {
                     break Err(());
                 }
@@ -770,12 +799,79 @@ mod tests {
         cleanup.unwrap();
     }
     #[tokio::test]
+    async fn local_supersession_is_exact_and_waits_for_service_completion() {
+        struct ControlledLocal(Arc<AtomicUsize>, Arc<AtomicBool>);
+        impl DeepService for ControlledLocal {
+            fn local(&self, _:Vec<u8>, superseded:Arc<AtomicBool>)->LocalFuture {
+                let started=self.0.clone();let release=self.1.clone();
+                Box::pin(async move {
+                    started.fetch_add(1,Ordering::SeqCst);
+                    while !superseded.load(Ordering::SeqCst) { tokio::task::yield_now().await; }
+                    started.fetch_add(1,Ordering::SeqCst);
+                    while !release.load(Ordering::SeqCst) { tokio::task::yield_now().await; }
+                    Err("analysis_unavailable")
+                })
+            }
+            fn start(&self,_:Request,_:DeepCancellation)->DeepFuture { panic!("no Deep") }
+            fn shutdown(&self)->CleanupFuture { Box::pin(async {true}) }
+        }
+        let started=Arc::new(AtomicUsize::new(0));let release=Arc::new(AtomicBool::new(false));
+        let service=ControlledLocal(started.clone(),release.clone());
+        let (tx,rx)=channel::channel(2);let (output,replies)=actor_output(Duration::from_secs(1));
+        let actor=tokio::spawn(async move { run_actor(rx,&output,&service).await });
+        let body=request("synthetic");
+        let original:serde_json::Value=serde_json::from_slice(&body).unwrap();
+        tx.send(Ok(body)).await.unwrap();observed(&started).await;
+        let mut cancel=original.clone();cancel["op"]="supersede".into();cancel["text"]="".into();
+        for key in ["id","epoch","revision"] {
+            let mut stale=cancel.clone();stale[key]=if key=="revision" {99.into()} else {"different".into()};
+            tx.send(Ok(serde_json::to_vec(&stale).unwrap())).await.unwrap();
+        }
+        tokio::task::yield_now().await;
+        assert_eq!(started.load(Ordering::SeqCst),1);
+        tx.send(Ok(serde_json::to_vec(&cancel).unwrap())).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(1),async {
+            while started.load(Ordering::SeqCst)!=2 {tokio::task::yield_now().await;}
+        }).await.unwrap();
+        assert!(replies.try_recv().is_err());
+        release.store(true,Ordering::SeqCst);
+        let reply=receipt(&replies).await;
+        assert_eq!(reply["error"],"cancelled");
+        for key in ["id","epoch","revision"] {assert_eq!(reply[key],original[key]);}
+        tx.send(Ok(serde_json::to_vec(&cancel).unwrap())).await.unwrap();
+        drop(tx);assert!(actor.await.unwrap().is_ok());assert!(replies.try_recv().is_err());
+    }
+    #[tokio::test]
+    async fn repeated_control_frames_cannot_extend_local_deadline() {
+        struct Pending;
+        impl DeepService for Pending {
+            fn local(&self,_:Vec<u8>,_:Arc<AtomicBool>)->LocalFuture {
+                Box::pin(std::future::pending())
+            }
+            fn start(&self,_:Request,_:DeepCancellation)->DeepFuture {panic!("no Deep")}
+            fn shutdown(&self)->CleanupFuture {Box::pin(async {true})}
+        }
+        let (tx,rx)=channel::channel(2);let (output,replies)=actor_output(Duration::from_secs(1));
+        let actor=tokio::spawn(async move {run_actor(rx,&output,&Pending).await});
+        tx.send(Ok(request("synthetic"))).await.unwrap();
+        let mut cancel:serde_json::Value=serde_json::from_slice(&request("")).unwrap();
+        cancel["op"]="supersede".into();
+        let body=serde_json::to_vec(&cancel).unwrap();
+        let sender=tokio::spawn(async move {
+            while tx.send(Ok(body.clone())).await.is_ok() {tokio::task::yield_now().await;}
+        });
+        let reply=tokio::time::timeout(Duration::from_secs(3),receipt(&replies)).await.unwrap();
+        assert_eq!(reply["error"],"analysis_deadline");
+        sender.abort();let _=sender.await;
+        assert!(actor.await.unwrap().is_ok());
+    }
+    #[tokio::test]
     async fn local_eof_drops_pending_transport_before_shutdown() {
         struct PendingLocal(Arc<AtomicUsize>, Arc<AtomicUsize>);
         struct Guard(Arc<AtomicUsize>);
         impl Drop for Guard {fn drop(&mut self){self.0.fetch_add(1,Ordering::SeqCst);}}
         impl DeepService for PendingLocal {
-            fn local(&self,_:Vec<u8>)->LocalFuture {
+            fn local(&self,_:Vec<u8>,_:Arc<AtomicBool>)->LocalFuture {
                 let started=self.0.clone();let ended=self.1.clone();
                 Box::pin(async move {let _guard=Guard(ended);started.fetch_add(1,Ordering::SeqCst);std::future::pending().await})
             }
@@ -800,7 +896,7 @@ mod tests {
     async fn explicit_local_deadline_keeps_binding_without_replay() {
         struct FailedLocal(Arc<AtomicUsize>);
         impl DeepService for FailedLocal {
-            fn local(&self, _: Vec<u8>) -> LocalFuture {
+            fn local(&self, _: Vec<u8>, _:Arc<AtomicBool>) -> LocalFuture {
                 self.0.fetch_add(1, Ordering::SeqCst);
                 Box::pin(async { Err("analysis_deadline") })
             }
@@ -845,7 +941,7 @@ mod tests {
     async fn gemma_rejects_deep_fields_before_opening_pipe() {
         let ticket=codex_pencil::local_gemma::pipe::Ticket{name:"never-opened".into(),owner_pid:0};
         let mut body:serde_json::Value=serde_json::from_slice(&request("synthetic")).unwrap();body["consent"]=serde_json::json!(true);
-        let result=analyze_gemma(&serde_json::to_vec(&body).unwrap(),&ticket,tokio::time::Instant::now()+Duration::from_secs(1)).await;
+        let result=analyze_gemma(&serde_json::to_vec(&body).unwrap(),&ticket,tokio::time::Instant::now()+Duration::from_secs(1),Arc::new(AtomicBool::new(false))).await;
         assert_eq!(result.err(),Some("invalid_request"));
     }
     fn request(text: &str) -> Vec<u8> {

@@ -42,6 +42,8 @@ struct Request {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Reply {
+    #[serde(default)]
+    superseded: bool,
     intent: super::Intent,
     epoch: String,
     revision: u64,
@@ -127,22 +129,49 @@ impl Endpoint {
             if binding.epoch != permit.epoch || !super::valid(&binding) {
                 return Err("gemma_pipe_scope".into());
             }
-            let result = tokio::select! {
-                result=client.recommend(binding.clone(), deadline)=>result?,
-                _=self.pipe.read_u8()=>return Err("gemma_pipe_disconnected".into()),
+            let superseded = Arc::new(AtomicBool::new(false));
+            let result = {
+                let operation = client.recommend_controlled(binding.clone(), deadline, superseded.clone());
+                tokio::pin!(operation);
+                loop {
+                    tokio::select! {
+                        biased;
+                        signal=self.pipe.read_u8()=> {
+                            if !matches!(signal, Ok(2)) || superseded.swap(true, Ordering::SeqCst) {
+                                return Err("gemma_pipe_disconnected".into());
+                            }
+                        },
+                        result=&mut operation=>break result,
+                    }
+                }
             };
-            if !result.matches(&binding) || !permit.active.load(Ordering::SeqCst) {
+            let discarded = superseded.load(Ordering::SeqCst);
+            let replacement = match result {
+                Ok(result) if result.matches(&binding) => result.replacement,
+                Err(error) if discarded && matches!(error.as_str(),
+                    "gemma_superseded_idle_confirmed" | "gemma_superseded_after_completion"
+                    | "gemma_cancelled_before_admission") => String::new(),
+                Err(error) => return Err(error),
+                _ => return Err("gemma_pipe_binding".into()),
+            };
+            if !permit.active.load(Ordering::SeqCst) {
                 return Err("gemma_pipe_revoked".into());
             }
             let reply = serde_json::to_vec(&Reply {
+                superseded: discarded,
                 intent: binding.intent,
                 epoch: binding.epoch,
                 revision: binding.revision,
-                replacement: result.replacement,
+                replacement: if discarded { String::new() } else { replacement },
             })
             .map_err(|_| "gemma_pipe_reply")?;
             write_frame(&mut self.pipe, &reply).await?;
-            if self.pipe.read_u8().await.map_err(|_| "gemma_pipe_ack")? != 1 {
+            let mut ack = self.pipe.read_u8().await.map_err(|_| "gemma_pipe_ack")?;
+            // Supersession may cross an already completed reply on the wire.
+            if ack == 2 && !discarded {
+                ack = self.pipe.read_u8().await.map_err(|_| "gemma_pipe_ack")?;
+            }
+            if ack != 1 {
                 return Err("gemma_pipe_ack".into());
             }
             Ok(())
@@ -158,6 +187,14 @@ pub async fn recommend(
     ticket: &Ticket,
     binding: Binding,
     deadline: Instant,
+) -> Result<Recommendation, String> {
+    recommend_controlled(ticket, binding, deadline, Arc::new(AtomicBool::new(false))).await
+}
+pub async fn recommend_controlled(
+    ticket: &Ticket,
+    binding: Binding,
+    deadline: Instant,
+    superseded: Arc<AtomicBool>,
 ) -> Result<Recommendation, String> {
     if !super::valid(&binding) {
         return Err("gemma_pipe_scope".into());
@@ -181,13 +218,29 @@ pub async fn recommend(
         })
         .map_err(|_| "gemma_pipe_request")?;
         write_frame(&mut pipe, &data).await?;
-        let reply: Reply = serde_json::from_slice(&read_frame(&mut pipe).await?)
+        let bytes = {
+            let (mut reader, mut writer) = tokio::io::split(&mut pipe);
+            let response = read_frame(&mut reader);
+            tokio::pin!(response);
+            tokio::select! {
+                biased;
+                _=async { while !superseded.load(Ordering::SeqCst) {
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }} => {
+                    writer.write_u8(2).await.map_err(|_| "gemma_pipe_write")?;
+                    response.await?
+                },
+                bytes=&mut response=>bytes?,
+            }
+        };
+        let reply: Reply = serde_json::from_slice(&bytes)
             .map_err(|_| "gemma_pipe_reply")?;
         if reply.epoch != binding.epoch
             || reply.intent != binding.intent
             || reply.revision != binding.revision
             || reply.replacement.len() > 8192
-            || reply.replacement.trim().is_empty()
+            || (!reply.superseded && reply.replacement.trim().is_empty())
+            || (reply.superseded && (!superseded.load(Ordering::SeqCst) || !reply.replacement.is_empty()))
             || reply.replacement.contains('\0')
         {
             return Err("gemma_pipe_reply_binding".into());
@@ -196,6 +249,9 @@ pub async fn recommend(
             return Err("gemma_pipe_deadline".into());
         }
         pipe.write_u8(1).await.map_err(|_| "gemma_pipe_ack")?;
+        if reply.superseded || superseded.load(Ordering::SeqCst) {
+            return Err("gemma_superseded".into());
+        }
         Ok(Recommendation {
             binding,
             replacement: reply.replacement,
@@ -207,6 +263,50 @@ pub async fn recommend(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn actual_pipe_soft_supersession_waits_for_owner_and_eof_stays_hard() {
+        for mode in ["complete", "disconnect", "revoke"] {
+            let endpoint = Endpoint::create().unwrap();
+            let ticket = endpoint.ticket();
+            let (client, observed, complete) = super::super::service::controlled_test_client();
+            let deadline = Instant::now() + std::time::Duration::from_secs(3);
+            let active = Arc::new(AtomicBool::new(true));
+            let server = tokio::spawn(endpoint.serve(Permit {
+                client_pid: std::process::id(), epoch: "owned".into(),
+                active: active.clone(),
+            }, client, deadline));
+            let soft = Arc::new(AtomicBool::new(false));
+            let signal = soft.clone();
+            let waiter = tokio::spawn(async move {
+                recommend_controlled(&ticket, Binding {
+                    intent: super::super::Intent::Grammar, epoch: "owned".into(),
+                    revision: 1, source: "synthetic".into(),
+                }, deadline, signal).await
+            });
+            let (owner_soft, owner_hard) = observed.await.unwrap();
+            soft.store(true, Ordering::SeqCst);
+            timeout_at(deadline, async {
+                while !owner_soft.load(Ordering::SeqCst) { tokio::task::yield_now().await; }
+            }).await.unwrap();
+            assert!(!owner_hard.load(Ordering::SeqCst));
+            assert!(!waiter.is_finished(), "signal is not idle acknowledgement");
+            if mode != "complete" {
+                if mode == "disconnect" {
+                    waiter.abort(); let _ = waiter.await;
+                } else {
+                    active.store(false, Ordering::SeqCst);
+                    assert!(waiter.await.unwrap().is_err());
+                }
+                assert!(server.await.unwrap().is_err());
+                assert!(owner_hard.load(Ordering::SeqCst), "EOF must override soft draining");
+                drop(complete);
+            } else {
+                complete.send(Err("gemma_superseded_idle_confirmed".into())).unwrap();
+                assert_eq!(waiter.await.unwrap().unwrap_err(), "gemma_superseded");
+                server.await.unwrap().unwrap();
+            }
+        }
+    }
     #[test]
     fn wire_intent_is_required_and_strict() {
         for intent in [serde_json::json!({"mode":"translate"}),
@@ -226,7 +326,7 @@ mod tests {
             endpoint.pipe.connect().await.unwrap();
             let request: Request = serde_json::from_slice(&read_frame(&mut endpoint.pipe).await.unwrap()).unwrap();
             assert_eq!(request.intent, super::super::Intent::Translate { target: super::super::Language::English });
-            let reply = Reply { epoch: request.epoch, revision: request.revision,
+            let reply = Reply { superseded: false, epoch: request.epoch, revision: request.revision,
                 intent: super::super::Intent::Translate { target: super::super::Language::Korean }, replacement: "wrong language".into() };
             write_frame(&mut endpoint.pipe, &serde_json::to_vec(&reply).unwrap()).await.unwrap();
         });
