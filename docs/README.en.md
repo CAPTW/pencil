@@ -58,7 +58,7 @@ The core rule is simple: **AI suggests; you decide what changes.**
 | Route | How to connect | Best for |
 | --- | --- | --- |
 | 🖥️ **Local Gemma** (default) | Run the one-time prepare script | Fast Instant suggestions, offline processing |
-| 🔑 **Account sign-in** | Official sign-in for ChatGPT (Codex) · Claude (Claude Code) · Google (Antigravity) | Deep rewrites using your existing subscription |
+| 🔑 **Provider CLI** | Codex · Claude · Antigravity configuration, subject to authentication/privacy restrictions | Explicit Deep within the selected tool’s supported scope |
 | 🧩 **API key** | OpenAI-compatible endpoint · model · key | Any cloud or self-hosted model |
 
 - Each request goes to exactly one Provider you chose; failures never silently retry on another Provider.

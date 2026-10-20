@@ -2,7 +2,7 @@
 
 For installation, start with the [Korean guide](GETTING_STARTED.ko.md) or
 [English overview](README.en.md). [Prototype 2 is published](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.2).
-The exact package source and checks are recorded in MANIFEST.json and the release VALIDATION.json; main may contain later documentation.
+The exact package source and checks are recorded in MANIFEST.json and the release VALIDATION.json; main may contain later source changes; an existing release ZIP is not updated by a source merge.
 This is not a production release or a claim of Grammarly-equivalent language quality.
 
 ## What works within the tested scope
@@ -121,3 +121,26 @@ Physical tray-click shutdown and arbitrary debugger disconnect are not qualified
 
 Historical prototype.1 and 792032b failures above remain valid historical evidence.
 This repair does not add general editor support or live cloud-provider acceptance.
+
+## Current source checkpoint — 2026-10-18 (not a new release ZIP)
+
+- User-facing application, tray, extension and Writer display names are Pencil.
+  Legacy executable names, installation paths, settings and Native Host identifiers
+  stay compatible. The Grammar analysis mode means grammar correction.
+- The packaged rHWP integration has bounded actual Gemma evidence for synthetic
+  HWP/HWPX translation and rewriting, explicit Accept, full text/format reread,
+  Undo, save and reopen. This does not qualify the Hancom desktop applications.
+- Proven ordered emphasis mappings can skip the second model inference. Unknown
+  mappings retain the existing model path and strict decoder. No weaker model,
+  shorter output, persistent document cache or relaxed Apply check was introduced.
+- The first same-package trial passed 54 cases / 177 checks. In the 36 paired Korean
+  cases the output was identical to the prior checkpoint and recommendation median
+  fell from 2.421s to 1.430s. Three requests took 3.50–5.20s: p95 was worse, not a
+  performance PASS. All 54 Accepts were 41–186ms. These are shared-load synthetic
+  observations, not a controlled hardware A/B or a general 1s claim.
+- User data removal now requires explicit, marked trial-contained paths. Normal
+  uninstall preserves shared AppData; prior deletion/recovery limitations remain
+  recorded in HANDOFF, not silently resolved by this repair.
+
+The source-bound local package is built from dccc246. Latest evidence and repeat
+measurements are in the current HANDOFF; existing Prototype 2 release remains unchanged.

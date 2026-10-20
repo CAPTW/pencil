@@ -58,7 +58,7 @@ Pencil의 기본 원칙은 간단합니다. **AI는 제안하고, 변경은 사�
 | 경로 | 연결 방식 | 쓰임 |
 | --- | --- | --- |
 | 🖥️ **Local Gemma** (기본) | 최초 1회 준비 스크립트 실행 | 빠른 Instant 제안, 오프라인 처리 |
-| 🔑 **Account sign-in** | ChatGPT(Codex) · Claude(Claude Code) · Google(Antigravity) 공식 로그인 | 계정 구독을 활용한 Deep 재작성 |
+| 🔑 **Provider CLI** | Codex · Claude · Antigravity 설정; 인증·개인정보 제한 확인 필요 | 선택한 도구가 지원하는 범위에서 명시적 Deep |
 | 🧩 **API key** | OpenAI 호환 endpoint · model · key 입력 | 원하는 클라우드/사내 모델 연결 |
 
 - 한 요청은 사용자가 고른 Provider 하나에만 보내며, 실패해도 다른 Provider로 몰래 재시도하지 않습니다.
