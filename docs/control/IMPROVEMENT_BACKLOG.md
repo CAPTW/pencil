@@ -300,3 +300,18 @@ and translation actor/tense fidelity, repeat identical installed corpus. Newly
 strengthened output oracle is offline-verified, not re-run installed. Both sequential
 Sandboxes and owned install/profile/processes cleaned0; launcher failure retained.
 See HANDOFF and chromium-paragraph-20261020/FINAL_RECEIPT.json. Q18/Q19 IN_PROGRESS.
+
+
+## Q18/Q19 paragraph repair — 2026-10-20
+Closed Korean absence/object-reply equivalences repaired; completed-response
+semantic refusal retains warm runtime only after original-deadline idle proof.
+Actual raw KO->EN and Korean/English rewrite3 cases pass bounded semantic review;
+EN->KO1 fails explicit actor preservation after broad passive guidance. Final code
+restores baseline Korean translation instruction and scopes new guidance to English;
+final real-model/package rerun pending. Intermediate82c007e ZIP DO_NOT_ADOPT.
+Foreground denial and our external fixture path bug prevented installed paragraph
+Accept/stale runs; corrected fixture and initial key-injection refusal are recorded.
+All sequential Sandboxes/processes cleaned0. No user data or personal install change.
+Q18/Q19 remain IN_PROGRESS. Next: fresh final source build, actual semantic review,
+8 installed paragraph cases and4 stale races with an active owned browser desktop.
+See paragraph-repair-20261020/FINAL_RECEIPT.json; historical FAILs remain FAIL.
