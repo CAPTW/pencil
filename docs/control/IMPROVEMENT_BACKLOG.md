@@ -1,6 +1,11 @@
 # Pencil — Product quality and release readiness
 
 Track: `PRODUCT_QUALITY_AND_RELEASE_READINESS` · Owner request: 2026-10-15.
+Q19 actual release-browser fixture:6 latest-source quantity/negation/past-date
+cases across textarea/contenteditable passed, recommendation805-827ms and
+Accept33-37ms. Cache lookup/Accept caused no inference; natural cleanup0.
+Small modified-extension fixture only; installed activeTab/IME/long-window tails
+remain pending. Debug timing FAIL and build-supervisor failures remain recorded.
 Q19 checkpoint 2026-10-20: backend warm supersession verified with actual Gemma
 three times, same PID and next request300ms; idle confirmation2.80-2.89s from
 request start remains above target. Chromium/native/pipe supersession is now wired

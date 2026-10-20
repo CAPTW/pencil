@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {createServer} from 'node:http';
 import {mkdtemp,cp,readFile,writeFile,rm} from 'node:fs/promises';
-import {writeFileSync} from 'node:fs';
+import {writeFileSync,existsSync} from 'node:fs';
 import {join,resolve,sep} from 'node:path';
 import {createHash,generateKeyPairSync} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
@@ -12,8 +12,12 @@ import {runCorpus} from './gemma-corpus-browser.mjs';
 import {runRewriteUI} from './gemma-rewrite-browser.mjs';
 const require=createRequire(import.meta.url);
 const {chromium}=require('C:/Users/USER/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
-const evidence='D:/dev/grammar-evidence/grammar-gemma-20261007';
-const binaryRoot=resolve(process.env.GRAMMAR_GEMMA_BIN_DIR || 'src-tauri/target/debug');
+const evidence=resolve(process.env.GRAMMAR_TRIAL_ROOT || '');
+assert.ok(process.env.GRAMMAR_TRIAL_ROOT && process.env.GRAMMAR_HOST_TRIAL,'owned_trial supervisor required');
+const owner=JSON.parse(await readFile(join(evidence,'.pencil-trial-owner.json'),'utf8'));
+assert.equal(owner.schema,'pencil-owned-trial/v1');assert.equal(resolve(owner.root),evidence);
+// Performance qualification uses release code; debug must be explicitly selected.
+const binaryRoot=resolve(process.env.GRAMMAR_GEMMA_BIN_DIR || 'src-tauri/target/release');
 const modelId=process.env.GRAMMAR_GEMMA_TRIAL_MODEL||'12b';
 const models={
  '12b':{file:'gemma-4-12b-it-qat-q4_0.gguf',sha256:'93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b'},
@@ -21,9 +25,9 @@ const models={
 };
 assert.ok(Object.hasOwn(models,modelId),'unknown owned trial model');
 const model=models[modelId];
-const storage=process.env.GRAMMAR_GEMMA_MODEL_STORAGE||'evidence';
-assert.ok(['evidence','ssd'].includes(storage),'unknown owned model storage');
-const modelRoot=storage==='ssd'?'C:/Users/USER/.codex/grammar-owned-models/20261008-io-trial':evidence;
+const storage=process.env.GRAMMAR_GEMMA_MODEL_STORAGE||'assets';
+assert.ok(['evidence','ssd','assets'].includes(storage),'unknown owned model storage');
+const modelRoot=storage==='assets'?'D:/PencilAssets/local':storage==='ssd'?'C:/Users/USER/.codex/grammar-owned-models/20261008-io-trial':evidence;
 const run=await mkdtemp(join(evidence,'live-browser-'));
 const hostDir=join(run,'host'),extension=join(run,'extension'),profile=join(run,'profile');
 const hash=async path=>createHash('sha256').update(await readFile(path)).digest('hex');
@@ -56,7 +60,7 @@ try {
  await cp(join(binaryRoot,'grammar-gemma-broker.exe'),brokerPath);
  report.brokerSha256=await hash(brokerPath);report.hostSha256=await hash(hostPath);
  const start=performance.now();
- broker=spawn(brokerPath,[join(evidence,'runtime/llama-server.exe'),'a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1',join(modelRoot,model.file),model.sha256,hostPath,report.hostSha256,'785601b8f32ba6ab10374f8e9ead5d8deadd56e70940883ef65608dbfbb80860'],{windowsHide:true,env:{...process.env,GRAMMAR_GEMMA_TIMING:'1'},stdio:['pipe','pipe','pipe']});
+ broker=spawn(brokerPath,['D:/PencilAssets/local/runtime/llama-server.exe','a812655fed77b9f98d918e7aa0b1552403b76dacbeb9fa24c17dac9ed3d08ec1',join(modelRoot,model.file),model.sha256,hostPath,report.hostSha256,'d6ef94c506863a4621a7e8b1c5f37ac255756b28686a3325bbd52785620172ad'],{windowsHide:true,env:{...process.env,GRAMMAR_GEMMA_TIMING:'1'},stdio:['pipe','pipe','pipe']});
  broker.stdin.on('error',error=>{report.controlError=error.code;});
  brokerExit=new Promise(r=>broker.once('exit',(code,signal)=>r({code,signal})));
  let readyResolve,readyReject;const readyPromise=new Promise((r,j)=>{readyResolve=r;readyReject=j;});
@@ -79,7 +83,7 @@ try {
  context.setDefaultTimeout(12000);
  const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');
  await worker.evaluate(()=>{
-  globalThis.gemmaMetrics={requests:0,responses:0,arrivals:new Map(),storage:[]};
+  globalThis.gemmaMetrics={requests:0,responses:0,supersessions:0,cancelled:0,arrivals:new Map(),storage:[]};
   chrome.runtime.onMessage.addListener(m=>{if(m.op==='analyze'){
    gemmaMetrics.requests++;gemmaMetrics.lastIntent=m.intent??null;gemmaMetrics.arrivals.set(m.id,{contentSent:m.testContentSent,workerReceived:Date.now()});
   }});
@@ -93,9 +97,9 @@ try {
   const original=chrome.runtime.connectNative.bind(chrome.runtime);
   chrome.runtime.connectNative=(...args)=>{
    const port=original(...args),sent=new Map(),post=port.postMessage.bind(port);
-   port.postMessage=m=>{if(m.op==='analyze')sent.set(m.id,Date.now());return post(m);};
+   port.postMessage=m=>{if(m.op==='supersede')gemmaMetrics.supersessions++;if(m.op==='analyze')sent.set(m.id,Date.now());return post(m);};
    port.onMessage.addListener(m=>{if(Array.isArray(m.suggestions)){
-    gemmaMetrics.responses++;
+    gemmaMetrics.responses++;if(m.error==='cancelled')gemmaMetrics.cancelled++;
     if(/^\d+$/.test(m.id)){
      gemmaMetrics.last=m;const arrival=gemmaMetrics.arrivals.get(m.id)||{};
      gemmaMetrics.timing={...arrival,sent:sent.get(m.id),received:Date.now(),storage:gemmaMetrics.storage.filter(x=>x.start>=arrival.contentSent&&x.end<=sent.get(m.id))};
@@ -140,6 +144,10 @@ try {
    const row=await page.evaluate(field=>({...window.trial.row,actualReread:document.getElementById(field).tagName==='TEXTAREA'?document.getElementById(field).value:document.getElementById(field).textContent}),field);report.rows.push(row);assert.ok(row.correct);assert.equal(row.actualReread,expected);
    assert.equal((await worker.evaluate(()=>gemmaMetrics.requests)),before);report.checks.push(field+' Accept reread correct; no inference during Accept');
  }
+ if(process.env.GRAMMAR_GEMMA_INCREMENTAL==='1') {
+  const {runIncremental}=await import('./gemma-incremental-browser.mjs');
+  report.incremental={};await runIncremental(page,worker,report.incremental);
+ }
  if(['1','holdout','all'].includes(process.env.GRAMMAR_GEMMA_CORPUS)){
   const corpusName=process.env.GRAMMAR_GEMMA_CORPUS==='holdout'?'gemma-grammar-holdout.json':'gemma-grammar-corpus.json';
   const path=resolve('scripts/mission/'+corpusName);report.corpusName=corpusName;report.corpusSha256=await hash(path);
@@ -182,12 +190,13 @@ try {
  const stats=key=>{const v=report.rows.map(r=>r[key]).sort((a,b)=>a-b);return {n:v.length,p50:v[Math.ceil(v.length*.5)-1],p95:v[Math.ceil(v.length*.95)-1],p99:v[Math.ceil(v.length*.99)-1],max:v.at(-1)};};
  report.latency={recommend:stats('recommendMs'),apply:stats('applyMs')};
  report.latencyPass=report.latencyPass&&(!report.rewrite||report.rewrite.latencyPass);
+ report.latencyPass=report.latencyPass&&(!report.incremental||report.incremental.latencyPass);
  if(!report.latencyPass)process.exitCode=1;
 } catch(error) {report.functional='FAIL';report.error=String(error);process.exitCode=1;}
 finally {
  if(context){try{await context.close();report.cleanup.browser=true;}catch(error){report.cleanup.browser=false;report.cleanup.browserError=String(error);process.exitCode=1;}}
  if(broker){broker.stdin.end();let timer;const stopped=await Promise.race([brokerExit,new Promise(r=>{timer=setTimeout(()=>r(null),8000);})]);clearTimeout(timer);report.cleanup.exit=stopped;if(!stopped){broker.kill();report.cleanup.forced=true;process.exitCode=1;}}
- if(registered){try{pwsh('adapters/chromium/host/Remove-Registration.ps1',['-PackageDirectory',hostDir]);report.cleanup.registration=true;}catch(e){report.cleanup.registration=false;process.exitCode=1;}}
+ if(registered||existsSync(join(hostDir,'registration.json'))){try{pwsh('adapters/chromium/host/Remove-Registration.ps1',['-PackageDirectory',hostDir]);report.cleanup.registration=true;}catch(e){report.cleanup.registration=false;process.exitCode=1;}}
  await new Promise(r=>server.close(r));
  if(resolve(profile).startsWith(resolve(run)+sep)){try{await rm(profile,{recursive:true,force:true});report.cleanup.profile=true;}catch(error){report.cleanup.profile=false;report.cleanup.profileError=String(error);process.exitCode=1;}}
  report.cleanupPass=report.cleanup.browser===true&&report.cleanup.broker==='complete'&&report.cleanup.exit?.code===0&&report.cleanup.registration===true&&report.cleanup.profile===true;

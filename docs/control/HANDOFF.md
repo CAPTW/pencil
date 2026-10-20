@@ -4490,3 +4490,46 @@ soft cancellation: it can still require hard cleanup instead of warm reuse.
 Do not activate or advertise a1s improvement based on the8s writing trial.
 Investigate the strict test-supervisor leftover separately; do not count its
 forced cleanup as natural product exit.
+
+## 2026-10-20 Q19 actual Chromium incremental fixture
+
+Updated the owned browser runner to require the supervisor's marked trial root,
+use the hash-pinned D:/PencilAssets model/runtime, and default to release binaries.
+The original fixture uses a generated extension key, loopback host permission and
+a content timestamp observer. This is NOT an unmodified installed package or
+activeTab toolbar qualification. All document text/profile/registration is synthetic.
+No installed app, general browser profile or user settings changed.
+
+Production binaries from05c7b97 were built in debug and release. Debug browser-r1:
+functional PASS (including2 supersessions), latency FAIL (incremental1322-1330ms;
+baseline max1095ms), natural cleanup0. Preserve that failure. Release browser-r2:
+functional/timing PASS,2 supersessions816-818ms. Release browser-r3 adds quantity,
+negation and past-date cases in both textarea/simple contenteditable:6/6 exact
+latest-source suggestions and Accept rereads PASS. Recommendation805-827ms,
+p50=818,p95/p99/max=827; Accept33-37ms,p50=35,p95/p99/max=37. Two baseline
+recommendations661/928ms and Accept14/15ms. Zero target misses in final small corpus.
+Cached hover/click and Accept made no new analysis requests. Six supersede frames
+and six cancelled replies observed. Source change at Accept preserved external
+edit; password refused; disable removed UI. No quality/model/prompt changes.
+
+Do not equate short-request cancellation with the earlier long-paraphrase~2.9s
+measurements: different input/workload, no controlled before/after speedup claim.
+Debug model pin logs separate read9.32s/hash99.80s; release-r2 read1.26s/hash1.42s.
+This demonstrates substantial debug hash overhead in that trial, not a general
+resolution of D-drive contention or startup performance. Both retain full hash
+verification. Release-r3 source-to-native timing remains recorded per request.
+
+Browser-r1/r2/r3 all completed natural browser/broker exit, unique registration
+removal and profile deletion, supervisor remainingBefore/After0. The build
+supervisors still FAIL_LEFTOVER_CHILDREN then cleanup0; do not hide them.
+No Sandbox or second concurrent trial was launched. Same-integrator review only.
+Evidence: D:/dev/grammar-evidence/chromium-incremental-20261020; per-run browser
+receipt.json contains binary/model/script hashes, timings and cleanup; build logs
+identify profiles. Release host9cdcab4d827bef45283e3dc839cf62d72961c67c8f53af6d00612c44a48e4948,
+broker47f33e3462fd97346b95921bc9dc13115bb8f73d6322268d6352073ae69142cd.
+Node syntax and governance validation PASS. No product runtime changes this round.
+
+Next: unmodified installed extension/native pair and actual toolbar opt-in,
+continuous typing/IME and longer changed windows; measure cold/warm tails with
+the same fixed targets. Current6-case fixture is not general1s qualification,
+installed acceptance, main adoption or release. Mission INCOMPLETE; Source stale.
