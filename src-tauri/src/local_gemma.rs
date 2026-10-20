@@ -157,6 +157,17 @@ fn valid(binding: &Binding) -> bool {
         && preserve_literals(&binding.source, &binding.source).is_ok()
 }
 
+// Only a complete, parsed response rejected by semantic guards may keep the
+// engine warm. Cancellation, unknown activity and the original deadline win.
+async fn quality_refusal_can_reuse(
+    complete: bool, cancel: &AtomicBool, deadline: Instant,
+    idle: impl std::future::Future<Output = Result<(), String>>,
+) -> bool {
+    if !complete || cancel.load(Ordering::SeqCst) || Instant::now() >= deadline { return false; }
+    matches!(timeout_at(deadline, idle).await, Ok(Ok(())))
+        && !cancel.load(Ordering::SeqCst) && Instant::now() < deadline
+}
+
 fn preserve_english_modality(source: &str, replacement: &str) -> Result<(), String> {
     let markers = |text: &str| text.split(|c: char| !c.is_ascii_alphabetic() && c != '\'')
         .map(str::to_ascii_lowercase)
@@ -432,9 +443,15 @@ const KOREAN_CONNECTIVES: &[(&str,&str)] = &[
     ("확인했고","확인했으며"),("확인하셨고","확인하셨으며"),("유지하고","유지하며"),
     ("승인하면","승인한다면"),("승인했으면","승인했다면"),
     ("확인하면","확인한다면"),("확인했으면","확인했다면"),
+    // Present absence conditional only. Past absence and affirmative existence
+    // are not equivalent, and the surrounding ordered frame stays protected.
+    ("없으면","없다면"),
 ];
 const KOREAN_ACTION_ENDINGS: &[&str] = &["했어요","했나요","하셨습니다","하지","했고","했으며","하셨고","하셨으며"];
 fn korean_register_options(word:&str)->Vec<String>{
+    // Reply as an object, with the SAME particle. Do not strip arbitrary
+    // particles: changing 을 to 이/에게 would change a semantic role.
+    if matches!(word,"답신을"|"회신을"){return vec!["답신을".into(),"회신을".into()];}
     for &(a,b) in KOREAN_CONNECTIVES {if word==a || word==b{return vec![a.into(),b.into()];}}
     for (a,b) in [("전송","송신"),("회신","답신"),("질문","질의")] {
         for ending in KOREAN_ACTION_ENDINGS {
@@ -824,8 +841,8 @@ fn local_prompt(binding: &Binding) -> (String, bool) {
     if binding.intent != Intent::Grammar {
         let instruction = match &binding.intent {
             Intent::Paraphrase => "Paraphrase naturally in the original language. Preserve the original politeness and register exactly; do not make it more casual or more formal. Preserve all facts; do not summarize or add information. Preserve modal phrases verbatim, including may, might, must not, can and cannot: obligation, prohibition and inability are distinct. Prefer minimal rewording over changing these meanings. Avoid redundant courtesy: use Please or kindly once per request, never both; keep the same register. Remove a trailing please when the request already starts with Please or Kindly. Example: Kindly send the note, please. becomes Please send the note.",
-            Intent::Translate { target: Language::English } => "Translate the complete text into English, including ordinary unquoted words. Preserve proper names, the original register and all facts; do not summarize or add information.",
-            Intent::Translate { target: Language::Korean } => "Translate the complete text into Korean, including ordinary unquoted words. Preserve proper names, the original register and all facts; do not summarize or add information.",
+            Intent::Translate { target: Language::English } => "Translate the complete text into English, including ordinary unquoted words. Preserve proper names, the original register and all facts; do not summarize or add information. Preserve each clause's tense and aspect: a current state must remain present, never become a future promise. Preserve explicit subjects and recipients; when the source omits a subject, prefer an impersonal or passive sentence. Never insert you, we, he or she for an omitted subject. Keep future plans only where the original explicitly expresses them.",
+            Intent::Translate { target: Language::Korean } => "Translate the complete text into Korean, including ordinary unquoted words. Preserve proper names, the original register and all facts; do not summarize or add information. Preserve each clause's tense and aspect: a current state must remain present, never become a future promise. Preserve explicit subjects and recipients; when the source omits a subject, prefer an impersonal or passive sentence. Never insert you, we, he or she for an omitted subject. Keep future plans only where the original explicitly expresses them.",
             Intent::Concise => "Rewrite more concisely in the original language without losing facts, numbers, conditions or important meaning. Preserve modal phrases verbatim. Do not summarize away details or add information.",
             Intent::Polite => "Rewrite courteously and professionally in the original language, preserving the original intent, facts, numbers and conditions. Preserve modal phrases verbatim; do not introduce new modal verbs. For an imperative request, use Please rather than changing it into a Could you or Would you question. Keep obligations, uncertainty and negation unchanged. Do not add promises or information. Use only one courtesy marker per request: Please or kindly, never Please kindly or kindly please. Remove redundant courtesy without removing conditions or changing obligation. Remove a trailing please when the request already starts with Please or Kindly. Example: Kindly send the note, please. becomes Please send the note.",
             Intent::StyleAlign => "Align styles without changing fixed text.",
@@ -1236,6 +1253,7 @@ impl GemmaEngine {
             self.ready = true;
             return Err(result.unwrap_err());
         }
+        let complete_response = result.is_ok();
         let result = result.and_then(|replacement| {
             // Alignment returns metadata anchors, not replacement prose. The adapter
             // retains the entire fixed result; ordinary writing still checks literals.
@@ -1265,11 +1283,20 @@ impl GemmaEngine {
                         "gemma_unbalanced_literal" => "unbalanced_literal",
                         "gemma_incomplete_output" => "incomplete_output",
                         "gemma_modality_changed" => "modality_changed",
+                        "gemma_semantic_changed" => "semantic_changed",
+                        "gemma_register_changed" => "register_changed",
+                        "gemma_honorific_changed" => "honorific_changed",
                         "gemma_invalid_schema" => "invalid_schema",
                         "gemma_deadline" | "gemma_cancelled_or_expired" => "deadline_or_cancelled",
                         _ => "other",
                     };
                     eprintln!("gemma_refusal code={code}");
+                }
+                if quality_refusal_can_reuse(complete_response, &cancel, deadline, self.confirm_idle()).await {
+                    // Refusal still returns an error and publishes no suggestion.
+                    // No retry/replay; only a subsequent explicit request may run.
+                    self.ready = true;
+                    return Err(error);
                 }
                 // Abort the actual owned Job; dropping the HTTP future alone is not cancellation.
                 self.stop().await.map_err(|e| format!("{error};{e}"))?;
@@ -1620,6 +1647,52 @@ mod tests {
         assert!(cleanup.is_ok()&&!workspace.exists()&&!failed);
     }
     #[tokio::test]
+    async fn semantic_refusal_reuse_requires_complete_idle_live_deadline() {
+        let cancel=AtomicBool::new(false);
+        assert!(quality_refusal_can_reuse(true,&cancel,Instant::now()+Duration::from_secs(1),async{Ok(())}).await);
+        assert!(!quality_refusal_can_reuse(false,&cancel,Instant::now()+Duration::from_secs(1),async{panic!("incomplete response must not attempt reuse")}).await);
+        assert!(!quality_refusal_can_reuse(true,&cancel,Instant::now()+Duration::from_secs(1),async{Err("unknown slot".into())}).await);
+        assert!(!quality_refusal_can_reuse(true,&cancel,Instant::now()+Duration::from_millis(5),std::future::pending()).await);
+        assert!(!quality_refusal_can_reuse(true,&cancel,Instant::now()+Duration::from_secs(1),async{cancel.store(true,Ordering::SeqCst);Ok(())}).await);
+        assert!(!quality_refusal_can_reuse(true,&cancel,Instant::now()+Duration::from_secs(1),async{panic!("cancelled request must not attempt reuse")}).await);
+    }
+
+    #[tokio::test]
+    #[ignore = "owned Sandbox paragraph diagnostic; synthetic raw output only"]
+    async fn owned_paragraph_diagnostic() {
+        assert_eq!(std::env::var("USERNAME").as_deref(), Ok("WDAGUtilityAccount"));
+        assert_eq!(std::env::var("GRAMMAR_GEMMA_TRIAL").as_deref(), Ok("owned-synthetic"));
+        let root=Path::new("C:/PencilTrialScope/assets");
+        let receipt=Path::new("C:/GrammarOutput/paragraph-diagnostic.json");assert!(!receipt.exists());
+        let (pins,bundle)=pin_owned_runtime(&root.join("runtime"));
+        assert_eq!(bundle,"d6ef94c506863a4621a7e8b1c5f37ac255756b28686a3325bbd52785620172ad");
+        use sha2::{Digest,Sha256};use std::io::Read;use std::os::windows::fs::OpenOptionsExt;
+        let model=root.join("gemma-4-12b-it-qat-q4_0.gguf");
+        let mut pin=std::fs::OpenOptions::new().read(true).share_mode(1).open(&model).unwrap();
+        let mut hash=Sha256::new();let mut buf=vec![0;1024*1024];loop{let n=pin.read(&mut buf).unwrap();if n==0{break}hash.update(&buf[..n]);}
+        assert_eq!(format!("{:x}",hash.finalize()),"93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b");
+        let mut engine=GemmaEngine::start(&root.join("runtime/llama-server.exe"),&model,Instant::now()+Duration::from_secs(180)).await.unwrap();
+        let workspace=engine.workspace.as_ref().unwrap().cwd().parent().unwrap().to_owned();
+        let cases:Vec<Value>=serde_json::from_str(include_str!("../../scripts/mission/gemma-paragraph-corpus.json")).unwrap();
+        let mut rows=Vec::new();
+        for case in cases {
+            let intent=match case["choice"].as_str().unwrap(){"ko"=>Intent::Translate{target:Language::Korean},"en"=>Intent::Translate{target:Language::English},_=>Intent::Paraphrase};
+            let source=case["source"].as_str().unwrap();let binding=Binding{epoch:"owned-synthetic".into(),revision:1,intent,source:source.into()};
+            let (prompt,_)=local_prompt(&binding);let start=Instant::now();
+            let schema=json!({"type":"object","properties":{"replacement":{"type":["string","null"]}},"required":["replacement"],"additionalProperties":false});
+            let raw=tokio::time::timeout(Duration::from_secs(10),engine.complete_json(&prompt,schema)).await;
+            let mut output=None;let mut guard=None;
+            if let Ok(Ok(value))=&raw {if let Ok(written)=short_replacement(value.clone(),source){
+                guard=Some(preserve_literals(source,&written).and_then(|_|preserve_nonliteral_body(source,&written)).and_then(|_|if binding.intent==Intent::Paraphrase {preserve_english_modality(source,&written).and_then(|_|preserve_korean_identifiers(source,&written)).and_then(|_|preserve_korean_register(source,&written))}else{Ok(())}));output=Some(written);
+            }}
+            rows.push(json!({"id":case["id"],"source":source,"output":output,"guard":guard,"raw":format!("{raw:?}"),"ms":start.elapsed().as_millis()}));
+        }
+        let cleanup=engine.stop().await;drop(pins);
+        std::fs::write(receipt,serde_json::to_vec_pretty(&json!({"scope":"RAW_SYNTHETIC_DIAGNOSTIC_NOT_PRODUCT_ACCEPTANCE","rows":rows,"cleanup":cleanup,"workspaceRemoved":!workspace.exists()})).unwrap()).unwrap();
+        assert!(cleanup.is_ok()&&!workspace.exists());
+    }
+
+    #[tokio::test]
     #[ignore="owned Sandbox synthetic diagnostic only; never installed acceptance"]
     async fn owned_korean_names_diagnostic() {
         assert_eq!(std::env::var("USERNAME").as_deref(),Ok("WDAGUtilityAccount"));
@@ -1784,6 +1857,25 @@ mod tests {
         assert!(preserve_literals("An open \"literal", "An open \"literal").is_err());
         assert!(preserve_literals("They don't agree.", "They don't agree.").is_ok());
     }
+    #[test]
+    fn paragraph_absence_conditional_preserves_roles_polarity_tense_and_register() {
+        let source="민수는 파일 3개를 확인했어요. 지연이 승인하면 수진에게 답신을 보내 주세요. 승인이 없으면 보고서를 전송하지 마세요. 예산은 120달러입니다.";
+        let valid="민수는 파일 3개를 확인했어요. 지연이 승인한다면 수진에게 회신을 보내 주세요. 승인이 없다면 보고서를 전송하지 마세요. 예산은 120달러입니다.";
+        assert!(preserve_korean_register(source,valid).is_ok());
+        assert!(preserve_korean_register(valid,source).is_ok());
+        for bad in [
+            valid.replace("없다면","있다면"),
+            valid.replace("없다면","없었다면"),
+            valid.replace("없다면","없어도"),
+            valid.replace("전송하지 마세요","전송해 주세요"),
+            valid.replace("지연이 승인한다면 수진에게","수진이 승인한다면 지연에게"),
+            valid.replace("회신을","회신이"),
+            valid.replace("확인했어요","확인해요"),
+            valid.replace("보내 주세요","보내 주십시오"),
+        ] {assert!(preserve_korean_register(source,&bad).is_err(),"{bad}");}
+        assert!(preserve_literals("승인이 없으면 \"없으면\" 답신해 주세요.","승인이 없다면 \"없다면\" 회신해 주세요.").is_err());
+    }
+
     #[test]
     fn writing_prompt_separates_json_encoding_from_actual_literals() {
         let b=Binding{epoch:"e".into(),revision:1,intent:Intent::Translate{target:Language::Korean},source:r#"Do not recheck "DRAFT"; recheck "DRAFT" later. Call `getID()`."#.into()};
