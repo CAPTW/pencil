@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 import time
 
@@ -83,6 +84,47 @@ def open_shared_text(path):
 def read_shared_text(path):
     with open_shared_text(path) as stream:
         return stream.read()
+
+
+def wait_retry_ticket(path, previous_ticket, timeout):
+    """Observe replacement without renewing the budget or accepting a stale ticket."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            current = json.loads(read_shared_text(path))
+        except (FileNotFoundError, PermissionError):
+            # Match wait_phase: publication may replace the file during open.
+            time.sleep(.02)
+            continue
+        if current["phase"] == "failed" and current["retryTicket"] != previous_ticket:
+            return current
+        time.sleep(.02)
+    raise AssertionError("retry did not publish a fresh failed-state ticket before deadline")
+
+
+class RetryObservationTests(unittest.TestCase):
+    def test_transient_replacement_then_stale_ticket_requires_fresh_failure(self):
+        states = [FileNotFoundError(), PermissionError(),
+                  json.dumps({"phase": "failed", "retryTicket": "old"}),
+                  json.dumps({"phase": "starting", "retryTicket": "new"}),
+                  json.dumps({"phase": "failed", "retryTicket": "new"})]
+        with patch(__name__ + ".read_shared_text", side_effect=states) as read, \
+             patch(__name__ + ".time.sleep"), \
+             patch(__name__ + ".time.monotonic", side_effect=[0, .1, .2, .3, .4, .5]):
+            self.assertEqual(wait_retry_ticket(pathlib.Path("unused"), "old", 1)["retryTicket"], "new")
+            self.assertEqual(read.call_count, 5)
+
+    def test_persistent_absence_keeps_original_deadline(self):
+        with patch(__name__ + ".read_shared_text", side_effect=FileNotFoundError()), \
+             patch(__name__ + ".time.sleep"), \
+             patch(__name__ + ".time.monotonic", side_effect=[0, .1, .9, 1.1]):
+            with self.assertRaisesRegex(AssertionError, "before deadline"):
+                wait_retry_ticket(pathlib.Path("unused"), "old", 1)
+
+    def test_malformed_json_is_not_retried(self):
+        with patch(__name__ + ".read_shared_text", return_value="{"):
+            with self.assertRaises(json.JSONDecodeError):
+                wait_retry_ticket(pathlib.Path("unused"), "old", 1)
 
 
 class LauncherTests(unittest.TestCase):
@@ -327,14 +369,7 @@ class LauncherTests(unittest.TestCase):
             (self.root / "fail-start").touch()
             (self.root / "not-started").touch()
             path.with_suffix(".json.retry").write_text(state["retryTicket"])
-            deadline = time.monotonic() + 8
-            while time.monotonic() < deadline:
-                current = json.loads(read_shared_text(path))
-                if current["phase"] == "failed" and current["retryTicket"] != state["retryTicket"]:
-                    break
-                time.sleep(.02)
-            else:
-                self.fail("retry did not complete")
+            current = wait_retry_ticket(path, state["retryTicket"], 8)
             self.assertIsNotNone(current["retryTicket"])
             self.assertEqual(read_shared_text(self.sidecar), self.original)
         finally:
@@ -570,14 +605,7 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(read_shared_text(self.sidecar), self.original)
             # A premature click fails again without allocating a broker.
             path.with_suffix(".json.retry").write_text(state["retryTicket"])
-            deadline = time.monotonic() + 10
-            while time.monotonic() < deadline:
-                current = json.loads(read_shared_text(path))
-                if current["phase"] == "failed" and current["retryTicket"] != state["retryTicket"]:
-                    break
-                time.sleep(.02)
-            else:
-                self.fail("missing-assets retry did not issue a fresh ticket")
+            current = wait_retry_ticket(path, state["retryTicket"], 10)
             self.assertFalse((self.root / "broker.pid").exists())
             # Preparing files alone does not start inference.
             prepared = self.run_prepare(cache)

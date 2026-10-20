@@ -4377,3 +4377,18 @@ Evidence: D:/dev/grammar-evidence/rhwp-deterministic-pencil-20261018/FINAL_RECEI
 REPEAT_RECEIPT.json, attempt1-54-PASS-latency-misses, attempt2-16-repeat-PASS,
 final-build-receipt.json and final-package. Git/CI publication receipts are external
 so the tracked document does not claim its own hash.
+
+
+### 2026-10-20 Final-main CI retry observation repair
+Main run39385229545 at3cb8f78 failed on FileNotFoundError in the launcher's test-only
+retry-ticket poll. Candidate run39385177422 at the identical source passed. The
+existing wait_phase already permits transient Windows replacement-open errors;
+two bespoke fresh-ticket loops did not. Both now use a bounded helper retaining
+original8s/10s budgets, requiring failed phase plus changed ticket; all later
+non-null ticket, app/sidecar and cleanup assertions remain. Three deterministic
+regressions cover replacement errors/stale tickets, fixed deadline on persistent
+absence and malformed JSON refusal. No launcher/product code or package changed.
+Local helper3 PASS. Local full34 run FAILED (17 subprocess UTF-8 decoding errors
+and one owned-uninstall refusal); strict owned supervisor cleanup COMPLETE/0.
+Do not relabel this as local integration PASS. Evidence launcher-ci-repair/trial.log
+and supervisor-result.json; fresh hosted Windows results recorded externally.
