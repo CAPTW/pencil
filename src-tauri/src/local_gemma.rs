@@ -669,6 +669,25 @@ fn deterministic_alignment(source:&str)->Option<String>{
     let response=json!({"choices":[{"finish_reason":"stop","message":{"content":Value::Object(anchors).to_string()}}]});
     alignment_replacement(response,source).ok()
 }
+// The owner admits one inference at a time. Unknown or multiple slot state is not
+// evidence that its request ended, and must never permit warm reuse.
+fn slot_processing(value: &Value) -> Result<bool, String> {
+    let slots = value.as_array().ok_or("gemma_slot_invalid")?;
+    if slots.len() != 1 || slots[0]["id"].as_u64() != Some(0) {
+        return Err("gemma_slot_invalid".into());
+    }
+    slots[0]["is_processing"].as_bool().ok_or_else(|| "gemma_slot_invalid".into())
+}
+async fn wait_for_idle<F, Fut>(deadline: Instant, mut probe: F) -> Result<(), String>
+where F: FnMut() -> Fut, Fut: std::future::Future<Output = Result<bool, String>> {
+    timeout_at(deadline, async {
+        loop {
+            if Instant::now() >= deadline { return Err("gemma_deadline".into()); }
+            if !probe().await? { return Ok(()); }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }).await.unwrap_or_else(|_| Err("gemma_deadline".into()))
+}
 // The fallback future is lazy: proven alignment never polls model I/O.
 async fn alignment_or_infer(source:&str, inference:impl std::future::Future<Output=Result<String,String>>)->Result<String,String>{
     match deterministic_alignment(source) {Some(result)=>Ok(result),None=>inference.await}
@@ -1080,7 +1099,7 @@ impl GemmaEngine {
         Ok(response)
     }
 
-    async fn confirm_idle(&self) -> Result<(), String> {
+    async fn slot_processing(&self) -> Result<bool, String> {
         let mut response = self
             .http
             .get(format!("{}/slots", self.endpoint))
@@ -1099,15 +1118,20 @@ impl GemmaEngine {
             bytes.extend_from_slice(&chunk);
         }
         let value: Value = serde_json::from_slice(&bytes).map_err(|_| "gemma_slot_invalid")?;
-        let slots = value.as_array().ok_or("gemma_slot_invalid")?;
-        if slots.len() != 1 || slots[0]["id"] != 0 || slots[0]["is_processing"] != false {
-            return Err("gemma_slot_not_idle".into());
-        }
-        Ok(())
+        slot_processing(&value)
     }
 
-    /// Supersession may finish and discard the in-flight result within its original
-    /// deadline. This is not physical inference cancellation. Never extends the deadline.
+    async fn confirm_idle(&self) -> Result<(), String> {
+        if self.slot_processing().await? { Err("gemma_slot_not_idle".into()) } else { Ok(()) }
+    }
+
+    async fn wait_idle(&self, deadline: Instant) -> Result<(), String> {
+        wait_for_idle(deadline, || self.slot_processing()).await
+    }
+
+    /// Supersession interrupts only after observing our sole request in the slot.
+    /// Reuse requires confirmed idle within the original deadline. If admission has
+    /// not been observed, drain instead: an idle snapshot cannot fence a queued POST.
     pub async fn recommend_supersedable(
         &mut self,
         binding: Binding,
@@ -1164,12 +1188,20 @@ impl GemmaEngine {
             let result = tokio::select! {
                 biased;
                 _ = async { while !cancel.load(Ordering::SeqCst) {tokio::time::sleep(Duration::from_millis(5)).await;} } => {
-                    if drain { operation.await.unwrap_or_else(|_| Err("gemma_deadline".into())) }
-                    else { Err("gemma_cancelled".into()) }
+                    if drain {
+                        match timeout_at(deadline, self.slot_processing()).await {
+                            Ok(Ok(true)) => Err("gemma_supersession_interrupt_requested".into()),
+                            Ok(Ok(false)) => operation.await.unwrap_or_else(|_| Err("gemma_deadline".into())),
+                            Ok(Err(error)) => Err(error),
+                            Err(_) => Err("gemma_deadline".into()),
+                        }
+                    } else { Err("gemma_cancelled".into()) }
                 },
                 value = &mut operation => value.unwrap_or_else(|_| Err("gemma_deadline".into())),
             };
-            if drain && result.is_ok() && cancel.load(Ordering::SeqCst) {
+            if result.as_ref().err().is_some_and(|e| e == "gemma_supersession_interrupt_requested") {
+                result // operation is dropped when this scope ends, before polling idle
+            } else if drain && result.is_ok() && cancel.load(Ordering::SeqCst) {
                 match timeout_at(deadline, self.confirm_idle()).await {
                     Ok(Ok(())) => Err("gemma_superseded_after_completion".into()),
                     Ok(Err(e)) => Err(e),
@@ -1181,6 +1213,12 @@ impl GemmaEngine {
                 result
             }
         };
+        let result = if result.as_ref().err().is_some_and(|e| e == "gemma_supersession_interrupt_requested") {
+            match self.wait_idle(deadline).await {
+                Ok(()) => Err("gemma_superseded_idle_confirmed".into()),
+                Err(error) => Err(error),
+            }
+        } else { result };
         // Trusted launcher diagnostic, disabled by default. Never emits document
         // content, binding identity, endpoint, credentials or model response.
         if std::env::var_os("GRAMMAR_GEMMA_TIMING").as_deref() == Some(std::ffi::OsStr::new("1")) {
@@ -1189,14 +1227,14 @@ impl GemmaEngine {
         if result
             .as_ref()
             .err()
-            .is_some_and(|e| e == "gemma_superseded_after_completion")
+            .is_some_and(|e| matches!(e.as_str(), "gemma_superseded_after_completion" | "gemma_superseded_idle_confirmed"))
         {
             if Instant::now() >= deadline {
                 self.stop().await?;
                 return Err("gemma_deadline".into());
             }
             self.ready = true;
-            return Err("gemma_superseded_after_completion".into());
+            return Err(result.unwrap_err());
         }
         let result = result.and_then(|replacement| {
             // Alignment returns metadata anchors, not replacement prose. The adapter
@@ -2269,6 +2307,70 @@ mod tests {
         assert!(!result.matches(&Binding { intent: Intent::Translate { target: Language::Korean }, ..binding }));
     }
 
+    #[test]
+    fn warm_cancel_slot_state_is_strict() {
+        assert_eq!(slot_processing(&json!([{"id":0,"is_processing":true}])).unwrap(),true);
+        assert_eq!(slot_processing(&json!([{"id":0,"is_processing":false}])).unwrap(),false);
+        for value in [json!([]),json!({}),json!([{"id":1,"is_processing":false}]),
+            json!([{"id":0}]),json!([{"id":0,"is_processing":"false"}]),
+            json!([{"id":0,"is_processing":false},{"id":1,"is_processing":false}])] {
+            assert!(slot_processing(&value).is_err());
+        }
+    }
+    #[tokio::test]
+    async fn warm_cancel_idle_wait_keeps_deadline_and_rejects_unknown_state() {
+        let mut count=0;
+        wait_for_idle(Instant::now()+Duration::from_secs(1), || {
+            count+=1; std::future::ready(Ok(count<3))
+        }).await.unwrap();
+        assert_eq!(count,3);
+        assert_eq!(wait_for_idle(Instant::now()+Duration::from_secs(1), ||
+            std::future::ready(Err("gemma_slot_invalid".into()))).await.unwrap_err(),"gemma_slot_invalid");
+        assert_eq!(wait_for_idle(Instant::now()+Duration::from_millis(5), ||
+            std::future::pending::<Result<bool,String>>()).await.unwrap_err(),"gemma_deadline");
+    }
+    #[tokio::test]
+    #[ignore = "explicit owned real Gemma warm cancellation; no UI acceptance"]
+    async fn owned_gpu_warm_cancel_v2() {
+        assert_eq!(std::env::var("GRAMMAR_GEMMA_TRIAL").as_deref(),Ok("owned-synthetic"));
+        let scope=std::path::PathBuf::from(std::env::var("GRAMMAR_TRIAL_ROOT").unwrap());
+        assert!(scope.join(".pencil-trial-owner.json").is_file());
+        let receipt=scope.join("warm-cancel.json");assert!(!receipt.exists());
+        let runtime=Path::new("D:/PencilAssets/local/runtime");
+        let model=Path::new("D:/PencilAssets/local/gemma-4-12b-it-qat-q4_0.gguf");
+        let (_pins,bundle)=pin_owned_runtime(runtime);
+        assert_eq!(bundle,"d6ef94c506863a4621a7e8b1c5f37ac255756b28686a3325bbd52785620172ad");
+        use sha2::{Digest,Sha256};use std::io::Read;use std::os::windows::fs::OpenOptionsExt;
+        let mut pin=std::fs::OpenOptions::new().read(true).share_mode(1).open(model).unwrap();
+        let mut hash=Sha256::new();let mut bytes=vec![0;1024*1024];
+        loop {let n=pin.read(&mut bytes).unwrap();if n==0{break;}hash.update(&bytes[..n]);}
+        assert_eq!(format!("{:x}",hash.finalize()),"93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b");
+        let start=Instant::now();
+        let mut engine=GemmaEngine::start(&runtime.join("llama-server.exe"),model,start+Duration::from_secs(180)).await.unwrap();
+        let pid=engine.child.id();let ready_ms=start.elapsed().as_millis();
+        let workspace=engine.workspace.as_ref().unwrap().cwd().parent().unwrap().to_owned();
+        let mut rows=Vec::new();
+        for revision in 1..=3 {
+            let cancel=Arc::new(AtomicBool::new(false));let trigger=cancel.clone();
+            let setter=tokio::spawn(async move {tokio::time::sleep(Duration::from_millis(200)).await;trigger.store(true,Ordering::SeqCst);});
+            let started=Instant::now();
+            let result=engine.recommend_supersedable(Binding {epoch:"owned-cancel".into(),revision,
+                intent:Intent::Paraphrase,source:"The committee has reviewed the draft. The results are preliminary and must not be published until the reviewer approves the final report. ".repeat(8)},cancel,started+Duration::from_secs(15)).await;
+            setter.await.unwrap();
+            rows.push(json!({"elapsedMs":started.elapsed().as_millis(),"outcome":result.err(),"samePid":engine.child.id()==pid,"ready":engine.ready}));
+            if !engine.ready {break;}
+        }
+        let started=Instant::now();
+        let next=engine.recommend(Binding {epoch:"owned-cancel".into(),revision:10,intent:Intent::Grammar,source:"She have two books.".into()},Arc::new(AtomicBool::new(false)),started+Duration::from_secs(15)).await;
+        let next_ms=started.elapsed().as_millis();let next_text=next.as_ref().ok().map(|r|r.replacement.clone());
+        let close=engine.stop().await;
+        let report=json!({"scope":"REAL_GEMMA_ENGINE_NOT_INSTALLED_UI","runtimeBundle":bundle,"readyMs":ready_ms,"rows":rows,"nextMs":next_ms,"nextText":next_text,"nextError":next.err(),"cleanup":close.is_ok(),"workspaceRemoved":!workspace.exists(),"jobProcesses":engine.job.active_processes().ok()});
+        std::fs::write(receipt,serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+        close.unwrap();assert!(!workspace.exists());
+        assert_eq!(report["rows"].as_array().unwrap().len(),3);
+        assert!(report["rows"].as_array().unwrap().iter().all(|r|r["outcome"]=="gemma_superseded_idle_confirmed"&&r["samePid"]==true&&r["ready"]==true));
+        assert_eq!(report["nextText"],"She has two books.");
+    }
     #[tokio::test]
     #[ignore = "owned GPU shared service supersession"]
     async fn owned_gpu_service_warm() {
@@ -2383,7 +2485,9 @@ mod tests {
             let mut row = json!({"supersessionMs":before.elapsed().as_millis(),"outcome":outcome.err(),"samePid":engine.child.id()==Some(pid),"ready":engine.ready});
             report["cycles"].as_array_mut().unwrap().push(row.clone());
             std::fs::write(&receipt, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
-            assert_eq!(row["outcome"], "gemma_superseded_after_completion");
+            // Both outcomes discard the obsolete result and require independently
+            // confirmed idle; never reinterpret a deadline failure as success.
+            assert!(matches!(row["outcome"].as_str(),Some("gemma_superseded_after_completion" | "gemma_superseded_idle_confirmed")));
             assert!(engine.ready && engine.child.id() == Some(pid));
             let before = Instant::now();
             let next = engine

@@ -1,6 +1,10 @@
 # Pencil — Product quality and release readiness
 
 Track: `PRODUCT_QUALITY_AND_RELEASE_READINESS` · Owner request: 2026-10-15.
+Q19 checkpoint 2026-10-20: backend warm supersession verified with actual Gemma
+three times, same PID and next request300ms; idle confirmation2.80-2.89s from
+request start remains above target. Chromium/native explicit supersession wiring
+and installed timing remain pending. See HANDOFF for strict supervisor failures.
 This durable parallel track preserves the feature mission, Gemma quality baseline,
 1s recommendation / 0.5s Accept / 3s paragraph targets and explicit mutation/privacy
 contracts. No recurring automation or new external authority is created.
