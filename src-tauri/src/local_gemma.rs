@@ -2372,6 +2372,46 @@ mod tests {
         assert_eq!(report["nextText"],"She has two books.");
     }
     #[tokio::test]
+    #[ignore = "owned real GPU pipe supersession; no installed UI acceptance"]
+    async fn owned_gpu_pipe_supersession() {
+        assert_eq!(std::env::var("GRAMMAR_GEMMA_TRIAL").as_deref(),Ok("owned-synthetic"));
+        let scope=std::path::PathBuf::from(std::env::var("GRAMMAR_TRIAL_ROOT").unwrap());
+        assert!(scope.join(".pencil-trial-owner.json").is_file());
+        let receipt=scope.join("pipe-supersession.json");assert!(!receipt.exists());
+        let runtime=Path::new("D:/PencilAssets/local/runtime");
+        let model=Path::new("D:/PencilAssets/local/gemma-4-12b-it-qat-q4_0.gguf");
+        let (_pins,bundle)=pin_owned_runtime(runtime);
+        assert_eq!(bundle,"d6ef94c506863a4621a7e8b1c5f37ac255756b28686a3325bbd52785620172ad");
+        use sha2::{Digest,Sha256};use std::io::Read;use std::os::windows::fs::OpenOptionsExt;
+        let mut pin=std::fs::OpenOptions::new().read(true).share_mode(1).open(model).unwrap();
+        let mut hash=Sha256::new();let mut bytes=vec![0;1024*1024];
+        loop {let n=pin.read(&mut bytes).unwrap();if n==0{break;}hash.update(&bytes[..n]);}
+        assert_eq!(format!("{:x}",hash.finalize()),"93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b");
+        let engine=GemmaEngine::start(&runtime.join("llama-server.exe"),model,Instant::now()+Duration::from_secs(180)).await.unwrap();
+        let pid=engine.child.id();let workspace=engine.workspace.as_ref().unwrap().cwd().parent().unwrap().to_owned();
+        let (owner,client)=service::Service::own(engine);let mut rows=Vec::new();
+        for revision in 1..=2 {
+            let endpoint=pipe::Endpoint::create().unwrap();let ticket=endpoint.ticket();
+            let started=Instant::now();let deadline=started+Duration::from_secs(8);
+            let server=tokio::spawn(endpoint.serve(pipe::Permit {client_pid:std::process::id(),epoch:"owned".into(),active:Arc::new(AtomicBool::new(true))},client.clone(),deadline));
+            let soft=Arc::new(AtomicBool::new(false));let trigger=soft.clone();
+            let setter=tokio::spawn(async move {tokio::time::sleep(Duration::from_millis(200)).await;trigger.store(true,Ordering::SeqCst);});
+            let result=pipe::recommend_controlled(&ticket,Binding {epoch:"owned".into(),revision,intent:Intent::Paraphrase,
+                source:"The committee has reviewed the draft. The results are preliminary and must not be published until the reviewer approves the final report. ".repeat(8)},deadline,soft).await;
+            setter.await.unwrap();let server_result=server.await.unwrap();
+            rows.push(json!({"requestToAckMs":started.elapsed().as_millis(),"outcome":result.err(),"serverOk":server_result.is_ok()}));
+        }
+        let started=Instant::now();
+        let next=client.recommend(Binding {epoch:"owned".into(),revision:3,intent:Intent::Grammar,source:"She have two books.".into()},started+Duration::from_secs(1)).await;
+        let next_ms=started.elapsed().as_millis();let next_text=next.as_ref().ok().map(|r|r.replacement.clone());
+        let cleanup=owner.close().await;
+        let report=json!({"scope":"REAL_GEMMA_PIPE_SERVICE_NOT_BROWSER_UI","enginePid":pid,"rows":rows,"nextMs":next_ms,"nextText":next_text,"nextError":next.err(),"cleanup":cleanup.is_ok(),"workspaceRemoved":!workspace.exists()});
+        std::fs::write(receipt,serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+        cleanup.unwrap();assert!(!workspace.exists());
+        assert!(report["rows"].as_array().unwrap().iter().all(|r|r["outcome"]=="gemma_superseded"&&r["serverOk"]==true));
+        assert_eq!(report["nextText"],"She has two books.");
+    }
+    #[tokio::test]
     #[ignore = "owned GPU shared service supersession"]
     async fn owned_gpu_service_warm() {
         assert_eq!(

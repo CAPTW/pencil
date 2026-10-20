@@ -217,6 +217,17 @@ impl Connection {
     }
 }
 impl Grant {
+    pub async fn recommend_controlled(
+        self,
+        binding: Binding,
+        deadline: Instant,
+        superseded: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<Recommendation, String> {
+        if binding.epoch != self.epoch || !self.peer.alive() {
+            return Err("gemma_broker_scope".into());
+        }
+        pipe::recommend_controlled(&self.ticket, binding, deadline, superseded).await
+    }
     pub async fn recommend(
         self,
         binding: Binding,

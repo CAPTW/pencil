@@ -3,8 +3,11 @@
 Track: `PRODUCT_QUALITY_AND_RELEASE_READINESS` · Owner request: 2026-10-15.
 Q19 checkpoint 2026-10-20: backend warm supersession verified with actual Gemma
 three times, same PID and next request300ms; idle confirmation2.80-2.89s from
-request start remains above target. Chromium/native explicit supersession wiring
-and installed timing remain pending. See HANDOFF for strict supervisor failures.
+request start remains above target. Chromium/native/pipe supersession is now wired
+and checked with production actor, Windows pipes and real Gemma service calls.
+Installed typing-to-publication/Accept qualification remains pending. Actual pipe
+request-to-cancel-ack2898-2934ms still exceeds the proactive1s ceiling; do not
+lengthen that ceiling or claim a latency improvement. See HANDOFF for strict supervisor failures.
 This durable parallel track preserves the feature mission, Gemma quality baseline,
 1s recommendation / 0.5s Accept / 3s paragraph targets and explicit mutation/privacy
 contracts. No recurring automation or new external authority is created.

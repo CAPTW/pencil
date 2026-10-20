@@ -66,12 +66,15 @@
     const request=deepRequest;deepRequest=null;
     if(request) chrome.runtime.sendMessage({op:'cancel-deep',epoch:request.epoch,id:request.id}).catch(()=>{});
   }
-  function cancelLocal() {
+  function cancelLocal(hard = false) {
     const request=localActive;localActive=null;localRewrite=null;pending=null;deferredInstant=null;localGeneration++;
-    if(request) chrome.runtime.sendMessage({op:'cancel-local',epoch:request.epoch,id:request.id,revision:request.revision}).catch(()=>{});
+    if(request) chrome.runtime.sendMessage({op:'cancel-local',epoch:request.epoch,id:request.id,revision:request.revision,hard}).catch(()=>{});
   }
   function wipeField() {
-    cancelLocal();
+    cancelLocal(true);
+    // The source-change path already clears localActive while its owner drains.
+    // Field revocation must also close that retiring operation.
+    if(epoch) chrome.runtime.sendMessage({op:'stop-local',epoch}).catch(()=>{});
     localRewrite=null;localGeneration++;
     clearDesktopReview();
     clearReview();

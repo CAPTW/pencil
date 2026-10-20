@@ -4449,3 +4449,44 @@ Evidence: D:/dev/grammar-evidence/gemma-warm-cancel-20261020, including
 gpu/warm-cancel.json and per-run supervisor-result.json and trial.log.
 Runtime cancellation semantics reviewed against upstream llama.cpp b11461
 tools/server/server-queue.cpp and tools/server/server-context.cpp.
+
+## 2026-10-20 Q19 Chromium explicit supersession transport
+
+Input changes now send an exact id/epoch/revision supersede frame through the
+production native actor, broker grant and per-request Windows pipe. The service
+keeps soft supersession separate from hard waiter loss: EOF, permission revocation
+and the original deadline still stop the engine even during idle confirmation.
+Only the original matching operation is signalled; duplicate/late controls do not
+cancel newer work. The native actor has an outer original-budget fence so repeated
+control messages cannot starve deadline polling. No deadline/quality/model change.
+
+Review found and repaired a field-disable gap: content already clears localActive
+on source supersession, so field revocation also sends a document-scoped stop-local
+without needing the retired request ID. It closes the local port synchronously.
+Existing cached publication/explicit Accept source/revision checks remain unchanged.
+
+Final focused results: Windows Gemma/service/pipe59 PASS14 ignored; host31 PASS1
+ignored; JS worker+scheduling88 PASS, core227 plus incremental cases; frontend
+typecheck/build and governance PASS. Actual Windows pipe tests cover soft completion,
+EOF and permit revocation while draining; service deadline remains hard.
+Actual Gemma12B pipe/service trial2 soft cancellations: request-to-ack2934/2898ms,
+then grammar302ms ("She has two books.") through the same resident service.
+8s writing budget used; next grammar used1s. This is NOT installed Chromium
+typing-to-suggestion latency or proof of token savings. GPU test preceded final
+preservation of the service-closed error label and added deadline/revocation tests;
+final focused suites validate those follow-up changes. No browser/Accept qualification.
+
+Every native supervisor invocation so far reports FAIL_LEFTOVER_CHILDREN despite
+test exit0, then COMPLETE cleanup with0 remaining. Preserve this separate failure.
+Real engine owner close succeeded and workspace was removed; leftover child identity
+was not established in this round. No Sandbox, user profile, documents, installation,
+push/main/release changes. Same-integrator review only. Mission INCOMPLETE; Source stale.
+Evidence: D:/dev/grammar-evidence/chromium-soft-cancel-20261020 (gpu/pipe-supersession.json,
+per-run supervisor-result.json/trial.log, js.log).
+
+Next: qualify the paired extension/native candidate in one installed synthetic
+browser session. Specifically test the proactive1s ceiling against measured~2.9s
+soft cancellation: it can still require hard cleanup instead of warm reuse.
+Do not activate or advertise a1s improvement based on the8s writing trial.
+Investigate the strict test-supervisor leftover separately; do not count its
+forced cleanup as natural product exit.

@@ -343,15 +343,36 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       if(s.admitting?.id===message.id)s.admitting.cancelled=true;
       if(s.pending?.id===message.id)cancelDeep(s);return {ok:true};
     }
+    if (message.op === 'stop-local') {
+      s.localGeneration=(s.localGeneration || 0)+1;
+      const local=s.local;
+      if(local) {
+        const pending=local.pending,port=local.port;
+        clearTimeout(local.timer);local.pending=null;local.port=null;
+        pending?.resolve({error:'cancelled'});port?.disconnect();
+      }
+      return {ok:true};
+    }
     if (message.op === 'cancel-local') {
       if (typeof message.id !== 'string' || !message.id || message.id.length>128 ||
           !Number.isSafeInteger(message.revision) || message.revision<1) return {error:'invalid_request'};
       const current=s.local?.pending;
       if(current && (current.id!==message.id || current.revision!==message.revision))return {ok:true};
       s.localGeneration=(s.localGeneration || 0)+1;
-      if(current) current.cancelling=true;
-      // Supersede publication, not physical inference. Keep the bounded port/timer
-      // until completion; disconnect would stop the shared model and require warmup.
+      if(current) {
+        if(message.hard===true) {
+          current.cancelling=true;
+          const local=s.local,port=local.port;
+          clearTimeout(local.timer);local.pending=null;local.port=null;
+          current.resolve({error:'cancelled'});port?.disconnect();
+        } else if(!current.cancelling) {
+          current.cancelling=true;
+          // Retain the owner and original deadline until idle/completion replies.
+          // EOF remains a hard stop, including during soft supersession.
+          try {s.local.port?.postMessage({version:1,op:'supersede',id:current.id,epoch:s.epoch,revision:current.revision,text:''});}
+          catch {s.local.port?.disconnect();}
+        }
+      }
       return {ok:true};
     }
     const localGeneration=s.localGeneration || 0;
