@@ -272,3 +272,16 @@ are separate from inference; D contention remains deferred. No quality reduction
 user data/install, push/main/release. Next: native timing decomposition of the1.33s
 case, continuous typing/IME and longer windows. See HANDOFF and external
 chromium-installed-incremental-20261020/FINAL_RECEIPT.json. Q19 IN_PROGRESS.
+
+## Q19 input-clock and stress checkpoint — 2026-10-20
+
+Paired real Gemma measurements reproduce1327.9ms automation wait versus872.6ms
+layout-visible recommendation: Playwright adaptive polling inflated the old metric.
+Page input/rAF timing now separates that overhead, retaining original evidence.
+Unchanged installed package, final18 supersession+6 continuous/CDP Korean IME/
+196-character changed-line cases PASS: recommend672-969ms, Accept58-74ms.
+No model/quality/deadline reduction. Plain-text contenteditable fixture corrected
+after retained DIV-markup refusal; rich markup remains unsupported. Physical IME,
+long free-form rewriting, low-GPU/cold behavior and other adapters remain open.
+One Sandbox at a time; final owned processes/profile/install/Sandbox0. See HANDOFF
+and chromium-input-latency-20261020/FINAL_RECEIPT.json. Q19 remains IN_PROGRESS.

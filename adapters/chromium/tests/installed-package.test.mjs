@@ -32,6 +32,8 @@ for (const [key, expected] of [
 assert.ok(OWNED_REFS.includes(process.env.GITHUB_REF), 'owned desktop opt-in: GITHUB_REF');
 
 const incrementalGemma = process.env.GRAMMAR_INSTALLED_INCREMENTAL === '1';
+const inputStress = process.env.GRAMMAR_INSTALLED_INPUT_STRESS === '1';
+assert.ok(!inputStress || incrementalGemma, 'input stress requires explicit installed Gemma mode');
 const gesturePowerShell = process.env.GRAMMAR_GESTURE_POWERSHELL || 'powershell.exe';
 const require = createRequire(import.meta.url);
 const {chromium} = require(process.env.GRAMMAR_PLAYWRIGHT);
@@ -243,7 +245,7 @@ try {
   if (incrementalGemma) await worker.evaluate(() => {
     // Observation only: never grant permission, alter a message or start inference.
     globalThis.gemmaMetrics = {requests: 0, responses: 0, supersessions: 0, cancelled: 0, timing: []};
-    chrome.runtime.onMessage.addListener(m => { if (m.op === 'analyze') gemmaMetrics.requests++; });
+    chrome.runtime.onMessage.addListener(m => { if (m.op === 'analyze') { gemmaMetrics.requests++; gemmaMetrics.lastSource = m.text; } });
     const stamp = (op, id) => {
       gemmaMetrics.timing.push({op, id, at: performance.now()});
       if (gemmaMetrics.timing.length > 64) gemmaMetrics.timing.shift();
@@ -326,6 +328,13 @@ try {
     assert.equal(await page.locator('#editable').textContent(), 'separate');
     pass('simple contenteditable: suggestion and explicit Accept reread');
 
+  }
+
+  if (inputStress) {
+    const {runInputStress} = await import('../../../scripts/mission/gemma-input-stress-browser.mjs');
+    observations.stress = {};
+    await runInputStress(page, worker, observations.stress);
+    assert.ok(observations.stress.functionalPass, 'input stress quality and safety');
   }
 
   // 6. Disable: UI removed, later edits never analysed, storage holds no text.
@@ -421,7 +430,7 @@ try {
     pass('browser closed, installed host exited, profile removed, installed extension unchanged');
   }
   const functionalStatus = status;
-  if (status === 'PASS' && observations.incremental?.latencyPass === false) {
+  if (status === 'PASS' && (observations.incremental?.latencyPass === false || observations.stress?.latencyPass === false)) {
     status = 'FAIL';
     failure = 'Incremental recommendation/Accept latency target missed';
   }
@@ -449,6 +458,7 @@ try {
     browser_default_args_removed: ['--disable-extensions'],
     profile_setup: 'fresh profile; extension action pinned to the toolbar (user UI preference); extension files unchanged',
     incremental: observations.incremental ?? null,
+    stress: observations.stress ?? null,
     checks,
     not_run_cause: notRunCause,
     failure,
@@ -457,5 +467,5 @@ try {
   };
   await writeFile(join(out, 'result.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result));
-  process.exitCode = status === 'FAIL' || observations.incremental?.latencyPass === false ? 1 : 0;
+  process.exitCode = status === 'FAIL' || observations.incremental?.latencyPass === false || observations.stress?.latencyPass === false ? 1 : 0;
 }
