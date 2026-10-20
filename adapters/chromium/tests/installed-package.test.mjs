@@ -31,6 +31,8 @@ for (const [key, expected] of [
 }
 assert.ok(OWNED_REFS.includes(process.env.GITHUB_REF), 'owned desktop opt-in: GITHUB_REF');
 
+const incrementalGemma = process.env.GRAMMAR_INSTALLED_INCREMENTAL === '1';
+const gesturePowerShell = process.env.GRAMMAR_GESTURE_POWERSHELL || 'powershell.exe';
 const require = createRequire(import.meta.url);
 const {chromium} = require(process.env.GRAMMAR_PLAYWRIGHT);
 const evidence = resolve(process.env.GRAMMAR_EVIDENCE);
@@ -92,7 +94,7 @@ async function helper(command, name, {method = 'Mouse', match = 'Exact', timeout
   let text;
   try {
     // Hidden: a console window would take activation and close Chrome's menus and popups.
-    text = (await execFileAsync('powershell.exe', args, {timeout: 4 * timeoutMs + 60000, windowsHide: true})).stdout;
+    text = (await execFileAsync(gesturePowerShell, args, {timeout: 4 * timeoutMs + 60000, windowsHide: true})).stdout;
   } catch (error) {
     text = String(error.stdout ?? '');
     if (!text.trim()) {
@@ -162,8 +164,8 @@ async function toolbarEnable({extensionName, extensionId, page, probe}) {
 }
 
 const html = (title) => `<!doctype html><html lang=en><meta charset=utf-8><title>${title}</title><body>
-<label for=writing>Writing sample</label><textarea id=writing rows=4 cols=50>seperate</textarea>
-<div id=editable contenteditable=true style="border:1px solid;width:380px;padding:10px">seperate</div></body></html>`;
+<label for=writing>Writing sample</label><textarea id=writing rows=4 cols=50>${incrementalGemma ? '' : 'seperate'}</textarea>
+<div id=editable contenteditable=true style="border:1px solid;width:380px;padding:10px">${incrementalGemma ? '' : 'seperate'}</div></body></html>`;
 const servers = [
   createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end(html(TITLE)); }),
   createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end(html(`${TITLE} (other origin)`)); }),
@@ -238,6 +240,31 @@ try {
   observations.browser = context.browser()?.version() ?? null;
   const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   assert.equal(new URL(worker.url()).host, packageManifest.extensionId);
+  if (incrementalGemma) await worker.evaluate(() => {
+    // Observation only: never grant permission, alter a message or start inference.
+    globalThis.gemmaMetrics = {requests: 0, responses: 0, supersessions: 0, cancelled: 0, timing: []};
+    chrome.runtime.onMessage.addListener(m => { if (m.op === 'analyze') gemmaMetrics.requests++; });
+    const stamp = (op, id) => {
+      gemmaMetrics.timing.push({op, id, at: performance.now()});
+      if (gemmaMetrics.timing.length > 64) gemmaMetrics.timing.shift();
+    };
+    const original = chrome.runtime.connectNative.bind(chrome.runtime);
+    chrome.runtime.connectNative = (...args) => {
+      const port = original(...args), post = port.postMessage.bind(port);
+      port.postMessage = m => {
+        if (m.op === 'supersede') gemmaMetrics.supersessions++;
+        if (m.op === 'analyze' || m.op === 'supersede') stamp(m.op, m.id);
+        return post(m);
+      };
+      port.onMessage.addListener(m => {
+        if (Array.isArray(m.suggestions)) {
+          gemmaMetrics.responses++; if (m.error === 'cancelled') gemmaMetrics.cancelled++;
+          gemmaMetrics.last = m; stamp(m.error === 'cancelled' ? 'cancelled' : 'response', m.id);
+        }
+      });
+      return port;
+    };
+  });
   const page = context.pages()[0] ?? await context.newPage();
   for (const other of context.pages()) if (other !== page) await other.close();
   const errors = [];
@@ -267,29 +294,39 @@ try {
 
   // 4. textarea: analysis by the installed host -> suggestion -> explicit Accept / Apply edit -> reread.
   const suggestion = page.getByRole('button', {name: /Suggestion 1:/});
-  await page.locator('#writing').click();
-  await page.getByRole('button', {name: 'Enable this field', exact: true}).click();
-  await suggestion.waitFor({timeout: 10000});
-  assert.ok(installedHostProcesses(hostPath) >= 1, 'analysis runs in the installer-registered host binary');
-  await suggestion.click();
-  await page.getByRole('button', {name: 'Accept', exact: true}).click();
-  assert.equal(await page.locator('#writing').inputValue(), 'separate');
-  await page.locator('#writing').fill('seperate');
-  await suggestion.waitFor({timeout: 10000});
-  await suggestion.click();
-  await page.getByRole('textbox', {name: 'Edit replacement', exact: true}).fill('distinct');
-  await page.getByRole('button', {name: 'Apply edit', exact: true}).click();
-  assert.equal(await page.locator('#writing').inputValue(), 'distinct');
-  pass('textarea: installed-host analysis, suggestion, explicit Accept and Apply edit, each reread');
+  if (incrementalGemma) {
+    assert.equal(await worker.evaluate(() => gemmaMetrics.requests), 0);
+    const {runIncremental} = await import('../../../scripts/mission/gemma-incremental-browser.mjs');
+    observations.incremental = {};
+    await runIncremental(page, worker, observations.incremental);
+    assert.ok(installedHostProcesses(hostPath) >= 1);
+    pass('six installed real Gemma supersessions; latest source, cached lookup, explicit Accept reread');
+  } else {
+    await page.locator('#writing').click();
+    await page.getByRole('button', {name: 'Enable this field', exact: true}).click();
+    await suggestion.waitFor({timeout: 10000});
+    assert.ok(installedHostProcesses(hostPath) >= 1, 'analysis runs in the installer-registered host binary');
+    await suggestion.click();
+    await page.getByRole('button', {name: 'Accept', exact: true}).click();
+    assert.equal(await page.locator('#writing').inputValue(), 'separate');
+    await page.locator('#writing').fill('seperate');
+    await suggestion.waitFor({timeout: 10000});
+    await suggestion.click();
+    await page.getByRole('textbox', {name: 'Edit replacement', exact: true}).fill('distinct');
+    await page.getByRole('button', {name: 'Apply edit', exact: true}).click();
+    assert.equal(await page.locator('#writing').inputValue(), 'distinct');
+    pass('textarea: installed-host analysis, suggestion, explicit Accept and Apply edit, each reread');
 
-  // 5. Simple contenteditable.
-  await page.locator('#editable').click();
-  await page.getByRole('button', {name: 'Enable this field', exact: true}).click();
-  await suggestion.waitFor({timeout: 10000});
-  await suggestion.click();
-  await page.getByRole('button', {name: 'Accept', exact: true}).click();
-  assert.equal(await page.locator('#editable').textContent(), 'separate');
-  pass('simple contenteditable: suggestion and explicit Accept reread');
+    // 5. Simple contenteditable.
+    await page.locator('#editable').click();
+    await page.getByRole('button', {name: 'Enable this field', exact: true}).click();
+    await suggestion.waitFor({timeout: 10000});
+    await suggestion.click();
+    await page.getByRole('button', {name: 'Accept', exact: true}).click();
+    assert.equal(await page.locator('#editable').textContent(), 'separate');
+    pass('simple contenteditable: suggestion and explicit Accept reread');
+
+  }
 
   // 6. Disable: UI removed, later edits never analysed, storage holds no text.
   await page.getByRole('button', {name: 'Disable document', exact: true}).click();
@@ -323,10 +360,11 @@ try {
   assert.equal(await page.getByRole('button', {name: /Suggestion/}).count(), 0, 'no annotation before a fresh field opt-in');
   await page.locator('#writing').click();
   await page.getByRole('button', {name: 'Enable this field', exact: true}).click();
+  if (incrementalGemma) await page.locator('#writing').fill('She have two books.');
   await suggestion.waitFor({timeout: 10000});
   await suggestion.click();
   await page.getByRole('button', {name: 'Accept', exact: true}).click();
-  assert.equal(await page.locator('#writing').inputValue(), 'separate');
+  assert.equal(await page.locator('#writing').inputValue(), incrementalGemma ? 'She has two books.' : 'separate');
   pass('second toolbar gesture granted page access again; field opt-in was required again and Accept reread');
 
   // 9. A same-origin reload drops the document opt-in. (Chromium keeps activeTab
@@ -382,8 +420,14 @@ try {
   } else if (cleanupOk && status === 'PASS') {
     pass('browser closed, installed host exited, profile removed, installed extension unchanged');
   }
+  const functionalStatus = status;
+  if (status === 'PASS' && observations.incremental?.latencyPass === false) {
+    status = 'FAIL';
+    failure = 'Incremental recommendation/Accept latency target missed';
+  }
   const result = {
     status,
+    functional_status: functionalStatus,
     classification: 'INSTALLED_PACKAGE_UNMODIFIED_EXTENSION_FRESH_PROFILE',
     source_sha: process.env.GITHUB_SHA,
     run_id: process.env.GITHUB_RUN_ID,
@@ -397,13 +441,14 @@ try {
       input_note: 'Mouse = OS mouse click at the element located by UI Automation; Invoke = UI Automation Invoke/Expand; Keyboard = OS key presses on the focused target',
       gestures,
       permission_injection: false,
-      worker_used_for: 'page-access probes (observation only) and a storage read; never to enable',
+      worker_used_for: incrementalGemma ? 'page-access/storage observations and native message counters; never to enable' : 'page-access probes (observation only) and a storage read; never to enable',
     },
     page_access_after_same_origin_reload: observations.pageAccessAfterSameOriginReload ?? null,
     browser: observations.browser ?? null,
     browser_sandbox: true,
     browser_default_args_removed: ['--disable-extensions'],
     profile_setup: 'fresh profile; extension action pinned to the toolbar (user UI preference); extension files unchanged',
+    incremental: observations.incremental ?? null,
     checks,
     not_run_cause: notRunCause,
     failure,
@@ -412,5 +457,5 @@ try {
   };
   await writeFile(join(out, 'result.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result));
-  process.exitCode = status === 'FAIL' ? 1 : 0;
+  process.exitCode = status === 'FAIL' || observations.incremental?.latencyPass === false ? 1 : 0;
 }
