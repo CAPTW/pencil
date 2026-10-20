@@ -4597,3 +4597,52 @@ actual Sandbox used the recorded equivalent generated fixture, not spoofed CI.
 Next: reproduce the1.33s tail with timing probes, then continuous typing/IME and
 longer changed windows, preserving fixed1s/500ms targets. No general editor or
 whole-product completion, no push/main/release; mission INCOMPLETE, Source stale.
+
+## 2026-10-20 Q19 input-clock correction and real Gemma input stress
+
+Reused unchanged bf2260a production package (ZIP7fc863f3d450032c8d070ead2a3617d0150ad3e292c201c5bc4302c8d8ee00f1).
+Two sequential owned Sandbox trials, never concurrent. User data/install untouched.
+Fixed the latency measurement, not model quality: input event -> layout-visible
+suggestion at requestAnimationFrame in the page clock; DOM-availability and old
+Node/locator wait are retained separately. This is not physical display scan-out.
+Installed Playwright1.62.1 coreBundle.js retryWithProgressAndBackoff uses
+[20,50,100,100,500]ms polling. Paired trial reproduced old1327.9ms while the same
+suggestion was layout-visible at872.6ms; nine of18 old waits exceeded1s while all
+18 page-clock observations were <=968.6ms. Historical1330ms FAIL remains; this
+explains reproduced measurement inflation, not a claimed faster model or proof
+of every historical tail cause. No production code/prompt/model/deadline change.
+
+Final guest-r2:18 supersession cases (quantity/negation/past-date x2 fields x3)
+PASS, recommendation728.8-968.6ms (p50=825.7,p95=968.6), Accept62.9-73.3ms.
+Six additional stress cases PASS: continuous30ms typing, Korean CDP composition,
+and196-character changed paragraph inside272-character synthetic document,
+each in textarea/simple contenteditable. Recommendation672.4-761.1ms,
+Accept58.4-68.0ms. Preedit800ms produced zero requests/annotations; commit produced
+one. Continuous typing produced one final-source request. Longer-window case
+analyzed only the changed complete line; two requests including settled baseline.
+Cache hover/click and Accept caused no inference; exact complete field rereads
+preserved outside text, quantities, negation, dates, price and expected grammar.
+All24 cases meet1s/500ms in this warm GPU sample, not general latency acceptance.
+Korean IME evidence is trusted Chromium CDP composition, physical IME NOT_RUN.
+Longer paragraph evidence is grammar correction, not free-form long translation.
+
+First guest trial FAIL retained: multiline locator.fill created #text,DIV,DIV in
+contenteditable, outside supported simple-text adapter; it was refused before
+analysis. Final fixture seeds a plain text node then uses Chromium keyboard word
+replacement. Actual node inventory confirms cause; production guard unchanged.
+General rich contenteditable support is not added or claimed.
+
+Real keyboard toolbar opt-in twice, disable/navigation/reload and installer-written
+extension unchanged checks PASS. Final browser closed/host0/profile removed;
+launcher exit0, guest install/profile/process0, exact Sandbox stopped/inventory0.
+Assets staged128.185s, app ready17.319s, separate from warm recommendation. D-drive
+contention deferred. Same-integrator review only. Syntax/scheduling/governance
+checks recorded separately; exact canonical updated CI harness not executed here
+(the Sandbox adapter executes the same corpus modules). No push/main/release.
+Evidence: D:/dev/grammar-evidence/chromium-input-latency-20261020/FINAL_RECEIPT.json,
+with guest and guest-r2 raw receipts. Next: broader changed-window/IME corpus and
+other adapter incremental integration; physical IME and cold/low-GPU qualification
+remain open. Q19 IN_PROGRESS, mission INCOMPLETE, Project Source stale.
+
+Final local validation: node syntax3 modules PASS, scheduling7/7 PASS, governance
+PASS, git diff --check PASS. Host Sandbox viewer/client process inventory0.
