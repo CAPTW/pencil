@@ -4331,3 +4331,49 @@ Public display name is Pencil; legacy executable/settings/native-host IDs and th
 Grammar correction mode remain compatible. Remote main has two README commits
 (31a927a, df48758); preserve them during integration, no force push.
 Evidence: D:/dev/grammar-evidence/rhwp-deterministic-pencil-20261018.
+
+
+## 2026-10-20 Resumed publication checkpoint: actual Gemma and cleanup
+
+Supersedes the pending qualification in the 2026-10-18 preparation entry above.
+Built source dccc246d793816aade916e261d9c7ab2ecdf7b4f; fresh app/host/broker/target
+build and source-bound final-package. Installed app and extension display Pencil;
+legacy runtime/settings/host identifiers remain compatible. Owner authorizes source
+commit/push/safe main merge; no new executable release in this checkpoint.
+
+- Actual offline Sandbox Gemma 12B QAT Q4_0: first 54 cases/177 checks PASS;
+  sequential same-package repeat 16 cases/54 checks PASS. HWP/HWPX synthetic rHWP
+  Accept, complete text/character/paragraph/style and outside-selection preservation,
+  Undo, save/reopen and protected-file refusal. Total70 cases/231 checks.
+- First36 paired Korean outputs exactly match previous checkpoint. Recommendation
+  median2421->1430ms, but p95 worsened2960->4693ms and max5199ms. First54 contain
+  three >3s requests; all miss1s. Accept41-186ms, no500ms misses.
+- Repeat16 outputs exactly match first trial. Recommendation p50=1974ms,p95/max=3019ms,
+  one >3s and all16 >1s; Accept46-82ms. This does not erase first-run outliers.
+  Shared-load observations are not a controlled hardware A/B or general quality
+  qualification. No per-request model-call counter was collected in installed runs;
+  lazy production dispatch regression proves zero inference polls for proven mappings.
+- Stage69.760s/66.568s and readiness11.991s/11.558s remain separate cold costs.
+  No smaller model, output truncation or weaker safety/meaning/format checks.
+- Both product runs naturally exited0; extension files unchanged; owned installs,
+  profiles and guest processes0. Same Sandbox stopped, inventory empty. Numeric
+  sampler exited. No user data or other sessions touched. Repeat tray-removal warning
+  remains unresolved despite verified natural exit/cleanup; do not claim it repaired.
+- Native assertions40 passed/8 ignored and two builds compiler-exit0, but strict
+  supervisors FAIL_LEFTOVER_CHILDREN (one owned child each, cleanup COMPLETE/0).
+  Current leftover executable not identified. These are not clean supervisor PASSes.
+  Final packaging PASS; rHWP62, branding, frontend, provider/worker, cleanup17 and
+  governance checks PASS. Hosted Windows CI39109153303 at dccc246 PASS (also
+  39108791792 at e8ad029); final documentation/main CI recorded externally after push.
+- Remote main README commits31a927a/df48758 preserved in mergee8ad029. Outgoing
+  source objects scanned; no evidence/model/runtime binary or credential payload.
+  Integration uses non-force fast-forward only and preserves canonical untracked files.
+- Same-integrator review, no new independent reviewer. Mission INCOMPLETE; Project
+  Source stale. General Hancom/physical IME/live cloud remain unqualified. Prototype2
+  release unchanged. Q18 remains open for held-out language coverage and latency tails;
+  owned compiler child and tray warning are separate maintenance follow-ups.
+
+Evidence: D:/dev/grammar-evidence/rhwp-deterministic-pencil-20261018/FINAL_RECEIPT.json,
+REPEAT_RECEIPT.json, attempt1-54-PASS-latency-misses, attempt2-16-repeat-PASS,
+final-build-receipt.json and final-package. Git/CI publication receipts are external
+so the tracked document does not claim its own hash.
