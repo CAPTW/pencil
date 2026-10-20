@@ -8,6 +8,7 @@
   let timer = null, heartbeat = null, expiry = null, observer = null, inflight = false, pending = null, deferredInstant = null;
   let selectedIndex = null, editBox = null, sequence = 0;
   let deepProvider = null, deepRequest = null, deepButton = null, draftVersion = 0;
+  let localActive=null;
   let localChoice='paraphrase', localGeneration=0, localRewrite=null;
   let enableTarget = null, reanalyzeAll = false, held = false, busyWaits = 0;
   let selectionReview = null, reviewInput = null, reviewAccept = null, reviewTimer = null;
@@ -65,7 +66,12 @@
     const request=deepRequest;deepRequest=null;
     if(request) chrome.runtime.sendMessage({op:'cancel-deep',epoch:request.epoch,id:request.id}).catch(()=>{});
   }
+  function cancelLocal() {
+    const request=localActive;localActive=null;localRewrite=null;pending=null;deferredInstant=null;localGeneration++;
+    if(request) chrome.runtime.sendMessage({op:'cancel-local',epoch:request.epoch,id:request.id,revision:request.revision}).catch(()=>{});
+  }
   function wipeField() {
+    cancelLocal();
     localRewrite=null;localGeneration++;
     clearDesktopReview();
     clearReview();
@@ -126,7 +132,7 @@
     if(reviewInput?.isConnected) {if(clear)session.cache=[];list.replaceChildren();revokeReview('Review expired or field changed. Copy or dismiss the draft.');return;}
     if(clear) session.cache = []; list.replaceChildren(); card.replaceChildren(); selectedIndex = null;
   }
-  function input(event) { if (event.target === editor) { localRewrite=null; if (event.isTrusted) held = false; cancelDeepUI(); invalidate(false); schedule(); } }
+  function input(event) { if (event.target === editor) { cancelLocal(); if (event.isTrusted) held = false; cancelDeepUI(); invalidate(false); schedule(); } }
   // The outcome of an explicit action stays readable until the user acts
   // again: later re-checks update the list, not this message.
   function announce(message) { if (status) { status.textContent = message; held = true; } }
@@ -138,7 +144,7 @@
     if (request) pending = request;
     render(); schedule();
   }
-  function compositionStart(event) { if (event.target === editor) { composing = true; held = false; cancelDeepUI(); invalidate(false); cancelSchedule(); } }
+  function compositionStart(event) { if (event.target === editor) { composing = true; held = false; cancelLocal(); cancelDeepUI(); invalidate(false); cancelSchedule(); } }
   function compositionEnd(event) { if (event.target === editor) { composing = false; schedule(); } }
   function scheduleLayout() {
     if (!root || layoutFrame !== null) return;
@@ -190,7 +196,7 @@
     const current=read();
     if(current===null) {wipeField();return;}
     if(current!==session.text) {
-      cancelDeepUI();invalidate(false);
+      cancelLocal();cancelDeepUI();invalidate(false);
       // Reconciliation must not restart the debounce for an input already seen.
       // The pending analysis reads the latest value and binds its own revision.
       if(timer===null) schedule();
@@ -208,25 +214,26 @@
     const deferred = deferredInstant; deferredInstant = null;
     if (deferred && deferred.owner === session && text === session.text)
       session.publish(deferred.request, deferred.suggestions);
-    let request = session.update(text);
-    // After a discarded or failed reply, or expiry, check every line again,
-    // not only the last change.
+    let request = session.update(text) || session.pending();
+    // Expiry explicitly requests a full refresh. Superseded work instead uses
+    // the accumulated unpublished window at the current revision.
     if (reanalyzeAll) { reanalyzeAll = false; request = session.full() || request; }
     if (!request) { render(); pump(); return; }
-    pending = request; pump();
+    pending = request; render(); pump();
   }
   async function pump() {
     if (inflight || !pending || !session || composing) return;
     const request = pending, owner = session, generation=localGeneration; pending = null; inflight = true;
+    const message={version:1,op:'analyze',id:String(++sequence),epoch,revision:request.revision,text:request.text};
+    localActive=message;
     try {
-      const response = await chrome.runtime.sendMessage({version:1,op:'analyze',id:String(++sequence),epoch,
-        revision:request.revision,text:request.text});
+      const response = await chrome.runtime.sendMessage(message);
       if (session !== owner || !epoch || generation!==localGeneration) return;
       if (response?.error === 'busy' && busyWaits < 150) {
         // The bounded local lane is still occupied: wait, then
         // re-check. A request that never ends does not keep the page waiting.
         busyWaits++; status.textContent = 'Waiting for local analysis to finish…';
-        reanalyzeAll = true; cancelSchedule(); timer = setTimeout(analyzeChanged, 1000); return;
+        cancelSchedule(); timer = setTimeout(analyzeChanged, 250); return;
       }
       busyWaits = 0;
       if (!response || response.error) { status.textContent = 'Local engine unavailable. Disable, check host, then enable again.'; invalidate(); return; }
@@ -235,12 +242,12 @@
       }
       if (response.epoch !== epoch || response.revision !== request.revision || read() !== owner.text) {
         // The text moved on while this reply was in flight: keep what is still
-        // valid and check the whole field again.
-        reanalyzeAll = true; invalidate(false); schedule(); return;
+        // valid and reconcile the accumulated changed window.
+        invalidate(false); schedule(); return;
       }
       if (owner.publish(request,response.suggestions)) render();
     } catch { if (session === owner && status) status.textContent = 'Connection lost. Enable this document again.'; }
-    finally { inflight = false; if (pending) pump(); }
+    finally { if(localActive===message)localActive=null; inflight = false; if (pending) pump(); }
   }
   function render() {
     if(reviewInput?.isConnected)return; // Never replace a review the user is editing.
@@ -360,7 +367,7 @@
     const owner=session,target=editor,generation=localGeneration,draft=draftVersion;
     const intent=localChoice==='paraphrase'?{mode:'paraphrase'}:{mode:'translate',target:localChoice};
     const request={intent,version:1,op:'analyze',id:String(++sequence),epoch,revision:owner.revision,text};
-    localRewrite=request;inflight=true;held=false;status.textContent='Preparing local Gemma review…';
+    localActive=request;localRewrite=request;inflight=true;held=false;status.textContent='Preparing local Gemma review…';
     try {
       const result=await chrome.runtime.sendMessage(request);
       if(localRewrite!==request || session!==owner || editor!==target || generation!==localGeneration)return;
@@ -377,7 +384,7 @@
         render();announce(owner.cache.length?'Local review ready. Choose a suggestion, then Accept.':'No local change suggested.');
       }
     } catch {if(localRewrite===request)announce('Local Gemma connection unavailable. No retry.');}
-    finally {if(localRewrite===request)localRewrite=null;inflight=false;if(pending)pump();}
+    finally {if(localActive===request)localActive=null;if(localRewrite===request)localRewrite=null;inflight=false;if(pending)pump();}
   }
   function apply(index, expected, replacement) {
     // The card's own suggestion, still in the same place: never a neighbour
@@ -616,7 +623,7 @@
     localMode.addEventListener('change',event=>{
       if(!event.isTrusted)return;
       if(dirtyDraft() || reviewInput?.isConnected){localMode.value=localChoice;announce('Copy, apply or dismiss your draft before changing mode.');return;}
-      localChoice=localMode.value;localGeneration++;localRewrite=null;cancelDeepUI();cancelSchedule();pending=null;deferredInstant=null;
+      localChoice=localMode.value;cancelLocal();cancelDeepUI();cancelSchedule();pending=null;deferredInstant=null;
       invalidate();announce('Mode changed. Request a new local review explicitly.');
     });
     localLabel.append(localMode);

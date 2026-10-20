@@ -343,6 +343,18 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       if(s.admitting?.id===message.id)s.admitting.cancelled=true;
       if(s.pending?.id===message.id)cancelDeep(s);return {ok:true};
     }
+    if (message.op === 'cancel-local') {
+      if (typeof message.id !== 'string' || !message.id || message.id.length>128 ||
+          !Number.isSafeInteger(message.revision) || message.revision<1) return {error:'invalid_request'};
+      const current=s.local?.pending;
+      if(current && (current.id!==message.id || current.revision!==message.revision))return {ok:true};
+      s.localGeneration=(s.localGeneration || 0)+1;
+      if(current) current.cancelling=true;
+      // Supersede publication, not physical inference. Keep the bounded port/timer
+      // until completion; disconnect would stop the shared model and require warmup.
+      return {ok:true};
+    }
+    const localGeneration=s.localGeneration || 0;
     const cancellation=s.cancelGeneration || 0, grant=s.grantGeneration;
     if(await denied(s.origin)) return {error:'permission_denied'};
     if (sessions.get(sender.tab?.id) !== s) return {error: 'permission_revoked'};
@@ -399,6 +411,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     }
     // At most one local request and one Deep request per admitted document.
     // Neither Deep reservation/storage nor inference occupies this local lane.
+    if(localGeneration!==(s.localGeneration || 0))return {error:'cancelled'};
     s.local ??= {epoch:s.epoch,port:null,pending:null,timer:null,closed:false};
     return analyze(s.local,request);
   })().then(respond).catch(() => respond({error: 'unavailable'}));

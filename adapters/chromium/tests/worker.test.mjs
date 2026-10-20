@@ -632,3 +632,22 @@ test('local port failure cannot cancel Deep or clear its durable cleanup ownersh
  dp.onMessage.emit({...deep,suggestions:[],cleanup_complete:true});assert.equal((await d).id,'deep');
  assert.deepEqual(f.stored().deepCleanupPending,[]);await f.command('disable');assert.equal(f.timers.size,0);
 });
+
+
+test('local supersession discards its reply without stopping the warm model or newer operation',async()=>{
+ const f=fixture();await f.command('enable');const req=f.request('old');
+ const old=f.dispatch(req,f.sender());await tick();const port=f.ports.at(-1);
+ await f.dispatch({op:'cancel-local',epoch:req.epoch,id:req.id,revision:req.revision},f.sender());
+ assert.equal(port.closed,0);
+ port.onMessage.emit({...req,suggestions:[{replacement:'stale'}]});assert.equal((await old).error,'cancelled');
+ const nextReq=f.request('next');const next=f.dispatch(nextReq,f.sender());await tick();const nextPort=f.ports.at(-1);
+ await f.dispatch({op:'cancel-local',epoch:req.epoch,id:req.id,revision:req.revision},f.sender());
+ assert.equal(nextPort.closed,0);
+ nextPort.onMessage.emit({...nextReq,suggestions:[]});assert.equal((await next).id,'next');
+});
+test('cancel during local admission prevents a native inference from starting',async()=>{
+ const f=fixture();await f.command('enable');const gate=f.delayStorage(),req=f.request('pending');
+ const old=f.dispatch(req,f.sender());await tick();
+ await f.dispatch({op:'cancel-local',epoch:req.epoch,id:req.id,revision:req.revision},f.sender());
+ gate.resolve({deniedOrigins:[]});assert.equal((await old).error,'cancelled');assert.equal(f.ports.length,0);
+});
