@@ -31,6 +31,7 @@ remaining defects and the next executable item here. Do not rewrite historical F
 | Q15 | P3 / TODO | Incremental responsibility separation | Extract tested seams from App.tsx/main.rs/codex_client.rs one at a time; preserve API and behavior, avoid broad rewrite. |
 | Q16 | P3 / TODO | Protocol/tool/evidence/runtime boundaries | Document generation ownership and consistency checks; exclude private evidence/tooling from user package, preserve source-to-artifact traceability. |
 | Q18 | P2 / IN_PROGRESS | Korean rewrite register and wider entity/role coverage; Q11 local Gemma corpus | Preserve 해 주세요 register in natural rewrites without forced paraphrases or weaker meaning/style guards. Add held-out names/compound roles and verify installed HWP/HWPX Accept, full formatting, Undo and reopen. Current three-template synthetic qualification is not general semantic or Hancom acceptance. |
+| Q19 | P0 / IN_PROGRESS | Incremental proactive Gemma: current Chromium document core, native local lane and cache | Coalesce unpublished changed lines, cancel pre-admission work, discard stale results, display valid cache without inference. Keep one in-flight/latest pending request. Active token-generation interruption must preserve the warm model and prove idle; current safe drain is not physical cancellation. Actual typing-to-suggestion/Accept and other adapters need separate qualification. |
 
 ## Historical initial slice
 Q01/Q02 are parallel to ongoing Q04/Q05 and adapter development. Existing deep

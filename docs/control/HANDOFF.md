@@ -4392,3 +4392,32 @@ Local helper3 PASS. Local full34 run FAILED (17 subprocess UTF-8 decoding errors
 and one owned-uninstall refusal); strict owned supervisor cleanup COMPLETE/0.
 Do not relabel this as local integration PASS. Evidence launcher-ci-repair/trial.log
 and supervisor-result.json; fresh hosted Windows results recorded externally.
+
+
+## 2026-10-20 Incremental proactive pipeline candidate (Q19)
+Owner requests changed-range analysis, obsolete-work cancellation and cached instant
+recommendations. Chromium already had line windows/cache, but discarded replies
+forced full-field refresh and pending replacement lost earlier unpublished edits.
+DocumentSession now carries a bounded dirty interval through revisions, including
+insertions/deletions, and clears it only on a current covering publication. Content
+keeps one in-flight/latest pending request, cancels obsolete pre-admission work,
+discards stale active replies, and renders retained cache before new inference.
+Busy retries retain the dirty range (250ms cadence, bounded150 attempts), not full
+field. Input/IME/field wipe/mode change revoke publication authority immediately;
+no inference is triggered by cached suggestion lookup. Accept/source checks unchanged.
+
+Important discovered limitation: native pipe disconnect currently causes Gemma's
+hard-cancel owner to stop the model Job. A disconnect-per-keystroke implementation
+was rejected before commit. Current local supersession retains the original bounded
+port/deadline until the active inference ends, discards its result, then runs latest
+work. This is NOT physical inference cancellation or a 1s performance qualification.
+Next: request-level interruption with independently confirmed idle while preserving
+warm model; then actual installed single-session typing/Gemma timing/Accept tests.
+No runtime/model/quality prompt changes, no general editor monitoring activation.
+
+Production JS tests: core227 existing assertions plus unpublished-window cases;
+worker79, scheduling7 (including rapid-edit pump, stale response and cache-only lookup).
+Native transport is inspected, not requalified by mocked worker transport. Actual
+Gemma/GPU/installed browser for this candidate NOT_RUN; prior package is unchanged.
+No Sandbox or user profile launched; no user data touched. Same-integrator review.
+Mission INCOMPLETE, Source stale; retained worktree and existing main remain distinct.

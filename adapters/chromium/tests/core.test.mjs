@@ -44,3 +44,19 @@ check(SelectionReview.capture(deepDoc,0,8,100).draft==='seperate');
 const revoked=SelectionReview.capture(deepDoc,0,8,100);deepDoc.clear();
 check(revoked.replacement('seperate',0,8,'bad',101)===null);
 console.log(JSON.stringify({status:'PASS',productionCoreAssertions:count}));
+
+// Unpublished intervals must survive multiple edits while an older model runs.
+const incremental=new DocumentSession('incremental');
+const initial=incremental.update('head\none\ntwo\ntail');incremental.publish(initial,[]);
+const oldChange=incremental.update('head\nONE\ntwo\ntail');
+const latest=incremental.update('head\nONE\nTWO\ntail');
+assert.equal(latest.text,'ONE\nTWO');assert.equal(latest.start,5);
+assert.equal(incremental.publish(oldChange,[]),false);
+assert.equal(incremental.pending().text,'ONE\nTWO');
+assert.equal(incremental.publish(latest,[]),true);assert.equal(incremental.pending(),null);
+const insert=incremental.update('new\nhead\nONE\nTWO\ntail');
+const erase=incremental.update('new\nhead\nONE\nTWO');
+assert.equal(erase.text,'new\nhead\nONE\nTWO');
+assert.equal(incremental.publish(insert,[]),false);
+incremental.clear();assert.equal(incremental.pending(),null);
+console.log('Incremental unpublished windows and cancellation revision checks PASS');

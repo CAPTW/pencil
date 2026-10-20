@@ -15,7 +15,7 @@
     return { start, end, text: after.slice(start, end) };
   }
   class DocumentSession {
-    constructor(epoch) { this.epoch = epoch; this.revision = 0; this.active = true; this.text = ''; this.cache = []; this.ignored = new Set(); }
+    constructor(epoch) { this.epoch = epoch; this.revision = 0; this.active = true; this.text = ''; this.cache = []; this.ignored = new Set(); this.dirty = null; }
     update(text) {
       if (!this.active || typeof text !== 'string' || text.length > MAX_TEXT) { this.clear(); return null; }
       if (this.revision && text === this.text) return null;
@@ -25,15 +25,26 @@
         const shift = s.start >= oldEnd ? delta : 0;
         return {...s, start:s.start+shift, end:s.end+shift, revision:this.revision+1};
       }).filter(s=>text.slice(s.start,s.end)===s.source);
+      // Unpublished work survives supersession. Map its interval into this revision
+      // and union with the new complete-line window; never retain old source text.
+      const prior = this.dirty;
+      const mapStart = n => n <= window.start ? n : n >= oldEnd ? n + delta : window.start;
+      const mapEnd = n => n < window.start ? n : n >= oldEnd ? n + delta : window.end;
+      const start = prior ? Math.min(window.start, mapStart(prior.start)) : window.start;
+      const end = prior ? Math.max(window.end, mapEnd(prior.end)) : window.end;
       this.text = text; this.revision++; this.cache = retained;
-      return { epoch: this.epoch, revision: this.revision, ...window };
+      this.dirty = {start, end};
+      return this.pending();
     }
+    pending() { return this.active && this.dirty ? {epoch:this.epoch, revision:this.revision,
+      ...this.dirty, text:this.text.slice(this.dirty.start,this.dirty.end)} : null; }
     // The whole field at the current revision: re-analysis after a discarded or
     // failed reply, or after the suggestions expired.
     full() { return this.active && this.revision ? { epoch: this.epoch, revision: this.revision, start: 0, end: this.text.length, text: this.text } : null; }
     publish(request, suggestions, now = Date.now()) {
       if (!this.active || request.epoch !== this.epoch || request.revision !== this.revision ||
           request.text !== this.text.slice(request.start, request.end) || !Array.isArray(suggestions)) return false;
+      if (this.dirty && request.start <= this.dirty.start && request.end >= this.dirty.end) this.dirty = null;
       const accepted = [];
       for (const s of suggestions.slice(0, MAX_SUGGESTIONS)) {
         if (!Number.isInteger(s.start) || !Number.isInteger(s.end) || s.start < 0 || s.end < s.start ||
@@ -66,7 +77,7 @@
       if (s && ignore && this.ignored.size < MAX_SUGGESTIONS) this.ignored.add(s.rule + '\0' + s.source);
       this.cache.splice(index, 1);
     }
-    clear() { this.active = false; this.text = ''; this.cache = []; this.ignored.clear(); this.revision++; }
+    clear() { this.active = false; this.text = ''; this.cache = []; this.dirty = null; this.ignored.clear(); this.revision++; }
   }
   // One explicit selected-range review, independent of mutable suggestion list
   // indices. The document adapter owns cancellation on input/selection/privacy
