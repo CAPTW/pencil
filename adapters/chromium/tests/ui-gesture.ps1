@@ -322,6 +322,15 @@ if ($Command -eq 'Keyboard') {
   $browser = Get-BrowserWindows
   if (-not $browser) { [ordered]@{ status = 'window_not_found'; steps = @() } | ConvertTo-Json -Compress -Depth 5; exit 2 }
   $focused = [GestureInput]::Foreground([IntPtr]$browser.Main.Current.NativeWindowHandle)
+  # Do not send toolbar/navigation keys to an unrelated foreground window.
+  # A denied foreground transition is a fixture failure, not permission to
+  # keep injecting input and hope that a later focus match succeeds.
+  if (-not $focused) {
+    [ordered]@{ status = 'focus_not_reached'; steps = @(
+      @{ status = 'focus_not_reached'; name = 'Owned browser activation'; method = 'Keyboard'; foreground = $false }
+    ) } | ConvertTo-Json -Compress -Depth 5
+    exit 7
+  }
   Start-Sleep -Milliseconds 300
   $specs = @($Name.Split('|'))
   $steps = @()

@@ -4703,3 +4703,56 @@ codes and synthetic rejected output, repair Korean paragraph availability withou
 loosening semantic/register checks; preserve implicit actors and tense in translation,
 then repeat full installed corpus including stale races. Mission INCOMPLETE;
 Project Source stale; test completion is not paragraph feature acceptance.
+
+
+## Paragraph refusal / translation repair — 2026-10-20 (partial, not accepted)
+
+Baseline fbc1896, intermediate implementation/package82c007e. Actual owned-Sandbox
+raw output reproduces Korean gemma_semantic_changed: 없으면->없다면 and
+답신을->회신을 were not in the closed equivalence inventory although the prompt
+preferred the latter. Added only present absence condition and same object-particle
+reply pairs. Counterexamples still reject positive existence, past absence,
+changed subject/recipient/particle, prohibition, tense and register; literal guards
+remain. Completed parsed responses rejected by semantic guards may retain the
+engine only after confirmed idle, no cancellation and the original deadline.
+Refusal still returns an error, never a suggestion or retry. Transport/schema/
+partial/deadline failures keep terminal cleanup. Forced actual-model semantic
+refusal followed by same-process successful inference remains NOT_RUN; reuse
+conditions have unit evidence and same-integrator production-path review.
+
+Actual intermediate raw Gemma four-paragraph results: KO->EN preserves omitted
+actor via passive and current budget (no invented You or future budget); Korean
+rewrite now passes unchanged quality guards with original mixed polite endings;
+English rewrite retains facts/conditions. EN->KO semantic review FAIL: applying
+passive/omitted-subject guidance in both directions dropped explicit She. All four
+structural guards passed, showing why semantic review remains separate. Restored
+Korean-target instruction exactly to the previously tested baseline and kept new
+omitted-subject/tense guidance English-target-only; added target-scope regression.
+FINAL scoped source has NOT been rebuilt or run with the real model. Intermediate
+ZIP82c007e is DO_NOT_ADOPT; do not deploy it. Raw response1168/1214/1228/1473ms is
+NOT UI recommendation/Accept timing or proof of paragraph target acceptance.
+
+Installed attempts sequential, never concurrent: first blocked before corpus by
+Windows foreground denial. Second failed in our external focus-assist fixture
+because a Python backslash escape produced BEL in a file path; retained FAIL,
+fixed path and checked control characters. Repository keyboard helper now fails
+before initial key injection when foreground activation is denied. Third session
+completed raw actual-model diagnostic, but GUI NOT_RUN because Owner activation
+availability was not confirmed. No permission injection. Actual final candidate
+8 paragraph Accept cases and4 stale races remain NOT_RUN; old results do not
+transfer. Each guest install/profile/process removed; every exact Sandbox stopped,
+inventory0. User data/personal install untouched; no push/main/release/Provider call.
+
+Evidence: D:/dev/grammar-evidence/paragraph-repair-20261020/FINAL_RECEIPT.json,
+actual-output-review.json, diagnosis.json, build-receipt.json, raw diagnostics and
+all failed installed receipts. Full source-bound intermediate build succeeded;
+strict compiler-child supervisors reported vctip.exe leftovers, all cleaned0.
+Final runtime suite initially61pass/1fail/15ignored: pre-existing startup fixture
+missed3s warmup entry (spawn2242ms, health2442ms); no threshold increase. Same-binary
+confirmation62pass/0fail/15ignored; supervisor still FAIL_LEFTOVER_CHILDREN for
+vctip.exe, cleanup complete0 (final-runtime-confirm). Model/quantization,
+request deadlines, paragraph3s and Accept500ms targets unchanged. Same-integrator
+review only. Mission INCOMPLETE; Source stale. Next: build final scoped source,
+repeat actual four-paragraph semantic review and installed eight cases/four stale
+races in one owned desktop once browser activation is available. Do not bypass
+activeTab or source/revision/Accept fences to finish the test.

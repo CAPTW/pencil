@@ -842,7 +842,7 @@ fn local_prompt(binding: &Binding) -> (String, bool) {
         let instruction = match &binding.intent {
             Intent::Paraphrase => "Paraphrase naturally in the original language. Preserve the original politeness and register exactly; do not make it more casual or more formal. Preserve all facts; do not summarize or add information. Preserve modal phrases verbatim, including may, might, must not, can and cannot: obligation, prohibition and inability are distinct. Prefer minimal rewording over changing these meanings. Avoid redundant courtesy: use Please or kindly once per request, never both; keep the same register. Remove a trailing please when the request already starts with Please or Kindly. Example: Kindly send the note, please. becomes Please send the note.",
             Intent::Translate { target: Language::English } => "Translate the complete text into English, including ordinary unquoted words. Preserve proper names, the original register and all facts; do not summarize or add information. Preserve each clause's tense and aspect: a current state must remain present, never become a future promise. Preserve explicit subjects and recipients; when the source omits a subject, prefer an impersonal or passive sentence. Never insert you, we, he or she for an omitted subject. Keep future plans only where the original explicitly expresses them.",
-            Intent::Translate { target: Language::Korean } => "Translate the complete text into Korean, including ordinary unquoted words. Preserve proper names, the original register and all facts; do not summarize or add information. Preserve each clause's tense and aspect: a current state must remain present, never become a future promise. Preserve explicit subjects and recipients; when the source omits a subject, prefer an impersonal or passive sentence. Never insert you, we, he or she for an omitted subject. Keep future plans only where the original explicitly expresses them.",
+            Intent::Translate { target: Language::Korean } => "Translate the complete text into Korean, including ordinary unquoted words. Preserve proper names, the original register and all facts; do not summarize or add information.",
             Intent::Concise => "Rewrite more concisely in the original language without losing facts, numbers, conditions or important meaning. Preserve modal phrases verbatim. Do not summarize away details or add information.",
             Intent::Polite => "Rewrite courteously and professionally in the original language, preserving the original intent, facts, numbers and conditions. Preserve modal phrases verbatim; do not introduce new modal verbs. For an imperative request, use Please rather than changing it into a Could you or Would you question. Keep obligations, uncertainty and negation unchanged. Do not add promises or information. Use only one courtesy marker per request: Please or kindly, never Please kindly or kindly please. Remove redundant courtesy without removing conditions or changing obligation. Remove a trailing please when the request already starts with Please or Kindly. Example: Kindly send the note, please. becomes Please send the note.",
             Intent::StyleAlign => "Align styles without changing fixed text.",
@@ -1857,6 +1857,19 @@ mod tests {
         assert!(preserve_literals("An open \"literal", "An open \"literal").is_err());
         assert!(preserve_literals("They don't agree.", "They don't agree.").is_ok());
     }
+    #[test]
+    fn omitted_subject_translation_rule_is_english_target_only() {
+        let binding=Binding {epoch:"e".into(),revision:1,intent:Intent::Translate {target:Language::English},source:"예산은 120달러로 유지됩니다.".into()};
+        let english=local_prompt(&binding).0;
+        assert!(english.contains("current state must remain present"));
+        assert!(english.contains("when the source omits a subject"));
+        let korean=local_prompt(&Binding {intent:Intent::Translate{target:Language::Korean},source:"She will send it.".into(),..binding}).0;
+        // Applying the omitted-subject/passive guidance in both directions
+        // caused the actual EN->KO model output to drop an explicit "She".
+        assert!(!korean.contains("impersonal or passive"));
+        assert!(korean.contains("Preserve proper names, the original register and all facts"));
+    }
+
     #[test]
     fn paragraph_absence_conditional_preserves_roles_polarity_tense_and_register() {
         let source="민수는 파일 3개를 확인했어요. 지연이 승인하면 수진에게 답신을 보내 주세요. 승인이 없으면 보고서를 전송하지 마세요. 예산은 120달러입니다.";
