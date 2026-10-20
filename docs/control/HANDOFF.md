@@ -4421,3 +4421,31 @@ Native transport is inspected, not requalified by mocked worker transport. Actua
 Gemma/GPU/installed browser for this candidate NOT_RUN; prior package is unchanged.
 No Sandbox or user profile launched; no user data touched. Same-integrator review.
 Mission INCOMPLETE, Source stale; retained worktree and existing main remain distinct.
+## 2026-10-20 Q19 warm supersession engine checkpoint
+
+Backend-only candidate: observe the owned single slot processing the request,
+drop the HTTP operation, then confirm idle within the original deadline before
+reusing the model. Unknown slot state or timeout retains hard Job cleanup.
+If admission was not observed, finish and discard instead: idle before admission
+cannot fence a queued POST. Hard cancellation/revocation remains unchanged.
+
+Actual owned-host Gemma12B QAT Q4_0: three idle-confirmed cycles with the same PID,
+request-start-to-idle 2890/2809/2801ms. Cancellation was scheduled at200ms, not
+measured at receipt. Next grammar request300ms returned "She has two books."
+This is NOT a 1s result or proof of tokens avoided versus natural completion.
+No model/prompt/quality settings changed. Model/runtime pins were verified.
+Model Job processes0, workspace removed, engine.stop acknowledged.
+
+Gemma42 tests PASS/9 ignored; actual GPU assertions PASS. Strict supervisors
+FAIL_LEFTOVER_CHILDREN with one owned child each, cleanup COMPLETE/0. Binary-only
+unit repetition also had a leftover: identity unproven, not attributed to Cargo.
+No remaining model process or Sandbox. User data untouched.
+
+Chromium remains on active-drain: explicit supersession must still be carried
+through native/pipe boundaries separately from hard disable/navigation, followed
+by installed rapid-input/cache/Accept timing tests. No install/main/push performed.
+Same-integrator review, mission INCOMPLETE, Source stale.
+Evidence: D:/dev/grammar-evidence/gemma-warm-cancel-20261020, including
+gpu/warm-cancel.json and per-run supervisor-result.json and trial.log.
+Runtime cancellation semantics reviewed against upstream llama.cpp b11461
+tools/server/server-queue.cpp and tools/server/server-context.cpp.
