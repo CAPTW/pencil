@@ -4801,3 +4801,31 @@ Q18/Q19 IN_PROGRESS; mission INCOMPLETE. Do not weaken quality or timing targets
 2026-10-21 actual quality-refusal recovery qualification INCOMPLETE: added owned browser regression asserting typed refusal/no suggestion/no mutation/no replay and model+broker PID/start-time identity before follow-up8 paragraph Accepts/4 stale races. First actual Gemma run6 Korean probes did not refuse; NOT a recovery PASS. Same model4508/broker8732 survived all6; follow-up Accept not reached. Revised8 modality/nested probes were NOT_RUN: second sequential Sandbox foreground activation denied after120s. Both natural launcher0, install/profile/process/Sandbox0. Unchanged5cf40a5 package binaries/extension; external diagnostic launcher copy only redirects stderr and enables timing, not unmodified-launcher qualification. No product patch/quality weakening/user data/personal install/push/main/release. Evidence refusal-recovery-r2-20261021/FINAL_RECEIPT.json and first-run refusal-recovery-20261021. Next reproduce actual refusal without foreground dependency before UI repetition; same-process post-refusal acceptance remains open. Q18/Q19 IN_PROGRESS; mission INCOMPLETE, Source stale.
 
 Reusable test: scripts/mission/gemma-refusal-recovery-browser.mjs. Six original probes and their actual outputs remain in first-run guest/installed-browser/result.json. Final revised probe list has syntax checks only; do not describe it as executed. Observer receives only task-owned process identity and content-free refusal codes, never supplies model output. Existing final paragraph8/4 PASS is separate prior evidence, not post-refusal recovery. Same-integrator review only.
+
+
+## 2026-10-21 Actual refusal then same-process Accept — bounded PASS
+
+2026-10-21 actual refusal recovery PASS_BOUNDED: installed5cf40a5 native host processed real Gemma request Would you mind sending the report to Mina when you have a moment? and quality guard modality_changed returned analysis_unavailable with empty suggestions. Broker7988/model9000 PID+start times identical before refusal, after refusal and after headless follow-up8 translation/rewrite Accept cases plus4 stale races. Explicit popup/field opt-in and exact reread retained; copied extension changes only localhost manifest permission, production JS unchanged. NOT OS-toolbar/unmodified-launcher qualification. Warm recommendation1058-1371ms p50=1153 p95/p99/max=1371(n8), Accept58-61ms p50=59 p95/p99/max=61;3s/500ms misses0/8, short1s exceedances8/8. Same-integrator semantic review bounded PASS. First automated run FAIL preserved: diagnostic FileStream buffered actual3 refusal codes until closure; repaired external observer with buffer1 WriteThrough, no production/quality change. Model staging301.254s,ready20.481s separate. Both sequential Sandbox natural launcher0,install/profile/process/Sandbox0; user data untouched. Evidence refusal-native-headless-r2-20261021/FINAL_RECEIPT.json corrects overbroad legacy outer receipt label; nested browser scope is explicit modified fixture. New native probe regression added. Q18/Q19 IN_PROGRESS; mission INCOMPLETE, Source stale. Next broaden actual refusal types and browser-visible refusal messaging/physical scope; no Cloud/push/main/release.
+
+Reproduction: scripts/mission/gemma-refusal-native-probe.mjs exports
+probeActualRefusal(hostPath, exactOrigin, observe, evidence). Run only inside owned
+WDAG with installed host and resident pinned broker; observers return task-owned
+PID/start metadata and existing content-free refusal codes. The successful external
+runner/WSB/fixture and hash manifest are under the evidence directory above. It
+runs the native probe before launching headless Chromium, then existing
+runParagraphUI with all8 cases/4 stale races, and compares final process identities.
+Never substitute a mock refusal, write injected model output, or treat ordinary
+unchanged output as rejection. On first run3 real refusals were present in final
+logs and same process continued, but observer missed them; automated FAIL remains.
+On final run the first request is sufficient, native host exits0 while resident
+model stays alive. Refused raw replacement is not captured, so guard rejection is
+proven but a material semantic error in that output is not independently adjudicated.
+Accept output semantic review is separate actual-output-review.json, same integrator.
+
+Validation: native-probe module Node syntax and governance PASS, git diff check PASS;
+no production code change or full Rust rerun required. Package source5cf40a5 is
+unchanged; later commit contains test/evidence only. Refusal itself was native
+protocol, not browser-visible UI; physical keyboard/IME, normal profile, Edge,
+other adapters, Cloud Provider and general language quality are NOT_RUN here.
+The external diagnostic launcher and manifest-only fixture permissions are test
+instrumentation, never changes to the personal installation or release package.
