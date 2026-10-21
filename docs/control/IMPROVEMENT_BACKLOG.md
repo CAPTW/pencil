@@ -315,3 +315,7 @@ All sequential Sandboxes/processes cleaned0. No user data or personal install ch
 Q18/Q19 remain IN_PROGRESS. Next: fresh final source build, actual semantic review,
 8 installed paragraph cases and4 stale races with an active owned browser desktop.
 See paragraph-repair-20261020/FINAL_RECEIPT.json; historical FAILs remain FAIL.
+
+
+## Q18/Q19 final paragraph installed qualification — 2026-10-21
+2026-10-21 final paragraph installed qualification: fresh source5cf40a5 package passed8 actual Gemma EN-KO/KO-EN/natural EN/KO textarea+simple-contenteditable cases and4 stale races. Same-integrator output review preserves explicit actors, clause tense, negation, conditions, register and numbers in this bounded corpus. Recommendation1059-1371ms (p50=1152,p95/p99/max=1371), Accept54-66ms (p50=59,p95/p99/max=66); paragraph3s andAccept500ms misses0/8, short1s exceedances8/8. Explicit Review-click timing, not proactive committed-input latency. Model copy284.047s and readiness15.365s separate. Browser permission from real keyboard toolbar/popup, extension unchanged; automatic foreground succeeded, Owner click unnecessary. Natural launcher0, owned install/profile/process/Sandbox0. Build exit0 but strict supervisor FAIL_LEFTOVER_CHILDREN vctip.exe, cleanup0; historical failures preserved. Forced actual-model refusal recovery not exercised, unit evidence only. No user data/personal install/push/main/release. Evidence paragraph-final-20261021/FINAL_RECEIPT.json. Q18/Q19 remain IN_PROGRESS; mission INCOMPLETE, Source stale.
