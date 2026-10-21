@@ -4756,3 +4756,41 @@ review only. Mission INCOMPLETE; Source stale. Next: build final scoped source,
 repeat actual four-paragraph semantic review and installed eight cases/four stale
 races in one owned desktop once browser activation is available. Do not bypass
 activeTab or source/revision/Accept fences to finish the test.
+
+
+## 2026-10-21 Final paragraph installed real Gemma qualification
+
+Fresh clean source `5cf40a5a40839cf89439052580e9680716444a7f` built and packaged;
+ZIP cdbd2f1838ae74d0fcbcbb543d42165b4c1e087a5162b640a12387cf89351ccd.
+One Sandbox, actual unchanged Gemma12B QAT Q4_0 and installed extension/host.
+Eight EN->KO/KO->EN/natural EN/KO textarea+simple-contenteditable cases passed
+exact Accept reread and same-integrator bounded semantic review. EN->KO now keeps
+explicit she; KO->EN has no invented You/future budget. Korean reply/absence
+synonyms retain conditions, prohibition and original mixed speech levels. This is
+four synthetic texts in two field types, not general translation qualification.
+Four stale races passed: in-flight repeated edits and source change at Accept for
+both fields. Cache/Accept did not add inference. Real keyboard toolbar/popup grants,
+Disable/navigation/re-enable/reload checks passed; extension bytes unchanged.
+Automatic foreground worked this time; no Owner click or permission injection.
+
+Warm explicit Review-click to rAF-visible complete recommendation:1059-1371ms,
+p50=1152,p95/p99/max=1371(n8 nearest rank); Accept full reread54-66ms,
+p50=59,p95/p99/max=66. Paragraph3s misses0/8, Accept500ms misses0/8; all8 exceed
+short1s. This does not measure committed-input proactive latency. Model staging
+284.047s and app/model readiness15.365s are separate, not recommendation latency.
+
+Build exit0/source receipt valid; strict supervisor FAIL_LEFTOVER_CHILDREN for
+vctip.exe, owned cleanup COMPLETE0. Preserve this and previous startup/semantic/
+foreground/fixture failures. App natural exit0; browser/host/model processes0,
+install/profile removed, exact Sandbox stopped and final inventory0. Personal
+install/user data untouched. No cloud/CI/push/main/release. Source remains stale.
+Evidence: D:/dev/grammar-evidence/paragraph-final-20261021/FINAL_RECEIPT.json,
+actual-output-review.json, build-receipt.json, guest/installed-browser/result.json,
+guest/result.json, sandbox-result.json. Package source remains5cf40a5; this is a
+later evidence-only documentation checkpoint. No independent reviewer this turn.
+
+Next: actual forced semantic-refusal then successful request in the same model
+process (current guarded reuse has unit coverage, this valid paragraph no longer
+refuses); broaden subject/tense/register corpus and committed-input paragraph
+latency. Physical IME, general profiles, Edge and other adapters are NOT_RUN here.
+Q18/Q19 IN_PROGRESS; mission INCOMPLETE. Do not weaken quality or timing targets.
