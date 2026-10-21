@@ -4794,3 +4794,10 @@ process (current guarded reuse has unit coverage, this valid paragraph no longer
 refuses); broaden subject/tense/register corpus and committed-input paragraph
 latency. Physical IME, general profiles, Edge and other adapters are NOT_RUN here.
 Q18/Q19 IN_PROGRESS; mission INCOMPLETE. Do not weaken quality or timing targets.
+
+
+## 2026-10-21 Actual refusal recovery remains unqualified
+
+2026-10-21 actual quality-refusal recovery qualification INCOMPLETE: added owned browser regression asserting typed refusal/no suggestion/no mutation/no replay and model+broker PID/start-time identity before follow-up8 paragraph Accepts/4 stale races. First actual Gemma run6 Korean probes did not refuse; NOT a recovery PASS. Same model4508/broker8732 survived all6; follow-up Accept not reached. Revised8 modality/nested probes were NOT_RUN: second sequential Sandbox foreground activation denied after120s. Both natural launcher0, install/profile/process/Sandbox0. Unchanged5cf40a5 package binaries/extension; external diagnostic launcher copy only redirects stderr and enables timing, not unmodified-launcher qualification. No product patch/quality weakening/user data/personal install/push/main/release. Evidence refusal-recovery-r2-20261021/FINAL_RECEIPT.json and first-run refusal-recovery-20261021. Next reproduce actual refusal without foreground dependency before UI repetition; same-process post-refusal acceptance remains open. Q18/Q19 IN_PROGRESS; mission INCOMPLETE, Source stale.
+
+Reusable test: scripts/mission/gemma-refusal-recovery-browser.mjs. Six original probes and their actual outputs remain in first-run guest/installed-browser/result.json. Final revised probe list has syntax checks only; do not describe it as executed. Observer receives only task-owned process identity and content-free refusal codes, never supplies model output. Existing final paragraph8/4 PASS is separate prior evidence, not post-refusal recovery. Same-integrator review only.
