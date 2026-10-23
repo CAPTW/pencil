@@ -4855,3 +4855,8 @@ in the requested recovery flow; prior failed attempts remain historical failures
 Validation: actual installed scenario PASS, Node module syntax, governance and diff
 checks; no full Rust rerun because no production code changed. No independent
 reviewer used. Continue broader quality work without claiming whole-product acceptance.
+
+
+## 2026-10-23 Korean request translation repair candidate
+
+2026-10-23 Korean expansion PARTIAL: actual installed5cf40a5 extension observed modality_changed and semantic_changed refusals4 with immediate8 recovery Accepts in identical model process. Expanded rows20 Accept/4 refusals/4 no-change, baseline8 Accept+4 stale functional PASS; manual review FAIL for2 question-en outputs: polite listener request became passive factual question. Quoted Korean retained by verbatim-literal contract, not full quotation translation. First Sandbox failed ExistingLogin0x80070520 before product start; second completed, all owned processes/install/profile/Sandbox0. Repair scoped to three unquoted Korean polite request-question endings for English translation, with modality rejection if addressed request disappears; ordinary declarative guidance and model quality unchanged. Lib local_gemma tests46PASS11ignored, strict supervisor FAIL_LEFTOVER_CHILDREN1 then cleanup0. Initial wrong broker test filter ran0, not qualification. Fresh repaired package/actual-model retest pending. Evidence korean-refusal-installed-r2-20261023 and korean-request-repair-20261023. No user data/Cloud/push/release; mission INCOMPLETE.

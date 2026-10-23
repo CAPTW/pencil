@@ -1,0 +1,104 @@
+[
+  {
+    "id": "recovery-ko-en",
+    "choice": "en",
+    "source": "민수는 월요일에 파일 3개를 검토했습니다. 지연이 승인하기 전에는 보고서를 보내면 안 됩니다. 금요일까지 승인이 오면 민수는 수진에게 보고서를 보낼 예정입니다. 예산은 120달러로 유지됩니다.",
+    "quality": "English; Minsu reviewed3 files Monday; prohibited before Jiyeon approval; Friday deadline conditional then Minsu sends to Sujin; budget120. No invented certainty or swapped recipient.",
+    "required": [
+      "3",
+      "120"
+    ],
+    "forbidden": [
+      "You must not send",
+      "budget will be maintained"
+    ],
+    "recovery": true
+  },
+  {
+    "id": "recovery-ko-natural",
+    "choice": "paraphrase",
+    "source": "민수는 파일 3개를 확인했어요. 지연이 승인하면 수진에게 답신을 보내 주세요. 승인이 없으면 보고서를 전송하지 마세요. 예산은 120달러입니다.",
+    "quality": "Korean natural rewrite; Minsu checked3files past casual polite statement; Jiyeon approval conditional reply to Sujin polite request; no approval means do not transmit report; budget120, preserve mixed original endings/honorifics.",
+    "required": [
+      "민수",
+      "지연",
+      "수진",
+      "3",
+      "120"
+    ],
+    "forbidden": [],
+    "recovery": true
+  },
+  {
+    "id": "quotation-en",
+    "choice": "en",
+    "source": "수진은 어제 보고서 2개를 확인했습니다. 민수는 \"아직 보내지 마세요\"라고 말했습니다. 지연이 승인해야만 수진이 보고서를 보낼 수 있습니다. 마감은 금요일 오후 3시입니다.",
+    "quality": "Preserve Sujin past review2, Minsu quoted prohibition, Jiyeon approval necessary, Friday3 deadline. Preserve speech act and register.",
+    "required": [
+      "2",
+      "3"
+    ]
+  },
+  {
+    "id": "quotation-paraphrase",
+    "choice": "paraphrase",
+    "source": "수진은 어제 보고서 2개를 확인했습니다. 민수는 \"아직 보내지 마세요\"라고 말했습니다. 지연이 승인해야만 수진이 보고서를 보낼 수 있습니다. 마감은 금요일 오후 3시입니다.",
+    "quality": "Preserve Sujin past review2, Minsu quoted prohibition, Jiyeon approval necessary, Friday3 deadline. Preserve speech act and register.",
+    "required": [
+      "2",
+      "3"
+    ]
+  },
+  {
+    "id": "question-en",
+    "choice": "en",
+    "source": "교수님께서 어제 파일 3개를 검토하셨어요. 지연이 승인하면 민수에게 답신을 보내 주시겠어요? 승인이 없으면 보고서를 보내지 말아 주세요. 예산은 120달러입니다.",
+    "quality": "Preserve professor honorific past, approval conditional question/request to recipient Minsu, no-approval prohibition,120. Preserve speech act and register.",
+    "required": [
+      "3",
+      "120"
+    ]
+  },
+  {
+    "id": "question-paraphrase",
+    "choice": "paraphrase",
+    "source": "교수님께서 어제 파일 3개를 검토하셨어요. 지연이 승인하면 민수에게 답신을 보내 주시겠어요? 승인이 없으면 보고서를 보내지 말아 주세요. 예산은 120달러입니다.",
+    "quality": "Preserve professor honorific past, approval conditional question/request to recipient Minsu, no-approval prohibition,120. Preserve speech act and register.",
+    "required": [
+      "3",
+      "120"
+    ]
+  },
+  {
+    "id": "nested-en",
+    "choice": "en",
+    "source": "지연이 승인하더라도 민수가 확인하지 않으면 수진은 보고서를 보내지 않습니다. 민수가 확인하면 수진은 파일 2개를 검토할 예정입니다. 수진은 어제 초안을 받았습니다. 예산은 80달러입니다.",
+    "quality": "Approval insufficient without Minsu confirmation; Sujin no send; if confirmation Sujin FUTURE review2; past receipt;80. Preserve speech act and register.",
+    "required": [
+      "2",
+      "80"
+    ]
+  },
+  {
+    "id": "nested-paraphrase",
+    "choice": "paraphrase",
+    "source": "지연이 승인하더라도 민수가 확인하지 않으면 수진은 보고서를 보내지 않습니다. 민수가 확인하면 수진은 파일 2개를 검토할 예정입니다. 수진은 어제 초안을 받았습니다. 예산은 80달러입니다.",
+    "quality": "Approval insufficient without Minsu confirmation; Sujin no send; if confirmation Sujin FUTURE review2; past receipt;80. Preserve speech act and register.",
+    "required": [
+      "2",
+      "80"
+    ]
+  },
+  {
+    "id": "modality-probe",
+    "choice": "paraphrase",
+    "source": "Would you mind sending the report to Mina when you have a moment?",
+    "quality": "Preserve polite question/request, Mina recipient, optional time condition; an actual refusal is not injected."
+  },
+  {
+    "id": "nested-role-probe",
+    "choice": "paraphrase",
+    "source": "교수님께서 검토하시면 지연이 확인하면 질의를 보내 주세요.",
+    "quality": "Preserve professor honorific and nested approval/check roles; an actual refusal is not injected."
+  }
+]
