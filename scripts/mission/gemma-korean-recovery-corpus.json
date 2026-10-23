@@ -100,5 +100,77 @@
     "choice": "paraphrase",
     "source": "교수님께서 검토하시면 지연이 확인하면 질의를 보내 주세요.",
     "quality": "Preserve professor honorific and nested approval/check roles; an actual refusal is not injected."
+  },
+  {
+    "id": "formal-request-en",
+    "source": "부장님께서 어제 초안을 검토하셨습니다. 지연이 승인하면 민수에게 파일 2개를 보내 주시겠습니까? 승인이 없으면 보내지 말아 주세요. 마감은 금요일입니다.",
+    "choice": "en",
+    "quality": "Honorific manager past review; conditional formal listener request to send2files to Minsu, prohibition without approval, Friday deadline.",
+    "required": [
+      "2"
+    ]
+  },
+  {
+    "id": "formal-request-paraphrase",
+    "source": "부장님께서 어제 초안을 검토하셨습니다. 지연이 승인하면 민수에게 파일 2개를 보내 주시겠습니까? 승인이 없으면 보내지 말아 주세요. 마감은 금요일입니다.",
+    "choice": "paraphrase",
+    "quality": "Honorific manager past review; conditional formal listener request to send2files to Minsu, prohibition without approval, Friday deadline.",
+    "required": [
+      "2"
+    ]
+  },
+  {
+    "id": "polite-request-en",
+    "source": "수진은 어제 자료 3개를 확인했어요. 민수가 동의하면 지연에게 답신을 보내 주실래요? 민수가 동의하지 않으면 기다려 주세요. 오늘 안에 결정할 필요는 없어요.",
+    "choice": "en",
+    "quality": "Casual polite register; past Sujin check3; listener request conditional on Minsu consent, Jiyeon recipient; wait without consent; no obligation today.",
+    "required": [
+      "3"
+    ]
+  },
+  {
+    "id": "polite-request-paraphrase",
+    "source": "수진은 어제 자료 3개를 확인했어요. 민수가 동의하면 지연에게 답신을 보내 주실래요? 민수가 동의하지 않으면 기다려 주세요. 오늘 안에 결정할 필요는 없어요.",
+    "choice": "paraphrase",
+    "quality": "Casual polite register; past Sujin check3; listener request conditional on Minsu consent, Jiyeon recipient; wait without consent; no obligation today.",
+    "required": [
+      "3"
+    ]
+  },
+  {
+    "id": "permission-question-en",
+    "source": "교수님께서 아직 답변하지 않으셨어요. 민수가 확인하면 제가 지연에게 파일 2개를 보내도 될까요? 확인 전에는 보내지 않을게요. 마감은 내일입니다.",
+    "choice": "en",
+    "quality": "Permission requested by speaker, NOT request to listener to send; professor honorific not yet reply, Minsu confirmation, Jiyeon recipient, first-person commitment not send before check.",
+    "required": [
+      "2"
+    ]
+  },
+  {
+    "id": "permission-question-paraphrase",
+    "source": "교수님께서 아직 답변하지 않으셨어요. 민수가 확인하면 제가 지연에게 파일 2개를 보내도 될까요? 확인 전에는 보내지 않을게요. 마감은 내일입니다.",
+    "choice": "paraphrase",
+    "quality": "Permission requested by speaker, NOT request to listener to send; professor honorific not yet reply, Minsu confirmation, Jiyeon recipient, first-person commitment not send before check.",
+    "required": [
+      "2"
+    ]
+  },
+  {
+    "id": "factual-question-en",
+    "source": "교수님께서 어제 파일 2개를 검토하셨나요? 민수는 지연에게 결과를 보냈습니까? 수진은 아직 답신을 받지 못했어요. 내일 다시 확인할 예정입니다.",
+    "choice": "en",
+    "quality": "Factual past questions, NOT listener requests; professor honorific; Minsu sender Jiyeon recipient; Sujin not yet received; future check tomorrow.",
+    "required": [
+      "2"
+    ]
+  },
+  {
+    "id": "factual-question-paraphrase",
+    "source": "교수님께서 어제 파일 2개를 검토하셨나요? 민수는 지연에게 결과를 보냈습니까? 수진은 아직 답신을 받지 못했어요. 내일 다시 확인할 예정입니다.",
+    "choice": "paraphrase",
+    "quality": "Factual past questions, NOT listener requests; professor honorific; Minsu sender Jiyeon recipient; Sujin not yet received; future check tomorrow.",
+    "required": [
+      "2"
+    ]
   }
 ]
