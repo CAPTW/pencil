@@ -79,3 +79,34 @@ launcher-suite rerun also exposed Korean Windows error-output decoding failures
 a full launcher PASS. The forced pre-fix race remains recorded even though that
 local run also reported output-decoding errors. Hosted verification of the fix
 is required; its result is separate from the first failed run.
+
+## Repair validation and local fixture follow-up
+
+[Run 39965158557](https://github.com/CAPTW/pencil/actions/runs/39965158557)
+on `c2f3245` passed the complete Windows source workflow, including the formerly
+failing launcher integration and forced sharing-violation regression. First run
+39963370820 remains FAIL; this is a new run after the observer repair.
+
+Further local validation identified two fixture-environment issues. PowerShell
+under a hidden Korean Windows process emitted bytes incompatible with the
+Python fixture's UTF-8 decoder. Explicit `[Console]::OutputEncoding =
+[Text.UTF8Encoding]::new($false)` in the owned PowerShell parent before running
+Python resolved decoding; no global console setting or product file was changed.
+With that condition, three uninstall checks correctly refused an inherited
+supervisor scope different from their own marked temporary scope. Test setup
+now binds `GRAMMAR_TRIAL_ROOT` to the newly created fixture scope and restores
+the inherited environment after each case. Production cleanup remains unchanged.
+
+That rerun then exposed one timing assumption: the concurrent-launcher test's
+three-second app lifetime could expire before uninstall was attempted. It now
+uses the existing bounded release marker and confirms the app is still alive
+until the test explicitly releases it in `finally`. No cleanup assertion is
+removed and the fixture remains bounded.
+
+Final local launcher suite: **37 PASS**, 114.231 seconds. Owned supervisor
+completed cleanup with zero remaining processes; only the declared MSVC helper
+was explicitly reaped. Earlier local runs remain FAIL (decoding: 2 failures /
+15 errors; UTF-8: 3 scope failures; corrected scope: 1 timing failure).
+This does not change the unresolved product startup failure or installed Accept
+limits above. Final follow-up commit changes test setup/lifetime and records,
+not the shipped product. Its Actions result is identified by its exact commit.
