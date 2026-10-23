@@ -57,5 +57,34 @@
       "Morgan Lee",
       "2"
     ]
+  },
+  {
+    "id": "roles-v2-unnamed-agent",
+    "choice": "en",
+    "source": "임가온 교수님께서는 제안서 5개를 검토하셨습니다. 결과는 아직 공개되지 않았습니다. 수요일에 다시 확인할 예정입니다. 승인이 없으면 전송하면 안 됩니다.",
+    "quality": "Professor Im Gaon respectful no invented gender;5 past; results not public yet; unknown future checker; no transmission without approval.",
+    "required": [
+      "5"
+    ]
+  },
+  {
+    "id": "roles-v2-plural-promise",
+    "choice": "en",
+    "source": "저희는 수정 사항 2개를 확인했습니다. Avery Park 연구원께서 동의하시면 저희가 안내문을 전달하겠습니다. 동의 전에는 전달하지 않겠습니다. 회의는 금요일입니다.",
+    "quality": "Explicit we reviewed2 and we will deliver commitment under Avery Park researcher consent; no gender; no delivery before consent; Friday meeting.",
+    "required": [
+      "Avery Park",
+      "2"
+    ]
+  },
+  {
+    "id": "roles-v2-polite-question",
+    "choice": "en",
+    "source": "제가 Quinn Davis 선생님께 요약본 3개를 보내도 될까요? 아직 답변을 받지 못했습니다. 내일 다시 논의할 예정입니다. 마감은 확정되지 않았습니다.",
+    "quality": "Explicit I permission, teacher Quinn Davis not gendered Mr/Ms;3; not received reply; unspecified future discussants; deadline unconfirmed.",
+    "required": [
+      "Quinn Davis",
+      "3"
+    ]
   }
 ]
