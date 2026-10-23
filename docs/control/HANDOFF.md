@@ -4980,3 +4980,30 @@ Named-title assertions blocked those two Accepts. Overall FAIL retained,34 Accep
 4 actual refusals,8 no-change; baseline/stale stage NOT_RUN. All owned cleanup0.
 The next candidate adds only source-derived adjacent title context, no invented
 name example. Same-integrator review; final installed qualification pending.
+
+
+## 2026-10-23 Final English fluency installed checkpoint
+
+2026-10-23 English article/fluency qualification PASS_BOUNDED at source cae1d354b3923cc1cfbf89ad9a53e24cba3a8b57: installed unchanged extension permissions/files and actual OS keyboard toolbar/popup, Gemma12B same pins. Three sequential Sandboxes, never concurrent. First e8b3b8a FAIL: bare Professor/within today, invented Kim from prompt example, and Korean received-reply action loss. Second ef836a4 FAIL: explicit Kim omitted. Final source-bound title context retains Professor Kim; unnamed the professor and indefinite a professor remain distinct; by the end of today replaces within today; speaker May I/I will not and Korean 회신을 받지 못했어요 retain meaning/register. Prior 9112e4b factual-question-paraphrase quality PASS was overbroad and is corrected; original raw receipts untouched. Production-helper receive-loss regression RED before repair, then PASS. Final expanded48rows:36 actual Accept including8 immediate post-refusal Accepts,4 real modality_changed/semantic_changed refusals,8 no-change NOT Accept proof; additional baseline8 Accept and4 stale races PASS. Broker5896/model5996 PID+start unchanged. Same-integrator manual review only, not independent linguistic certification. Expanded response observation948-1575ms p50=1174 p95=1536 includes100ms wait, not paint;Accept61-67ms p50=65 p95=67. Baseline visible1028-1309ms p50=1060;paragraph3s/Accept500ms misses0, short1s misses8/8. Model staging571.487s/readiness14.534s separate. Final build487.718s explicitly reaped declared MSVC helper, cleanup0, not natural-child-exit PASS. All three guest app/install/registration/profile/process/Sandbox cleanup0, no user data/personal install/Cloud/push/main/release. Evidence english-fluency-20261023/FINAL_RECEIPT.json and manual reviews retain failures. Quotes remain verbatim, some English impersonal phrasing remains stiff, no-change not rewrite qualification. Title guidance is bounded source surface context, not general entity verification. Mission INCOMPLETE, Source stale, Q18/Q19 ongoing. Next expand name/title and quoted-context cases without relaxing literal/meaning guards; physical IME/general profiles and strict1s goal remain unqualified.
+
+Reproduce from preserved installed-r3/run.py, trial.wsb and fixture; no extra
+extension permissions or output/error injection. External diagnostic launcher
+redirects content-free broker stderr, so this is not unmodified-launcher evidence.
+Manual quality review is actual-output-review-r3.json; original browser receipt
+keeps QUALITY_PENDING labels, deliberately distinct from manual adjudication.
+Comparison-installed-r3.json is automated comparison only. First and second manual
+reviews remain FAIL. UTF-8 result JSON is authoritative; console Korean is lossy.
+
+Final package-r3.zip SHA256
+84268115f8009878ce9e817b405c76ae09ee19e9f5c8a16743e8a43fc92128f9;
+extension johmcjbinepekondfmgaaijhamiilcap. Source commit is cae1d35, not the later
+evidence documentation commit. App/host/broker hashes and source tree are in the
+manifest and final receipt. Uninstaller removedUserData=true refers exclusively
+to C:/PencilTrialScope owned synthetic assets/profile, never host user AppData.
+
+Earlier strict focused test reported leftover vctip (then cleanup0); compiler
+helper declaration is not a relaxation of product natural-cleanup requirements.
+The red test also records an image-query failure and exit101; do not call it PASS.
+No general editor or overall mission acceptance is claimed by this checkpoint.
+
+Final source library assertions177PASS26ignored, but strict supervisor FAIL_LEFTOVER_CHILDREN for owned vctip, then confirmed cleanup0. This is not natural test cleanup PASS. Previous ef836a4 full-library execution had natural cleanup0; intermittent compiler-helper lifetime remains explicitly managed, not erased. Final product app/model/browser cleanup was natural and separate.
