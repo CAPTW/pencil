@@ -887,6 +887,60 @@ fn preserve_korean_request_translation(source: &str, fixed: &str) -> Result<(), 
     Ok(())
 }
 
+// Conservative lexical fence, not coreference resolution. Unquoted evidence is
+// required for English person/gender pronouns and marked personal titles. Names,
+// Korean honorific endings, and quoted speakers never establish gender/person.
+fn preserve_explicit_person_features(source: &str, fixed: &str) -> Result<(), String> {
+    let source = without_literals(source)?;
+    let fixed = without_literals(fixed)?;
+    let words = |text: &str| -> Vec<String> {
+        text.split(|c: char| !c.is_alphabetic()).filter(|w| !w.is_empty())
+            // US is a country abbreviation, not an object pronoun.
+            .filter(|w| *w != "US").map(str::to_lowercase).collect()
+    };
+    let input = words(&source);
+    let output = words(&fixed);
+    let korean = |roots: &[&str]| input.iter().any(|w| roots.iter().any(|root| {
+        w.strip_prefix(root).is_some_and(|tail| matches!(tail,
+            "" | "이" | "가" | "는" | "은" | "를" | "을" | "의" | "에게" | "한테" | "께" | "께서" | "도" | "만" | "와" | "과"))
+    }));
+    let has = |tokens: &[String], forms: &[&str]| tokens.iter().any(|w| forms.contains(&w.as_str()));
+    // Bare 저/제/그 are also determiners. Do not use them to authorize a person.
+    let first = has(&input, &["i", "me", "my", "mine", "myself"])
+        || korean(&["나"])
+        || input.iter().any(|w| ["제가", "저는", "저를", "저의", "저에게", "저한테", "저도", "저만", "내가", "내", "내게"].contains(&w.as_str()));
+    let plural = has(&input, &["we", "us", "our", "ours", "ourselves"]) || korean(&["우리", "저희"]);
+    let male = has(&input, &["he", "him", "his", "himself"]) || korean(&["그남자", "그남성"]);
+    let female = has(&input, &["she", "her", "hers", "herself"]) || korean(&["그녀"]);
+    for (allowed, forms) in [
+        (first, &["i", "me", "my", "mine", "myself"][..]),
+        (plural, &["we", "us", "our", "ours", "ourselves"][..]),
+        (male, &["he", "him", "his", "himself"][..]),
+        (female, &["she", "her", "hers", "herself"][..]),
+    ] {
+        if !allowed && has(&output, forms) { return Err("gemma_semantic_changed".into()); }
+    }
+    // Miss is also a verb. Only the capitalized title before a capitalized name
+    // is fenced here; do not reject ordinary "miss the deadline" wording.
+    let miss_title = |text: &str| text.split_whitespace().collect::<Vec<_>>()
+        .windows(2).any(|w| w[0] == "Miss" && w[1].chars().next().is_some_and(char::is_uppercase));
+    if miss_title(&fixed) && !miss_title(&source) { return Err("gemma_honorific_changed".into()); }
+    for (forms, roots) in [
+        (&["mr", "mister"][..], &[][..]),
+        (&["mrs", "missus"][..], &[][..]),
+        (&["ms"][..], &[][..]),
+        (&["sir"][..], &[][..]),
+        (&["madam"][..], &[][..]),
+        (&["dr", "doctor"][..], &["박사", "박사님", "의사", "의사님"][..]),
+        (&["professor"][..], &["교수", "교수님"][..]),
+    ] {
+        if has(&output, forms) && !has(&input, forms) && !korean(roots) {
+            return Err("gemma_honorific_changed".into());
+        }
+    }
+    Ok(())
+}
+
 fn local_prompt(binding: &Binding) -> (String, bool) {
     // Choose one format before inference, never retry or fall back. For short
     // sources, repeating before+after costs more tokens than the full result.
@@ -1355,11 +1409,13 @@ impl GemmaEngine {
             }
             if matches!(binding.intent, Intent::Paraphrase | Intent::Concise | Intent::Polite) {
                 preserve_english_modality(&binding.source, &replacement)?;
+                preserve_explicit_person_features(&binding.source, &replacement)?;
                 preserve_korean_identifiers(&binding.source,&replacement)?;
             }
             if binding.intent==Intent::Paraphrase {preserve_korean_register(&binding.source,&replacement)?;}
             if binding.intent == (Intent::Translate { target: Language::English }) {
                 preserve_korean_request_translation(&binding.source, &replacement)?;
+                preserve_explicit_person_features(&binding.source, &replacement)?;
             }
             Ok(replacement)
         });
@@ -2581,6 +2637,40 @@ mod tests {
         assert_eq!(wait_for_idle(Instant::now()+Duration::from_millis(5), ||
             std::future::pending::<Result<bool,String>>()).await.unwrap_err(),"gemma_deadline");
     }
+    #[test]
+    fn source_person_features_reject_observed_inventions() {
+        for (source, output) in [
+            ("한지호 팀장님이 동의하면 제가 보내겠습니다.", "If he agrees, I will send it."),
+            ("다음 주에 다시 확인할 예정입니다.", "I plan to check again next week."),
+            ("내일 다시 논의할 예정입니다.", "We plan to discuss it again tomorrow."),
+            ("이 선생님께서 보내셨나요?", "Did Mr. Lee send it?"),
+            ("김 교수님께서 답변하셨습니다.", "She replied."),
+            ("저 문서를 확인합니다.", "I check that document."),
+            ("그 자료를 검토합니다.", "He reviews the material."),
+            ("\"I will reply.\"라고 적혀 있습니다.", "I will reply. \"I will reply.\" is written."),
+            ("민수가 검토합니다.", "Dr. Minsu reviews it."),
+            ("They review it.", "We'll review it."),
+            ("송 선생님께서 읽으셨습니다.", "Miss Song read it."),
+        ] { assert!(preserve_explicit_person_features(source, output).is_err(), "{output}"); }
+    }
+
+    #[test]
+    fn source_person_features_preserve_legitimate_evidence() {
+        for (source, output) in [
+            ("제가 확인하겠습니다.", "I'll check it."),
+            ("저희가 확인합니다.", "We check it."),
+            ("그녀에게 보냈습니다.", "It was sent to her."),
+            ("김 박사님께서 확인하셨습니다.", "Dr. Kim checked it."),
+            ("Lee 교수님께서 답변하셨습니다.", "Professor Lee replied."),
+            ("US 자료를 확인합니다.", "The US material is checked."),
+            ("\"I will reply.\"라고 적혀 있습니다.", "It says \"I will reply.\"."),
+            ("파일을 보내 주시겠어요?", "Could you send the file?"),
+            ("She sent her report.", "She submitted her report."),
+            ("마감을 놓치면 안 됩니다.", "Do not miss the deadline."),
+            ("박사님이 답변하셨습니다.", "The doctor replied."),
+        ] { assert!(preserve_explicit_person_features(source, output).is_ok(), "{output}"); }
+    }
+
     #[tokio::test]
     #[ignore = "explicit owned synthetic frozen guidance evaluation; NOT installed UI acceptance"]
     async fn owned_gpu_frozen_guidance_evaluation() {

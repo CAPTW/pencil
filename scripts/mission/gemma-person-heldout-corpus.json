@@ -1,0 +1,61 @@
+[
+  {
+    "id": "roles-unknown-reviewer",
+    "choice": "en",
+    "source": "서민재 연구원께서 어제 신청서 3개를 확인하셨습니다. 수정 사항은 아직 확정되지 않았습니다. 금요일에 다시 검토할 예정입니다. 승인 전에는 공개하면 안 됩니다.",
+    "quality": "Unknown reviewer remains unknown; researcher Seominjae has no gender; past3 and future Friday, prohibition before approval.",
+    "required": [
+      "3"
+    ]
+  },
+  {
+    "id": "roles-explicit-speaker",
+    "choice": "en",
+    "source": "제가 내일 Rowan Ellis에게 초안 2개를 전달하겠습니다. Rowan Ellis 교수님께서는 아직 답변하지 않으셨습니다. 검토가 끝나기 전에는 보내지 않겠습니다. 마감은 월요일입니다.",
+    "quality": "Explicit I commitments retained; full Rowan Ellis professor, unknown gender, not yet reply,2, Monday deadline.",
+    "required": [
+      "Rowan Ellis",
+      "2"
+    ]
+  },
+  {
+    "id": "roles-quoted-speaker",
+    "choice": "en",
+    "source": "문서에는 \"I will check it.\"이라고 적혀 있습니다. 장해솔 팀장님께서 자료 4개를 받으셨습니다. 다음 달에 다시 확인할 예정입니다. 일정은 아직 확정되지 않았습니다.",
+    "quality": "Quoted I cannot license narrative I; Jang Haesol team lead received4 past, unknown future checker, uncertain schedule.",
+    "required": [
+      "I will check it.",
+      "4"
+    ]
+  },
+  {
+    "id": "roles-neutral-teacher",
+    "choice": "en",
+    "source": "송 선생님께서 오늘 안내문 2개를 읽으셨나요? Casey Morgan은 아직 의견을 보내지 않았습니다. 승인이 없으면 공개할 수 없습니다. 회의는 화요일입니다.",
+    "quality": "Teacher Song no gendered Mr/Ms; past factual question2, Casey no gender, not yet sent opinion, no approval no publication, Tuesday meeting.",
+    "required": [
+      "Casey Morgan",
+      "2"
+    ]
+  },
+  {
+    "id": "roles-plural-control",
+    "choice": "en",
+    "source": "저희는 어제 계획서 3개를 검토했습니다. Riley Chen 박사님께서 승인하시면 저희가 수정본을 보내겠습니다. 승인 전에는 보내지 않겠습니다. 일정은 다음 주에 확정됩니다.",
+    "quality": "Explicit plural we retained; Dr Riley Chen no gender;3 past, doctor approval, promise not before, next week confirmation.",
+    "required": [
+      "Riley Chen",
+      "3"
+    ]
+  },
+  {
+    "id": "roles-korean-control",
+    "choice": "paraphrase",
+    "source": "정나래 연구원께서 신청서 2개를 확인하셨나요? 아직 답변을 받지 못했어요. 확인이 끝나면 제가 Morgan Lee에게 결과를 전달할게요. 확인 전에는 전달하지 않을게요.",
+    "quality": "Preserve polite factual question, receive not reply,2, researcher and Morgan Lee, explicit I conditional delivery and negative commitment.",
+    "required": [
+      "Morgan Lee",
+      "2"
+    ]
+  }
+]
