@@ -126,6 +126,23 @@ class RetryObservationTests(unittest.TestCase):
             with self.assertRaises(json.JSONDecodeError):
                 wait_retry_ticket(pathlib.Path("unused"), "old", 1)
 
+    def test_phase_observation_keeps_deadline_under_persistent_sharing_violation(self):
+        self.root = pathlib.Path("unused")
+        with patch.object(pathlib.Path, "glob", return_value=[self.root / "status.json"]), \
+             patch(__name__ + ".read_shared_text", side_effect=PermissionError(32, "locked")) as read, \
+             patch(__name__ + ".time.sleep"), \
+             patch(__name__ + ".time.monotonic", side_effect=[0, .1, 9.9, 10.1]):
+            with self.assertRaisesRegex(AssertionError, "missing phase"):
+                LauncherTests.wait_phase(self, "failed")
+            self.assertEqual(read.call_count, 2)
+
+    def test_phase_observation_does_not_hide_malformed_status(self):
+        self.root = pathlib.Path("unused")
+        with patch.object(pathlib.Path, "glob", return_value=[self.root / "status.json"]), \
+             patch(__name__ + ".read_shared_text", return_value="{"):
+            with self.assertRaises(json.JSONDecodeError):
+                LauncherTests.wait_phase(self, "failed")
+
 
 class LauncherTests(unittest.TestCase):
     @classmethod
@@ -463,15 +480,8 @@ class LauncherTests(unittest.TestCase):
         (self.root / "fail-start").touch();(self.root / "wait-release").touch()
         first=subprocess.Popen(["pwsh","-NoProfile","-File",str(self.root / "Start-Grammar.ps1"),"-EnableDesktopGemma"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding="utf-8")
         try:
-            deadline=time.monotonic()+10
-            phase=None
-            while time.monotonic()<deadline:
-                files=list(self.root.glob("gemma-session-*.json"))
-                if files: phase=json.loads(read_shared_text(files[0]))["phase"]
-                if phase=="failed": break
-                time.sleep(.02)
-            self.assertEqual(phase,"failed")
-            self.assertIsNone(json.loads(read_shared_text(files[0]))["retryTicket"])
+            _, state = self.wait_phase("failed")
+            self.assertIsNone(state["retryTicket"])
             self.assertTrue((self.root / "app-started").exists())
             self.assertIsNone(first.poll())
             self.assertNotEqual(self.run_launcher().returncode,0)
@@ -480,6 +490,21 @@ class LauncherTests(unittest.TestCase):
             (self.root / "release-app").touch();out,err=first.communicate(timeout=20)
         self.assertNotEqual(first.returncode,0)
         self.assertFalse(list(self.root.glob("gemma-session-*.json")))
+
+    def test_start_failure_observation_survives_status_replacement(self):
+        original_read = read_shared_text
+        injected = False
+
+        def racing_read(path):
+            nonlocal injected
+            if path.name.startswith("gemma-session-") and not injected:
+                injected = True
+                raise PermissionError(32, "synthetic status replacement sharing violation")
+            return original_read(path)
+
+        with patch(__name__ + ".read_shared_text", side_effect=racing_read):
+            self.test_desktop_start_failure_preserves_app_until_explicit_exit()
+        self.assertTrue(injected, "test must exercise the observed CI race")
 
     def test_desktop_exit_during_startup_does_not_publish_endpoint(self):
         (self.root / "wait-broker").touch()
