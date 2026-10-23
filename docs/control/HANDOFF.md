@@ -4909,3 +4909,30 @@ not compiler vctip. Undeclared/query-failed children still fail. Product tests k
 strict owned_trial CLI, with no helper exception.10 supervisor regressions PASS;
 real target-service DLL build exit0, helper reaped, remaining0. Initial diagnostic
 API error and test assumptions are recorded in diagnostic-attempts.json.
+
+
+## 2026-10-23 installed request/question and build ownership checkpoint
+
+2026-10-23 Korean request/question expansion PASS_BOUNDED_MEANING_REGISTER: installed ceb6298 test exposed speaker loss in 제가 ...도 될까요? permission translation (2 fields); functional PASS was not quality PASS. Source9112e4b adds bounded first-person permission prompt/fence, distinct from addressed request and factual questions. Red production-helper regression FAIL before repair;47 Gemma tests PASS11ignored after, strict execution natural cleanup0. New source-bound package tested in one fresh Sandbox after previous session stopped:18 corpus cases across2 fields,32 Accept including8 immediate recovery Accepts,4 actual modality_changed/semantic_changed refusals,8 no-change NOT Accept proof; baseline8 Accept+4 stale races PASS. Same broker4752/model7836 PID+start throughout. Permission now may I send and I will not send; other outputs byte-identical to previous run. Same-integrator semantic/register review only; English article/fluency polish remains, quoted literals remain untranslated and rejected raw outputs not adjudicated. Expanded observation886-1527ms,p50=1156,p95=1514 includes100ms wait, not paint;Accept59-70ms,p50=64,p95=67;baselinevisible997-1278ms,1s misses6/8,3s/500ms misses0. Staging427.067s/readiness19.776s separate. MSVC vctip residue reproduced; owned_build declares exact installed helper and reaps only owned Job members, records BUILD_COMPLETE_HELPERS_REAPED rather than natural PASS. Real target DLL compile helper reaped0; final full release build420.625s natural owned cleanup0. Product-test supervisor remains strict;10 supervisor tests PASS. Child-only VsDevCmd telemetry suppression, no registry/global process changes. Final app/launcher0,owned install/registration/profile/process/Sandbox0,user data untouched. Evidence korean-requests-20261023/FINAL_RECEIPT.json; initial quality failure/red test/diagnostic failures retained. No Cloud/personal install/push/main/release. Mission INCOMPLETE,Source stale,Q18/Q19 ongoing; next broader speaker/register boundaries and English fluency, general-profile/physical IME qualification.
+
+Product/package source9112e4bdb79d6f2e7ed20f681d65c95bef653bab;
+ZIP13bbb22fed6671f77fb5d808ff532ff7af34e41699c5cf7c050c61822849b9ce;
+extensioniahehghbabhakjnchcneoilmajgpdkpe. Evidence docs commit is not binary source.
+Reproduce using preserved installed-repaired/run.py/trial.wsb/fixture under the
+above evidence directory and package. Fixture asserts two real refusal types,
+question-en and permission-question-en Accepts. Extension bytes/permissions are
+unchanged; external launcher only redirects diagnostic stderr. No extra host
+permissions. Final raw receipt quality labels remain pending; separate manual
+actual-output-review.json adjudicates bounded meaning/register, with fluency
+limits explicitly retained. The permission output's bare Professor article choice
+is not perfect-English qualification. No-change rows are not rewritten outputs.
+
+For future builds use owned_build.py as in docs/PROTOTYPE.md. Compile Rust tests
+with owned_build.py cargo test --no-run; run the emitted executable separately
+under strict owned_trial.py. This separates intentionally managed MSVC helper
+teardown from product natural-child-exit requirements. Never add product processes
+to the helper declaration. Only installed vctip is declared by the build wrapper;
+other images or failed image queries still fail. Direct, unsupervised third-party
+compiler commands are not claimed to shut down their services naturally.
+Uninstaller removedUserData=true concerns only C:/PencilTrialScope synthetic data;
+no host user AppData, dictionary or normal browser profile was read or removed.
