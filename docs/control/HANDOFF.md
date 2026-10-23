@@ -4951,3 +4951,23 @@ MSVC vctip despite test exit0, then confirmed cleanup0. This is NOT natural test
 cleanup PASS. Compile supervisor explicitly reaped its declared helper, cleanup0.
 First compile preceded edits after an encoding error, so compile-r2 is the actual
 modified-source compile. Evidence english-fluency-20261023. No user data touched.
+
+## 2026-10-23 English fluency first installed run FAIL — repair pending rerun
+
+Source e8b3b8a package is DO_NOT_ADOPT. The single installed Sandbox run
+completed 48 rows but four wording assertions failed (bare Professor and within
+today, two fields each). Manual review additionally found an invented Kim copied
+from a prompt example and Korean factual-question paraphrase omitted 받지,
+changing not receiving a reply into not replying. The latter also exists in the
+previous 9112e4b raw output: its prior broad meaning PASS is corrected for that
+case; immutable receipts remain unchanged. Functional Accept was not semantic
+proof. Baseline/stale stage was NOT_RUN after failure. Same broker/model survived
+four real refusals and follow-ups; all owned guest processes/install/profile and
+Sandbox were removed. Evidence english-fluency-20261023/actual-output-review.json.
+
+Repair removes personal-name examples, puts positive English article/time rules
+after the input, and preserves receive/send action tokens in bounded Korean reply
+rewriting. Exact observed receive-loss production-helper regression failed before
+repair and passes after;48 Gemma tests PASS11ignored, supervisor natural cleanup0.
+Red test failure and unknown helper-image query failure are preserved, owned
+cleanup0. Real-model qualification of this repair remains pending. No user data.

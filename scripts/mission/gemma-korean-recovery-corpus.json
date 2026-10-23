@@ -57,6 +57,9 @@
     "required": [
       "3",
       "120"
+    ],
+    "forbiddenPatterns": [
+      "\\bKim\\b"
     ]
   },
   {
@@ -153,7 +156,8 @@
       "\\b(?:may|could|can) I\\b"
     ],
     "forbiddenPatterns": [
-      "\\buntil before\\b"
+      "\\buntil before\\b",
+      "\\bKim\\b"
     ]
   },
   {
@@ -172,6 +176,9 @@
     "quality": "Factual past questions, NOT listener requests; professor honorific; Minsu sender Jiyeon recipient; Sujin not yet received; future check tomorrow.",
     "required": [
       "2"
+    ],
+    "forbiddenPatterns": [
+      "\\bKim\\b"
     ]
   },
   {
@@ -180,7 +187,8 @@
     "choice": "paraphrase",
     "quality": "Factual past questions, NOT listener requests; professor honorific; Minsu sender Jiyeon recipient; Sujin not yet received; future check tomorrow.",
     "required": [
-      "2"
+      "2",
+      "받지"
     ]
   },
   {
