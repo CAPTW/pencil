@@ -4936,3 +4936,18 @@ other images or failed image queries still fail. Direct, unsupervised third-part
 compiler commands are not claimed to shut down their services naturally.
 Uninstaller removedUserData=true concerns only C:/PencilTrialScope synthetic data;
 no host user AppData, dictionary or normal browser profile was read or removed.
+
+
+## 2026-10-23 English fluency candidate pending actual model qualification
+
+English-only translation guidance now distinguishes specific role articles,
+unnamed roles and named titles, and discourages literal temporal preposition
+chains without changing subject, speech act or commitment. Existing meaning,
+register and speaker/request guards remain unchanged. Corpus adds named-title
+and indefinite-role counterexamples; required/forbidden wording is checked before
+Accept. Actual installed-package output qualification remains pending.
+Focused Gemma assertions47PASS11ignored; strict supervisor reported leftover
+MSVC vctip despite test exit0, then confirmed cleanup0. This is NOT natural test
+cleanup PASS. Compile supervisor explicitly reaped its declared helper, cleanup0.
+First compile preceded edits after an encoding error, so compile-r2 is the actual
+modified-source compile. Evidence english-fluency-20261023. No user data touched.

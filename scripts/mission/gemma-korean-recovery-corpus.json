@@ -126,6 +126,9 @@
     "quality": "Casual polite register; past Sujin check3; listener request conditional on Minsu consent, Jiyeon recipient; wait without consent; no obligation today.",
     "required": [
       "3"
+    ],
+    "forbiddenPatterns": [
+      "\\bwithin today\\b"
     ]
   },
   {
@@ -144,6 +147,13 @@
     "quality": "Permission requested by speaker, NOT request to listener to send; professor honorific not yet reply, Minsu confirmation, Jiyeon recipient, first-person commitment not send before check.",
     "required": [
       "2"
+    ],
+    "requiredPatterns": [
+      "\\bthe professor\\b",
+      "\\b(?:may|could|can) I\\b"
+    ],
+    "forbiddenPatterns": [
+      "\\buntil before\\b"
     ]
   },
   {
@@ -171,6 +181,33 @@
     "quality": "Factual past questions, NOT listener requests; professor honorific; Minsu sender Jiyeon recipient; Sujin not yet received; future check tomorrow.",
     "required": [
       "2"
+    ]
+  },
+  {
+    "id": "named-title-en",
+    "choice": "en",
+    "source": "김 교수님께서 어제 파일 2개를 검토하셨습니다. 지연이 승인하면 민수에게 결과를 보내 주시겠습니까? 승인 전에는 결과를 보내지 말아 주세요. 마감은 내일입니다.",
+    "quality": "Professor Kim title without article; honorific respectful register, past review2; addressed conditional request to Minsu; prohibition before approval; tomorrow deadline.",
+    "required": [
+      "2"
+    ],
+    "requiredPatterns": [
+      "\\bProfessor Kim\\b"
+    ],
+    "forbiddenPatterns": [
+      "\\b(?:the|a) Professor Kim\\b"
+    ]
+  },
+  {
+    "id": "indefinite-role-en",
+    "choice": "en",
+    "source": "교수 한 분이 어제 파일 2개를 검토하셨습니다. 성함은 아직 모릅니다. 지연이 승인하면 민수가 결과를 보낼 예정입니다. 승인 전에는 결과를 보내면 안 됩니다.",
+    "quality": "Unspecified professor (a professor), honorific respectful register, past review2; name unknown (no invented gender/name); future Minsu sending conditional Jiyeon approval; prohibition before approval.",
+    "required": [
+      "2"
+    ],
+    "requiredPatterns": [
+      "^A professor\\b"
     ]
   }
 ]
