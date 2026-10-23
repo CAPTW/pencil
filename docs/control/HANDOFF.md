@@ -4829,3 +4829,29 @@ protocol, not browser-visible UI; physical keyboard/IME, normal profile, Edge,
 other adapters, Cloud Provider and general language quality are NOT_RUN here.
 The external diagnostic launcher and manifest-only fixture permissions are test
 instrumentation, never changes to the personal installation or release package.
+
+
+## 2026-10-23 Installed extension actual refusal recovery
+
+2026-10-23 installed-extension refusal recovery PASS_BOUNDED: unchanged installed5cf40a5 extension (activeTab/scripting/nativeMessaging/storage, no host_permissions) activated via actual OS keyboard toolbar+popup in one owned Sandbox. Actual browser paraphrase refusal modality_changed returned analysis_unavailable, empty suggestions, no Accept, no mutation/replay. Broker4932/model5664 PID+start times identical before refusal, after refusal and after8 four-sentence translation/rewrite Accept cases plus4 stale races. Exact reread and same-integrator semantic review PASS in bounded EN/KO corpus. Warm recommendation997-1310ms p50=1091 p95/p99/max=1310; Accept54-63ms p50=59 p95/p99/max=63 (nearest rank,n8). Paragraph3s/Accept500ms misses0/8, short1s exceedances7/8; explicit Review click timing, not proactive committed-input latency. Staging242.977s, readiness14.665s separate. Disable/navigation/re-enable checks PASS; extension unchanged; natural launcher0, owned host/install/registration/profile/process/Sandbox0. External diagnostic launcher retains content-free stderr; not unmodified-launcher qualification. No product patch or new build needed, quality/model pins unchanged. Console output encoding is lossy; UTF-8 result JSON used for review. Tray-icon diagnostic remains, shutdown confirmed complete. Evidence refusal-installed-20261023/FINAL_RECEIPT.json. User data untouched; no personal install/Cloud/push/main/release. Q18/Q19 IN_PROGRESS; mission INCOMPLETE, Source stale. Next broaden refusal classes and Korean paragraph quality; physical IME/general profiles remain NOT_RUN.
+
+Reproduction: D:/dev/grammar-evidence/refusal-installed-20261023/run.py and
+trial.wsb use preserved fixture/ and fresh guest/ output. Single-Sandbox controller
+refuses a second session and stops its exact ID in finally. Reuse the source-bound
+paragraph-final-20261021 package only while product paths are unchanged from5cf40a5;
+this checkpoint verified no src/src-tauri/adapters diff. Browser module is
+scripts/mission/gemma-refusal-recovery-browser.mjs followed by
+scripts/mission/gemma-paragraph-browser.mjs. Real OS keyboard grants activeTab;
+no manifest edit or worker permission injection. Each helper refuses input unless
+the owned window is foreground. Both toolbar activations succeeded without Owner
+click. External Start-Diagnostic.ps1 uses buffer1 WriteThrough to expose existing
+refusal codes immediately; installed binaries and extension files are unchanged.
+Raw guest receipts are preserved; FINAL_RECEIPT.json separates external launcher
+instrumentation from installed extension qualification. actual-output-review.json
+contains all8 manually reviewed outputs, and evidence-hashes.json pins receipts
+and reproduction files. Rejected replacement itself is not logged, so the guard's
+linguistic correctness is not independently adjudicated. No new failure was found
+in the requested recovery flow; prior failed attempts remain historical failures.
+Validation: actual installed scenario PASS, Node module syntax, governance and diff
+checks; no full Rust rerun because no production code changed. No independent
+reviewer used. Continue broader quality work without claiming whole-product acceptance.
