@@ -4971,3 +4971,12 @@ rewriting. Exact observed receive-loss production-helper regression failed befor
 repair and passes after;48 Gemma tests PASS11ignored, supervisor natural cleanup0.
 Red test failure and unknown helper-image query failure are preserved, owned
 cleanup0. Real-model qualification of this repair remains pending. No user data.
+
+## 2026-10-23 English fluency second installed run — named title still FAIL
+
+Source ef836a4 fixes the observed bare-role article, today phrase and Korean
+receipt-loss outputs in both fields, but drops the explicit surname in 김 교수님.
+Named-title assertions blocked those two Accepts. Overall FAIL retained,34 Accept,
+4 actual refusals,8 no-change; baseline/stale stage NOT_RUN. All owned cleanup0.
+The next candidate adds only source-derived adjacent title context, no invented
+name example. Same-integrator review; final installed qualification pending.
