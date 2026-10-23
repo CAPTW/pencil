@@ -5,6 +5,7 @@ starts suspended so no descendant can escape before Job assignment. No breakaway
 is permitted. Logs contain trial output; use synthetic documents only.
 """
 import argparse
+import ctypes
 import json
 import os
 import uuid
@@ -23,7 +24,22 @@ import win32process
 MUTEX = r"Local\GrammarOwnedDesktopTrialV1"
 
 
-def run(command, output, timeout, mutex_name=MUTEX):
+def process_image(handle):
+    query = ctypes.WinDLL("kernel32", use_last_error=True).QueryFullProcessImageNameW
+    query.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_wchar_p,
+                      ctypes.POINTER(ctypes.c_ulong)]
+    query.restype = ctypes.c_int
+    buffer = ctypes.create_unicode_buffer(32768)
+    size = ctypes.c_ulong(len(buffer))
+    if not query(int(handle), 0, buffer, ctypes.byref(size)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return buffer.value
+
+
+def run(command, output, timeout, mutex_name=MUTEX, owned_helper_images=()):
+    # Explicit build-only lifetime contract. Never infer ownership from a name
+    # or enumerate/kill processes outside this Job. Tests use the strict default.
+    helper_images = {os.path.normcase(str(Path(p).resolve(strict=True))) for p in owned_helper_images}
     output = Path(os.path.abspath(output))
     # Check lexical ancestors before mkdir/resolve can traverse a junction.
     for ancestor in (output, *output.parents):
@@ -34,6 +50,8 @@ def run(command, output, timeout, mutex_name=MUTEX):
     acquired = False
     job = process = thread = log = None
     result = {"status": "ERROR", "cleanup": "NOT_STARTED"}
+    if helper_images:
+        result["declaredBuildHelperImages"] = sorted(helper_images)
     started = time.monotonic()
     try:
         wait = win32event.WaitForSingleObject(mutex, 0)
@@ -61,6 +79,10 @@ def run(command, output, timeout, mutex_name=MUTEX):
         else:
             marker.write_text(json.dumps({"schema":"pencil-owned-trial/v1", "root":str(scope), "id":uuid.uuid4().hex}), encoding="utf-8")
         child_env = dict(os.environ, GRAMMAR_HOST_TRIAL=os.environ.get("GRAMMAR_HOST_TRIAL") or "owned-supervisor", GRAMMAR_TRIAL_ROOT=str(scope))
+        if helper_images:
+            # VsDevCmd.bat honors this per-child switch before starting its
+            # PowerShell telemetry helper. It does not disable compiler vctip.
+            child_env["VSCMD_SKIP_SENDTELEMETRY"] = "1"
         result["cleanupScope"] = str(scope)
         sa = pywintypes.SECURITY_ATTRIBUTES()
         sa.bInheritHandle = True
@@ -110,13 +132,27 @@ def run(command, output, timeout, mutex_name=MUTEX):
             waits = []
             remaining_ids = win32job.QueryInformationJobObject(job, win32job.JobObjectBasicProcessIdList)
             result["remainingProcessIds"] = list(remaining_ids)
+            result["remainingProcesses"] = []
             for child_pid in remaining_ids:
                 try:
-                    waits.append(win32api.OpenProcess(win32con.SYNCHRONIZE, False, child_pid))
+                    handle = win32api.OpenProcess(win32con.SYNCHRONIZE | 0x1000, False, child_pid)
+                    waits.append(handle)
+                    # Query only our Job members, while retaining their handles.
+                    # An image lookup failure must not prevent Job cleanup.
+                    entry = {"pid": child_pid}
+                    try:
+                        entry["image"] = process_image(handle)
+                    except OSError as error:
+                        entry["imageQueryError"] = getattr(error, "winerror", None)
+                    result["remainingProcesses"].append(entry)
                 except pywintypes.error:
                     pass  # The Job remains the authoritative cleanup owner.
             active = win32job.QueryInformationJobObject(job, win32job.JobObjectBasicAccountingInformation)["ActiveProcesses"]
             result["remainingBeforeCleanup"] = active
+            managed_helpers = (result["status"] == "PASS" and active > 0
+                               and len(result["remainingProcesses"]) == active
+                               and all(os.path.normcase(p.get("image", "")) in helper_images
+                                       for p in result["remainingProcesses"]))
             if active:
                 win32job.TerminateJobObject(job, 1)
                 if result["status"] == "PASS":
@@ -134,6 +170,10 @@ def run(command, output, timeout, mutex_name=MUTEX):
             result["remainingAfterCleanup"] = active
             result["processHandlesSignalled"] = processes_signalled
             result["cleanup"] = "COMPLETE" if active == 0 and processes_signalled else "INCOMPLETE"
+            if managed_helpers and result["cleanup"] == "COMPLETE":
+                # This is managed tool teardown, never a natural-exit PASS.
+                result["status"] = "BUILD_COMPLETE_HELPERS_REAPED"
+                result["naturalChildExit"] = False
             job.Close()
         for handle in (thread, process, log):
             if handle is not None:

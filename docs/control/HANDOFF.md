@@ -4885,3 +4885,27 @@ No independent reviewer; same-integrator code/diff and actual-output review.
 Console log encoding is lossy; UTF-8 receipt JSON is the authoritative text.
 Cleanup only targeted C:/PencilTrialScope and the task-owned browser profile;
 uninstaller removedUserData refers to that synthetic data, never user AppData.
+
+
+## 2026-10-23 request/question expansion repair pending installed retest
+
+Expanded installed ceb6298 corpus found a real quality failure despite functional
+PASS: explicit speaker permission (제가 ...도 될까요?) translated passively, losing
+speaker identity and commitment. Both textarea/contenteditable accepted it.
+Evidence korean-requests-20261023/installed/actual-output-review.json preserves
+this failure. 32 expanded Accepts,4 actual refusals,8 no-change; baseline8 Accept
+and4 stale cases; same model PID/start; complete owned cleanup and Sandbox0.
+New bounded English prompt/fence preserves explicit speaker permission separately
+from addressed requests and factual questions. Red regression fails before repair;
+47 local_gemma tests PASS11ignored after repair, strict test cleanup0. Actual-model
+repair qualification remains PENDING until new source-bound package retest.
+
+Child diagnosis reproduced successful MSVC compilation leaving exact installed
+vctip.exe. owned_build.py now explicitly owns this helper until build completion,
+reaps only its Job tree and awaits exit; BUILD_COMPLETE_HELPERS_REAPED is not a
+natural shutdown PASS. No registry/global telemetry change, no name-based kill.
+Child-only VSCMD_SKIP_SENDTELEMETRY suppresses VsDevCmd's separate PowerShell helper,
+not compiler vctip. Undeclared/query-failed children still fail. Product tests keep
+strict owned_trial CLI, with no helper exception.10 supervisor regressions PASS;
+real target-service DLL build exit0, helper reaped, remaining0. Initial diagnostic
+API error and test assumptions are recorded in diagnostic-attempts.json.

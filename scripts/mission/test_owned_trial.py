@@ -1,9 +1,11 @@
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import uuid
 import time
 import psutil
@@ -52,7 +54,7 @@ class OwnedTrialTests(unittest.TestCase):
 
     def test_timeout_reaps_descendant(self):
         with tempfile.TemporaryDirectory(prefix="grammar-supervisor-") as output:
-            code = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); print('child started',flush=True); time.sleep(60)"
+            code = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'],creationflags=subprocess.CREATE_NO_WINDOW); print('child started',flush=True); time.sleep(60)"
             result = run([sys.executable, "-c", code], output, 2)
             self.assertEqual(result["status"], "TIMEOUT")
             self.assertGreaterEqual(result["remainingBeforeCleanup"], 2)
@@ -61,9 +63,49 @@ class OwnedTrialTests(unittest.TestCase):
 
     def test_abandoned_child_is_not_success(self):
         with tempfile.TemporaryDirectory(prefix="grammar-supervisor-") as output:
-            code = "import subprocess,sys; subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'])"
+            code = "import subprocess,sys; subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'],creationflags=subprocess.CREATE_NO_WINDOW)"
             result = run([sys.executable, "-c", code], output, 10)
             self.assertEqual(result["status"], "FAIL_LEFTOVER_CHILDREN")
+            self.assertEqual(result["remainingAfterCleanup"], 0)
+            self.assertIn(Path(sys.executable).resolve(), [Path(p["image"]).resolve() for p in result["remainingProcesses"]])
+
+    def test_declared_build_helper_is_explicitly_reaped(self):
+        with tempfile.TemporaryDirectory(prefix="grammar-supervisor-") as output:
+            original = os.environ.get('VSCMD_SKIP_SENDTELEMETRY')
+            code = "import subprocess,sys,os; assert os.environ['VSCMD_SKIP_SENDTELEMETRY']=='1'; subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'],creationflags=subprocess.CREATE_NO_WINDOW)"
+            result = run([sys.executable, "-c", code], output, 10,
+                         owned_helper_images=[sys.executable, str(Path(os.environ['WINDIR']) / 'System32' / 'conhost.exe')])
+            self.assertEqual(result["status"], "BUILD_COMPLETE_HELPERS_REAPED")
+            self.assertFalse(result["naturalChildExit"])
+            self.assertEqual(result["remainingAfterCleanup"], 0)
+            self.assertTrue(result["processHandlesSignalled"])
+            self.assertEqual(os.environ.get('VSCMD_SKIP_SENDTELEMETRY'), original)
+
+    def test_other_image_is_not_declared_helper(self):
+        with tempfile.TemporaryDirectory(prefix="grammar-supervisor-") as output:
+            code = "import subprocess,sys; subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'],creationflags=subprocess.CREATE_NO_WINDOW)"
+            result = run([sys.executable, "-c", code], output, 10,
+                         owned_helper_images=[str(Path(os.environ['WINDIR']) / 'System32' / 'cmd.exe')])
+            self.assertEqual(result["status"], "FAIL_LEFTOVER_CHILDREN")
+            self.assertEqual(result["cleanup"], "COMPLETE")
+
+    def test_build_failure_is_not_promoted_by_helper_cleanup(self):
+        with tempfile.TemporaryDirectory(prefix="grammar-supervisor-") as output:
+            code = "import subprocess,sys; subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'],creationflags=subprocess.CREATE_NO_WINDOW); sys.exit(7)"
+            result = run([sys.executable, "-c", code], output, 10,
+                         owned_helper_images=[sys.executable, str(Path(os.environ['WINDIR']) / 'System32' / 'conhost.exe')])
+            self.assertEqual(result["status"], "FAIL")
+            self.assertEqual(result["exitCode"], 7)
+            self.assertEqual(result["cleanup"], "COMPLETE")
+
+    def test_image_query_failure_cannot_skip_cleanup_or_qualify_helper(self):
+        with tempfile.TemporaryDirectory(prefix="grammar-supervisor-") as output:
+            code = "import subprocess,sys; subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'],creationflags=subprocess.CREATE_NO_WINDOW)"
+            with patch('owned_trial.process_image', side_effect=OSError('synthetic query failure')):
+                result = run([sys.executable, "-c", code], output, 10,
+                             owned_helper_images=[sys.executable])
+            self.assertEqual(result["status"], "FAIL_LEFTOVER_CHILDREN")
+            self.assertEqual(result["cleanup"], "COMPLETE")
             self.assertEqual(result["remainingAfterCleanup"], 0)
 
     def test_competing_session_rejected(self):

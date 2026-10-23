@@ -26,6 +26,7 @@ included in the default package's support claim. No automatic background Apply.
 
 Prerequisites: Windows x64, PowerShell 7, Git, Node/npm, Rust MSVC toolchain,
 Visual Studio C++ build tools with Windows SDK and release CRT, and WebView2.
+The owned build supervisor also requires Python with pywin32.
 For the executable ZIP, read START_HERE.md included in the GitHub prerelease.
 The commands below instead build a fresh package from source.
 Use an empty output directory outside the checkout and keep the checkout clean.
@@ -37,12 +38,21 @@ npm ci
 cargo fetch --locked --manifest-path src-tauri/Cargo.toml
 $output = Join-Path $env:TEMP ('pencil-build-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $output | Out-Null
-pwsh -NoProfile -File scripts/mission/build-receipt.ps1 -SourceRoot . -ReceiptPath "$output/build-receipt.json"
+python scripts/mission/owned_build.py --output "$output/supervisor" --timeout 1200 -- pwsh -NoProfile -File scripts/mission/build-receipt.ps1 -SourceRoot . -ReceiptPath "$output/build-receipt.json"
+if ($LASTEXITCODE -ne 0) { throw 'Build or owned-process cleanup failed' }
 # Stop if the build failed. Packaging verifies the clean source and binary hashes.
 pwsh -NoProfile -File scripts/mission/package.ps1 -ReceiptPath "$output/build-receipt.json" -OutputRoot "$output/package"
 # Choose a NEW per-user install directory; do not overwrite an existing install.
 pwsh -NoProfile -File "$output/package/Install-Grammar.ps1" -InstallRoot "$env:LOCALAPPDATA/PencilPrototype"
 ```
+
+The supervisor owns only its build process tree. MSVC's `vctip.exe` may remain
+after compilation; its exact installed path is declared before this build and
+the owned instance is terminated and awaited at completion. The receipt calls
+this `BUILD_COMPLETE_HELPERS_REAPED`, not natural shutdown. Other leftover
+children still fail the build. No global process-name cleanup or registry
+telemetry change is performed. Product tests must use the strict
+`owned_trial.py` supervisor, without declaring build helpers.
 
 From the installation directory, explicitly run `Prepare-GrammarLocal.ps1` with
 PowerShell 7 to fetch and verify the pinned model/runtime, then `Start-Grammar.ps1`.
