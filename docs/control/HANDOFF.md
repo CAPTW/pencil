@@ -4860,3 +4860,28 @@ reviewer used. Continue broader quality work without claiming whole-product acce
 ## 2026-10-23 Korean request translation repair candidate
 
 2026-10-23 Korean expansion PARTIAL: actual installed5cf40a5 extension observed modality_changed and semantic_changed refusals4 with immediate8 recovery Accepts in identical model process. Expanded rows20 Accept/4 refusals/4 no-change, baseline8 Accept+4 stale functional PASS; manual review FAIL for2 question-en outputs: polite listener request became passive factual question. Quoted Korean retained by verbatim-literal contract, not full quotation translation. First Sandbox failed ExistingLogin0x80070520 before product start; second completed, all owned processes/install/profile/Sandbox0. Repair scoped to three unquoted Korean polite request-question endings for English translation, with modality rejection if addressed request disappears; ordinary declarative guidance and model quality unchanged. Lib local_gemma tests46PASS11ignored, strict supervisor FAIL_LEFTOVER_CHILDREN1 then cleanup0. Initial wrong broker test filter ran0, not qualification. Fresh repaired package/actual-model retest pending. Evidence korean-refusal-installed-r2-20261023 and korean-request-repair-20261023. No user data/Cloud/push/release; mission INCOMPLETE.
+
+
+## 2026-10-23 Korean request repair installed qualification
+
+2026-10-23 Korean paragraph/refusal expansion repaired and PASS_BOUNDED: new source ceb6298 fresh package, unchanged installed extension permissions (no host_permissions), real OS keyboard toolbar+popup. Initial5cf40a5 run passed functionality but manual review found2 polite request translations changed into passive factual questions. Scoped Korean request-question English prompt and modality fence repair this without weakening ordinary omitted-subject guidance or quality/model pins. Final question-en says could you send a reply to Min-su and exact Accept succeeds in both fields. Expanded28rows:20 Accept (including8 immediate post-refusal translation/rewrite Accepts),4 actual refusals across modality_changed/semantic_changed,4 unchanged results NOT Accept proof. Baseline8 Accept+4 stale races pass. Broker6616/model7744 PID+start times unchanged throughout. Same-integrator semantic review bounded PASS; quoted Korean remains verbatim intentionally, not full quote translation. Expanded response observation1090-1568ms p50=1235 p95=1535 p99/max=1568(n20), includes100ms observation wait and is NOT paint/proactive latency; Accept61-71ms p50=64 p95=69 p99/max=71. Baseline visible recommendation966-1279ms,short1s exceedances6/8;3s/500ms misses0. Model staging369.545s/readiness22.855s separate. First Sandbox ExistingLogin0x80070520 before product start preserved; sequential runs only, all stopped. Lib tests46PASS11ignored; initial wrong broker filter ran0, NOT qualification. Test/build child-residue supervisors FAIL_LEFTOVER_CHILDREN1, cleanup0; buildexit0 with source-bound receipt. Final natural launcher0, extension unchanged, owned install/registration/profile/process/Sandbox0; user data untouched. Evidence korean-refusal-final-20261023/FINAL_RECEIPT.json and korean-request-repair-20261023 build receipt. No personal install/Cloud/push/main/release. Mission INCOMPLETE, Q18/Q19 IN_PROGRESS, Source stale; next broader request/quotation translation quality and general-profile/IME boundaries remain open.
+
+Reproduce with scripts/mission/gemma-korean-recovery-browser.mjs and its JSON
+corpus in the preserved korean-refusal-final-20261023 fixture/run.py/trial.wsb.
+The final external runner additionally requires two actual refusal types and
+question-en suggestions accepted in both fields. It loads the newly built
+korean-request-repair-20261023/package, not the historical5cf40a5 package.
+Fresh model source/runtime pins unchanged; content-free diagnostic stderr only.
+Raw automated PENDING quality labels remain intact; actual-output-review.json
+records separate manual review. All baseline8 outputs are byte-identical to
+prior reviewed outputs; expanded outputs changed only the2 faulty request rows.
+Three supported request endings: 주시겠어요?, 주시겠습니까?, 주실래요? outside
+verbatim literals. This bounded fence is not a general Korean speech-act proof;
+unrecognised variants remain unqualified. Quote contents stay in their original
+language by the existing verbatim-literal contract. Null paraphrases are not
+quality failures or successful rewriting evidence. Rejected raw replacements
+are not captured, so the linguistic correctness of those refusals is not proven.
+No independent reviewer; same-integrator code/diff and actual-output review.
+Console log encoding is lossy; UTF-8 receipt JSON is the authoritative text.
+Cleanup only targeted C:/PencilTrialScope and the task-owned browser profile;
+uninstaller removedUserData refers to that synthetic data, never user AppData.
