@@ -59,6 +59,16 @@ if($trialCleanup) {
   if(-not $InstallRoot) {throw 'EXPLICIT_TRIAL_INSTALL_REQUIRED'}
   $null=Assert-Contained $InstallRoot
   foreach($path in @($UserDataDirectory)) {if($path){$null=Assert-Contained $path}}
+  # A running launcher already makes removal impossible. Refuse before tree
+  # traversal and Add-Type compilation. This read-only probe creates nothing;
+  # the authoritative exclusive lock below still fences every actual mutation.
+  $earlyLock=Join-Path (Canonical-Local $InstallRoot) 'gemma-session.lock'
+  Assert-NoLinks $earlyLock
+  if(Test-Path -LiteralPath $earlyLock -PathType Leaf) {
+    try { $activeProbe=[IO.File]::Open($earlyLock,'Open','Read','None') }
+    catch { throw 'Quit Pencil and wait for its Gemma launcher to finish before uninstalling.' }
+    $activeProbe.Dispose()
+  }
   # Validate the whole plan before changing receipt, registry or any file.
   Assert-Tree $InstallRoot
   foreach($path in @($UserDataDirectory)){if($path){Assert-Tree $path}}

@@ -5050,3 +5050,8 @@ Final package source4a9fdf5b66337e9bc2ce24e0a0434d784e422459; ZIP747bbe6884cacac
 
 Release: https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3
 This post-publication record commit changes documentation/state only; the executable ZIP remains bound to tag5d43b2b, not later record commits. Source CI is not real-model UI qualification. Next: attended installed activation/Accept, unresolved startup failures, broader independent language evaluation.
+
+
+## 2026-10-23 Prototype 3 actual Gemma and CI refusal repair
+
+2026-10-23 Prototype3 actual installed Gemma Chromium qualification: original released ZIP5d43b2b SHA2564c42f69b9c26c06b59463ac2d200392c19adfbf8f004c5db4423014d9ca95fb8, original launcher/extension/permissions; four reused paragraph cases on textarea/contenteditable,8 exact Accept and4 stale checks PASS. Review-to-visible1089.3-1372ms,Accept58.1-63.1ms; deployment98.682s and ready12.310s separate. Bounded manual meaning/politeness review acceptable, English fluency limited. First preparation failed missing host-machine file, preserved; second serial Sandbox PASS and stopped, natural owned processes0, installed/profile/registry0, user data untouched. Desktop/IME/ordinary profiles/live Provider remain NOT_RUN. Main record CI39970685154 failed active-launcher uninstall timeout10s; exact hosted cause unknown. Added early read-only lock refusal before tree/compilation, all mutation safety checks and10s deadline retained; deterministic old-code RED, repaired local38 PASS, first console-encoding17 errors preserved. Hosted repair result separately recorded. No change to published ZIP; mission INCOMPLETE, Source stale. See PROTOTYPE_3_POST_RELEASE_VALIDATION.md and prototype3-gemma-20261023 evidence.

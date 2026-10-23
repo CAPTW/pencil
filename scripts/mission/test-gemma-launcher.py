@@ -611,6 +611,27 @@ class LauncherTests(unittest.TestCase):
         self.assertTrue(json.loads(result.stdout)["complete"])
         self.assertFalse(self.root.exists())
 
+    def test_active_launcher_refuses_before_tree_scan_without_mutation(self):
+        # Deterministic ordering check: no filesystem-size or compiler timing
+        # assumption. The same process holds a real Windows exclusive handle.
+        quote = lambda value: "'" + str(value).replace("'", "''") + "'"
+        receipt = (self.root / "install-receipt.json").read_bytes()
+        command = (
+            "$ErrorActionPreference='Stop';"
+            f"$held=[IO.File]::Open({quote(self.root / 'gemma-session.lock')},'OpenOrCreate','ReadWrite','None');"
+            "function global:Get-ChildItem { throw 'UNEXPECTED_TREE_ENUMERATION' };"
+            "try {"
+            f"& {quote(self.root / 'Uninstall-Grammar.ps1')} -InstallRoot {quote(self.root)} -TrialRoot {quote(self.scope)}"
+            "} finally {$held.Dispose()}"
+        )
+        result = subprocess.run(["pwsh", "-NoProfile", "-Command", command],
+                                capture_output=True, text=True, encoding="utf-8", timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("wait for its Gemma launcher", result.stderr)
+        self.assertNotIn("UNEXPECTED_TREE_ENUMERATION", result.stderr)
+        self.assertEqual((self.root / "install-receipt.json").read_bytes(), receipt)
+        self.assertTrue((self.root / "codex-pencil.exe").exists())
+
     def test_bad_broker_hash_never_starts(self):
         with (self.root / "grammar-gemma-broker.exe").open("ab") as f:
             f.write(b"changed")
