@@ -162,6 +162,11 @@ class LauncherTests(unittest.TestCase):
         self.owned = tempfile.TemporaryDirectory(prefix="grammar-launcher-test-")
         self.scope = pathlib.Path(self.owned.name)
         (self.scope / ".pencil-trial-owner.json").write_text(json.dumps({"schema":"pencil-owned-trial/v1","root":str(self.scope),"id":"a"*32}))
+        # Each fixture owns this fresh marked scope, not an enclosing build
+        # supervisor's evidence directory. Restore inherited state after each test.
+        scope_env = patch.dict(os.environ, {"GRAMMAR_TRIAL_ROOT": str(self.scope)})
+        scope_env.start()
+        self.addCleanup(scope_env.stop)
         self.root = self.scope / "install"
         self.root.mkdir()
         for name, binary in (("codex-pencil.exe", "app.exe"), ("grammar-gemma-broker.exe", "broker.exe"), ("grammar-chromium-host.exe", "app.exe")):
@@ -523,7 +528,7 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(read_shared_text(self.sidecar), self.original)
 
     def test_concurrent_launcher_refused(self):
-        (self.root / "hold-app").touch()
+        (self.root / "wait-release").touch()
         first = subprocess.Popen(["pwsh", "-NoProfile", "-File", str(self.root / "Start-Grammar.ps1")], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
         try:
             deadline = time.monotonic() + 10
@@ -536,7 +541,10 @@ class LauncherTests(unittest.TestCase):
             self.assertNotEqual(removal.returncode,0)
             self.assertIn("wait for its Gemma launcher",removal.stderr)
             self.assertTrue((self.root / "codex-pencil.exe").exists())
+            self.assertIsNone(first.poll())
+            self.assertFalse((self.root / "app-exited").exists())
         finally:
+            (self.root / "release-app").touch()
             out, err = first.communicate(timeout=20)
         self.assertEqual(first.returncode, 0, err)
         self.assertEqual(read_shared_text(self.sidecar), self.original)
