@@ -1,7 +1,7 @@
 # Pencil — build and qualification reference
 
 For installation, start with the [Korean guide](GETTING_STARTED.ko.md) or
-[English overview](README.en.md). [Prototype 2 is published](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.2).
+[English overview](README.en.md). [Prototype releases](https://github.com/CAPTW/pencil/releases) contain exact package identities. See [Prototype 3 release notes](releases/v0.1.0-prototype.3.md) for the new candidate and its unverified scope.
 The exact package source and checks are recorded in MANIFEST.json and the release VALIDATION.json; main may contain later source changes; an existing release ZIP is not updated by a source merge.
 This is not a production release or a claim of Grammarly-equivalent language quality.
 

@@ -1,6 +1,6 @@
 # Grammar Tool-neutral Multi-Agent Development Contract
 
-Contract-Version: 1.5.7
+Contract-Version: 1.5.8
 
 ## Active mission override (Owner authorization, 2026-09-25)
 For GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1, the Owner explicitly authorizes investigation, implementation, tests, local commits, reviewed safe local main integration and continuation through P3-A stabilization and the first Chromium textarea/simple-contenteditable adapter for personal use. This section supersedes conflicting historical one-step gates below, fixed file/iteration/commit budgets, per-step new-worktree requirements and fresh Source UI upload prerequisites. Use one dedicated mission worktree; preserve historical failed candidates and unrelated work. Historical failures remain failures. Review changed main before integration; no history rewrite or forced conflict resolution.
@@ -131,6 +131,16 @@ synthetic evidence, user qualification and acceptance. Existing open defects rem
 This amendment grants no new account use, paid inference, public deployment, license
 choice, branch-protection mutation or security relaxation. Prepare workflow changes
 locally; report hosted execution separately. No recurring scheduler is implied.
+
+## Prototype 3 publication (Owner authorization, 2026-10-23)
+The Owner authorizes reviewed fast-forward main integration of the CI-qualified
+candidate and a fresh source-bound Windows x64 prerelease v0.1.0-prototype.3.
+Preserve existing releases and unrelated files. Validate build/package integrity,
+owned install/removal and payload exclusions before publication. Explicitly retain
+latest installed-extension Gemma Accept NOT_RUN, unresolved earlier startup
+failures, conservative language guards and hardware/latency/editor limitations.
+Source CI is not GPU/UI acceptance. No user data, accounts, paid calls, signing,
+security-policy changes or model/runtime-weight redistribution is authorized.
 
 ## Historical task defaults (except active mission override)
 

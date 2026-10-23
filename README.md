@@ -15,7 +15,7 @@
   <img alt="Local first" src="https://img.shields.io/badge/AI-local--first-4F46E5?style=flat-square">
 </p>
 
-[**Download Prototype 2**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.2) · [빠른 시작](docs/GETTING_STARTED.ko.md) · [English](docs/README.en.md) · [Report a bug](https://github.com/CAPTW/pencil/issues/new?template=bug_report.md)
+[**Download Prototype 3**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3) · [빠른 시작](docs/GETTING_STARTED.ko.md) · [English](docs/README.en.md) · [Report a bug](https://github.com/CAPTW/pencil/issues/new?template=bug_report.md)
 
 </div>
 
@@ -69,15 +69,15 @@ Pencil의 기본 원칙은 간단합니다. **AI는 제안하고, 변경은 사�
 
 ### 1. Download
 
-[**Prototype 2 release**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.2)의 **Assets**에서 Windows x64 ZIP과 `SHA256SUMS.txt`를 받으세요. GitHub의 자동 생성 **Source code (zip)**은 실행 패키지가 아닙니다.
+[**Prototype 3 release**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3)의 **Assets**에서 Windows x64 ZIP과 `SHA256SUMS.txt`를 받으세요. GitHub의 자동 생성 **Source code (zip)**은 실행 패키지가 아닙니다.
 
 필수 환경은 **Windows x64 · PowerShell 7 · Microsoft WebView2**입니다.
 
 ### 2. Install
 
 ~~~powershell
-.\Install-Grammar.ps1 -InstallRoot "$env:LOCALAPPDATA\PencilPrototype1"
-Set-Location "$env:LOCALAPPDATA\PencilPrototype1"
+.\Install-Grammar.ps1 -InstallRoot "$env:LOCALAPPDATA\PencilPrototype3"
+Set-Location "$env:LOCALAPPDATA\PencilPrototype3"
 ~~~
 
 ### 3. Choose how to run
