@@ -66,6 +66,9 @@ export async function runKoreanRecovery(page, worker, observe, cases, evidence) 
         row.output = await page.getByRole('textbox', {name: 'Edit replacement', exact: true}).inputValue();
         assert.ok(row.output.trim());
         for (const token of sample.required ?? []) assert.ok(row.output.includes(token), 'required literal ' + token);
+        for (const pattern of sample.requiredPatterns ?? []) assert.match(row.output, new RegExp(pattern, 'i'));
+        for (const pattern of sample.forbiddenPatterns ?? []) assert.doesNotMatch(row.output, new RegExp(pattern, 'i'));
+        for (const token of sample.forbidden ?? []) assert.ok(!row.output.includes(token), 'forbidden wording ' + token);
         const acceptStart = performance.now();
         await page.getByRole('button', {name: 'Accept', exact: true}).click();
         row.actual = await text(el); row.acceptMs = performance.now() - acceptStart;
