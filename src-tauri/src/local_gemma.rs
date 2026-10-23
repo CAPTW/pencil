@@ -901,8 +901,11 @@ fn preserve_explicit_person_features(source: &str, fixed: &str) -> Result<(), St
     let input = words(&source);
     let output = words(&fixed);
     let korean = |roots: &[&str]| input.iter().any(|w| roots.iter().any(|root| {
-        w.strip_prefix(root).is_some_and(|tail| matches!(tail,
-            "" | "이" | "가" | "는" | "은" | "를" | "을" | "의" | "에게" | "한테" | "께" | "께서" | "도" | "만" | "와" | "과"))
+        w.strip_prefix(root).is_some_and(|tail| {
+            let particle = tail.strip_suffix('는').or_else(|| tail.strip_suffix('은'))
+                .or_else(|| tail.strip_suffix('도')).or_else(|| tail.strip_suffix('만')).unwrap_or(tail);
+            matches!(particle, "" | "이" | "가" | "를" | "을" | "의" | "에게" | "한테" | "께" | "께서" | "와" | "과")
+        })
     }));
     let has = |tokens: &[String], forms: &[&str]| tokens.iter().any(|w| forms.contains(&w.as_str()));
     // Bare 저/제/그 are also determiners. Do not use them to authorize a person.
@@ -937,6 +940,29 @@ fn preserve_explicit_person_features(source: &str, fixed: &str) -> Result<(), St
         if has(&output, forms) && !has(&input, forms) && !korean(roots) {
             return Err("gemma_honorific_changed".into());
         }
+    }
+    Ok(())
+}
+
+// Explicit Korean speaker + declarative future commitment cannot become a
+// passive forecast. Conservative surface evidence only; no sentence templates.
+fn preserve_explicit_speaker_commitments(source: &str, fixed: &str) -> Result<(), String> {
+    let source = without_literals(source)?;
+    let fixed = without_literals(fixed)?.to_lowercase().replace("i'll", "i will")
+        .replace("i’ll", "i will").replace("we'll", "we will").replace("we’ll", "we will");
+    for (subjects, pronoun) in [(&["제가", "저는", "내가", "나는"][..], "i"),
+        (&["저희가", "저희는", "우리가", "우리는"][..], "we")] {
+        let expected = source.split_inclusive(['.', '?', '!', '\n']).filter(|sentence| {
+            let sentence = sentence.trim();
+            ["겠습니다.", "겠습니다!", "게요.", "게요!"].iter().any(|s| sentence.ends_with(s))
+                && sentence.split_whitespace().any(|w| subjects.contains(&w))
+        }).count();
+        let actual = fixed.split_inclusive(['.', '?', '!', '\n']).filter(|sentence| {
+            let words: Vec<_> = sentence.split(|c: char| !c.is_alphabetic()).filter(|w| !w.is_empty()).collect();
+            words.windows(2).any(|w| w[0] == pronoun && matches!(w[1], "will" | "shall"))
+                || words.windows(4).any(|w| w[0] == pronoun && matches!(w[1], "am" | "are") && w[2..] == ["going", "to"])
+        }).count();
+        if actual < expected {return Err("gemma_semantic_changed".into());}
     }
     Ok(())
 }
@@ -1415,6 +1441,7 @@ impl GemmaEngine {
             if binding.intent==Intent::Paraphrase {preserve_korean_register(&binding.source,&replacement)?;}
             if binding.intent == (Intent::Translate { target: Language::English }) {
                 preserve_korean_request_translation(&binding.source, &replacement)?;
+                preserve_explicit_speaker_commitments(&binding.source, &replacement)?;
                 preserve_explicit_person_features(&binding.source, &replacement)?;
             }
             Ok(replacement)
@@ -2655,6 +2682,16 @@ mod tests {
     }
 
     #[test]
+    fn explicit_future_speaker_cannot_become_passive_forecast() {
+        assert!(preserve_explicit_speaker_commitments("저희는 검토했습니다. 승인하시면 저희가 수정본을 보내겠습니다.", "We reviewed it. If approved, the revised version will be sent.").is_err());
+        assert!(preserve_explicit_speaker_commitments("제가 전달하겠습니다.", "It will be delivered.").is_err());
+        assert!(preserve_explicit_speaker_commitments("제가 전달하겠습니다.", "I'll deliver it.").is_ok());
+        assert!(preserve_explicit_speaker_commitments("저희가 보내겠습니다.", "If approved, we will send it.").is_ok());
+        assert!(preserve_explicit_speaker_commitments("다음 주에 확인할 예정입니다.", "It will be checked next week.").is_ok());
+        assert!(preserve_explicit_speaker_commitments("\"제가 전달하겠습니다.\"라고 적혀 있습니다.", "It says \"제가 전달하겠습니다.\".").is_ok());
+    }
+
+    #[test]
     fn source_person_features_preserve_legitimate_evidence() {
         for (source, output) in [
             ("제가 확인하겠습니다.", "I'll check it."),
@@ -2668,6 +2705,8 @@ mod tests {
             ("She sent her report.", "She submitted her report."),
             ("마감을 놓치면 안 됩니다.", "Do not miss the deadline."),
             ("박사님이 답변하셨습니다.", "The doctor replied."),
+            ("박사님께서는 답변하셨습니다.", "The doctor replied."),
+            ("교수님께서도 확인하셨습니다.", "The professor also checked it."),
         ] { assert!(preserve_explicit_person_features(source, output).is_ok(), "{output}"); }
     }
 
@@ -2691,6 +2730,7 @@ mod tests {
         let pid=engine.child.id();let workspace=engine.workspace.as_ref().unwrap().cwd().parent().unwrap().to_owned();
         let mut cases:Vec<Value>=serde_json::from_str(include_str!("../../scripts/mission/gemma-korean-recovery-corpus.json")).unwrap();
         cases.extend(serde_json::from_str::<Vec<Value>>(include_str!("../../scripts/mission/gemma-guidance-heldout-corpus.json")).unwrap());
+        cases.extend(serde_json::from_str::<Vec<Value>>(include_str!("../../scripts/mission/gemma-person-heldout-corpus.json")).unwrap());
         let mut rows=Vec::new();
         for (index,case) in cases.iter().enumerate() {
             let intent=if case["choice"]=="en" {Intent::Translate{target:Language::English}} else {Intent::Paraphrase};
