@@ -1,0 +1,87 @@
+[
+  {
+    "id": "heldout-researcher",
+    "choice": "en",
+    "source": "최유나 연구원께서 지난주에 초안 4개를 검토하셨습니다. 한지호 팀장님이 동의하면 제가 은채에게 수정본을 보내겠습니다. 동의 전에는 보내지 않겠습니다. 회의는 목요일입니다.",
+    "quality": "Full Choi Yuna researcher/Han Jiho team leader names and titles; past4 last week; Han approval condition; I sender Eunchae; personal negative commitment; Thursday meeting (not deadline).",
+    "required": [
+      "4"
+    ]
+  },
+  {
+    "id": "heldout-permission",
+    "choice": "en",
+    "source": "Noah Bennett 교수님께서는 아직 답변하지 않으셨어요. Elena Ruiz가 검토하면 제가 Daniel Cho에게 자료 3개를 전달해도 될까요? 검토 전에는 전달하지 않을게요. 마감은 수요일입니다.",
+    "quality": "Full ASCII names; professor not yet replied; Elena review condition, speaker permission to deliver3 to Daniel, I commitment not before review, Wednesday deadline; polite register.",
+    "required": [
+      "Noah Bennett",
+      "Elena Ruiz",
+      "Daniel Cho",
+      "3"
+    ]
+  },
+  {
+    "id": "heldout-factual",
+    "choice": "en",
+    "source": "센터장님께서 어제 신청서 2개를 확인하셨나요? 도윤은 하린에게 답변을 보냈습니까? 하린은 아직 답신을 받지 못했어요. 다음 주에 다시 확인할 예정입니다.",
+    "quality": "Unnamed director respectful past factual question2; Doyun sender Harin recipient; Harin has not received, not failed to reply; unknown subject future recheck next week.",
+    "required": [
+      "2"
+    ]
+  },
+  {
+    "id": "heldout-quotation",
+    "choice": "en",
+    "source": "윤서가 \"승인 전에는 공개하지 마세요\"라고 말했습니다. 정수빈 박사님은 아직 결과를 확인하지 않으셨습니다. 정수빈 박사님이 확인하면 제가 Omar Ali에게 요약본 2개를 보내겠습니다. 오늘 안에 보낼 의무는 없습니다.",
+    "quality": "Exact quote attributed Yunseo; full Jung Subin doctor not yet checked, same doctor condition; explicit I sender Omar2, no obligation today not prohibition; respectful.",
+    "required": [
+      "승인 전에는 공개하지 마세요",
+      "Omar Ali",
+      "2"
+    ]
+  },
+  {
+    "id": "heldout-uncertainty",
+    "choice": "en",
+    "source": "오지민 부장님께서 일정이 바뀔 수도 있다고 말씀하셨습니다. 아직 변경이 확정된 것은 아닙니다. 지수가 동의하지 않으면 태호는 안내문 2개를 보내면 안 됩니다. 내일 다시 논의할 예정입니다.",
+    "quality": "Oh Jimin manager reported possibility, not certainty; change unconfirmed; Jisu nonapproval condition prohibits Taeho sending2; unknown subject future discussion again tomorrow; honorific.",
+    "required": [
+      "2"
+    ]
+  },
+  {
+    "id": "heldout-en-rewrite",
+    "choice": "paraphrase",
+    "source": "Nora completed the review of 4 forms yesterday. It is necessary for her to obtain approval from Elias before sending them to Priya. If approval does not arrive by Thursday, she must not send them. The fee remains 90 dollars.",
+    "quality": "English fluency; Nora past4 yesterday, Elias approval necessary before Nora sends Priya, Thursday nonapproval prohibition, present90; preserve modal must not and formal neutral register.",
+    "required": [
+      "Nora",
+      "Elias",
+      "Priya",
+      "4",
+      "90"
+    ]
+  },
+  {
+    "id": "heldout-ko-rewrite",
+    "choice": "paraphrase",
+    "source": "서현은 자료 4개를 확인했어요. 도현이 승인하면 유진에게 답신을 보내 주세요. 승인이 없으면 자료를 전송하지 마세요. 비용은 90달러입니다.",
+    "quality": "Korean rewrite mixed original endings, Seohyun past4; Dohyun approval then polite reply to Yujin; prohibition when no approval;90. No forced rephrasing.",
+    "required": [
+      "서현",
+      "도현",
+      "유진",
+      "4",
+      "90"
+    ]
+  },
+  {
+    "id": "heldout-full-title-request",
+    "choice": "en",
+    "source": "강민재 교수님께서 오늘 자료 5개를 검토하셨습니다. 예린이 확인하면 준호에게 결과를 전달해 주시겠습니까? 확인 전에는 전달하지 말아 주세요. 오늘 안에 결정할 필요는 없습니다.",
+    "quality": "Full Kang Minjae professor title and respectful past review5 today; Yerin confirmation condition, addressed polite request deliver Junho; preconfirmation prohibition; no need decide today.",
+    "required": [
+      "5"
+    ]
+  }
+]
