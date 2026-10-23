@@ -950,6 +950,20 @@ fn preserve_explicit_speaker_commitments(source: &str, fixed: &str) -> Result<()
     let source = without_literals(source)?;
     let fixed = without_literals(fixed)?.to_lowercase().replace("i'll", "i will")
         .replace("i’ll", "i will").replace("we'll", "we will").replace("we’ll", "we will");
+    // Declarative negative promises are speaker commitments, even when the
+    // speaker is elided after an intervening sentence. A passive prediction
+    // cannot satisfy this. Person identity is separately checked above.
+    let negative_promises = source.split_inclusive(['.', '?', '!', '\n']).filter(|s| {
+        let s = s.trim();
+        ["지 않겠습니다.", "지 않을게요.", "지 않겠어요.", "지 않겠습니다!", "지 않을게요!", "지 않겠어요!"]
+            .iter().any(|ending| s.ends_with(ending))
+    }).count();
+    let normalized = fixed.replace("won't", "will not").replace("won’t", "will not");
+    let negative_outputs = normalized.split_inclusive(['.', '?', '!', '\n']).filter(|s| {
+        let words: Vec<_> = s.split(|c: char| !c.is_alphabetic()).filter(|w| !w.is_empty()).collect();
+        words.windows(3).any(|w| matches!(w[0], "i" | "we") && matches!(w[1], "will" | "shall") && w[2] == "not")
+    }).count();
+    if negative_outputs < negative_promises {return Err("gemma_semantic_changed".into());}
     for (subjects, pronoun) in [(&["제가", "저는", "내가", "나는"][..], "i"),
         (&["저희가", "저희는", "우리가", "우리는"][..], "we")] {
         let expected = source.split_inclusive(['.', '?', '!', '\n']).filter(|sentence| {
@@ -2685,6 +2699,13 @@ mod tests {
     fn explicit_future_speaker_cannot_become_passive_forecast() {
         assert!(preserve_explicit_speaker_commitments("저희는 검토했습니다. 승인하시면 저희가 수정본을 보내겠습니다.", "We reviewed it. If approved, the revised version will be sent.").is_err());
         assert!(preserve_explicit_speaker_commitments("제가 전달하겠습니다.", "It will be delivered.").is_err());
+        let source = "제가 내일 Rowan Ellis에게 초안 2개를 전달하겠습니다. Rowan Ellis 교수님께서는 아직 답변하지 않으셨습니다. 검토가 끝나기 전에는 보내지 않겠습니다. 마감은 월요일입니다.";
+        let observed = "I will deliver 2 drafts to Rowan Ellis tomorrow. Professor Rowan Ellis has not yet replied. The drafts will not be sent before the review is finished. The deadline is Monday.";
+        assert!(preserve_explicit_speaker_commitments(source, observed).is_err());
+        assert!(preserve_explicit_speaker_commitments(source, &observed.replace("The drafts will not be sent", "I will not send the drafts")).is_ok());
+        assert!(preserve_explicit_speaker_commitments("저희가 전달하겠습니다. 아직 승인은 없습니다. 승인 전에는 전달하지 않을게요.", "We will deliver it. There is no approval yet. We won't deliver it before approval.").is_ok());
+        assert!(preserve_explicit_speaker_commitments("내일 보내지 않을 예정입니다.", "It is not scheduled to be sent tomorrow.").is_ok());
+
         assert!(preserve_explicit_speaker_commitments("제가 전달하겠습니다.", "I'll deliver it.").is_ok());
         assert!(preserve_explicit_speaker_commitments("저희가 보내겠습니다.", "If approved, we will send it.").is_ok());
         assert!(preserve_explicit_speaker_commitments("다음 주에 확인할 예정입니다.", "It will be checked next week.").is_ok());
