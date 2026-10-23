@@ -1,8 +1,8 @@
 # Pencil 설치부터 첫 사용까지
 
-[소개로 돌아가기](../README.md) · [Prototype 2 릴리스](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.2)
+[소개로 돌아가기](../README.md) · [Prototype 3 릴리스](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3)
 
-이 안내는 **Windows x64 Prototype 2**용입니다. 개발 환경을 설치하거나 소스를 빌드하지 않아도 실행 ZIP으로 시작할 수 있습니다. 아직 모든 PC·편집기에 대한 호환성이 검증된 제품은 아닙니다.
+이 안내는 **Windows x64 Prototype 3**용입니다. 개발 환경을 설치하거나 소스를 빌드하지 않아도 실행 ZIP으로 시작할 수 있습니다. 아직 모든 PC·편집기에 대한 호환성이 검증된 제품은 아닙니다.
 
 ## 1. 실행 환경 준비
 
@@ -20,7 +20,7 @@ PowerShell에서 다운로드한 폴더로 이동한 뒤 확인합니다. 저장
 
 ```powershell
 Set-Location "$env:USERPROFILE\Downloads"
-Get-FileHash .\Pencil-0.1.0-prototype.2-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\Pencil-0.1.0-prototype.3-windows-x64.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS.txt
 ```
 
@@ -35,7 +35,7 @@ ZIP 항목의 해시가 대소문자를 제외하고 정확히 같아야 합니�
 ```powershell
 # 실제 압축 해제 폴더 경로로 바꿔 주세요.
 Set-Location 'C:\경로\압축을 푼 폴더'
-.\Install-Grammar.ps1 -InstallRoot "$env:LOCALAPPDATA\PencilPrototype1"
+.\Install-Grammar.ps1 -InstallRoot "$env:LOCALAPPDATA\PencilPrototype3"
 ```
 
 성공하면 설치 경로와 결과가 표시됩니다. 설치 폴더가 이미 존재하면 덮어쓰지 않습니다. 기존 설치가 있다면 다른 새 경로로 시험하고, 동시에 실행하지 마세요. 설치기는 Chromium 연결을 위한 사용자 범위 native host 등록도 수행합니다.
@@ -43,7 +43,7 @@ Set-Location 'C:\경로\압축을 푼 폴더'
 이후 명령은 **압축 해제 폴더가 아닌 설치 폴더**에서 실행합니다.
 
 ```powershell
-Set-Location "$env:LOCALAPPDATA\PencilPrototype1"
+Set-Location "$env:LOCALAPPDATA\PencilPrototype3"
 ```
 
 ## 4. 시작 방법 선택
@@ -139,3 +139,7 @@ Windows 11의 새 메모장, Word, Excel, PowerPoint, Hancom을 일반 지원 �
 [버그 보고 양식](https://github.com/CAPTW/pencil/issues/new?template=bug_report.md)에 릴리스 버전, Windows/GPU, 실행 모드, 편집기 종류, 재현 단계와 오류 문구를 적어 주세요. 직접 만든 비민감 예시만 사용하고 API 키·인증 코드·실제 문서·전체 프로필·로그 원본은 첨부하지 마세요.
 
 설치 실패, 언어 품질, Apply 거부, 지연 중 무엇인지 구분하면 도움이 됩니다. 대기 시간을 보고할 때는 **최초 다운로드 / 예열 / 추천 / Accept** 중 어느 구간인지 적어 주세요.
+
+## Prototype 3 검증 범위
+
+최신 소스 CI는 실제 설치 확장의 Gemma Accept 검증을 대신하지 않습니다. 최신 설치 경로는 전경 활성화 문제로 NOT_RUN이며, 기존 시작 시간 초과 원인과 언어 품질 제한도 남아 있습니다. 먼저 합성 문서로 시험하고 [릴리스 제한](releases/v0.1.0-prototype.3.md)을 확인하세요. 저성능 GPU/CPU의 Gemma 속도는 보장하지 않습니다. Writer/rHWP 별도 패키지는 이번 기본 ZIP에 포함되지 않습니다.

@@ -88,6 +88,7 @@ Copy-Item -LiteralPath (Join-Path $source 'docs/control/HANDOFF.md') -Destinatio
 Copy-Item -LiteralPath $ReceiptPath -Destination (Join-Path $destination 'BUILD_RECEIPT.json')
 Copy-Item -LiteralPath (Join-Path $source 'docs/PROTOTYPE.md') -Destination (Join-Path $destination 'PROTOTYPE.md')
 Copy-Item -LiteralPath (Join-Path $source 'scripts/package/START_HERE.md') -Destination (Join-Path $destination 'START_HERE.md')
+Copy-Item -LiteralPath (Join-Path $source 'docs/releases/v0.1.0-prototype.3.md') -Destination (Join-Path $destination 'RELEASE_NOTES.md')
 & python (Join-Path $PSScriptRoot 'package-notices.py') (Join-Path $destination 'THIRD_PARTY_NOTICES')
 if ($LASTEXITCODE -ne 0) { throw 'Dependency notice collection failed' }
 $null=& (Join-Path $PSScriptRoot 'build-receipt.ps1') -SourceRoot $source -ReceiptPath $ReceiptPath -VerifyOnly -ExecutablePath (Join-Path $destination 'codex-pencil.exe') -HostExecutablePath (Join-Path $destination 'grammar-chromium-host.exe') -TargetLibraryPath (Join-Path $destination 'target-apply.dll') -GemmaBrokerPath (Join-Path $destination 'grammar-gemma-broker.exe')

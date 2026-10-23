@@ -15,7 +15,7 @@ AI suggests, you decide.
   <img alt="Local first" src="https://img.shields.io/badge/AI-local--first-4F46E5?style=flat-square">
 </p>
 
-[**Download Prototype 2**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.2) · [한국어](../README.md) · [Getting started](GETTING_STARTED.ko.md) · [Report a bug](https://github.com/CAPTW/pencil/issues/new?template=bug_report.md)
+[**Download Prototype 3**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3) · [한국어](../README.md) · [Getting started](GETTING_STARTED.ko.md) · [Report a bug](https://github.com/CAPTW/pencil/issues/new?template=bug_report.md)
 
 </div>
 
@@ -69,15 +69,15 @@ The core rule is simple: **AI suggests; you decide what changes.**
 
 ### 1. Download
 
-Get the Windows x64 ZIP and `SHA256SUMS.txt` from the [**Prototype 2 release**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.2). GitHub’s auto-generated **Source code (zip)** is not the executable package.
+Get the Windows x64 ZIP and `SHA256SUMS.txt` from the [**Prototype 3 release**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3). GitHub’s auto-generated **Source code (zip)** is not the executable package.
 
 Requirements: **Windows x64 · PowerShell 7 · Microsoft WebView2**.
 
 ### 2. Install
 
 ~~~powershell
-.\Install-Grammar.ps1 -InstallRoot "$env:LOCALAPPDATA\PencilPrototype1"
-Set-Location "$env:LOCALAPPDATA\PencilPrototype1"
+.\Install-Grammar.ps1 -InstallRoot "$env:LOCALAPPDATA\PencilPrototype3"
+Set-Location "$env:LOCALAPPDATA\PencilPrototype3"
 ~~~
 
 ### 3. Choose how to run
