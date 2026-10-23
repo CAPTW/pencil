@@ -839,16 +839,43 @@ fn korean_speaker_permission_questions(text: &str) -> Result<usize, String> {
     ).count())
 }
 
+// Only a source-explicit speaker in the same or immediately preceding sentence
+// qualifies this narrow negative sending commitment. This is not general Korean
+// subject resolution, and quoted speech cannot supply the speaker or commitment.
+fn korean_speaker_send_commitments(text: &str) -> Result<usize, String> {
+    let clean = without_literals(text)?;
+    let mut previous_speaker = false;
+    let mut count = 0;
+    for sentence in clean.split_inclusive(['.', '?', '!', '\n']).filter(|s| !s.trim().is_empty()) {
+        let speaker = sentence.split_whitespace().any(|word| word == "제가");
+        if (speaker || previous_speaker) && sentence.trim_end().ends_with("보내지 않겠습니다.") {
+            count += 1;
+        }
+        previous_speaker = speaker;
+    }
+    Ok(count)
+}
+
 // Bounded speech-act fence: these Korean endings address the listener. They
 // must not become an impersonal prediction merely because no pronoun is written.
 fn preserve_korean_request_translation(source: &str, fixed: &str) -> Result<(), String> {
     let expected = korean_request_questions(source)?;
     let permission = korean_speaker_permission_questions(source)?;
-    if expected == 0 && permission == 0 { return Ok(()); }
+    let commitments = korean_speaker_send_commitments(source)?;
+    if expected == 0 && permission == 0 && commitments == 0 { return Ok(()); }
     let clean = without_literals(fixed)?.to_ascii_lowercase();
     let words: Vec<_> = clean.split(|c: char| !c.is_alphabetic()).filter(|w| !w.is_empty()).collect();
     let actual = words.windows(2).filter(|w| matches!(w[0], "could" | "would" | "will" | "can") && w[1] == "you").count();
     if expected > 0 && (actual != expected || clean.matches('?').count() < expected) { return Err("gemma_modality_changed".into()); }
+    if commitments > 0 {
+        let actual = clean.split_inclusive(['.', '?', '!', '\n']).filter(|sentence| {
+            let normalized = sentence.replace("won't", "will not").replace("won’t", "will not");
+            let tokens: Vec<_> = normalized.split(|c: char| !c.is_alphabetic()).filter(|w| !w.is_empty()).collect();
+            tokens.windows(4).any(|w| w[..3] == ["i", "will", "not"]
+                && matches!(w[3], "send" | "resend"))
+        }).count();
+        if actual < commitments { return Err("gemma_modality_changed".into()); }
+    }
     if permission > 0 {
         let actual = clean.split_inclusive(['.', '?', '!', '\n']).filter(|sentence| {
             let tokens: Vec<_> = sentence.split(|c: char| !c.is_alphabetic()).filter(|w| !w.is_empty()).collect();
@@ -903,6 +930,9 @@ fn local_prompt(binding: &Binding) -> (String, bool) {
         // Positive instructions after the input, without invented personal-name
         // examples that a small model could mistakenly copy into the output.
         prompt.push_str("\nEnglish fluency constraints: Use natural English articles and time expressions while preserving every source fact and speech act. For 교수님 with NO personal name in the source, write the professor. For 교수 한 분, write a professor. Use a title without an article only when an actual personal name accompanies that title in the source; never supply a missing name. Translate 오늘 안에 as today or by the end of today as appropriate, preserving whether it is a deadline or absence of obligation. Translate 확인 전에는 as before confirmation. Keep explicit I, requests, conditions, tense and respectful register. Check the complete replacement against these constraints before returning it.");
+        if korean_speaker_send_commitments(&binding.source).unwrap_or(0) > 0 {
+            prompt.push_str("\nSpeaker commitment: when 제가 establishes the speaker and the same or next sentence ends 보내지 않겠습니다, translate that negative commitment as I will not send (or I will not send again for 다시). Retain its conditions and time. Do not change the speaker's promise into the passive prediction the files will not be sent.");
+        }
         // Bind title guidance to text actually present, rather than a fictional
         // name example. These are surface contexts, not a claim of general NER.
         let words: Vec<_> = binding.source.split_whitespace().collect();
@@ -1449,6 +1479,19 @@ impl Drop for GemmaEngine {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn named_speaker_negative_commitment_cannot_become_passive() {
+        let source = "박지훈 박사님께서 어제 파일 2개를 검토하셨습니다. 이서연 부장님이 승인하면 제가 민수에게 결과를 보내겠습니다. 승인 전에는 보내지 않겠습니다. 마감은 내일입니다.";
+        let observed = "Dr. Park Ji-hoon reviewed 2 files yesterday. If Manager Lee Seo-yeon approves, I will send the results to Min-su. Before approval, the results will not be sent. The deadline is tomorrow.";
+        assert_eq!(preserve_korean_request_translation(source, observed), Err("gemma_modality_changed".into()));
+        assert!(preserve_korean_request_translation(source, "Dr. Park Ji-hoon reviewed 2 files yesterday. If Manager Lee Seo-yeon approves, I will send the results to Min-su. I will not send them before approval. The deadline is tomorrow.").is_ok());
+        assert!(preserve_korean_request_translation(source, "I will not receive them, but they send the files.").is_err());
+        assert!(preserve_korean_request_translation(source, "I will send the results. The files will not be sent. \"I will not send them.\"").is_err());
+        assert!(preserve_korean_request_translation("제가 내일 다시 확인하겠습니다. 오늘은 다시 보내지 않겠습니다.", "I will check again tomorrow. Today, I won't send it again.").is_ok());
+        assert!(preserve_korean_request_translation("제가 내일 확인하겠습니다. 민수는 보내지 않습니다.", "I will check tomorrow. Minsu does not send it.").is_ok());
+        assert!(preserve_korean_request_translation("\"제가 보내지 않겠습니다.\"라고 말했습니다.", "It was said: \"제가 보내지 않겠습니다.\"").is_ok());
+    }
+
     #[test]
     fn warmup_is_not_a_truncated_user_result_and_metrics_are_numeric_only() {
         let body=super::warmup_body();

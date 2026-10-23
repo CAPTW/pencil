@@ -217,5 +217,94 @@
     "requiredPatterns": [
       "^A professor\\b"
     ]
+  },
+  {
+    "id": "full-name-doctor-en",
+    "choice": "en",
+    "source": "박지훈 박사님께서 어제 파일 2개를 검토하셨습니다. 이서연 부장님이 승인하면 제가 민수에게 결과를 보내겠습니다. 승인 전에는 보내지 않겠습니다. 마감은 내일입니다.",
+    "quality": "Preserve full names Park Jihoon and Lee Seoyeon and their doctor/manager titles, respectful register, past review2, manager approval condition, explicit I sender Minsu recipient, negative first-person commitment and tomorrow deadline.",
+    "required": [
+      "2"
+    ],
+    "requiredPatterns": [
+      "\\bPark\\b",
+      "\\bLee\\b",
+      "\\bI\\b",
+      "\\bI (?:will not|won['’]t) (?:send|resend)\\b"
+    ]
+  },
+  {
+    "id": "ascii-name-professor-en",
+    "choice": "en",
+    "source": "Mina Chen 교수님께서 어제 파일 2개를 검토하셨습니다. Alex Rivera가 확인하면 제가 Jiyoon Park에게 결과를 보내도 될까요? 확인 전에는 보내지 않을게요. 마감은 내일입니다.",
+    "quality": "Keep all complete ASCII names and professor title; explicit I asks permission, Alex confirms, Jiyoon recipient, negative commitment and tomorrow deadline.",
+    "required": [
+      "Mina Chen",
+      "Alex Rivera",
+      "Jiyoon Park",
+      "2"
+    ],
+    "requiredPatterns": [
+      "\\b(?:may|could|can) I\\b"
+    ],
+    "forbiddenPatterns": [
+      "\\b(?:the|a) Professor Mina Chen\\b"
+    ]
+  },
+  {
+    "id": "quoted-title-en",
+    "choice": "en",
+    "source": "지연은 \"김 교수님께 먼저 확인하세요\"라고 말했습니다. 박 박사님께서는 아직 답변하지 않으셨습니다. 민수가 승인하면 제가 수진에게 파일 2개를 보내겠습니다. 승인 전에는 보내지 않겠습니다.",
+    "quality": "Quoted Korean instruction verbatim attributed to Jiyeon; unquoted Dr Park has not replied; Minsu approves, explicit I sends Sujin2, no sending before approval. Never transfer quoted Kim title to unquoted doctor.",
+    "required": [
+      "김 교수님께 먼저 확인하세요",
+      "2"
+    ],
+    "requiredPatterns": [
+      "\\bPark\\b",
+      "\\bI\\b",
+      "\\bI (?:will not|won['’]t) (?:send|resend)\\b"
+    ]
+  },
+  {
+    "id": "quoted-request-en",
+    "choice": "en",
+    "source": "Alex Rivera는 \"Mina Chen에게 파일 2개를 보내 주시겠습니까?\"라고 물었습니다. 지연은 아직 승인하지 않았습니다. 제가 승인 여부를 확인한 뒤 수진에게 답변하겠습니다. 오늘 안에 답변할 의무는 없습니다.",
+    "quality": "Keep entire quoted polite request exactly; Alex asks, Mina quoted recipient, Jiyeon not yet approved; explicit I checks approval then answers Sujin; no obligation to answer today (not prohibition).",
+    "required": [
+      "Mina Chen에게 파일 2개를 보내 주시겠습니까?",
+      "Alex Rivera"
+    ],
+    "forbiddenPatterns": [
+      "\\bwithin today\\b"
+    ]
+  },
+  {
+    "id": "quoted-request-paraphrase",
+    "choice": "paraphrase",
+    "source": "Alex Rivera는 \"Mina Chen에게 파일 2개를 보내 주시겠습니까?\"라고 물었습니다. 지연은 아직 승인하지 않았습니다. 제가 승인 여부를 확인한 뒤 수진에게 답신을 보내겠습니다. 오늘 안에 답변할 의무는 없습니다.",
+    "quality": "Quoted polite request verbatim; preserve names, speaker, approval negation, first-person sender to Sujin, future commitment, formal declarative register and absence of obligation.",
+    "required": [
+      "Mina Chen에게 파일 2개를 보내 주시겠습니까?",
+      "Alex Rivera",
+      "지연",
+      "수진"
+    ]
+  },
+  {
+    "id": "multiple-titles-en",
+    "choice": "en",
+    "source": "이 선생님께서 박 팀장님에게 파일 2개를 보내셨나요? 김 박사님은 아직 답신을 받지 못하셨습니다. 제가 내일 다시 확인하겠습니다. 오늘은 다시 보내지 않겠습니다.",
+    "quality": "Past factual question Lee teacher sender Park team leader recipient; Dr Kim has not received reply (not failed to reply), explicit I future check tomorrow, no resend today; retain respectful register without inventing gender or given names.",
+    "required": [
+      "2"
+    ],
+    "requiredPatterns": [
+      "\\bLee\\b",
+      "\\bPark\\b",
+      "\\bKim\\b",
+      "\\breceiv",
+      "\\bI (?:will not|won['’]t) (?:send|resend)\\b"
+    ]
   }
 ]
