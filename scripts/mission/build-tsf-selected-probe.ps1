@@ -1,6 +1,8 @@
 #Requires -Version 7.0
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$OutputDirectory)
+param([Parameter(Mandatory)][string]$OutputDirectory,
+      [ValidateSet('tsf-selected','apply-tsf','apply-tsf-binding')]
+      [string[]]$ProbeNames=@('tsf-selected'))
 $ErrorActionPreference='Stop'
 $source=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $output=[IO.Path]::GetFullPath($OutputDirectory)
@@ -14,7 +16,7 @@ foreach($path in @($source,$output,$dev)){if($path -match '["%!\r\n]'){throw 'Un
 New-Item -ItemType Directory $output | Out-Null
 $libs='user32.lib imm32.lib ole32.lib oleaut32.lib uuid.lib advapi32.lib bcrypt.lib comctl32.lib'
 $define=' '
-$names=@('tsf-selected')
+$names=$ProbeNames
 $sourceCommit=& git -C $source rev-parse HEAD
 function Get-ProbeInputs {
     $files=@(Get-ChildItem -LiteralPath (Join-Path $source 'src-tauri/native') -File | Where-Object Extension -in '.hpp','.cpp')

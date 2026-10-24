@@ -14,7 +14,7 @@ static void pump(DWORD ms) {
         Sleep(5);
     } while (GetTickCount64() < end);
 }
-int wmain() {
+static int run_probe(bool expectInactive) {
     WCHAR user[128]{}; GetEnvironmentVariableW(L"USERNAME", user, 128);
     if (std::wstring(user) != L"WDAGUtilityAccount") return 2;
     if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED))) return 3;
@@ -38,7 +38,22 @@ int wmain() {
         // The helper starts hidden; explicitly show only its owned guest editor.
         ShowWindow(top, SW_SHOW); ShowWindow(top, SW_SHOW);
         SendMessageW(edit, EM_SETEDITSTYLE, SES_USECTF, SES_USECTF);
-        SetForegroundWindow(top); SetFocus(edit); pump(500);
+        // SetFocus only sets this thread's focus; it does not make this process
+        // the foreground input owner. Without activation RichEdit can expose an
+        // empty input-scope property, producing 18 misleading capture failures.
+        if (expectInactive) ShowWindow(top, SW_HIDE);
+        else SetForegroundWindow(top);
+        printf("fixture_ready_wait pid=%lu foreground=%d\n", GetCurrentProcessId(), GetForegroundWindow()==top);
+        fflush(stdout);
+        const auto readyDeadline = GetTickCount64() + (expectInactive ? 0 : 30000);
+        while (GetForegroundWindow()!=top && GetTickCount64()<readyDeadline) pump(25);
+        if (GetForegroundWindow()==top) SetFocus(edit);
+        if (!IsWindowVisible(top) || GetForegroundWindow()!=top || GetFocus()!=edit) {
+            puts("ENVIRONMENT_NOT_READY: owned foreground/focus required; no capture attempted");
+            DestroyWindow(top); manager->Deactivate(); manager.Reset();
+            FreeLibrary(library); CoUninitialize(); return 78;
+        }
+        pump(500);
         ComPtr<ITfDocumentMgr> document; ComPtr<ITfContext> context;
         if (FAILED(manager->GetFocus(&document)) || !document || FAILED(document->GetTop(&context)) || !context) return 7;
         for (int scenario = 0; scenario < 25; ++scenario) {
@@ -185,4 +200,16 @@ int wmain() {
         DestroyWindow(top); manager->Deactivate(); FreeLibrary(library);
     }
     CoUninitialize(); printf("failures=%d\n", failures); return failures ? 1 : 0;
+}
+
+int wmain(int argc, wchar_t** argv) {
+    const bool inactive = argc==2 && std::wstring(argv[1])==L"--expect-inactive";
+    const bool repeat = argc==2 && std::wstring(argv[1])==L"--repeat";
+    if (argc!=1 && !inactive && !repeat) return 64;
+    for (int i=0; i<(repeat ? 3 : 1); ++i) {
+        printf("iteration=%d\n", i+1); fflush(stdout);
+        const int result=run_probe(inactive);
+        if (result) return result; // Unavailable is never a successful test run.
+    }
+    return 0;
 }

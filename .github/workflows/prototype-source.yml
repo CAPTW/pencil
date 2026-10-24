@@ -66,6 +66,9 @@ jobs:
       - name: Rust regressions (ignored live tests excluded)
         if: ${{ !cancelled() }}
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-fail-fast -- --test-threads=1
+      - name: Compile RichEdit transaction and capture probes (not GUI acceptance)
+        if: ${{ !cancelled() }}
+        run: ./scripts/mission/build-tsf-selected-probe.ps1 -OutputDirectory "$env:RUNNER_TEMP/pencil-tsf-probes" -ProbeNames apply-tsf,apply-tsf-binding
       - name: Broker startup failure and explicit retry integration
         if: ${{ !cancelled() }}
         timeout-minutes: 5
