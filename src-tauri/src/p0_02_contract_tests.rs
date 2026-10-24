@@ -426,6 +426,7 @@ fn selection_event_exposes_token_selected_text_and_capability_not_native_authori
         generation: 7,
         selected_text: "synthetic-selected-source".to_string(),
         direct_apply: true,
+        accept_expires_at_ms: 1_800_000_030_000,
     };
 
     let value = serde_json::to_value(payload).unwrap();
@@ -433,7 +434,8 @@ fn selection_event_exposes_token_selected_text_and_capability_not_native_authori
     let mut keys = object.keys().map(String::as_str).collect::<Vec<_>>();
     keys.sort_unstable();
 
-    assert_eq!(keys, ["directApply", "generation", "selectedText", "sessionId"]);
+    assert_eq!(keys, ["acceptExpiresAtMs", "directApply", "generation", "selectedText", "sessionId"]);
+    assert_eq!(object.get("acceptExpiresAtMs"), Some(&serde_json::json!(1_800_000_030_000u64)));
     assert_eq!(object.get("directApply"), Some(&serde_json::Value::Bool(true)));
     assert!(object.get("cookie").is_none());
     assert!(object.get("captureId").is_none());
