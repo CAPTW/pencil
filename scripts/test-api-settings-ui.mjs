@@ -46,6 +46,23 @@ try{
   assert.equal(await page.getByRole('checkbox').isChecked(),false);
  }
  checks.push('four provider presets clear draft credentials and permission');
+ const beforeAuto=await page.evaluate(()=>window.catalogCalls??0);
+ await page.getByLabel('API key (Windows secure storage)').fill('auto-synthetic-key');
+ assert.equal(await page.evaluate(()=>window.catalogCalls??0),beforeAuto);
+ await page.getByLabel('Model',{exact:true}).focus();
+ await page.waitForFunction(n=>window.catalogCalls===n,beforeAuto+1);
+ await page.getByText('Model list loaded: 2.',{exact:false}).waitFor();
+ await page.getByLabel('API key (Windows secure storage)').focus();
+ await page.getByLabel('Model',{exact:true}).focus();
+ assert.equal(await page.evaluate(()=>window.catalogCalls),beforeAuto+1);
+ checks.push('completed key entry auto-loads once, not on keystrokes or unchanged refocus');
+ await page.getByLabel('API key (Windows secure storage)').fill('do-not-send-to-next-provider');
+ const beforeSwitch=await page.evaluate(()=>window.catalogCalls);
+ await page.getByLabel('API provider preset').selectOption('https://api.anthropic.com/v1/messages');
+ assert.equal(await page.evaluate(()=>window.catalogCalls),beforeSwitch);
+ assert.equal(await page.getByLabel('API key (Windows secure storage)').inputValue(),'');
+ checks.push('provider switch clears key without automatic old-key request');
+
  await page.getByLabel('API key (Windows secure storage)').fill('catalog-dummy');
  await page.getByRole('button',{name:'Load model list'}).click();
  await page.getByText('Model list loaded: 2.',{exact:false}).waitFor();
@@ -79,12 +96,14 @@ try{
  await page.getByText('Setup saved in Windows Credential Manager.',{exact:false}).waitFor();
  assert.equal(await page.getByLabel('API key (Windows secure storage)').inputValue(),'');checks.push('save clears key input; setup only notice');
  await page.evaluate(()=>document.getElementById('root').replaceWith(Object.assign(document.createElement('div'),{id:'root'})));
+ const beforeRemount=await page.evaluate(()=>window.catalogCalls);
  await page.addScriptTag({content:bundle.outputFiles[0].text});
  await page.waitForFunction(()=>document.body.textContent.includes('Saved endpoint: https://api.example.test/v1/chat/completions'));
  assert.equal(await page.getByLabel('Model',{exact:true}).inputValue(),'fixture-model');
  assert.equal(await page.getByLabel('API key (Windows secure storage)').inputValue(),'');
  assert.equal(await page.getByRole('checkbox').isChecked(),true);
- checks.push('remounted form restores model and consent without returning saved key');
+ assert.equal(await page.evaluate(()=>window.catalogCalls),beforeRemount);
+ checks.push('remounted form restores model and consent without returning saved key or fetching catalogs');
  await page.getByRole('button',{name:'Revoke API consent'}).click();await page.getByText('API consent revoked.',{exact:false}).waitFor();assert.equal(await page.getByRole('checkbox').isChecked(),false);assert.equal(await page.getByLabel('Model',{exact:true}).inputValue(),'fixture-model');checks.push('revocation retains selected model and removes consent');
  await page.getByRole('button',{name:'Remove API key and permission'}).click();await page.getByText('Saved API key and permission deleted from Windows Credential Manager.').waitFor();
  assert.equal(await page.getByRole('checkbox').isChecked(),false);checks.push('explicit removal clears permission');

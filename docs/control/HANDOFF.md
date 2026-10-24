@@ -5222,3 +5222,11 @@ before using the new shortcut. All newly created trial/build processes exited.
 No source push/main/release update. Published r2 stays historical session-only.
 Mission INCOMPLETE; Source materiality stale. Next optional work: candidate CI and
 release refresh, or Owner-entered real API setup under a separate live-call scope.
+
+## 2026-10-24 API catalog live setup and automatic lookup candidate
+
+On the personal installed r3 package (source 743a06c), the Owner-entered Claude key successfully listed 13 provider models through the product UI. Claude Haiku 5.5 was present with ID claude-haiku-5-5. The original entered shorthand haiku-5.5 was replaced by dropdown selection. Windows secure save succeeded; after normal quit/relaunch the UI restored the exact Anthropic endpoint and model. Key material was not exported or logged. Generation consent remains denied pending Owner UI action; no paid writing request or API Accept was run. Catalog access is not generation acceptance.
+
+Local source candidate: ApiSettings loads official-provider catalogs once when an edited nonempty key field loses focus. Buttons retain explicit behavior; moving to endpoint/provider editing does not send the old draft key. Startup/restoration does not contact a provider. Manual refresh remains. New React/ mocked Tauri coverage exercises once-per-entry behavior, no per-keystroke request, provider-switch key clearing and no remount request. Typecheck PASS; UI 13 checks PASS; governance PASS. Initial UI runner failed before launch because its default Playwright executable was absent; rerun used installed Chrome with sandbox enabled and a temporary headless profile. This code is not packaged/installed/CI-qualified yet. Current installed r3 continues to require Load model list.
+
+Evidence: D:/dev/grammar-evidence/api-autoload-20261024/ui-result.json. The personal r3 remains open for Owner setup, not a residual synthetic trial.

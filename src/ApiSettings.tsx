@@ -15,6 +15,7 @@ export function ApiSettings() {
   const [message, setMessage] = useState("");
   const version = useRef(0);
   const keyInput = useRef<HTMLInputElement>(null);
+  const keyEdited = useRef(false);
   useEffect(() => {
     let mounted = true; const initialVersion = version.current;
     void invoke<ApiStatus>("api_session_status").then(value => {
@@ -32,6 +33,7 @@ export function ApiSettings() {
   function resetCatalog() { setModels([]); setCatalogMessage("Model list not loaded. Actual invocation: not verified."); }
   async function loadModels() {
     if (pending) return;
+    keyEdited.current = false;
     const action = ++version.current; setPending(true); resetCatalog();
     try {
       const rows = await invoke<{id: string; name: string; selectable: boolean}[]>("list_api_models", {lookup: {endpoint, key: keyInput.current?.value ?? ""}});
@@ -42,6 +44,14 @@ export function ApiSettings() {
       const messages: Record<string,string> = {api_invalid_key:"Enter an API key first.", api_catalog_auth_denied:"Provider denied catalog access (key or permission).",api_catalog_rate_limited:"Provider rate limit reached. No retry was sent.",api_catalog_unsupported_endpoint:"Model lookup supports the four official provider presets. Enter a custom model manually.",api_catalog_timeout:"Model lookup timed out.",api_catalog_limit:"Catalog exceeded bounded limits; no partial list accepted."};
       setCatalogMessage((messages[String(error)] ?? "Model lookup failed. No partial list accepted.") + " Actual invocation: not verified.");
     } finally { if (version.current === action) setPending(false); }
+  }
+  function loadAfterKeyEntry(nextTarget: EventTarget | null) {
+    // Buttons retain their explicit action; changing the endpoint must not send
+    // the old draft key. Never fetch on mount, restore, or each keystroke.
+    const next = nextTarget instanceof HTMLElement ? nextTarget : null;
+    if (next?.closest("button") || next?.closest("label")?.textContent?.match(/API provider preset|HTTPS endpoint/)) return;
+    const official = ["https://api.anthropic.com/v1/messages", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "https://openrouter.ai/api/v1/chat/completions", "https://api.x.ai/v1/chat/completions"].includes(endpoint);
+    if (keyEdited.current && keyInput.current?.value.trim() && official) void loadModels();
   }
   async function save() {
     if (pending) return;
@@ -108,8 +118,9 @@ export function ApiSettings() {
       <input value={model} autoComplete="off" spellCheck={false} disabled={pending} onChange={event => { setModel(event.target.value); setConsent(false); }} />
     </label>
     <label className="settings-field">API key (Windows secure storage)
-      <input ref={keyInput} type="password" autoComplete="off" spellCheck={false} disabled={pending} placeholder={status.configured && endpoint === status.endpoint ? "Saved key — leave blank to keep" : "Enter API key"} maxLength={4096} onChange={() => { resetCatalog(); setConsent(false); }} />
+      <input ref={keyInput} type="password" autoComplete="off" spellCheck={false} disabled={pending} placeholder={status.configured && endpoint === status.endpoint ? "Saved key — leave blank to keep" : "Enter API key"} maxLength={4096} onChange={() => { keyEdited.current = true; resetCatalog(); setConsent(false); }} onBlur={event => loadAfterKeyEntry(event.relatedTarget)} />
     </label>
+    <p>After entering a key, leave the key field to load the official provider’s models once. This sends the key for catalog lookup only, not a writing request. Restarting does not automatically contact the provider. You can also refresh the list manually below.</p>
     <button type="button" disabled={pending} onClick={() => void loadModels()}>Load model list</button>
     <p>Loading sends the entered key (or the saved key for this exact endpoint) to the selected provider for catalog lookup only. No document text or generation request is sent. The key remains in this form until setup is saved, removed or closed.</p>
     <label className="settings-field">Available models
