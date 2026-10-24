@@ -175,3 +175,41 @@ GPU가 부족한 PC에서는 `pwsh -File Start-Grammar.ps1 -WithoutLocalModel`�
 4. **Pause field** 또는 **Disable document**로 중지합니다. 이 로컬 흐름은 외부 Provider 동의를 요구하지 않습니다. 외부 Deep은 별도 동의와 설정이 필요한 기능입니다.
 
 시험 범위는 작업용 새 프로필의 textarea와 단순 contenteditable입니다. 일반 사용자 프로필·Edge·물리 IME·복잡한 웹 편집기 전체를 검증했다는 뜻이 아닙니다. 설치 패키지에 실제 모델 파일은 포함하지 않으며, 고정 해시의 모델을 최초 준비합니다. 네트워크 없이 준비하려면 검증된 파일의 `-AssetCache`를 지정합니다.
+
+
+### Optional API providers (candidate, synthetic verification)
+
+Settings → Optional API setup offers Claude (Anthropic Messages), Google Gemini
+(OpenAI-compatible endpoint), OpenRouter and xAI presets, plus Custom HTTPS Chat
+Completions. Enter an exact model ID available to your API account and its API
+key, allow explicit requests, then choose Keep setup for this session. Saving
+validates configuration locally; it does not verify account access or make a
+billable request. The saved endpoint/model shown below the form are authoritative
+until another setup is saved or removed. API keys are session-only, not persisted.
+CLI/subscription login is separate from API authentication and billing.
+
+Capture a synthetic sentence, select translation or rewriting, then use Run API
+Deep. Review the result before Accept or Copy. Existing capture/source/revision
+checks still apply. Automatic rewriting does not invoke this optional API.
+Cancel stops local waiting; it does not guarantee that the service stopped billing.
+Remove API key and permission revokes the session. No automatic retry or fallback.
+
+OpenRouter sends a fixed model ID with fallback disabled and requires ZDR routes
+and data_collection=deny. Auto/router variants are rejected; an unavailable route
+fails instead of relaxing privacy. The underlying serving provider is chosen by
+OpenRouter; Pencil does not pin an individual upstream vendor. Google uses its
+documented Chat Completions compatibility API; advanced Gemini features are not
+implemented. Claude supports text-only Messages and rejects truncation, refusal
+and tool blocks. Models must emit Pencil's writing JSON contract; protocol
+compatibility does not guarantee that every model follows that contract.
+
+Verification: Rust transport/session/writing tests and original React settings
+component with mocked Tauri boundary. Real provider authentication, paid calls,
+provider-specific quality/latency and installed-package Accept remain NOT_RUN for
+these new presets. No new personal installation or release was performed.
+
+Protocol references:
+- https://platform.claude.com/docs/en/build-with-claude/working-with-messages
+- https://ai.google.dev/gemini-api/docs/openai
+- https://openrouter.ai/docs/guides/routing/provider-selection
+- https://docs.x.ai/developers/model-capabilities/legacy/chat-completions

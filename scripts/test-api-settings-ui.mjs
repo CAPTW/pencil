@@ -29,7 +29,16 @@ try{
  await page.addScriptTag({content:bundle.outputFiles[0].text});
  const save=page.getByRole('button',{name:'Keep setup for this session'});
  await save.waitFor();await page.waitForFunction(()=>!document.querySelector('button').disabled);
- await page.getByLabel('HTTPS chat/completions endpoint').fill('https://api.example.test/v1/chat/completions');
+ for (const endpoint of ['https://api.anthropic.com/v1/messages','https://generativelanguage.googleapis.com/v1beta/openai/chat/completions','https://openrouter.ai/api/v1/chat/completions','https://api.x.ai/v1/chat/completions']) {
+  await page.getByLabel('API key (session only)').fill('previous-provider-key');
+  await page.getByRole('checkbox').check();
+  await page.getByLabel('API provider preset').selectOption(endpoint);
+  assert.equal(await page.getByLabel('HTTPS endpoint').inputValue(),endpoint);
+  assert.equal(await page.getByLabel('API key (session only)').inputValue(),'');
+  assert.equal(await page.getByRole('checkbox').isChecked(),false);
+ }
+ checks.push('four provider presets clear draft credentials and permission');
+ await page.getByLabel('HTTPS endpoint').fill('https://api.example.test/v1/chat/completions');
  await page.getByLabel('Model',{exact:true}).fill('fixture-model');
  await page.getByLabel('API key (session only)').fill('dummy-secret');await page.getByRole('checkbox').check();await save.click();
  await page.getByText('Setup kept for this app session.',{exact:false}).waitFor();

@@ -1,5 +1,5 @@
 //! Opt-in OpenAI-compatible chat-completions transport foundation.
-//! Not registered as a desktop/browser provider yet. Callers must still bind
+//! Desktop API sessions bind
 //! consent, source/revision, matched terms and the writing-result contract.
 //! No persistence, credential discovery, automatic retry or engine fallback.
 use super::executor::DeepCancellation;
@@ -31,14 +31,19 @@ pub enum ApiError {
 }
 
 /// Immutable destination/model. A different destination requires a new config.
-/// The URL is the full chat/completions endpoint, never guessed or rewritten.
+/// Full Chat Completions endpoint or the exact Anthropic Messages endpoint.
 pub struct ApiConfig {
     endpoint: Url,
     model: String,
+    anthropic: bool,
+    openrouter: bool,
+    google: bool,
 }
 impl ApiConfig {
     #[cfg(test)]
-    pub(crate) fn fixture(endpoint:&str)->Self {Self::validate(endpoint,"fixture",true).unwrap()}
+    pub(crate) fn fixture(endpoint: &str) -> Self {
+        Self::validate(endpoint, "fixture", true).unwrap()
+    }
     pub fn new(endpoint: &str, model: &str) -> Result<Self, ApiError> {
         Self::validate(endpoint, model, false)
     }
@@ -55,19 +60,33 @@ impl ApiConfig {
         let url = Url::parse(endpoint).map_err(|_| ApiError::Configuration)?;
         let owned_fixture =
             cfg!(test) && fixture && url.scheme() == "http" && url.host_str() == Some("127.0.0.1");
+        let anthropic = url.as_str() == "https://api.anthropic.com/v1/messages";
+        let openrouter = url.host_str() == Some("openrouter.ai");
+        let google = url.host_str() == Some("generativelanguage.googleapis.com");
+        if openrouter
+            && (model == "openrouter/auto"
+                || model.starts_with("@")
+                || model.contains(":")
+                || !model.contains("/"))
+        {
+            return Err(ApiError::Configuration);
+        }
         if (!owned_fixture && url.scheme() != "https")
             || url.host_str().is_none()
             || !url.username().is_empty()
             || url.password().is_some()
             || url.query().is_some()
             || url.fragment().is_some()
-            || !url.path().ends_with("/chat/completions")
+            || (!anthropic && !url.path().ends_with("/chat/completions"))
         {
             return Err(ApiError::Configuration);
         }
         Ok(Self {
             endpoint: url,
             model: model.to_owned(),
+            anthropic,
+            openrouter,
+            google,
         })
     }
 }
@@ -111,11 +130,15 @@ async fn run(
         return Err(ApiError::InputLimit);
     }
     validate_key(key)?;
-    let mut authorization =
-        HeaderValue::from_str(&format!("Bearer {key}")).map_err(|_| ApiError::InvalidKey)?;
+    let credential = zeroize::Zeroizing::new(if config.anthropic {
+        key.to_owned()
+    } else {
+        format!("Bearer {key}")
+    });
+    let mut authorization = HeaderValue::from_str(&credential).map_err(|_| ApiError::InvalidKey)?;
     authorization.set_sensitive(true);
-    let body=serde_json::to_vec(&json!({"model":config.model,"messages":[{"role":"user","content":prompt}],"stream":false,"store":false}))
-        .map_err(|_|ApiError::InputLimit)?;
+    let body =
+        serde_json::to_vec(&request_body(config, prompt)).map_err(|_| ApiError::InputLimit)?;
     if body.len() > MAX_REQUEST {
         return Err(ApiError::InputLimit);
     }
@@ -129,9 +152,15 @@ async fn run(
             .pool_max_idle_per_host(0)
             .build()
             .map_err(|_| ApiError::Transport)?;
-        let mut response = client
-            .post(config.endpoint.clone())
-            .header(AUTHORIZATION, authorization)
+        let request = client.post(config.endpoint.clone());
+        let request = if config.anthropic {
+            request
+                .header("x-api-key", authorization)
+                .header("anthropic-version", "2023-06-01")
+        } else {
+            request.header(AUTHORIZATION, authorization)
+        };
+        let mut response = request
             .header(CONTENT_TYPE, "application/json")
             .body(body)
             .send()
@@ -153,7 +182,11 @@ async fn run(
             }
             bytes.extend_from_slice(&chunk);
         }
-        parse_response(&bytes)
+        if config.anthropic {
+            parse_anthropic_response(&bytes)
+        } else {
+            parse_response(&bytes)
+        }
     };
     tokio::select! {biased;
         _=async {loop {if cancel.is_cancelled(){break;}tokio::time::sleep(Duration::from_millis(10)).await;}} => Err(ApiError::Cancelled),
@@ -161,6 +194,42 @@ async fn run(
             if cancel.is_cancelled(){Err(ApiError::Cancelled)} else {result.map_err(|_|ApiError::Timeout)?}
         }
     }
+}
+fn request_body(config: &ApiConfig, prompt: &str) -> Value {
+    let mut body =
+        json!({"model":config.model,"messages":[{"role":"user","content":prompt}],"stream":false});
+    if config.anthropic {
+        body["max_tokens"] = json!(4096);
+    } else if !config.google {
+        body["store"] = json!(false);
+    }
+    if config.openrouter {
+        body["provider"] = json!({"allow_fallbacks":false,"data_collection":"deny","zdr":true});
+    }
+    body
+}
+fn parse_anthropic_response(bytes: &[u8]) -> Result<String, ApiError> {
+    let value: Value = serde_json::from_slice(bytes).map_err(|_| ApiError::InvalidResponse)?;
+    if value["type"] != "message" || value["role"] != "assistant" {
+        return Err(ApiError::InvalidResponse);
+    }
+    if value["stop_reason"] != "end_turn" {
+        return Err(ApiError::IncompleteResponse);
+    }
+    let blocks = value["content"]
+        .as_array()
+        .ok_or(ApiError::InvalidResponse)?;
+    let mut output = String::new();
+    for block in blocks {
+        if block["type"] != "text" {
+            return Err(ApiError::InvalidResponse);
+        }
+        output.push_str(block["text"].as_str().ok_or(ApiError::InvalidResponse)?);
+    }
+    if output.trim().is_empty() {
+        return Err(ApiError::InvalidResponse);
+    }
+    Ok(output)
 }
 pub(crate) fn validate_key(key: &str) -> Result<(), ApiError> {
     if key.is_empty() || key.len() > 4096 || !key.bytes().all(|c| (33..=126).contains(&c)) {
@@ -268,6 +337,80 @@ mod tests {
             data
         });
         (config, task, received)
+    }
+    #[test]
+    fn provider_configuration_and_payloads() {
+        for (endpoint, model) in [
+            ("https://api.anthropic.com/v1/messages", "claude-test"),
+            (
+                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                "gemini-test",
+            ),
+            (
+                "https://openrouter.ai/api/v1/chat/completions",
+                "vendor/model",
+            ),
+            ("https://api.x.ai/v1/chat/completions", "grok-test"),
+        ] {
+            let config = ApiConfig::new(endpoint, model).unwrap();
+            let body = request_body(&config, "synthetic source");
+            assert_eq!(body["model"], model);
+            assert_eq!(body["messages"][0]["content"], "synthetic source");
+            assert!(body["tools"].is_null());
+            if config.anthropic {
+                assert_eq!(body["max_tokens"], 4096);
+            }
+            if config.google {
+                assert!(body["store"].is_null());
+            }
+            if config.openrouter {
+                assert_eq!(body["provider"]["allow_fallbacks"], false);
+                assert_eq!(body["provider"]["zdr"], true);
+            }
+        }
+        for model in ["openrouter/auto", "@preset", "vendor/model:nitro", "auto"] {
+            assert!(
+                ApiConfig::new("https://openrouter.ai/api/v1/chat/completions", model).is_err()
+            );
+        }
+        assert!(ApiConfig::new("https://evil.test/v1/messages", "m").is_err());
+    }
+    #[tokio::test]
+    async fn anthropic_wire_contract_and_incomplete_responses() {
+        for reason in ["end_turn", "max_tokens", "tool_use", "refusal"] {
+            let reply = json!({"type":"message","role":"assistant","stop_reason":reason,
+                "content":[{"type":"text","text":"synthetic correction"}]})
+            .to_string();
+            let (mut config, server, _) = fixture("200 OK", &reply, "", Duration::ZERO).await;
+            config.anthropic = true;
+            config.endpoint.set_path("/v1/messages");
+            let result = complete(
+                &config,
+                "synthetic-key",
+                "synthetic",
+                true,
+                &DeepCancellation::default(),
+            )
+            .await;
+            if reason == "end_turn" {
+                assert_eq!(result.unwrap(), "synthetic correction");
+            } else {
+                assert_eq!(result, Err(ApiError::IncompleteResponse));
+            }
+            let request = String::from_utf8(server.await.unwrap()).unwrap();
+            assert!(request.starts_with("POST /v1/messages HTTP/1.1"));
+            let headers = request.split_once("\r\n\r\n").unwrap().0.to_lowercase();
+            assert!(headers.contains("x-api-key: synthetic-key"));
+            assert!(headers.contains("anthropic-version: 2023-06-01"));
+            assert!(!headers.contains("authorization:"));
+        }
+        let invalid = json!({"type":"message","role":"assistant","stop_reason":"end_turn",
+            "content":[{"type":"tool_use","text":"never execute"}]})
+        .to_string();
+        assert_eq!(
+            parse_anthropic_response(invalid.as_bytes()),
+            Err(ApiError::InvalidResponse)
+        );
     }
     #[test]
     fn destination_is_explicit_https_without_embedded_credentials() {

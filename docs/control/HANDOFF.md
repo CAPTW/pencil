@@ -5075,3 +5075,21 @@ This post-publication record commit changes documentation/state only; the execut
 ## 2026-10-24 Codex CLI compatibility investigation
 
 2026-10-24 Codex compatibility candidate: installed runtime2583623 + CLI0.144.6 authenticated and captured synthetic RichEdit selection, but gpt-6-luna failed with codex_model_capability_unavailable; UI cancel preserved draft/source (618.180ms), no server-cancel claim from that UI evidence, installed Accept NOT_RUN. Same Sandbox/account with integrity-verified official CLI0.164.0 listed gpt-6-luna and completed actual protocol translation3249ms/rewrite2658ms/interrupt74ms with reported model gpt-6-luna, no tools, exit0. Source exact CLI pin updated to0.164.0, new generated stable schema320 files retained alongside immutable0.144.6 history, hardening unchanged. Updated production Rust client live safety: interrupt acknowledged1ms, INTERRUPTED, follow-up grammar2276ms, shutdown/runtime removal true. Production corpus10/10 responses, 2242-9114ms median2844ms,4 above3s; bounded review9 acceptable/1 temporal meaning failure (translate-context-03: checking moved before speech instead of before promised reply). Not general quality PASS. Installed-app Accept/new-version device login/new package/Windows CI NOT_RUN for this candidate. Raw model-capability UI error now explains compatibility without fallback. Initial harness failures preserved (page readiness, forbidden window-show IPC, login-wait expiry, missing native editor dependency); final preflight native editor write/reread/exit PASS. Cleanup and final evidence in D:/dev/grammar-evidence/codex-provider-20261024-r5/FINAL_RECEIPT.json. No host user data/credentials copied, no main/push/release. Mission INCOMPLETE, Project Source stale. Next: source-bound package with0.164.0, installed translation/rewrite/cancel/Accept, temporal-meaning defect.
+
+
+## API provider preparation — 2026-10-24
+Owner prioritizes Claude/Google/OpenRouter/xAI API connections. Reused existing
+session-bound desktop API Deep flow and canonical writing contract. Added four
+UI endpoint presets, exact Anthropic Messages protocol/header/parser support,
+Google compatibility payload, OpenRouter no-fallback/ZDR routing restrictions.
+HTTPS, no redirects/retries, bounded response/deadline, consent, cancellation,
+credential memory lifetime and stale capture protection remain in force.
+No dependency changes. Preset edits clear draft key/model/consent; saved setup is
+explicitly displayed and only replaced by Save or revoked by Remove.
+Validation: provider Rust 46 passed/3 live ignored; settings original-component
+mock-Tauri headless Chrome 5 checks passed, zero external requests; TypeScript and
+no-fallback contract passed. Evidence: D:/dev/grammar-evidence/api-providers-20261024.
+This is source candidate implementation, not installed/new release acceptance.
+Live API accounts/quality/latency/Accept remain NOT_RUN. Next: approved account
+qualification of one selected API provider in a single owned synthetic session;
+keep Codex CLI 0.164.0 installed-package qualification separately pending.
