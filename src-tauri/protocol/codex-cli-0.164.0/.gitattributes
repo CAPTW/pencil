@@ -1,0 +1,2 @@
+# Preserve the generated schema bytes used by PROVENANCE.md on Windows checkouts.
+*.json text eol=lf
