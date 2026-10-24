@@ -2,7 +2,7 @@
 
 Current checkpoint: installed84df647 has qualified Accept in owned standard single-line/multiline-autovscroll Edit and RichEdit scope, plus the opted-in Chromium global widget path. These use authenticated packaged runtime modules. See docs/control/HANDOFF.md for current evidence. The prototype sections below describe development history and are not current deployment status.
 
-`word_privacy.hpp` is the first Word-specific prerequisite. It queries protection metadata only, has35 inert COM tests and is not connected to capture or mutation. A clear result does not authorize reading/applying. Actual Word, Excel, PowerPoint and Hancom integration and qualification remain incomplete. No runtime class allowlist has been broadened.
+`word_privacy.hpp` was the first Word-specific prerequisite: it queries protection metadata only. It is now part of the Word path compiled into `target-apply.dll` (`desktop_dispatcher.hpp` → `word_connection.hpp` → `word_dispatcher.hpp` → `word_edit_session.hpp` → `word_tsf.hpp` → `word_target.hpp` → `word_selection.hpp`). A clear privacy result alone does not authorize reading/applying. Actual Word, Excel, PowerPoint and Hancom integration and qualification remain incomplete. No runtime class allowlist has been broadened.
 
 Desktop direct Apply is a core product requirement. The Owner explicitly made
 its restoration the highest priority on 2026-10-05. Copy-only is temporary

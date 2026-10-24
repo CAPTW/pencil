@@ -2,7 +2,7 @@
 
 [소개로 돌아가기](../README.md) · [Prototype 3 릴리스](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3)
 
-이 안내는 **Windows x64 Prototype 3**용입니다. 개발 환경을 설치하거나 소스를 빌드하지 않아도 실행 ZIP으로 시작할 수 있습니다. 아직 모든 PC·편집기에 대한 호환성이 검증된 제품은 아닙니다.
+이 안내는 **Windows x64 Prototype 3 r4**용입니다. 개발 환경을 설치하거나 소스를 빌드하지 않아도 실행 ZIP으로 시작할 수 있습니다. 아직 모든 PC·편집기에 대한 호환성이 검증된 제품은 아닙니다.
 
 ## 1. 실행 환경 준비
 
@@ -14,14 +14,14 @@ Pencil은 사용자별 폴더에 설치합니다. 선행 프로그램 설치에�
 
 ## 2. 다운로드와 무결성 확인
 
-릴리스의 **Assets**에서 실행 ZIP과 `SHA256SUMS.txt`를 받으세요. **Source code (zip)**은 소스 개발용입니다.
+릴리스의 **Assets**에서 `Pencil-0.1.0-prototype.3-r4-windows-x64.zip`과 `PROTOTYPE_3_R4_SHA256SUMS.txt`를 받으세요. 같은 릴리스의 이전 원본·r1–r3 ZIP과 체크섬은 기록 보존용입니다. **Source code (zip)**은 소스 개발용입니다.
 
 PowerShell에서 다운로드한 폴더로 이동한 뒤 확인합니다. 저장 위치를 바꿨다면 실제 폴더를 사용하세요.
 
 ```powershell
 Set-Location "$env:USERPROFILE\Downloads"
-Get-FileHash .\Pencil-0.1.0-prototype.3-windows-x64.zip -Algorithm SHA256
-Get-Content .\SHA256SUMS.txt
+Get-FileHash .\Pencil-0.1.0-prototype.3-r4-windows-x64.zip -Algorithm SHA256
+Get-Content .\PROTOTYPE_3_R4_SHA256SUMS.txt
 ```
 
 ZIP 항목의 해시가 대소문자를 제외하고 정확히 같아야 합니다. 다르면 설치하지 말고 다시 다운로드하세요. 이 값은 파일 무결성 확인이며 코드 서명은 아닙니다.
@@ -70,7 +70,7 @@ Set-Location "$env:LOCALAPPDATA\PencilPrototype3"
 .\Start-Grammar.ps1 -WithoutLocalModel
 ```
 
-모델을 내려받거나 실행하지 않습니다. 기본 로컬 규칙은 사용할 수 있지만, Gemma의 번역·재작성 결과가 제공되는 모드는 아닙니다. 클라우드 Deep을 쓰려면 Provider 또는 API를 따로 설정하고 전송에 동의해야 합니다. CPU에서 동일 품질·속도를 보장하는 옵션으로 해석하지 마세요.
+모델을 내려받거나 실행하지 않습니다. 기본 로컬 규칙은 사용할 수 있지만, Gemma의 번역·재작성 결과가 제공되는 모드는 아닙니다. 로컬 Gemma 번역은 한국어↔영어만 지원하며, 일본어·중국어 대상은 클라우드 Deep에서 선택합니다. 클라우드 Deep을 쓰려면 Provider 또는 API를 따로 설정하고 전송에 동의해야 합니다. CPU에서 동일 품질·속도를 보장하는 옵션으로 해석하지 마세요.
 
 ## 5. 데스크톱에서 첫 문장 시험
 
@@ -80,7 +80,9 @@ Set-Location "$env:LOCALAPPDATA\PencilPrototype3"
 4. **Accept**로 선택 범위를 교체하거나 **Copy** 후 직접 붙여넣습니다.
 5. 실제 원문이 의도대로 바뀌었는지 확인합니다.
 
-Windows 11의 새 메모장, Word, Excel, PowerPoint, Hancom을 일반 지원 대상으로 보지 마세요. 지원되지 않는 입력칸을 거부하는 것은 정상입니다. 원문이나 선택이 바뀌었거나 검토 권한이 만료됐다면 다시 선택하고 캡처하세요. Apply를 강제로 반복하거나 검증을 우회하지 마세요.
+Accept 권한은 **캡처 시점부터 최대 30초**이며 모델 응답과 검토 시간도 포함됩니다. 시간이 지났거나 원문·선택·대상이 바뀌면 Accept를 거부합니다. 권한을 자동 연장하거나 재시도하지 않으므로 다시 선택·캡처하거나 Copy를 직접 선택하세요. 자동 가로 스크롤이 없는 Windows 한 줄 Edit 입력칸은 긴 결과가 잘릴 수 있어 직접 Accept를 차단하고 Copy만 허용합니다.
+
+Windows 11의 새 메모장, Word, Excel, PowerPoint, Hancom을 일반 지원 대상으로 보지 마세요. 지원되지 않는 입력칸을 거부하는 것은 정상입니다. Apply를 강제로 반복하거나 검증을 우회하지 마세요.
 
 ## 6. Chromium에서 첫 제안 시험
 
@@ -91,7 +93,7 @@ Windows 11의 새 메모장, Word, Excel, PowerPoint, Hancom을 일반 지원 �
 3. 설치 폴더 안의 `extension` 폴더를 선택합니다. ZIP이나 그 위 폴더가 아닙니다.
 4. 확장 아이콘을 툴바에 고정합니다. 앱도 설치 폴더의 launcher로 실행해 둡니다.
 5. 시험 페이지에서 확장 팝업의 **Enable this document**를 선택합니다.
-6. textarea 또는 지원되는 단순 contenteditable을 선택하고 **Enable this field**를 누릅니다. **Alt+Shift+E**도 해당 필드 활성화에 사용할 수 있습니다.
+6. textarea 또는 지원되는 단순 contenteditable을 선택하고 **Enable this field**를 누릅니다. **Alt+Shift+E**도 해당 필드 활성화에 사용할 수 있습니다. 활성화한 필드에서 범위를 선택하고 **Alt+Shift+R**을 누르면 그 범위만 검토·교체할 수 있습니다.
 7. 문장을 입력하고 제안을 선택해 검토합니다. **Accept** 또는 **Apply edit** 후 실제 내용을 확인합니다.
 
 필드를 잠시 멈추려면 **Pause**, 문서를 끄려면 **Disable document** 또는 **Alt+Shift+G**를 사용합니다. 팝업에서 도메인 차단과 emergency disable도 제공됩니다. 페이지 이동 뒤에는 다시 문서 opt-in이 필요합니다. 비밀번호·민감 필드는 대상이 아닙니다.
@@ -103,8 +105,9 @@ Windows 11의 새 메모장, Word, Excel, PowerPoint, Hancom을 일반 지원 �
 로컬 Gemma를 쓰기 위해 클라우드 계정에 로그인할 필요는 없습니다.
 
 - **CLI Deep:** Settings에서 Provider를 선택하고 준비 상태와 전송 동의를 확인합니다. 동의는 Provider별로 저장되며 재시작 후에도 남습니다. **Auto rewrite**를 끄면 캡처마다 자동 Deep이 시작되는 것을 막을 수 있습니다. **Revoke all Deep consent**로 동의를 철회할 수 있지만 이미 보낸 내용은 회수할 수 없습니다.
-- **API:** Settings에서 OpenAI-compatible Chat Completions endpoint·model·API key와 권한을 설정하고 **Run API Deep**으로 요청합니다. API 키는 세션용이며 **Remove API key and permission**으로 제거할 수 있습니다. CLI의 Auto rewrite는 이 API를 자동 호출하지 않습니다.
-- **한계:** 모든 서비스의 API 형식을 지원하는 것은 아닙니다. 실제 Provider별 호출·계정 수용 범위는 별도입니다. Antigravity는 개인정보 qualification 제한, Claude는 bare 모드 OAuth 제한이 기록돼 있습니다.
+- **API:** Settings → **Optional API setup**에서 Claude(Anthropic API)·Google Gemini·OpenRouter·xAI 프리셋을 고르거나 HTTPS Chat Completions endpoint를 직접 입력합니다. 키 입력을 마치면 공식 프리셋의 모델 목록을 한 번 조회하며(**Load model list**로 다시 조회 가능), 이때 키만 보내고 문서는 보내지 않습니다. **Available models**에서 모델을 고르고 전송 동의를 확인한 뒤 **Save API setup securely**를 누릅니다. 요청은 캡처 후 **Run API Deep**으로만 보내며 CLI의 Auto rewrite는 이 API를 자동 호출하지 않습니다.
+- **API 키 저장:** 키·Provider·모델·동의는 일반 설정 파일이 아닌 Windows Credential Manager에 Windows 사용자·Pencil 프로필별로 저장되어 재시작 후 복원됩니다. **Revoke API consent**는 동의만 철회하고 키는 남깁니다. **Remove API key and permission**은 저장된 키까지 삭제합니다.
+- **한계:** 모든 서비스의 API 형식을 지원하는 것은 아닙니다. 목록에 보이는 모델도 과금·할당량·권한 때문에 실제 호출이 실패할 수 있습니다. 실제 생성은 Claude `claude-haiku-5-5`의 짧은 합성 문장으로만 확인했고 Google·OpenRouter·xAI 실제 생성은 미검증입니다. OpenRouter는 명시적 모델과 zero data retention 경로가 필요합니다. Antigravity는 개인정보 qualification 제한, Claude CLI는 bare 모드 OAuth 제한이 기록돼 있습니다.
 
 비용과 데이터 정책은 선택한 제공업체를 확인하세요. 민감한 문장으로 시험하지 마세요.
 
@@ -118,7 +121,7 @@ Windows 11의 새 메모장, Word, Excel, PowerPoint, Hancom을 일반 지원 �
 | 모델 준비가 중단됨 / `local.pending` 존재 | 기존 파일을 보존하고 오류 문구로 문의. 반복 Prepare나 무작위 파일 삭제 금지. 새 시험 설치 또는 모델 없는 시작 검토 |
 | 첫 응답이 오래 걸림 | 다운로드·모델 예열과 응답을 구분. GPU 요구 사항 확인. 여러 세션을 띄우지 않기 |
 | 단축키가 반응하지 않음 | 앱 실행, 지원 컨트롤, 비어 있지 않은 선택, 단축키 충돌 확인 |
-| Accept 거부 | 원문·커서·선택 변경이나 권한 만료 확인. 다시 선택해 검토. 지원되지 않는 앱에서는 강제 Apply 불가 |
+| Accept 거부 | 원문·커서·선택 변경이나 30초 권한 만료 확인. 다시 선택해 검토. 한 줄 Edit 등 Copy-only 입력칸이나 지원되지 않는 앱에서는 강제 Apply 불가 |
 | 확장이 host에 연결되지 않음 | 설치된 extension인지, 설치가 성공했는지 확인. 다른 버전의 확장·host를 섞지 않기 |
 | 종료 후 다시 시작이 막힘 | 화면이 닫힌 뒤 WebView 정리는 최대 30초 기다립니다. launcher가 끝나기 전 재실행하지 마세요. 정리 오류가 나면 여러 번 실행하거나 무관한 프로세스를 종료하지 말고 보고 |
 
@@ -132,7 +135,9 @@ Windows 11의 새 메모장, Word, Excel, PowerPoint, Hancom을 일반 지원 �
 .\Uninstall-Grammar.ps1
 ```
 
-기본 제거는 사용자 데이터를 남깁니다. `-RemoveUserData`는 설정·용어사전·WebView 데이터·앱 소유 Codex 로그인 데이터를 삭제하며, **같은 Windows 사용자의 다른 설치본과 공유하는 데이터에도 영향을 줄 수 있습니다.** 보존 여부를 확인하고 모든 Pencil을 종료한 뒤 필요한 경우에만 사용하세요. 설치 폴더 내부의 다운로드 모델도 제거 대상이므로 재사용할 모델은 제거 전에 보존하세요. 외부 캐시나 임시 runtime 폴더까지 모두 제거된다고 가정하지 마세요.
+제거 스크립트는 그 설치본에서 실행한 프로세스만 종료하고, 기록된 native host 등록과 설치 폴더를 삭제합니다. 설치 폴더 내부의 다운로드 모델도 함께 삭제되므로 재사용할 모델은 제거 전에 보존하세요. 실행 중인 Pencil이나 모델 launcher가 있으면 제거를 거부합니다.
+
+사용자 데이터는 제거하지 않습니다. 기본 프로필의 설정·용어사전은 `%APPDATA%\com.local.codexpencil`, WebView와 앱 전용 Codex 데이터는 `%LOCALAPPDATA%\com.local.codexpencil` 아래에 남으며, 같은 Windows 사용자의 다른 설치본과 공유됩니다. `-RemoveUserData`는 표식이 있는 시험 범위 전용이라 일반 설치에서 단독으로 쓰면 거부됩니다. Windows Credential Manager에 저장된 API 키도 제거 스크립트가 지우지 않으므로 제거 전에 앱에서 **Remove API key and permission**을 실행하세요. Chromium 확장은 `chrome://extensions`에서 직접 제거합니다. 외부 캐시나 임시 runtime 폴더까지 모두 제거된다고 가정하지 마세요.
 
 ## 10. 문제 신고하기
 
@@ -142,4 +147,4 @@ Windows 11의 새 메모장, Word, Excel, PowerPoint, Hancom을 일반 지원 �
 
 ## Prototype 3 검증 범위
 
-최신 소스 CI는 실제 설치 확장의 Gemma Accept 검증을 대신하지 않습니다. 최신 설치 경로는 전경 활성화 문제로 NOT_RUN이며, 기존 시작 시간 초과 원인과 언어 품질 제한도 남아 있습니다. 먼저 합성 문서로 시험하고 [릴리스 제한](releases/v0.1.0-prototype.3.md)을 확인하세요. 저성능 GPU/CPU의 Gemma 속도는 보장하지 않습니다. Writer/rHWP 별도 패키지는 이번 기본 ZIP에 포함되지 않습니다.
+최신 소스 CI는 실제 설치 확장의 Gemma Accept 검증을 대신하지 않습니다. r4 새 패키지의 실제 API·Gemma UI 재검증은 NOT_RUN입니다. 최신 설치 경로는 전경 활성화 문제로 NOT_RUN이며, 기존 시작 시간 초과 원인과 언어 품질 제한도 남아 있습니다. 먼저 합성 문서로 시험하고 [릴리스 제한](releases/v0.1.0-prototype.3.md)을 확인하세요. 저성능 GPU/CPU의 Gemma 속도는 보장하지 않습니다. Writer/rHWP 별도 패키지는 이번 기본 ZIP에 포함되지 않습니다.

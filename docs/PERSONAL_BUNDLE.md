@@ -1,5 +1,11 @@
 # Codex Pencil personal bundle workflow
 
+> [!NOTE]
+> **Historical (P2-01).** This workflow and `scripts/build-personal-bundle.ps1` are pinned to the
+> earlier "Codex Pencil" product name and lockfile hashes and no longer match the current source.
+> Current Pencil packages are built with `scripts/mission/package.ps1`; see
+> [Build and install from source](PROTOTYPE.md#build-and-install-from-source).
+
 This workflow produces the private-use Windows x64 portable ZIP for P2-01. The authorized runtime ancestor is P1-03 commit `73af3d93231d06e8370d1da11ff6b2bb76ff3a1d`. The build script accepts only a clean `main` commit descended from that ancestor whose baseline diff is limited to the approved packaging workflow and documentation paths.
 
 ## Artifact policy

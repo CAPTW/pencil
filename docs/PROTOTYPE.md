@@ -13,9 +13,17 @@ This is not a production release or a claim of Grammarly-equivalent language qua
   remains Gemma4 12B IT QAT Q4_0; no smaller-model silent fallback.
 - Opted-in Chromium textarea/simple contenteditable recommendations and Accept.
   Loading the extension does not authorize every document or field.
-- Optional cloud Deep: selected CLI provider or configured OpenAI-compatible API.
-  This is not support for every provider protocol. Consent and external costs are
-  separate; local qualification is not live cloud-provider qualification.
+- Optional cloud Deep: a selected CLI provider (Codex, Claude, Antigravity) or a
+  configured API — Claude (Anthropic Messages), Google Gemini, OpenRouter and xAI
+  presets, or a custom HTTPS Chat Completions endpoint. Keys, model and consent are
+  stored in Windows Credential Manager per Windows user and profile. This is not
+  support for every provider protocol. Consent and external costs are separate;
+  live generation has been checked only with Claude `claude-haiku-5-5` on short
+  synthetic text, and local qualification is not live cloud-provider qualification.
+
+Accept authority expires at most 30 seconds after capture, including inference and
+review time. Single-line Edit controls without automatic horizontal scrolling are
+Copy-only because a direct replacement could be truncated.
 
 Desktop direct Accept is limited to qualified Windows Edit/RichEdit controls.
 Modern Notepad, Word, Excel, PowerPoint and Hancom are not generally qualified.
@@ -31,8 +39,14 @@ For the executable ZIP, read START_HERE.md included in the GitHub prerelease.
 The commands below instead build a fresh package from source.
 Use an empty output directory outside the checkout and keep the checkout clean.
 
+Clone `main` (integrated source; it can be ahead of the newest package). The
+development branch `codex/grammar-local-trial-ba58b7d` may contain unintegrated
+changes. A release tag
+identifies only the original package of that release; later rN packages record
+their exact source commit in their BUILD_RECEIPT/VALIDATION files.
+
 ```powershell
-git clone --branch codex/grammar-local-trial-ba58b7d https://github.com/CAPTW/pencil.git
+git clone https://github.com/CAPTW/pencil.git
 cd pencil
 npm ci
 cargo fetch --locked --manifest-path src-tauri/Cargo.toml
@@ -71,8 +85,11 @@ is performed automatically.
 For Chromium, load the installed `extension` directory in developer mode. Start
 with a separate profile and synthetic text, enable the document and then the
 field, and review before Accept. See [personal-use instructions](../scripts/package/PERSONAL_USE.md)
-for opt-in, shortcuts, installation and `Uninstall-Grammar.ps1 -RemoveUserData`.
-Removing user data is optional and deletes the installation's settings/dictionary.
+for opt-in, shortcuts, installation and removal. `Uninstall-Grammar.ps1` removes
+the installation and its recorded native host registration but preserves shared
+user data (settings, dictionary, WebView data) and Credential Manager API keys.
+`-RemoveUserData` is restricted to explicitly marked trial scopes and is refused
+for a normal installation.
 
 ## Latest installed desktop measurement
 
@@ -103,8 +120,9 @@ historical evidence references are in [HANDOFF](control/HANDOFF.md); referenced
 local evidence files are not public artifacts. Later documentation commits are
 not new measurements of rebuilt binaries. Mission acceptance remains incomplete.
 
-Prototype 2 has been adopted into main and published as an unsigned Windows x64 ZIP
-prerelease. It excludes model weights and downloaded GPU runtime binaries. No new source license is granted
+Prototype 2 was adopted into main and published as an unsigned Windows x64 ZIP
+prerelease; the current prerelease is Prototype 3 r4. Release ZIPs exclude model
+weights and downloaded GPU runtime binaries. No new source license is granted
 by this preparation; a project-wide license decision remains with the owner.
 
 ## Prototype 2 shutdown repair
@@ -152,5 +170,6 @@ This repair does not add general editor support or live cloud-provider acceptanc
   uninstall preserves shared AppData; prior deletion/recovery limitations remain
   recorded in HANDOFF, not silently resolved by this repair.
 
-The source-bound local package is built from dccc246. Latest evidence and repeat
-measurements are in the current HANDOFF; existing Prototype 2 release remains unchanged.
+The source-bound local package for that checkpoint was built from dccc246. These
+changes were later published in Prototype 3; latest evidence and repeat
+measurements are in the current HANDOFF.
