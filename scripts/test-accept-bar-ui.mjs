@@ -6,7 +6,7 @@ import path from 'node:path';
 const require=createRequire(import.meta.url);
 const {build}=require('esbuild');
 const {chromium}=require(path.resolve(process.argv[2]));
-const bundle=await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {AcceptBar} from './src/AcceptBar';const root=createRoot(document.getElementById('root'));window.renderBar=(expiry,key='capture')=>root.render(<main className="shell"><section className="panel"><div className="panel-content"><div style={{height:1800,flexShrink:0}}>Long provider explanation and draft</div></div><AcceptBar key={key} directApply={true} expiresAtMs={expiry} canCopy={true} busy={false} onAccept={()=>window.accepts++} onCopy={()=>window.copies++}/></section></main>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,format:'iife',jsx:'automatic'});
+const bundle=await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {AcceptBar} from './src/AcceptBar';const root=createRoot(document.getElementById('root'));window.renderBar=(expiry,key='capture',direct=true)=>root.render(<main className="shell"><section className="panel"><div className="panel-content"><div style={{height:1800,flexShrink:0}}>Long provider explanation and draft</div></div><AcceptBar key={key} directApply={direct} expiresAtMs={expiry} canCopy={true} busy={false} onAccept={()=>window.accepts++} onCopy={()=>window.copies++}/></section></main>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,format:'iife',jsx:'automatic'});
 const browser=await chromium.launch({headless:true,chromiumSandbox:true,executablePath:process.argv[3]});
 try {
  const page=await browser.newPage({viewport:{width:420,height:460}});
@@ -31,5 +31,7 @@ try {
  await page.evaluate(()=>window.renderBar(undefined,'legacy'));await page.waitForTimeout(50);assert.equal(await accept.isDisabled(),true);
  await page.evaluate(()=>window.renderBar(Date.now()+30000,'recaptured'));await page.waitForTimeout(50);assert.equal(await accept.isEnabled(),true);
  await accept.focus();await page.keyboard.press('Enter');assert.equal(await page.evaluate(()=>window.accepts),2);
+ await page.evaluate(()=>window.renderBar(Date.now()+30000,'copy-only',false));
+ await page.waitForTimeout(50);assert.equal(await accept.count(),0);assert.equal(await page.getByTestId('copy-result').isEnabled(),true);
  console.log('PASS: fixed actions at 2 sizes/2 scroll positions; explicit and keyboard Accept; expiry; Copy after expiry; no render renewal; missing deadline refuses; recapture resets');
 } finally {await browser.close();}

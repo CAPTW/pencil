@@ -8,6 +8,7 @@ const read = (relative) => readFileSync(join(root, relative), "utf8");
 
 const contract = read("src-tauri/src/writing_contract.rs");
 const app = read("src/App.tsx");
+const acceptBar = read("src/AcceptBar.tsx");
 const review = read("src/resultReview.ts");
 const rules = read("src-tauri/src/instant_selection/rules.rs");
 const docs = read("docs/WRITING_QUALITY_CONTRACT.md");
@@ -28,10 +29,11 @@ assert.match(rules, /EN_DUPLICATE_WORD/);
 assert.match(review, /export function reviewDiff/);
 // Owner restored direct Apply as a priority. It is gated by the backend's
 // qualified capture, with Copy retained as a separate explicit action.
-assert.match(app, /selection\?\.directApply\s*\?\s*\([\s\S]*?data-testid="apply-result"/);
+assert.match(app, /directApply=\{selection\?\.directApply === true\}/);
+assert.match(acceptBar, /directApply && <button[\s\S]*?data-testid="apply-result"/);
 assert.match(app, /directApply && !selection\?\.directApply/);
 assert.match(app, /copyResult\(true\)/);
-assert.match(app, /data-testid="copy-result"/);
+assert.match(acceptBar, /data-testid="copy-result"/);
 assert.match(app, /data-testid="run-deep"/);
 assert.match(app, /data-testid="cancel-rewrite"/);
 assert.match(app, /data-testid="dismiss-result"/);
