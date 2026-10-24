@@ -972,7 +972,7 @@ export default function App() {
     rewritingIntentRef.current = null;
     setCloudReviewOpen(false);
     let apiCleared = false;
-    try { await invoke("clear_api_session"); apiCleared = true; window.dispatchEvent(new Event("grammar-api-cleared")); }
+    try { await invoke("revoke_api_consent"); apiCleared = true; window.dispatchEvent(new Event("grammar-api-cleared")); }
     catch { /* Report incomplete revocation below; still revoke existing CLI grants. */ }
     const saved = await saveSettings({ ...settings, autoRewrite: false,
       cloudProcessingAcknowledgementVersion: 0,

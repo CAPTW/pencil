@@ -13,3 +13,5 @@ pub use types::ProviderKind;
 pub(crate) use types::{ProviderSnapshot, SelfTestRecord};
 
 pub(crate) mod api_models;
+
+pub(crate) mod api_credentials;

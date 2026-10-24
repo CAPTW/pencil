@@ -629,7 +629,7 @@ fn backup_path(path: &Path) -> PathBuf {
     path.with_file_name(format!("{file_name}.bak"))
 }
 
-fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     if let Some(directory) = crate::local_profile::directory()? {
         return Ok(directory.join("settings.json"));
     }

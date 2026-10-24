@@ -182,17 +182,17 @@ GPU가 부족한 PC에서는 `pwsh -File Start-Grammar.ps1 -WithoutLocalModel`�
 Settings → Optional API setup offers Claude (Anthropic Messages), Google Gemini
 (OpenAI-compatible endpoint), OpenRouter and xAI presets, plus Custom HTTPS Chat
 Completions. Enter an exact model ID available to your API account and its API
-key, allow explicit requests, then choose Keep setup for this session. Saving
+key, allow explicit requests, then choose Save API setup securely. Saving
 validates configuration locally; it does not verify account access or make a
 billable request. The saved endpoint/model shown below the form are authoritative
-until another setup is saved or removed. API keys are session-only, not persisted.
+until another setup is saved or removed. The key, endpoint/model and permission persist in Windows Credential Manager, scoped to this Windows user and Pencil profile. No plaintext key is written to settings. Leave the key blank to reuse it only for the exact saved endpoint.
 CLI/subscription login is separate from API authentication and billing.
 
 Capture a synthetic sentence, select translation or rewriting, then use Run API
 Deep. Review the result before Accept or Copy. Existing capture/source/revision
 checks still apply. Automatic rewriting does not invoke this optional API.
 Cancel stops local waiting; it does not guarantee that the service stopped billing.
-Remove API key and permission revokes the session. No automatic retry or fallback.
+Revoke API consent cancels active writing requests and persists revoked permission while retaining the key. Remove API key and permission deletes the profile credential. A storage error is not confirmed deletion: retry before restarting. No automatic retry or fallback.
 
 OpenRouter sends a fixed model ID with fallback disabled and requires ZDR routes
 and data_collection=deny. Auto/router variants are rejected; an unavailable route
@@ -219,7 +219,7 @@ Protocol references:
 
 Choose one of the four official API presets, enter its API key, then click
 **Load model list**. Choose **Available models**, grant explicit inference
-permission separately, and save the session setup. Model lookup sends only an
+permission separately, and save the secure setup. Model lookup sends only an
 authenticated GET catalog request, never document text or a generation request.
 The key remains in the password field for saving; removing setup or closing the
 settings clears it. Changing key/provider invalidates the displayed catalog.
@@ -252,3 +252,11 @@ Official catalog references:
 Synthetic verification only: 51 Provider Rust tests passed (3 live tests ignored),
 9 original React component/mock-Tauri checks passed, application cargo check and
 frontend build passed. No actual keys, paid calls or installed-package tests.
+
+Secure storage uses a single selected API setup per profile (not a multi-account key ring).
+It does not protect against other software running as the same Windows user. Changing
+profile paths creates a separate credential identity. Delete the key in Pencil before
+removing that profile/installation; uninstall does not enumerate or erase user credentials.
+Windows limits the credential blob size; oversized configurations are refused without
+plaintext fallback. Saving/restoring never contacts a provider. Catalog availability,
+billing and generation compatibility still require separate live verification.

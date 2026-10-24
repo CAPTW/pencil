@@ -1,4 +1,4 @@
-//! Session-only API setup. No disk, environment or credential-store access.
+//! API runtime with optional profile-scoped Windows secure persistence.
 //! Request tickets govern setup changes; capture binding remains the caller's job.
 use super::{
     executor::DeepCancellation,
@@ -12,7 +12,7 @@ use std::sync::{
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Setup {
     pub expected_epoch: String,
@@ -36,6 +36,7 @@ pub(crate) struct Status {
     pub model: Option<String>,
     pub consent: bool,
     pub request_enabled: bool,
+    pub storage_error: Option<&'static str>,
 }
 struct Prepared {
     config: ApiConfig,
@@ -46,6 +47,8 @@ struct Prepared {
     epoch: Uuid,
 }
 pub(crate) struct ApiSession {
+    store: Option<Box<dyn super::api_credentials::CredentialStore>>,
+    storage_error: Option<&'static str>,
     epoch: Uuid,
     setup: Option<Arc<Prepared>>,
     active: Option<Arc<RequestTicket>>,
@@ -58,6 +61,8 @@ pub(crate) struct ApiSession {
 impl Default for ApiSession {
     fn default() -> Self {
         Self {
+            store: None,
+            storage_error: None,
             epoch: Uuid::new_v4(),
             setup: None,
             active: None,
@@ -73,11 +78,61 @@ pub(crate) struct RequestTicket {
     pub cancel: DeepCancellation,
 }
 impl ApiSession {
+    pub fn attach_store(&mut self, store: Box<dyn super::api_credentials::CredentialStore>) {
+        self.clear();
+        self.store = None;
+        let restored = (|| {
+            let Some(bytes) = store.read()? else {
+                return Ok(None);
+            };
+            let mut saved: Setup =
+                serde_json::from_slice(&bytes).map_err(|_| "api_secure_storage_invalid")?;
+            saved.expected_epoch = self.epoch.to_string();
+            self.configure(saved)?;
+            Ok::<_, &'static str>(Some(()))
+        })();
+        self.storage_error = restored.err();
+        self.store = Some(store);
+    }
+    pub fn saved_key(&self, endpoint: &str) -> Result<Zeroizing<String>, &'static str> {
+        let saved = self
+            .setup
+            .as_ref()
+            .filter(|s| s.endpoint == endpoint)
+            .ok_or("api_invalid_key")?;
+        Ok(Zeroizing::new(saved.key.to_string()))
+    }
+    pub fn forget(&mut self) -> Result<Status, &'static str> {
+        self.clear();
+        let result = self.store.as_ref().map_or(Ok(()), |store| store.delete());
+        self.storage_error = result.err();
+        result.map(|_| self.status())
+    }
+    pub fn revoke(&mut self) -> Result<Status, &'static str> {
+        let Some(saved) = &self.setup else {
+            return self.forget();
+        };
+        self.configure(Setup {
+            expected_epoch: self.epoch.to_string(),
+            endpoint: saved.endpoint.clone(),
+            model: saved.model.clone(),
+            key: saved.key.to_string(),
+            consent: false,
+        })
+    }
+    pub fn ensure_store(&self) -> Result<(), &'static str> {
+        if self.store.is_some() {
+            Ok(())
+        } else {
+            Err("api_secure_storage_unavailable")
+        }
+    }
     pub fn is_busy(&self) -> bool {
         self.active.is_some()
     }
     pub fn status(&self) -> Status {
         Status {
+            storage_error: self.storage_error,
             epoch: self.epoch.to_string(),
             configured: self.setup.is_some(),
             endpoint: self.setup.as_ref().map(|s| s.endpoint.clone()),
@@ -94,15 +149,33 @@ impl ApiSession {
         self.epoch = Uuid::new_v4();
         self.status()
     }
-    pub fn configure(&mut self, setup: Setup) -> Result<Status, &'static str> {
+    pub fn configure(&mut self, mut setup: Setup) -> Result<Status, &'static str> {
         if setup.expected_epoch != self.epoch.to_string() {
             return Err("api_setup_stale");
         }
+        if setup.key.is_empty() {
+            match self.saved_key(&setup.endpoint) {
+                Ok(key) => setup.key = key.to_string(),
+                Err(error) => {
+                    self.forget()?;
+                    return Err(error);
+                }
+            }
+        }
         // Any current replacement attempt revokes the old key/consent, including invalid edits.
-        self.clear();
+        self.forget()?;
         let config = ApiConfig::new(&setup.endpoint, &setup.model)
             .map_err(|_| "api_invalid_configuration")?;
         validate_key(&setup.key).map_err(|_| "api_invalid_key")?;
+        if let Some(store) = &self.store {
+            let bytes = Zeroizing::new(
+                serde_json::to_vec(&setup).map_err(|_| "api_secure_storage_invalid")?,
+            );
+            if let Err(error) = store.write(&bytes) {
+                self.storage_error = Some(error);
+                return Err(error);
+            }
+        }
         self.setup = Some(Arc::new(Prepared {
             config,
             endpoint: setup.endpoint.clone(),
@@ -218,6 +291,178 @@ mod tests {
             key: "dummy-secret".into(),
             consent: true,
         }
+    }
+    #[derive(Clone, Default)]
+    struct MemoryStore {
+        bytes: Arc<std::sync::Mutex<Option<Vec<u8>>>>,
+        fail: Arc<std::sync::atomic::AtomicBool>,
+        fail_write: Arc<std::sync::atomic::AtomicBool>,
+    }
+    impl super::super::api_credentials::CredentialStore for MemoryStore {
+        fn read(&self) -> Result<Option<Zeroizing<Vec<u8>>>, &'static str> {
+            if self.fail.load(Ordering::SeqCst) {
+                return Err("api_secure_storage_unavailable");
+            }
+            Ok(self.bytes.lock().unwrap().clone().map(Zeroizing::new))
+        }
+        fn write(&self, bytes: &[u8]) -> Result<(), &'static str> {
+            if self.fail.load(Ordering::SeqCst) || self.fail_write.load(Ordering::SeqCst) {
+                return Err("api_secure_storage_write_failed");
+            }
+            *self.bytes.lock().unwrap() = Some(bytes.to_vec());
+            Ok(())
+        }
+        fn delete(&self) -> Result<(), &'static str> {
+            if self.fail.load(Ordering::SeqCst) {
+                return Err("api_secure_storage_delete_failed");
+            }
+            *self.bytes.lock().unwrap() = None;
+            Ok(())
+        }
+    }
+    #[test]
+    fn restore_revoke_delete_and_same_endpoint_key_reuse() {
+        let vault = MemoryStore::default();
+        let mut s = ApiSession::default();
+        s.attach_store(Box::new(vault.clone()));
+        s.configure(setup(&s)).unwrap();
+        drop(s);
+        let mut s = ApiSession::default();
+        s.attach_store(Box::new(vault.clone()));
+        assert!(s.status().consent);
+        let mut changed = setup(&s);
+        changed.key.clear();
+        changed.model = "new-model".into();
+        s.configure(changed).unwrap();
+        let active = s.begin(true).unwrap();
+        let stale = setup(&s);
+        s.revoke().unwrap();
+        assert!(active.cancel.is_cancelled());
+        assert!(!s.finish(&active));
+        assert!(s.configure(stale).is_err());
+        drop(s);
+        let mut s = ApiSession::default();
+        s.attach_store(Box::new(vault.clone()));
+        assert_eq!(s.status().model.as_deref(), Some("new-model"));
+        assert!(s.status().configured);
+        assert!(!s.status().consent);
+        assert!(s.begin(true).is_err());
+        assert!(s
+            .saved_key("https://other.test/v1/chat/completions")
+            .is_err());
+        s.forget().unwrap();
+        drop(s);
+        let mut s = ApiSession::default();
+        s.attach_store(Box::new(vault));
+        assert!(!s.status().configured);
+    }
+    #[test]
+    fn unavailable_or_corrupt_vault_never_silently_enables_requests() {
+        let vault = MemoryStore::default();
+        *vault.bytes.lock().unwrap() = Some(b"invalid".to_vec());
+        let mut s = ApiSession::default();
+        s.attach_store(Box::new(vault.clone()));
+        assert!(s.status().storage_error.is_some());
+        assert!(!s.status().configured);
+        s.configure(setup(&s)).unwrap();
+        let ticket = s.begin(true).unwrap();
+        vault.fail.store(true, Ordering::SeqCst);
+        assert!(s.revoke().is_err());
+        assert!(ticket.cancel.is_cancelled());
+        assert!(!s.status().request_enabled);
+        assert!(s.forget().is_err());
+        assert!(s.status().storage_error.is_some());
+        let mut restart = ApiSession::default();
+        restart.attach_store(Box::new(vault));
+        assert!(!restart.status().configured);
+        assert!(restart.status().storage_error.is_some());
+    }
+    #[test]
+    fn failed_write_or_cross_endpoint_reuse_never_leaves_previous_grant() {
+        let vault = MemoryStore::default();
+        let mut s = ApiSession::default();
+        s.attach_store(Box::new(vault.clone()));
+        s.configure(setup(&s)).unwrap();
+        let mut switched = setup(&s);
+        switched.key.clear();
+        switched.endpoint = "https://other.test/v1/chat/completions".into();
+        assert!(s.configure(switched).is_err());
+        assert!(!s.status().configured);
+        assert!(vault.bytes.lock().unwrap().is_none());
+        s.configure(setup(&s)).unwrap();
+        vault.fail_write.store(true, Ordering::SeqCst);
+        assert!(s.configure(setup(&s)).is_err());
+        assert!(!s.status().request_enabled);
+        assert!(vault.bytes.lock().unwrap().is_none());
+        let mut restart = ApiSession::default();
+        restart.attach_store(Box::new(vault));
+        assert!(!restart.status().configured);
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_secure_storage_synthetic_process_restart_and_removal() {
+        use super::super::api_credentials::{CredentialStore, WindowsStore};
+        let path = std::env::temp_dir().join(format!("pencil-vault-fixture-{}", Uuid::new_v4()));
+        struct Cleanup(WindowsStore);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = self.0.delete();
+            }
+        }
+        let cleanup = Cleanup(WindowsStore::for_profile(&path));
+        assert!(cleanup.0.read().unwrap().is_none());
+        assert!(!path.exists());
+        assert!(cleanup.0.write(&vec![0u8; 2561]).is_err());
+        assert!(cleanup.0.read().unwrap().is_none());
+        let mut s = ApiSession::default();
+        s.attach_store(Box::new(WindowsStore::for_profile(&path)));
+        s.configure(setup(&s)).unwrap();
+        drop(s);
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "provider::api_session::tests::windows_secure_storage_child",
+                "--ignored",
+            ])
+            .env("PENCIL_SYNTHETIC_VAULT_TEST", &path)
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "synthetic child failed");
+        let mut s = ApiSession::default();
+        s.attach_store(Box::new(WindowsStore::for_profile(&path)));
+        assert!(s.status().configured);
+        assert!(!s.status().consent);
+        assert!(s.begin(true).is_err());
+        s.forget().unwrap();
+        assert!(cleanup.0.read().unwrap().is_none());
+        assert!(
+            !path.exists(),
+            "secure setup must not create ordinary profile files"
+        );
+    }
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "invoked only by unique synthetic vault parent"]
+    fn windows_secure_storage_child() {
+        let path = std::path::PathBuf::from(
+            std::env::var_os("PENCIL_SYNTHETIC_VAULT_TEST").expect("parent required"),
+        );
+        assert!(path.starts_with(std::env::temp_dir()));
+        assert!(path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("pencil-vault-fixture-"));
+        let mut s = ApiSession::default();
+        s.attach_store(Box::new(
+            super::super::api_credentials::WindowsStore::for_profile(&path),
+        ));
+        assert!(s.status().configured && s.status().consent);
+        assert_eq!(s.status().model.as_deref(), Some("synthetic-model"));
+        assert!(!serde_json::to_string(&s.status())
+            .unwrap()
+            .contains("dummy-secret"));
+        s.revoke().unwrap();
     }
     #[test]
     fn stale_ui_save_cannot_restore_revoked_key_or_permission() {

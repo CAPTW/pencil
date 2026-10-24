@@ -144,7 +144,10 @@ fn retry_local_model() -> Result<(),String> { local_model_session::retry() }
 fn local_model_status() -> local_model_session::Status { local_model_session::status() }
 
 #[tauri::command]
-async fn list_api_models(lookup: provider::api_models::Lookup) -> Result<Vec<provider::api_models::Model>, String> {
+async fn list_api_models(mut lookup: provider::api_models::Lookup, state: State<'_, AppState>) -> Result<Vec<provider::api_models::Model>, String> {
+    if lookup.key.is_empty() {
+        lookup.key = state.api_session.lock().map_err(|_| "api_session_unavailable")?.saved_key(&lookup.endpoint).map_err(str::to_owned)?.to_string();
+    }
     provider::api_models::list(lookup).await.map_err(str::to_owned)
 }
 
@@ -156,11 +159,17 @@ fn api_session_status(state: State<'_, AppState>) -> Result<provider::api_sessio
 fn configure_api_session(setup: provider::api_session::Setup, state: State<'_, AppState>) -> Result<provider::api_session::Status, String> {
     let mut session = state.api_session.lock().map_err(|_| "api_session_unavailable")?;
     if state.shutdown_started.load(Ordering::SeqCst) { return Err("app_shutting_down".into()); }
+    session.ensure_store().map_err(str::to_owned)?;
     session.configure(setup).map_err(str::to_owned)
 }
 #[tauri::command]
 fn clear_api_session(state: State<'_, AppState>) -> Result<provider::api_session::Status, String> {
-    Ok(state.api_session.lock().map_err(|_| "api_session_unavailable")?.clear())
+    state.api_session.lock().map_err(|_| "api_session_unavailable")?.forget().map_err(str::to_owned)
+}
+
+#[tauri::command]
+fn revoke_api_consent(state: State<'_, AppState>) -> Result<provider::api_session::Status, String> {
+    state.api_session.lock().map_err(|_| "api_session_unavailable")?.revoke().map_err(str::to_owned)
 }
 
 #[cfg(test)]
@@ -1876,6 +1885,7 @@ fn main() {
             api_session_status,
             configure_api_session,
             clear_api_session,
+            revoke_api_consent,
             retry_local_model,
             open_device_login_page,
             provider_snapshot,
@@ -2158,6 +2168,9 @@ fn initialize_configuration(app: &mut tauri::App) -> Result<ShortcutStartupStatu
     }
 
     let state = app_handle.state::<AppState>();
+    let credential_path = settings::settings_path(&app_handle)?;
+    state.api_session.lock().map_err(|_| "api_session_unavailable")?.attach_store(
+        Box::new(provider::api_credentials::WindowsStore::for_profile(&credential_path)));
     let terminology = match terminology_store::terminology_path(&app_handle) {
         Ok(path) => TerminologyRuntime::open(path, now_ms()),
         Err(_) => TerminologyRuntime::default(),

@@ -38,18 +38,18 @@ try{
  await page.evaluate(()=>{window.__errors=[];const t=window.__TAURI_INTERNALS__;return t.invoke('plugin:event|listen',{event:'capture-error',target:{kind:'Any'},handler:t.transformCallback(e=>window.__errors.push(e.payload))});});
  await page.getByRole('button',{name:'Settings',exact:true}).click();
  const setup=page.getByRole('region',{name:'Optional API setup'});
- await setup.getByLabel('HTTPS chat/completions endpoint').fill(endpoint);
+ await setup.getByLabel('HTTPS endpoint').fill(endpoint);
  await setup.getByLabel('Model',{exact:true}).fill('synthetic-no-inference');
- await setup.getByLabel('API key (session only)').fill('owned-dummy-api-key');
- await setup.getByRole('checkbox').check();await setup.getByRole('button',{name:'Keep setup for this session'}).click();
- await setup.getByText('Setup kept for this app session.',{exact:false}).waitFor();
- assert.equal(await setup.getByLabel('API key (session only)').inputValue(),'');
- const api=await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('api_session_status'));assert.equal(api.requestEnabled,true);assert.equal(api.endpoint,endpoint);assert.equal('key' in api,false);assert.equal(connections,0);pass('actual settings IPC saves memory setup without connection or key status');
+ await setup.getByLabel('API key (Windows secure storage)').fill('owned-dummy-api-key');
+ await setup.getByRole('checkbox').check();await setup.getByRole('button',{name:'Save API setup securely'}).click();
+ await setup.getByText('Setup saved in Windows Credential Manager.',{exact:false}).waitFor();
+ assert.equal(await setup.getByLabel('API key (Windows secure storage)').inputValue(),'');
+ const api=await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('api_session_status'));assert.equal(api.requestEnabled,true);assert.equal(api.endpoint,endpoint);assert.equal('key' in api,false);assert.equal(connections,0);pass('actual settings IPC saves secure setup without connection or key status');
  await setup.getByRole('button',{name:'Remove API key and permission'}).click();
- await setup.getByText('API key and permission removed from this session.').waitFor();
+ await setup.getByText('Saved API key and permission deleted from Windows Credential Manager.').waitFor();
  assert.equal((await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('api_session_status'))).requestEnabled,false);pass('actual removal revokes API setup');
- await setup.getByLabel('API key (session only)').fill('owned-dummy-api-key');await setup.getByRole('checkbox').check();await setup.getByRole('button',{name:'Keep setup for this session'}).click();
- await setup.getByText('Setup kept for this app session.',{exact:false}).waitFor();
+ await setup.getByLabel('API key (Windows secure storage)').fill('owned-dummy-api-key');await setup.getByRole('checkbox').check();await setup.getByRole('button',{name:'Save API setup securely'}).click();
+ await setup.getByText('Setup saved in Windows Credential Manager.',{exact:false}).waitFor();
  await page.getByRole('button',{name:'Settings',exact:true}).click();
  await page.evaluate(()=>{window.__captures=[];const t=window.__TAURI_INTERNALS__;return t.invoke('plugin:event|listen',{event:'selection-captured',target:{kind:'Any'},handler:t.transformCallback(e=>window.__captures.push(e.payload))});});
  editor=spawn('C:/GrammarPayload/target-editor.exe',[],{windowsHide:true,stdio:['pipe','pipe','pipe'],env:{...process.env,GRAMMAR_EXPECTED_APP_PID:String(app.pid)}});
@@ -88,11 +88,11 @@ try{
  await page.getByTestId('copy-result').click();await until('copy feedback',async()=>/Copied/.test(await status.textContent()));assert.equal(await text(),'please seperate this.');assert.equal(Buffer.from((await command('CLIPBOARD')).slice(5),'base64').toString('utf8'),reviewed);pass('retained edited draft Copy exact clipboard reread without source mutation');
  assert.equal(await command('EXIT'),'EXIT 0');await until('editor exit',()=>editor.exitCode!==null);
  await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});await until('app exit',()=>app.exitCode!==null);assert.equal(app.exitCode,0);report.appExitCodes.push(app.exitCode);await browser.close();browser=null;
- await launch();assert.equal((await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('api_session_status'))).configured,false);pass('API setup absent after actual process restart');
+ await launch();assert.equal((await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('api_session_status'))).configured,true);await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke("clear_api_session"));assert.equal((await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke("api_session_status"))).configured,false);pass('API setup restored after actual restart and saved credential deleted');
  await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});await until('app exit',()=>app.exitCode!==null);assert.equal(app.exitCode,0);report.appExitCodes.push(app.exitCode);report.status='PASS';
 }catch(error){report.error=String(error.stack??error);report.errorEvents=await page?.evaluate(()=>window.__errors).catch(()=>[]);console.error(report.error,report.errorEvents);}
 finally{
- if(page&&app?.exitCode===null)await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});
+ if(page&&app?.exitCode===null){await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('clear_api_session')).catch(()=>{report.credentialCleanup='UNCONFIRMED';report.status='FAIL';});await page.evaluate(()=>window.__TAURI_INTERNALS__.invoke('quit_app')).catch(()=>{});}
  if(editor?.exitCode===null)editor.stdin.end();
  if(app?.exitCode===null)await until('app cleanup',()=>app.exitCode!==null,15000).catch(()=>{});
  if(editor?.exitCode===null)await until('editor cleanup',()=>editor.exitCode!==null,10000).catch(()=>{});

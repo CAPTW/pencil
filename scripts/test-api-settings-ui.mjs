@@ -25,6 +25,7 @@ try{
    }
    if(command==='api_session_status')return {...window.fixtureStatus};
    if(command==='clear_api_session'){window.fixtureStatus=empty('cleared-'+Math.random());return {...window.fixtureStatus};}
+   if(command==='revoke_api_consent'){window.fixtureStatus={...window.fixtureStatus,consent:false,requestEnabled:false};return {...window.fixtureStatus};}
    if(command==='configure_api_session'){
     const s=args.setup;if(s.expectedEpoch!==window.fixtureStatus.epoch)throw Error('stale');
     const next={epoch:'saved-'+Math.random(),configured:true,endpoint:s.endpoint,model:s.model,consent:s.consent,requestEnabled:false};
@@ -34,18 +35,18 @@ try{
   };
  });
  await page.addScriptTag({content:bundle.outputFiles[0].text});
- const save=page.getByRole('button',{name:'Keep setup for this session'});
+ const save=page.getByRole('button',{name:'Save API setup securely'});
  await save.waitFor();await page.waitForFunction(()=>!document.querySelector('button').disabled);
  for (const endpoint of ['https://api.anthropic.com/v1/messages','https://generativelanguage.googleapis.com/v1beta/openai/chat/completions','https://openrouter.ai/api/v1/chat/completions','https://api.x.ai/v1/chat/completions']) {
-  await page.getByLabel('API key (session only)').fill('previous-provider-key');
+  await page.getByLabel('API key (Windows secure storage)').fill('previous-provider-key');
   await page.getByRole('checkbox').check();
   await page.getByLabel('API provider preset').selectOption(endpoint);
   assert.equal(await page.getByLabel('HTTPS endpoint').inputValue(),endpoint);
-  assert.equal(await page.getByLabel('API key (session only)').inputValue(),'');
+  assert.equal(await page.getByLabel('API key (Windows secure storage)').inputValue(),'');
   assert.equal(await page.getByRole('checkbox').isChecked(),false);
  }
  checks.push('four provider presets clear draft credentials and permission');
- await page.getByLabel('API key (session only)').fill('catalog-dummy');
+ await page.getByLabel('API key (Windows secure storage)').fill('catalog-dummy');
  await page.getByRole('button',{name:'Load model list'}).click();
  await page.getByText('Model list loaded: 2.',{exact:false}).waitFor();
  assert.equal(await page.getByRole('checkbox').isChecked(),false);
@@ -55,7 +56,7 @@ try{
  assert.match(await page.locator('body').textContent(),/Actual invocation: not verified/);
  const args=await page.evaluate(()=>window.catalogArgs);assert.deepEqual(Object.keys(args.lookup).sort(),['endpoint','key']);
  checks.push('catalog-only lookup, user selection, unsupported rows disabled, invocation remains unverified');
- await page.getByLabel('API key (session only)').fill('changed-key');
+ await page.getByLabel('API key (Windows secure storage)').fill('changed-key');
  assert.equal(await page.getByLabel('Available models').isDisabled(),true);
  checks.push('key edit invalidates catalog');
  await page.evaluate(()=>{window.catalogError=true;});
@@ -74,13 +75,21 @@ try{
 
  await page.getByLabel('HTTPS endpoint').fill('https://api.example.test/v1/chat/completions');
  await page.getByLabel('Model',{exact:true}).fill('fixture-model');
- await page.getByLabel('API key (session only)').fill('dummy-secret');await page.getByRole('checkbox').check();await save.click();
- await page.getByText('Setup kept for this app session.',{exact:false}).waitFor();
- assert.equal(await page.getByLabel('API key (session only)').inputValue(),'');checks.push('save clears key input; setup only notice');
- await page.getByRole('button',{name:'Remove API key and permission'}).click();await page.getByText('API key and permission removed from this session.').waitFor();
+ await page.getByLabel('API key (Windows secure storage)').fill('dummy-secret');await page.getByRole('checkbox').check();await save.click();
+ await page.getByText('Setup saved in Windows Credential Manager.',{exact:false}).waitFor();
+ assert.equal(await page.getByLabel('API key (Windows secure storage)').inputValue(),'');checks.push('save clears key input; setup only notice');
+ await page.evaluate(()=>document.getElementById('root').replaceWith(Object.assign(document.createElement('div'),{id:'root'})));
+ await page.addScriptTag({content:bundle.outputFiles[0].text});
+ await page.waitForFunction(()=>document.body.textContent.includes('Saved endpoint: https://api.example.test/v1/chat/completions'));
+ assert.equal(await page.getByLabel('Model',{exact:true}).inputValue(),'fixture-model');
+ assert.equal(await page.getByLabel('API key (Windows secure storage)').inputValue(),'');
+ assert.equal(await page.getByRole('checkbox').isChecked(),true);
+ checks.push('remounted form restores model and consent without returning saved key');
+ await page.getByRole('button',{name:'Revoke API consent'}).click();await page.getByText('API consent revoked.',{exact:false}).waitFor();assert.equal(await page.getByRole('checkbox').isChecked(),false);assert.equal(await page.getByLabel('Model',{exact:true}).inputValue(),'fixture-model');checks.push('revocation retains selected model and removes consent');
+ await page.getByRole('button',{name:'Remove API key and permission'}).click();await page.getByText('Saved API key and permission deleted from Windows Credential Manager.').waitFor();
  assert.equal(await page.getByRole('checkbox').isChecked(),false);checks.push('explicit removal clears permission');
  await page.evaluate(()=>{window.fixtureDelayed=true;});
- await page.getByLabel('API key (session only)').fill('second-dummy');await page.getByRole('checkbox').check();await save.click();
+ await page.getByLabel('API key (Windows secure storage)').fill('second-dummy');await page.getByRole('checkbox').check();await save.click();
  await page.waitForFunction(()=>typeof window.fixtureResolve==='function');
  await page.evaluate(async()=>{await window.fixtureInvoke('clear_api_session');window.dispatchEvent(new Event('grammar-api-cleared'));});
  await page.waitForFunction(()=>document.body.textContent.includes('Permission: not granted'));

@@ -5127,3 +5127,56 @@ Both attempts preserved; no product repair inferred. Final trial processes/VMs z
 Release r2 adds explicit model-list instructions and live-API NOT_RUN limitations;
 old assets/tag retained. New source-bound r2 build and main CI are required before
 publication, with exact post-build receipts stored in the r2 release evidence.
+
+
+## 2026-10-24 API secure persistence candidate
+
+Owner explicitly requests Windows secure API-key storage, restart restoration of
+Provider/model, key deletion and consent revocation, using synthetic keys only.
+This narrowly supersedes the old session-only setup design; it is not permission
+to inspect existing user credentials or perform API inference. Work remains on
+codex/grammar-local-trial-ba58b7d from 5511f68; personal r2 install is unchanged.
+
+One Generic Credential per Windows user/profile stores the selected endpoint,
+model, consent and key together; the target is Pencil/API/v1 plus normalized
+profile-path SHA-256. LOCAL_MACHINE persistence means same user on this computer,
+not a system-wide credential. No vault enumeration, plaintext settings, fallback,
+startup network request or key-return IPC. Same-user software is outside the
+protection boundary. Keys are zeroized in owned runtime/serialization buffers.
+Catalog lookup may explicitly reuse a saved key only for the exact endpoint.
+
+Revoke retains key/model but durably removes consent and cancels the active
+writing ticket. Delete cancels and deletes the credential. Shutdown only clears
+memory. Failed storage mutations disable requests locally and report durable
+revocation/deletion as unconfirmed; retry before restarting. The previous durable
+record may survive a failed deletion. Oversized credential blobs fail closed;
+there is no plaintext fallback. This is one selected setup, not a multi-account
+key ring. Profile relocation changes the vault namespace; remove the saved key
+before uninstalling/abandoning a profile. Uninstall never enumerates credentials.
+
+Validation evidence: D:/dev/grammar-evidence/api-secure-storage-20261024.
+Initial focused native17 PASS plus one child-only ignored entry; a parent test
+actually launches that child process to read the UUID-scoped synthetic Windows
+credential and revoke permission, then checks deletion in the parent. Original
+React component with mocked Tauri10 PASS, frontend typecheck/build PASS. Full Rust
+intermediate292 PASS33 ignored. Final strengthened regression results recorded
+below. Windows tests address only a fresh random synthetic credential; personal
+settings, dictionary, keys and the running personal r2 app remain untouched.
+
+Review: separate same-integrator diff pass (no independent reviewer). Checked
+startup restoration, no-secret status, endpoint binding, shutdown vs deletion,
+stale save/cancel, storage errors, and raw Win32 ownership/free. New regression
+covers cross-endpoint blank-key refusal, failed writes, credential-size limit,
+no ordinary profile file creation and remounted UI restoration. Live API calls,
+new installed-package/Sandbox acceptance, push/main/release are NOT_RUN this turn.
+Mission remains INCOMPLETE; Project Source is stale for this persistence change.
+
+Final: Rust293 PASS,0 FAIL,33 ignored (the vault child-only test is executed by
+its passing parent); React/mock-Tauri11 PASS with remount/provider/model/consent
+restoration and blank key field. Final frontend build/typecheck, no-fallback and
+governance/self-test PASS. No live API or installed candidate qualification.
+Native build supervisors report BUILD_COMPLETE_HELPERS_REAPED: one owned MSVC
+helper per Rust run was reaped, all remainingAfterCleanup=0. UI supervisors PASS,
+natural child exit, remaining0. No Sandbox launched and existing personal app
+left intact. Next: build/package and isolated installed settings persistence trial
+before updating the personal installation or publishing this candidate.

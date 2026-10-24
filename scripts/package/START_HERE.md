@@ -51,7 +51,8 @@ records remain historical downloads. This is an unsigned prerelease.
 2. Select Claude, Google Gemini, OpenRouter or xAI; enter that service's API key.
 3. Click **Load model list**, then select **Available models**. Unsupported rows
    stay visible but disabled. Custom endpoints require manual model IDs.
-4. Grant permission separately and click **Keep setup for this session**.
+4. In the published r2 package, grant permission and click **Keep setup for this session**.
+   The later secure-storage source candidate uses **Save API setup securely** instead.
 5. Capture synthetic text, select translation/rewriting, and choose **Run API
    Deep** only when ready to send it. Review before explicit Accept or Copy.
 
@@ -99,3 +100,5 @@ Do not use -RemoveUserData when removing an old version if you want to keep your
 settings/dictionary. The extension ID is package-specific; record the ID printed
 by the installer and keep the old version closed during the trial. No settings
 migration or general-profile deployment was performed for this release.
+
+API setup persists in Windows Credential Manager in this source candidate. Use Revoke API consent to disable requests, or Remove API key and permission to delete the saved credential. Existing published r2 used session-only storage.
