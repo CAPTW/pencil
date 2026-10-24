@@ -153,6 +153,7 @@ public:
         if (grant_->revision.load() != revision_ || !grant_->field_eligible ||
             (std::chrono::steady_clock::now() >= grant_->deadline || GetTickCount64() >= grant_->deadline_ticks) ||
             !grant_->verify_binding(context_.Get(), cookie) ||
+            grant_->revision.load() != revision_ || !grant_->field_eligible ||
             (std::chrono::steady_clock::now() >= grant_->deadline || GetTickCount64() >= grant_->deadline_ticks)) return S_FALSE;
         diagnostic_stage = 7;
         // Everything above runs inside the same TSF write session as SetText.

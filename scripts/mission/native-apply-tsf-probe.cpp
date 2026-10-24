@@ -47,7 +47,7 @@ int wmain(int argc, wchar_t** argv) {
             printf("NOT_SUPPORTED: no owned TSF context standard_edit=%d hr=%08lx\n", standardEdit, hr);
         } else {
             result = 0;
-            for (int scenario = 0; scenario < 12; ++scenario) {
+            for (int scenario = 0; scenario < 13; ++scenario) {
                 const auto source = scenario == 11 ? L"world world" : L"hello world";
                 SetWindowTextW(edit, scenario == 1 ? L"hello revised" : source);
                 SendMessageW(edit, EM_SETSEL, scenario == 2 || scenario == 11 ? 0 : 6, scenario == 2 || scenario == 11 ? 5 : 11);
@@ -56,6 +56,13 @@ int wmain(int argc, wchar_t** argv) {
                 // Legacy transaction-only probe. Real capture/binding is tested
                 // separately; this is deliberately synthetic authority.
                 grant->verify_binding = [expected = context.Get()](ITfContext* current, TfEditCookie) { return current == expected; };
+                // Binding checks can reenter the target. Recheck authority after
+                // that callback, not only before it.
+                unsigned checks = 0;
+                if (scenario == 12) grant->verify_binding = [&, expected = context.Get()](ITfContext* current, TfEditCookie) {
+                    if (++checks == 2) ++grant->revision;
+                    return current == expected;
+                };
                 grant->field_eligible = scenario != 5;
                 grant->deadline = std::chrono::steady_clock::now() + std::chrono::seconds(scenario == 4 ? -1 : 5);
                 if (scenario == 3) grant->valid = false;
