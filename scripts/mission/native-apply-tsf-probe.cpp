@@ -7,6 +7,20 @@
 #include <cstdio>
 #include <string>
 using Microsoft::WRL::ComPtr;
+static bool appendAfterMutation = false, appendObserved = false;
+static const bool* currentCompleted = nullptr;
+static bool notificationAfterCompletion = false;
+static WNDPROC originalParentProc = nullptr;
+static LRESULT CALLBACK parentProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+    if (message == WM_COMMAND && HIWORD(wparam) == EN_CHANGE && appendAfterMutation) {
+        appendAfterMutation = false; appendObserved = true;
+        notificationAfterCompletion = currentCompleted && *currentCompleted;
+        HWND edit = reinterpret_cast<HWND>(lparam);
+        SendMessageW(edit, EM_SETSEL, static_cast<WPARAM>(-1), -1);
+        SendMessageW(edit, EM_REPLACESEL, FALSE, reinterpret_cast<LPARAM>(L"\rtrailing application edit"));
+    }
+    return CallWindowProcW(originalParentProc, hwnd, message, wparam, lparam);
+}
 
 static void pump(DWORD milliseconds) {
     auto end = GetTickCount64() + milliseconds;
@@ -37,6 +51,9 @@ int wmain(int argc, wchar_t** argv) {
         HWND top = CreateWindowExW(0, L"STATIC", L"Grammar owned TSF Apply probe", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 30, 30, 600, 250, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
         HWND edit = CreateWindowExW(0, standardEdit ? L"Edit" : L"RICHEDIT50W", L"hello world", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_MULTILINE, 10, 10, 550, 150, top, nullptr, GetModuleHandleW(nullptr), nullptr);
         if (!top || !edit) { puts("window_creation_failed"); return 5; }
+        originalParentProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(top, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(parentProc)));
+        SendMessageW(edit, EM_SETEVENTMASK, 0, ENM_CHANGE);
+        SendMessageW(edit, EM_EXLIMITTEXT, 0, 70000);
         if (!standardEdit) SendMessageW(edit, EM_SETEDITSTYLE, SES_USECTF, SES_USECTF);
         SetForegroundWindow(top); SetFocus(edit); pump(500);
         ComPtr<ITfDocumentMgr> document;
@@ -47,7 +64,7 @@ int wmain(int argc, wchar_t** argv) {
             printf("NOT_SUPPORTED: no owned TSF context standard_edit=%d hr=%08lx\n", standardEdit, hr);
         } else {
             result = 0;
-            for (int scenario = 0; scenario < 15; ++scenario) {
+            for (int scenario = 0; scenario < 17; ++scenario) {
                 const std::wstring source = scenario >= 13 ? L"hello world" + std::wstring(65523, L'a') :
                     scenario == 11 ? L"world world" : L"hello world";
                 const std::wstring replacement = scenario >= 13 ? L"Earth" : L"Grammar";
@@ -65,7 +82,7 @@ int wmain(int argc, wchar_t** argv) {
                     if (++checks == 2) ++grant->revision;
                     return current == expected;
                 };
-                if (scenario == 14) grant->verify_binding = [&, expected = context.Get()](ITfContext* current, TfEditCookie) {
+                if (scenario == 15) grant->verify_binding = [&, expected = context.Get()](ITfContext* current, TfEditCookie) {
                     if (++checks == 2) {
                         ComPtr<IUnknown> ole; ComPtr<ITextDocument> rich; ComPtr<ITextRange> tail;
                         if (!SendMessageW(edit, EM_GETOLEINTERFACE, 0, reinterpret_cast<LPARAM>(ole.GetAddressOf())) ||
@@ -76,11 +93,19 @@ int wmain(int argc, wchar_t** argv) {
                     }
                     return current == expected;
                 };
+                if (scenario == 14 || scenario == 16) grant->verify_binding = [&, expected = context.Get()](ITfContext* current, TfEditCookie) {
+                    if (++checks == 2) {
+                        if (scenario == 14) { appendObserved = false; appendAfterMutation = true; }
+                        else SendMessageW(edit, EM_SETSEL, 0, 5);
+                    }
+                    return current == expected;
+                };
                 grant->field_eligible = scenario != 5;
                 grant->deadline = std::chrono::steady_clock::now() + std::chrono::seconds(scenario == 4 ? -1 : 5);
                 if (scenario == 3) grant->valid = false;
                 if (scenario == 6) grant->revision = 1;
                 auto session = new grammar::TsfApplySession(context.Get(), source, 6, 11, replacement, 0, grant);
+                currentCompleted = &session->completed;
                 HRESULT sessionResult = E_PENDING;
                 hr = context->RequestEditSession(client, session, TF_ES_ASYNC | TF_ES_READWRITE, &sessionResult);
                 bool queued = !session->called && sessionResult == TF_S_ASYNC;
@@ -94,13 +119,19 @@ int wmain(int argc, wchar_t** argv) {
                 std::vector<WCHAR> actual(70000); GetWindowTextW(edit, actual.data(), static_cast<int>(actual.size()));
                 const std::wstring expected = scenario == 13 ? source.substr(0, 6) + replacement + source.substr(11) : scenario == 0 ? L"hello Grammar" : scenario == 1 ? L"hello revised" : scenario == 7 ? L"hello changedlater" : source;
                 bool pass = queued && session->called && std::wstring(actual.data()) == expected && (session->result == grammar::ApplyResult::applied) == (scenario == 0 || scenario == 13) && session->mutation_calls == (scenario == 0 || scenario == 13 ? 1u : 0u);
+                // RichEdit can defer EN_CHANGE until after DoEditSession. A later
+                // application edit is not our mutation failure and must remain.
+                // If it reenters before completion, success must be withheld.
+                if (scenario == 14) printf("notification observed=%d after_completion=%d result=%d actual_units=%zu\n", appendObserved, notificationAfterCompletion, static_cast<int>(session->result), std::wstring(actual.data()).size());
                 if (scenario == 14) pass = queued && session->called && session->mutation_calls == 1 &&
-                    session->result == grammar::ApplyResult::mutation_unconfirmed &&
+                    (session->result == (notificationAfterCompletion ? grammar::ApplyResult::applied : grammar::ApplyResult::mutation_unconfirmed)) && appendObserved &&
                     std::wstring(actual.data()).size() > source.size();
+                if (scenario == 15) pass = queued && session->called && session->mutation_calls == 0 &&
+                    session->result == grammar::ApplyResult::rejected && std::wstring(actual.data()).size() > source.size();
                 printf("case=%d pass=%d callback=%d changed=%d request=%08lx session=%08lx reread_match=%d\n", scenario, pass, session->called, session->mutation_calls, hr, sessionResult, std::wstring(actual.data()) == expected);
                 if (!pass) result = 1;
                 printf("stage=%u read=%08lx units=%zu\n", session->diagnostic_stage, session->diagnostic_read_result, session->diagnostic_text_units);
-                session->Release();
+                currentCompleted = nullptr; session->Release();
                 if (scenario == 0 || scenario == 13) {
                     const auto canUndo = SendMessageW(edit, EM_CANUNDO, 0, 0);
                     const auto undo = SendMessageW(edit, EM_UNDO, 0, 0); pump(100);

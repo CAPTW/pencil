@@ -149,7 +149,7 @@ public:
             FAILED(document->Range(start_, end_, &target)) ||
             FAILED(document->GetSelection(&richSelection)) ||
             FAILED(richSelection->GetStart(&richStart)) || FAILED(richSelection->GetEnd(&richEnd)) ||
-            richStart != start_ || richEnd != end_ || !rich_text_equals(document.Get(), source_)) return S_FALSE;
+            richStart != start_ || richEnd != end_) return S_FALSE;
         TextValue replacement;
         replacement.value = SysAllocStringLen(replacement_.data(), static_cast<UINT>(replacement_.size()));
         if (!replacement.value) return E_OUTOFMEMORY;
@@ -158,6 +158,15 @@ public:
             !grant_->verify_binding(context_.Get(), cookie) ||
             grant_->revision.load() != revision_ || !grant_->field_eligible ||
             (std::chrono::steady_clock::now() >= grant_->deadline || GetTickCount64() >= grant_->deadline_ticks)) return S_FALSE;
+        // Binding/metadata queries may reenter the application. Read the actual
+        // story and both ranges AFTER that callback, immediately before writing.
+        LONG targetStart = -1, targetEnd = -1;
+        if (!rich_text_equals(document.Get(), source_) ||
+            FAILED(richSelection->GetStart(&richStart)) || FAILED(richSelection->GetEnd(&richEnd)) ||
+            FAILED(target->GetStart(&targetStart)) || FAILED(target->GetEnd(&targetEnd)) ||
+            richStart != start_ || richEnd != end_ || targetStart != start_ || targetEnd != end_ ||
+            grant_->revision.load() != revision_ || !grant_->field_eligible ||
+            std::chrono::steady_clock::now() >= grant_->deadline || GetTickCount64() >= grant_->deadline_ticks) return S_FALSE;
         diagnostic_stage = 7;
         // Everything above runs inside the same TSF write session as SetText.
         ++mutation_calls;
