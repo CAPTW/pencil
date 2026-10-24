@@ -202,6 +202,7 @@ pub(crate) enum ShortcutActivation {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum WidgetVisibility {
     Hidden,
+    Background,
     Visible,
 }
 

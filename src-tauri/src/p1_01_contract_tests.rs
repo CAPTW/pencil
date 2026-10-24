@@ -899,3 +899,13 @@ fn ready_translation_source_is_returned_only_for_the_exact_backend_intent() {
         Err(SessionError::StaleIntent)
     );
 }
+
+#[test]
+fn external_editor_press_captures_even_when_widget_is_visible_in_background() {
+    let mut gate = ShortcutTriggerGate::default();
+    assert_eq!(route_shortcut_activation(&mut gate, true,
+        ShortcutEventState::Pressed, WidgetVisibility::Background),
+        Some(ShortcutActivation::CaptureSelection));
+    assert_eq!(route_shortcut_activation(&mut gate, true,
+        ShortcutEventState::Released, WidgetVisibility::Background), None);
+}

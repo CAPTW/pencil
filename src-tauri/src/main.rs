@@ -2094,7 +2094,9 @@ fn global_shortcut_plugin() -> TauriPlugin<tauri::Wry> {
                 .and_then(|window| window.is_visible().ok())
                 .unwrap_or(false)
             {
-                WidgetVisibility::Visible
+                if app.get_webview_window("main").and_then(|window| window.is_focused().ok()).unwrap_or(false) {
+                    WidgetVisibility::Visible
+                } else { WidgetVisibility::Background }
             } else {
                 WidgetVisibility::Hidden
             };
@@ -2106,10 +2108,14 @@ fn global_shortcut_plugin() -> TauriPlugin<tauri::Wry> {
             // publish older errors/selections over a newer capture. Releases
             // never activate capture; native MOD_NOREPEAT filters held keys.
             let Some(operation) = ShortcutOperationGuard::try_begin(state.shortcut_operation.clone()) else { return; };
+            // Only a focused Pencil window toggles closed. A visible background
+            // settings/review window must not swallow an external editor capture.
+            // Only a focused Pencil window toggles closed. A visible background
+            // settings/review window must not swallow an external editor capture.
             // Read visibility again after admission; the preceding operation may
             // have finished between the initial key event and this reservation.
             let activation = if app.get_webview_window("main")
-                .and_then(|window| window.is_visible().ok()).unwrap_or(false) {
+                .is_some_and(|window| window.is_visible().unwrap_or(false) && window.is_focused().unwrap_or(false)) {
                 ShortcutActivation::HideWidget
             } else { ShortcutActivation::CaptureSelection };
             match activation {
