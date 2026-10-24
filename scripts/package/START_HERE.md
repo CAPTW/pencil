@@ -5,8 +5,8 @@ confidential text for cloud Provider tests. No administrator installation requir
 
 1. Install PowerShell 7 and Microsoft WebView2 from their official distributions
    if missing. Windows PowerShell 5.1 is insufficient. No developer tools required.
-2. Compare the downloaded ZIP's SHA-256 with PROTOTYPE_3_R3_SHA256SUMS.txt from the release:
-   `Get-FileHash .\Pencil-0.1.0-prototype.3-r3-windows-x64.zip -Algorithm SHA256`.
+2. Compare the downloaded ZIP's SHA-256 with PROTOTYPE_3_R4_SHA256SUMS.txt from the release:
+   `Get-FileHash .\Pencil-0.1.0-prototype.3-r4-windows-x64.zip -Algorithm SHA256`.
 3. Extract the ZIP to a new folder. Open **PowerShell 7** in that folder. After
    verifying the download, Windows may require unblocking the downloaded scripts;
    unblock only these verified files, never disable system execution policy.
@@ -41,10 +41,10 @@ unsigned apps, this prototype cannot be used there. See PROTOTYPE.md for measure
 limits and THIRD_PARTY_NOTICES for dependencies. Models/runtime have separate
 upstream terms; this ZIP does not contain them.
 
-## Prototype 3 r3: secure API setup and model selection
+## Prototype 3 r4: secure API setup and model selection
 
-Use **Pencil-0.1.0-prototype.3-r3-windows-x64.zip** and
-**PROTOTYPE_3_R3_SHA256SUMS.txt** from the release. Previous ZIPs and their failure
+Use **Pencil-0.1.0-prototype.3-r4-windows-x64.zip** and
+**PROTOTYPE_3_R4_SHA256SUMS.txt** from the release. Previous ZIPs and their failure
 records remain historical downloads. This is an unsigned prerelease.
 
 1. Open Settings → Optional API setup.

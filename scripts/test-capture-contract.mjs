@@ -164,3 +164,8 @@ console.log("capture-ended identity: production contract PASS");
 assert.deepEqual(contract.parseCaptureToken({sessionId: "reloaded", generation: 1}), {sessionId: "reloaded", generation: 1});
 for (const value of [null, {}, {sessionId: "", generation: 1}, {sessionId: "s", generation: 0}, {sessionId: "s", generation: 1.5}, {sessionId: "s", generation: 1, selectedText: "must-not-return-text"}]) assert.equal(contract.parseCaptureToken(value), null);
 console.log("identity-only Close recovery contract: PASS");
+
+assert.equal(contract.parseSelectionCaptured({...capable, acceptExpiresAtMs: 123456}).acceptExpiresAtMs, 123456);
+for (const invalid of [0, -1, NaN, Infinity, 1.5, "123456"]) {
+  assert.equal(contract.parseSelectionCaptured({...capable, acceptExpiresAtMs: invalid}), null);
+}

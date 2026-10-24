@@ -7,6 +7,7 @@ export type SelectionCapturedPayload = CaptureToken &
   Readonly<{
     selectedText: string;
     directApply?: boolean;
+    acceptExpiresAtMs?: number;
   }>;
 
 // Copy and explicitly qualified target-side Apply have distinct outcomes.
@@ -103,7 +104,8 @@ export function parseCaptureToken(value: unknown): CaptureToken | null {
 
 export function parseSelectionCaptured(value: unknown): SelectionCapturedPayload | null {
   if (!isRecord(value) || !(hasExactKeys(value, ["sessionId", "generation", "selectedText"]) ||
-    (hasExactKeys(value, ["sessionId", "generation", "selectedText", "directApply"]) && typeof value.directApply === "boolean"))) {
+    (hasExactKeys(value, ["sessionId", "generation", "selectedText", "directApply"]) && typeof value.directApply === "boolean") ||
+    (hasExactKeys(value, ["sessionId", "generation", "selectedText", "directApply", "acceptExpiresAtMs"]) && typeof value.directApply === "boolean" && Number.isSafeInteger(value.acceptExpiresAtMs) && (value.acceptExpiresAtMs as number) > 0))) {
     return null;
   }
   if (
@@ -120,6 +122,7 @@ export function parseSelectionCaptured(value: unknown): SelectionCapturedPayload
     sessionId: value.sessionId,
     generation: value.generation,
     selectedText: value.selectedText,
+    ...(typeof value.acceptExpiresAtMs === "number" ? { acceptExpiresAtMs: value.acceptExpiresAtMs } : {}),
     ...(typeof value.directApply === "boolean" ? { directApply: value.directApply } : {}),
   };
 }

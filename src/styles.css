@@ -57,6 +57,14 @@ button {
   background: rgba(252, 253, 250, 0.98);
   box-shadow: 0 18px 48px rgba(20, 31, 27, 0.18), 0 3px 12px rgba(20, 31, 27, 0.1);
   overflow-x: hidden;
+  overflow-y: hidden;
+}
+.panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -1094,3 +1102,11 @@ h1 {
   font-size: 12px;
   line-height: 1.45;
 }
+
+.accept-bar { flex: none; padding-top: 8px; border-top: 1px solid #d8e1da; background: #fcfdfa; }
+.accept-bar p { margin: 0 0 6px; font-size: 11px; line-height: 1.4; }
+.accept-bar .expired { color: var(--text-danger); }
+.accept-bar-actions { display: flex; gap: 8px; }
+.accept-bar-actions button { flex: 1; min-height: 36px; }
+
+.accept-bar .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

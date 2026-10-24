@@ -228,6 +228,7 @@ struct SelectionCapturedEvent {
     generation: u64,
     selected_text: String,
     direct_apply: bool,
+    accept_expires_at_ms: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -2333,6 +2334,11 @@ fn spawn_auth_notification_bridge(app: AppHandle, client: Arc<CodexClient>, logi
 }
 
 async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
+    // Conservative UI deadline starts before capture work; never extends the
+    // target-side lease. Target-side monotonic checks remain authoritative.
+    let accept_expires_at_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).map_err(|_| "capture_clock_unavailable")?
+        .as_millis().saturating_add(30_000) as u64;
     struct PreparedCapture {
         token: SessionToken,
         selected_text: String,
@@ -2463,6 +2469,7 @@ async fn capture_from_hotkey(app: AppHandle) -> Result<(), String> {
             generation: prepared.token.generation,
             selected_text: prepared.selected_text.clone(),
             direct_apply: prepared.direct_apply,
+            accept_expires_at_ms,
         },
     ) {
         let state = app.state::<AppState>();

@@ -1,3 +1,4 @@
+import { AcceptBar } from "./AcceptBar";
 import { invoke } from "@tauri-apps/api/core";
 import { ApiSettings } from "./ApiSettings";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -123,6 +124,7 @@ type ActiveSelection = {
   charCount: number;
   sourceText: string;
   directApply: boolean;
+  acceptExpiresAtMs?: number;
 };
 
 type CaptureError = {
@@ -746,6 +748,7 @@ export default function App() {
         charCount: Array.from(payload.selectedText).length,
         sourceText: payload.selectedText,
         directApply: payload.directApply === true,
+        acceptExpiresAtMs: payload.acceptExpiresAtMs,
       });
       setInstantRuntime(captureReset(EMPTY_INSTANT_RUNTIME_STATE, token.sessionId, token.generation));
       setCloudReviewOpen(false);
@@ -1656,6 +1659,7 @@ export default function App() {
   return (
     <main className="shell">
       <section className="panel">
+        <div className="panel-content">
         <header className="topbar" onMouseDown={beginWindowDrag}>
           <div className="brand">
             <div className="brand-mark">
@@ -2544,24 +2548,6 @@ export default function App() {
               ) : null}
 
               <div className="result-actions">
-                {selection?.directApply ? (
-                  <button className="primary-button" type="button" data-testid="apply-result"
-                    aria-label="Accept replacement in captured field" disabled={!canCopy}
-                    onClick={() => void copyResult(true)}>
-                    {isCopying ? <Loader2 className="spin" size={16} /> : null} Accept
-                  </button>
-                ) : null}
-                <button
-                  className="primary-button"
-                  type="button"
-                  data-testid="copy-result"
-                  aria-label="Copy result"
-                  onClick={() => void copyResult()}
-                  disabled={!canCopy}
-                >
-                  {isCopying ? <Loader2 className="spin" size={16} /> : <Copy size={16} />}
-                  Copy
-                </button>
                 <button
                   className="secondary-button"
                   type="button"
@@ -2619,6 +2605,12 @@ export default function App() {
             <span>{error}</span>
           </div>
         ) : null}
+        </div>
+        {!settingsOpen && (selection || draft.length > 0) && (
+          <AcceptBar key={selection ? `${selection.token.sessionId}:${selection.token.generation}` : "ended"}
+            directApply={selection?.directApply === true} expiresAtMs={selection?.acceptExpiresAtMs}
+            canCopy={canCopy} busy={isCopying} onAccept={() => void copyResult(true)} onCopy={() => void copyResult()} />
+        )}
       </section>
     </main>
   );
