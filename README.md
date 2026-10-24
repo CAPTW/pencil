@@ -69,7 +69,7 @@ Pencil의 기본 원칙은 간단합니다. **AI는 제안하고, 변경은 사�
 
 ### 1. Download
 
-[**Prototype 3 release**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3)의 **Assets**에서 Windows x64 ZIP과 `SHA256SUMS.txt`를 받으세요. GitHub의 자동 생성 **Source code (zip)**은 실행 패키지가 아닙니다.
+[**Prototype 3 release**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3)의 **Assets**에서 `Pencil-0.1.0-prototype.3-r2-windows-x64.zip`과 `PROTOTYPE_3_R2_SHA256SUMS.txt`를 받으세요. GitHub의 자동 생성 **Source code (zip)**은 실행 패키지가 아닙니다.
 
 필수 환경은 **Windows x64 · PowerShell 7 · Microsoft WebView2**입니다.
 
@@ -174,3 +174,15 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --offline
 </div>
 
 Provider CLI의 계정 로그인·모델 이용 가능 여부는 설치 버전과 계정에 따라 달라집니다. 실제 Provider 전체를 검증했다는 의미가 아니며, Claude·Antigravity의 개인정보·인증 제한은 [현재 제품 범위](docs/PROTOTYPE.md)를 확인하세요.
+
+
+### API 모델 목록과 직접 선택 (Prototype 3 r2)
+
+Settings → Optional API setup에서 Claude·Google Gemini·OpenRouter·xAI를 고르고
+API Key 입력 → **Load model list** → **Available models** 선택 → 별도 전송 동의 →
+**Keep setup for this session** 순서로 설정합니다. 번역·재작성은 **Run API Deep**으로
+명시적으로 요청합니다. 키는 앱 세션에만 유지되며 재시작하거나 제거하면 사라집니다.
+
+**목록 조회 성공은 실제 호출 가능 확인이 아닙니다.** 실제 API 인증·유료 호출·응답 품질과
+Provider Accept는 아직 미검증입니다. 설치본 설정 시험은 합성 목록 응답과 실제 저장·삭제를
+결합한 범위입니다. 일반 문서 대신 합성 문장부터 확인하고 설치 안내의 제한을 읽으세요.

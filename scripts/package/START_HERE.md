@@ -5,8 +5,8 @@ confidential text for cloud Provider tests. No administrator installation requir
 
 1. Install PowerShell 7 and Microsoft WebView2 from their official distributions
    if missing. Windows PowerShell 5.1 is insufficient. No developer tools required.
-2. Compare the downloaded ZIP's SHA-256 with SHA256SUMS.txt from the release:
-   `Get-FileHash .\Pencil-0.1.0-prototype.3-windows-x64.zip -Algorithm SHA256`.
+2. Compare the downloaded ZIP's SHA-256 with PROTOTYPE_3_R2_SHA256SUMS.txt from the release:
+   `Get-FileHash .\Pencil-0.1.0-prototype.3-r2-windows-x64.zip -Algorithm SHA256`.
 3. Extract the ZIP to a new folder. Open **PowerShell 7** in that folder. After
    verifying the download, Windows may require unblocking the downloaded scripts;
    unblock only these verified files, never disable system execution policy.
@@ -40,6 +40,42 @@ disable security software or system policies. If organizational policy blocks
 unsigned apps, this prototype cannot be used there. See PROTOTYPE.md for measured
 limits and THIRD_PARTY_NOTICES for dependencies. Models/runtime have separate
 upstream terms; this ZIP does not contain them.
+
+## Prototype 3 r2: API model catalog selection
+
+Use **Pencil-0.1.0-prototype.3-r2-windows-x64.zip** and
+**PROTOTYPE_3_R2_SHA256SUMS.txt** from the release. Previous ZIPs and their failure
+records remain historical downloads. This is an unsigned prerelease.
+
+1. Open Settings → Optional API setup.
+2. Select Claude, Google Gemini, OpenRouter or xAI; enter that service's API key.
+3. Click **Load model list**, then select **Available models**. Unsupported rows
+   stay visible but disabled. Custom endpoints require manual model IDs.
+4. Grant permission separately and click **Keep setup for this session**.
+5. Capture synthetic text, select translation/rewriting, and choose **Run API
+   Deep** only when ready to send it. Review before explicit Accept or Copy.
+
+**Actual API invocation remains NOT_RUN / unverified.** Catalog success does not
+prove billing/quota availability, generation permissions, Pencil JSON compatibility,
+quality or latency. No real keys or paid calls were used to qualify these presets.
+The isolated installed settings trial used synthetic catalog responses with real
+save/status/remove IPC; it did not validate the external service. Settings and
+catalog UI evidence do not qualify Provider translation/rewrite/Accept.
+
+Keys remain in memory for the app session, not settings files. Loading the list
+sends the key to the selected official provider but no document or generation
+request. Saving makes no network request. Restarting clears key and consent;
+**Remove API key and permission** revokes the saved setup. There is no automatic
+inference retry/fallback. OpenRouter requires ZDR routes and disables fallback,
+so a listed model can still fail the stricter inference policy. API access/billing
+is separate from CLI subscriptions. Google uses its Chat Completions compatibility
+API; Claude uses text-only Messages. See PERSONAL_USE.md for bounded lookup limits.
+
+This revision also includes the scoped RichEdit Undo repair and Codex CLI 0.164.0
+compatibility pin. Earlier actual-model evidence belongs to its measured binaries;
+new r2 actual Gemma UI/Accept/Undo, installed Codex login/Accept, physical IME,
+ordinary profiles and other GPUs are not newly qualified. Preserve source text.
+The latest r2 validation file reports exact package-specific tests and CI results.
 
 ## Prototype 3 limits — read before installing
 

@@ -5114,3 +5114,16 @@ Playwright isDisabled on an option, corrected to check the native disabled attri
 Evidence: D:/dev/grammar-evidence/api-providers-20261024/catalog-*.
 Live API account/quality/inference/installed Accept and release remain NOT_RUN.
 Next: source-bound package verification, then separately authorized live qualification.
+
+
+## Prototype 3 r2 publication preparation — 2026-10-24
+Owner authorizes merging CI-green API candidate d193456 into main and updating
+GitHub Release. origin/main 5e18309 is an ancestor; existing untracked main audit
+files must remain intact. Source CI 40063548607 passed at d193456. Its source-bound
+package passed installed Settings selection/save/remove/restart in a network-disabled
+Sandbox using catalog-response-only fixtures. First fixture injection failed because
+Tauri invoke is non-writable; rerun changed only the external harness and passed.
+Both attempts preserved; no product repair inferred. Final trial processes/VMs zero.
+Release r2 adds explicit model-list instructions and live-API NOT_RUN limitations;
+old assets/tag retained. New source-bound r2 build and main CI are required before
+publication, with exact post-build receipts stored in the r2 release evidence.
