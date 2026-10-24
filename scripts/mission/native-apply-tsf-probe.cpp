@@ -79,6 +79,14 @@ int wmain(int argc, wchar_t** argv) {
                 printf("stage=%u read=%08lx units=%zu\n", session->diagnostic_stage, session->diagnostic_read_result, session->diagnostic_text_units);
                 session->Release();
                 if (scenario == 0) {
+                    const auto canUndo = SendMessageW(edit, EM_CANUNDO, 0, 0);
+                    const auto undo = SendMessageW(edit, EM_UNDO, 0, 0); pump(100);
+                    GetWindowTextW(edit, actual, 128);
+                    const bool restored = canUndo && undo && std::wstring(actual) == source;
+                    printf("undo pass=%d available=%lld result=%lld\n", restored,
+                        static_cast<long long>(canUndo), static_cast<long long>(undo));
+                    if (!restored) result = 1;
+
                     // Restore the fixture externally, then replay the consumed
                     // grant. Matching content must not revive old authority.
                     SetWindowTextW(edit, source); SendMessageW(edit, EM_SETSEL, 6, 11); pump(50);

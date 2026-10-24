@@ -5,6 +5,8 @@
 // verify/replace messages, clipboard, focus changes, retries or rollback.
 #include <windows.h>
 #include <msctf.h>
+#include <richedit.h>
+#include <tom.h>
 #include <wrl/client.h>
 #include <atomic>
 #include <chrono>
@@ -53,6 +55,22 @@ class TsfApplySession final : public ITfEditSession {
         hr = range->GetText(cookie, 0, buffer.data(), static_cast<ULONG>(buffer.size()), &count);
         if (FAILED(hr) || count >= buffer.size()) return E_FAIL;
         text.assign(buffer.data(), count); return S_OK;
+    }
+    struct TextValue {
+        BSTR value = nullptr;
+        ~TextValue() { SysFreeString(value); }
+    };
+    bool rich_text_equals(ITextDocument* document, const std::wstring& expected) {
+        ComPtr<ITextRange> story;
+        TextValue text;
+        ++text_reads;
+        if (FAILED(document->Range(0, 65535, &story)) ||
+            FAILED(story->GetText(&text.value))) return false;
+        // RichEdit TOM includes its mandatory final paragraph mark. Require
+        // exactly that one extra CR; never trim user whitespace or a prefix.
+        const UINT length = SysStringLen(text.value);
+        return length == expected.size() + 1 && text.value[length - 1] == L'\r' &&
+            std::wstring(text.value, length - 1) == expected;
     }
 public:
     ApplyResult result = ApplyResult::pending;
@@ -110,6 +128,28 @@ public:
         LONG start = -1, length = -1;
         if (FAILED(range.As(&acp)) || FAILED(acp->GetExtent(&start, &length)) ||
             start != start_ || length != end_ - start_) return S_FALSE;
+        // Resolve only the already authenticated, same-thread RichEdit target.
+        // TSF SetText bypasses RichEdit's undo history. TOM SetText records a
+        // normal editor transaction, while TSF's read cache stays stale until
+        // this write session ends. Verify the actual TOM story on both sides.
+        ComPtr<ITfContextView> view; HWND window = nullptr; DWORD process = 0;
+        ComPtr<IUnknown> ole; ComPtr<ITextDocument> document;
+        ComPtr<ITextRange> target; ComPtr<ITextSelection> richSelection;
+        WCHAR className[64]{};
+        LONG richStart = -1, richEnd = -1;
+        if (FAILED(context_->GetActiveView(&view)) || FAILED(view->GetWnd(&window)) ||
+            GetWindowThreadProcessId(window, &process) != GetCurrentThreadId() ||
+            process != GetCurrentProcessId() ||
+            !GetClassNameW(window, className, 64) || _wcsicmp(className, L"RICHEDIT50W") != 0 ||
+            !SendMessageW(window, EM_GETOLEINTERFACE, 0, reinterpret_cast<LPARAM>(ole.GetAddressOf())) ||
+            !ole || FAILED(ole.As(&document)) ||
+            FAILED(document->Range(start_, end_, &target)) ||
+            FAILED(document->GetSelection(&richSelection)) ||
+            FAILED(richSelection->GetStart(&richStart)) || FAILED(richSelection->GetEnd(&richEnd)) ||
+            richStart != start_ || richEnd != end_ || !rich_text_equals(document.Get(), source_)) return S_FALSE;
+        TextValue replacement;
+        replacement.value = SysAllocStringLen(replacement_.data(), static_cast<UINT>(replacement_.size()));
+        if (!replacement.value) return E_OUTOFMEMORY;
         if (grant_->revision.load() != revision_ || !grant_->field_eligible ||
             (std::chrono::steady_clock::now() >= grant_->deadline || GetTickCount64() >= grant_->deadline_ticks) ||
             !grant_->verify_binding(context_.Get(), cookie) ||
@@ -118,10 +158,10 @@ public:
         // Everything above runs inside the same TSF write session as SetText.
         ++mutation_calls;
         result = ApplyResult::mutation_unconfirmed;
-        HRESULT hr = range->SetText(cookie, 0, replacement_.data(), static_cast<LONG>(replacement_.size()));
+        HRESULT hr = target->SetText(replacement.value);
         if (FAILED(hr)) return hr; // Never restore the whole document or replay.
         std::wstring expected = source_.substr(0, start_) + replacement_ + source_.substr(end_);
-        if (FAILED(read_all(cookie, actual)) || actual != expected) return E_FAIL;
+        if (!rich_text_equals(document.Get(), expected)) return E_FAIL;
         result = ApplyResult::applied;
         return S_OK;
     } catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }

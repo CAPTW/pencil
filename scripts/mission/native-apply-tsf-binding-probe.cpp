@@ -144,7 +144,7 @@ int wmain() {
                 WCHAR actual[128]{}; GetWindowTextW(edit, actual, 128);
                 pass = queued && apply->called && std::wstring(actual) == expected &&
                     apply->mutation_calls == (shouldApply ? 1u : 0u) &&
-                    apply->text_reads == (shouldApply ? 2u : 0u) &&
+                    apply->text_reads == (shouldApply ? 3u : 0u) &&
                     apply->result == (shouldApply ? grammar::ApplyResult::applied : grammar::ApplyResult::rejected);
                 printf("apply case=%d pass=%d mutations=%u stage=%u revision=%llu current=%llu notifications=%u transitions=%u\n", scenario, pass,
                     apply->mutation_calls, apply->diagnostic_stage, revision, binding ? binding->state->revision : 0,
@@ -161,6 +161,16 @@ int wmain() {
                     printf("replay pass=%d\n", pass); if (!pass) ++failures;
                     replay->Release();
                 }
+            }
+            // Undo must restore the full source, using the editor's own
+            // history after a real authenticated production transaction.
+            if (capture->captured && (scenario == 0 || scenario == 11 || scenario == 23)) {
+                const auto available = SendMessageW(edit, EM_CANUNDO, 0, 0);
+                const auto undo = SendMessageW(edit, EM_UNDO, 0, 0); pump(100);
+                WCHAR restored[128]{}; GetWindowTextW(edit, restored, 128);
+                const bool undoPass = available && undo && std::wstring(restored) == original;
+                printf("undo case=%d pass=%d\n", scenario, undoPass);
+                if (!undoPass) ++failures;
             }
             if(review.joinable()) { review_stop=true; while(!review_done) pump(10); review.join(); }
             capture->Release();
