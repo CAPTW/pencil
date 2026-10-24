@@ -221,10 +221,15 @@ fn parse_anthropic_response(bytes: &[u8]) -> Result<String, ApiError> {
         .ok_or(ApiError::InvalidResponse)?;
     let mut output = String::new();
     for block in blocks {
-        if block["type"] != "text" {
-            return Err(ApiError::InvalidResponse);
+        match block["type"].as_str() {
+            // Adaptive thinking can be enabled by the selected model itself.
+            // Its private metadata is not writing output and is never surfaced.
+            Some("thinking" | "redacted_thinking") => continue,
+            Some("text") => {
+                output.push_str(block["text"].as_str().ok_or(ApiError::InvalidResponse)?);
+            }
+            _ => return Err(ApiError::InvalidResponse),
         }
-        output.push_str(block["text"].as_str().ok_or(ApiError::InvalidResponse)?);
     }
     if output.trim().is_empty() {
         return Err(ApiError::InvalidResponse);
@@ -411,6 +416,26 @@ mod tests {
             parse_anthropic_response(invalid.as_bytes()),
             Err(ApiError::InvalidResponse)
         );
+    }
+    #[test]
+    fn anthropic_thinking_is_not_final_writing_output() {
+        let response = |content: Value| json!({"type":"message", "role":"assistant",
+            "stop_reason":"end_turn", "content":content}).to_string();
+        let mixed = response(json!([
+            {"type":"thinking", "signature":"synthetic"},
+            {"type":"redacted_thinking", "data":"synthetic"},
+            {"type":"text", "text":"Final writing output."}
+        ]));
+        assert_eq!(parse_anthropic_response(mixed.as_bytes()).unwrap(), "Final writing output.");
+        for content in [
+            json!([{"type":"thinking", "thinking":"not a final answer"}]),
+            json!([{"type":"text", "text":"safe"}, {"type":"tool_use"}]),
+            json!([{"type":"text", "text":42}]),
+            json!([{"type":"unknown", "text":"not accepted"}]),
+        ] {
+            assert_eq!(parse_anthropic_response(response(content).as_bytes()), Err(ApiError::InvalidResponse));
+        }
+        assert_eq!(parse_anthropic_response(mixed.replace("end_turn", "max_tokens").as_bytes()), Err(ApiError::IncompleteResponse));
     }
     #[test]
     fn destination_is_explicit_https_without_embedded_credentials() {

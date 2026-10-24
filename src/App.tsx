@@ -488,6 +488,7 @@ export default function App() {
     const call = ++rewriteCallRef.current;
     rewritingIntentRef.current = requestedIntent;
     setIsRewriting(true);
+    if (apiEpoch) setCloudReviewOpen(false);
     setError(null);
     setStatus(`Rewriting with ${apiEpoch ? "API" : providerDisplayName(providerRef.current)}`);
     try {
@@ -2419,7 +2420,7 @@ export default function App() {
                   <p className="deep-progress">
                     <Loader2 className="spin" size={14} />
                     <span>
-                      Working through {providerDisplayName(settings.activeProvider)}
+                      Processing the requested rewrite
                       {draft ? " · Cancel to copy this draft now" : ""}
                     </span>
                   </p>
