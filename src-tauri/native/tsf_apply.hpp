@@ -63,8 +63,11 @@ class TsfApplySession final : public ITfEditSession {
     bool rich_text_equals(ITextDocument* document, const std::wstring& expected) {
         ComPtr<ITextRange> story;
         TextValue text;
+        LONG storyLength = -1;
         ++text_reads;
         if (FAILED(document->Range(0, 65535, &story)) ||
+            FAILED(story->GetStoryLength(&storyLength)) ||
+            storyLength != static_cast<LONG>(expected.size() + 1) ||
             FAILED(story->GetText(&text.value))) return false;
         // RichEdit TOM includes its mandatory final paragraph mark. Require
         // exactly that one extra CR; never trim user whitespace or a prefix.

@@ -47,9 +47,11 @@ int wmain(int argc, wchar_t** argv) {
             printf("NOT_SUPPORTED: no owned TSF context standard_edit=%d hr=%08lx\n", standardEdit, hr);
         } else {
             result = 0;
-            for (int scenario = 0; scenario < 13; ++scenario) {
-                const auto source = scenario == 11 ? L"world world" : L"hello world";
-                SetWindowTextW(edit, scenario == 1 ? L"hello revised" : source);
+            for (int scenario = 0; scenario < 15; ++scenario) {
+                const std::wstring source = scenario >= 13 ? L"hello world" + std::wstring(65523, L'a') :
+                    scenario == 11 ? L"world world" : L"hello world";
+                const std::wstring replacement = scenario >= 13 ? L"Earth" : L"Grammar";
+                SetWindowTextW(edit, scenario == 1 ? L"hello revised" : source.c_str());
                 SendMessageW(edit, EM_SETSEL, scenario == 2 || scenario == 11 ? 0 : 6, scenario == 2 || scenario == 11 ? 5 : 11);
                 pump(50);
                 auto grant = std::make_shared<grammar::ApplyGrant>();
@@ -63,11 +65,22 @@ int wmain(int argc, wchar_t** argv) {
                     if (++checks == 2) ++grant->revision;
                     return current == expected;
                 };
+                if (scenario == 14) grant->verify_binding = [&, expected = context.Get()](ITfContext* current, TfEditCookie) {
+                    if (++checks == 2) {
+                        ComPtr<IUnknown> ole; ComPtr<ITextDocument> rich; ComPtr<ITextRange> tail;
+                        if (!SendMessageW(edit, EM_GETOLEINTERFACE, 0, reinterpret_cast<LPARAM>(ole.GetAddressOf())) ||
+                            FAILED(ole.As(&rich)) || FAILED(rich->Range(65534, 65534, &tail))) return false;
+                        BSTR extra = SysAllocString(L"\rtrailing application edit");
+                        const auto changed = tail->SetText(extra); SysFreeString(extra);
+                        if (FAILED(changed)) return false;
+                    }
+                    return current == expected;
+                };
                 grant->field_eligible = scenario != 5;
                 grant->deadline = std::chrono::steady_clock::now() + std::chrono::seconds(scenario == 4 ? -1 : 5);
                 if (scenario == 3) grant->valid = false;
                 if (scenario == 6) grant->revision = 1;
-                auto session = new grammar::TsfApplySession(context.Get(), source, 6, 11, L"Grammar", 0, grant);
+                auto session = new grammar::TsfApplySession(context.Get(), source, 6, 11, replacement, 0, grant);
                 HRESULT sessionResult = E_PENDING;
                 hr = context->RequestEditSession(client, session, TF_ES_ASYNC | TF_ES_READWRITE, &sessionResult);
                 bool queued = !session->called && sessionResult == TF_S_ASYNC;
@@ -78,30 +91,33 @@ int wmain(int argc, wchar_t** argv) {
                 if (scenario == 9) grant->valid = false;
                 if (scenario == 10) ++grant->revision;
                 for (int i = 0; i < 500 && !session->called && SUCCEEDED(hr); ++i) pump(10);
-                WCHAR actual[128]{}; GetWindowTextW(edit, actual, 128);
-                const auto expected = scenario == 0 ? L"hello Grammar" : scenario == 1 ? L"hello revised" : scenario == 7 ? L"hello changedlater" : source;
-                bool pass = queued && session->called && std::wstring(actual) == expected && (session->result == grammar::ApplyResult::applied) == (scenario == 0) && session->mutation_calls == (scenario == 0 ? 1u : 0u);
-                printf("case=%d pass=%d callback=%d changed=%d request=%08lx session=%08lx reread_match=%d\n", scenario, pass, session->called, session->mutation_calls, hr, sessionResult, std::wstring(actual) == expected);
+                std::vector<WCHAR> actual(70000); GetWindowTextW(edit, actual.data(), static_cast<int>(actual.size()));
+                const std::wstring expected = scenario == 13 ? source.substr(0, 6) + replacement + source.substr(11) : scenario == 0 ? L"hello Grammar" : scenario == 1 ? L"hello revised" : scenario == 7 ? L"hello changedlater" : source;
+                bool pass = queued && session->called && std::wstring(actual.data()) == expected && (session->result == grammar::ApplyResult::applied) == (scenario == 0 || scenario == 13) && session->mutation_calls == (scenario == 0 || scenario == 13 ? 1u : 0u);
+                if (scenario == 14) pass = queued && session->called && session->mutation_calls == 1 &&
+                    session->result == grammar::ApplyResult::mutation_unconfirmed &&
+                    std::wstring(actual.data()).size() > source.size();
+                printf("case=%d pass=%d callback=%d changed=%d request=%08lx session=%08lx reread_match=%d\n", scenario, pass, session->called, session->mutation_calls, hr, sessionResult, std::wstring(actual.data()) == expected);
                 if (!pass) result = 1;
                 printf("stage=%u read=%08lx units=%zu\n", session->diagnostic_stage, session->diagnostic_read_result, session->diagnostic_text_units);
                 session->Release();
-                if (scenario == 0) {
+                if (scenario == 0 || scenario == 13) {
                     const auto canUndo = SendMessageW(edit, EM_CANUNDO, 0, 0);
                     const auto undo = SendMessageW(edit, EM_UNDO, 0, 0); pump(100);
-                    GetWindowTextW(edit, actual, 128);
-                    const bool restored = canUndo && undo && std::wstring(actual) == source;
+                    GetWindowTextW(edit, actual.data(), static_cast<int>(actual.size()));
+                    const bool restored = canUndo && undo && std::wstring(actual.data()) == source;
                     printf("undo pass=%d available=%lld result=%lld\n", restored,
                         static_cast<long long>(canUndo), static_cast<long long>(undo));
                     if (!restored) result = 1;
 
                     // Restore the fixture externally, then replay the consumed
                     // grant. Matching content must not revive old authority.
-                    SetWindowTextW(edit, source); SendMessageW(edit, EM_SETSEL, 6, 11); pump(50);
-                    auto replay = new grammar::TsfApplySession(context.Get(), source, 6, 11, L"Grammar", 0, grant);
+                    SetWindowTextW(edit, source.c_str()); SendMessageW(edit, EM_SETSEL, 6, 11); pump(50);
+                    auto replay = new grammar::TsfApplySession(context.Get(), source, 6, 11, replacement, 0, grant);
                     hr = context->RequestEditSession(client, replay, TF_ES_ASYNC | TF_ES_READWRITE, &sessionResult);
                     for (int i = 0; i < 500 && !replay->called && SUCCEEDED(hr); ++i) pump(10);
-                    GetWindowTextW(edit, actual, 128);
-                    bool rejected = replay->called && replay->mutation_calls == 0 && replay->result == grammar::ApplyResult::rejected && std::wstring(actual) == source;
+                    GetWindowTextW(edit, actual.data(), static_cast<int>(actual.size()));
+                    bool rejected = replay->called && replay->mutation_calls == 0 && replay->result == grammar::ApplyResult::rejected && std::wstring(actual.data()) == source;
                     printf("replay pass=%d\n", rejected); if (!rejected) result = 1;
                     replay->Release();
                 }
