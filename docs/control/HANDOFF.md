@@ -5180,3 +5180,45 @@ helper per Rust run was reaped, all remainingAfterCleanup=0. UI supervisors PASS
 natural child exit, remaining0. No Sandbox launched and existing personal app
 left intact. Next: build/package and isolated installed settings persistence trial
 before updating the personal installation or publishing this candidate.
+
+
+## 2026-10-24 Secure API installed-package and personal adoption
+
+Fresh source7ddf7a6 release build/package installed side-by-side at
+C:/Users/USER/PencilSecureAPI-7ddf7a6. Installed unmodified app, diagnostic WebView
+port only, real Windows Credential Manager and synthetic keys: four presets
+(Claude/Google/OpenRouter/xAI),13 sequential app launches, each verifies save,
+Provider/model/consent restoration, blank-key same-endpoint model update, durable
+revoke with key retained, durable delete with no storage error, and no key echo.
+No API catalog/generation/network operation invoked; no successful live API claim.
+No key in ordinary settings files. Synthetic credential deletion confirmed;
+owned supervisor PASS/natural app+launcher shutdown/remaining0. No Sandbox used.
+
+Initial build FAIL: Tauri normalized Cargo.toml CRLF to LF and the clean-source
+receipt refused the changed checkout. Normalized bytes exactly matched HEAD;
+index stat refreshed without content change. Fresh rerun PASS, source/binary
+receipt verified, natural build cleanup0. Original failure retained (first
+owned MSVC helper was reaped, remaining0). No threshold/check weakening.
+
+Package ZIP SHA256 b9528320797b5f6f12202cd7e659b20777659cb0fef28d78c15ec1ba9b311c8c;
+app SHA256 0aecbf2859f10eb39ce0c635621d410525d40182070b20fdb32e4aa9720ff781;
+extension mggjcmnljkkpmjgedojjmifobkdaddjl. Evidence:
+D:/dev/grammar-evidence/api-secure-package-20261024, build-receipt.json,
+package-result.json, installed-result.json, installed-supervisor/supervisor-result.json,
+personal-result.json and FINAL_RECEIPT.json. Test script retained alongside.
+
+Owner-authorized personal adoption occurs only after PASS: new desktop shortcuts
+Pencil Secure API - API/Gemma reference the original personal profile
+C:/Users/USER/GrammarPersonalData-dffcf8a. Gemma shortcut retains D:/PencilAssets
+runtime/model paths; no model copied or invoked. Original installation and
+shortcuts retained. Checked settings/dictionary files were already absent in
+known profile locations; existence/hash snapshot unchanged, no invented restore.
+No synthetic setup copied to personal profile, and new normal personal app was
+not started. Existing r2 PID33096 was present before this task; automatic normal
+Quit failed because Computer Use could not obtain input geometry. It is retained
+rather than force-killed (possible unsaved session state); Owner should Quit r2
+before using the new shortcut. All newly created trial/build processes exited.
+
+No source push/main/release update. Published r2 stays historical session-only.
+Mission INCOMPLETE; Source materiality stale. Next optional work: candidate CI and
+release refresh, or Owner-entered real API setup under a separate live-call scope.
