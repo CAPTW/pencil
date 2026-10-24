@@ -69,7 +69,7 @@ Pencil의 기본 원칙은 간단합니다. **AI는 제안하고, 변경은 사�
 
 ### 1. Download
 
-[**Prototype 3 release**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3)의 **Assets**에서 `Pencil-0.1.0-prototype.3-r2-windows-x64.zip`과 `PROTOTYPE_3_R2_SHA256SUMS.txt`를 받으세요. GitHub의 자동 생성 **Source code (zip)**은 실행 패키지가 아닙니다.
+[**Prototype 3 release**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3)의 **Assets**에서 `Pencil-0.1.0-prototype.3-r3-windows-x64.zip`과 `PROTOTYPE_3_R3_SHA256SUMS.txt`를 받으세요. GitHub의 자동 생성 **Source code (zip)**은 실행 패키지가 아닙니다.
 
 필수 환경은 **Windows x64 · PowerShell 7 · Microsoft WebView2**입니다.
 
