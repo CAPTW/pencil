@@ -183,6 +183,11 @@ public:
         if(!s.valid || s.writing) return ApplyResult::rejected;
         s.valid=false;
         struct ClearSource { State& state; ~ClearSource() { state.clear(); } } clearSource{s};
+        // Single-line Edit without automatic horizontal scrolling can truncate
+        // EM_REPLACESEL to its visible width despite EM_GETLIMITTEXT permitting
+        // the whole result. Keep capture/Copy, but reject before any mutation.
+        const auto style=GetWindowLongPtrW(s.field,GWL_STYLE);
+        if(!(style&ES_MULTILINE) && !(style&ES_AUTOHSCROLL)) return ApplyResult::rejected;
         if(!eligible() || s.revision!=s.captured_revision || std::chrono::steady_clock::now()>=s.expires ||
             replacement.empty() || replacement.size()>65534 || replacement.find(L'\0')!=std::wstring::npos) return ApplyResult::rejected;
         std::wstring actual; DWORD start=0,end=0;

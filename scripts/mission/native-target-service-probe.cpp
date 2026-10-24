@@ -64,7 +64,7 @@ static int target(int scenario) {
     if (!RegisterClassW(&wc)) return 23;
     HWND top = CreateWindowW(wc.lpszClassName,L"Grammar owned target",WS_OVERLAPPEDWINDOW|WS_VISIBLE,
         30,30,600,250,nullptr,nullptr,wc.hInstance,nullptr);
-    HWND edit = CreateWindowW(standard?L"Edit":L"RICHEDIT50W",L"hello world",WS_CHILD|WS_VISIBLE|(multiline?ES_MULTILINE|ES_AUTOVSCROLL:standard?0:ES_MULTILINE),
+    HWND edit = CreateWindowW(standard?L"Edit":L"RICHEDIT50W",L"hello world",WS_CHILD|WS_VISIBLE|(multiline?ES_MULTILINE|ES_AUTOVSCROLL:standard?ES_AUTOHSCROLL:ES_MULTILINE),
         10,10,550,150,top,nullptr,wc.hInstance,nullptr);
     if (!top || !edit) return 24;
     ShowWindow(top,SW_SHOW); ShowWindow(top,SW_SHOW);

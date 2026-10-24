@@ -17,7 +17,7 @@ int wmain(int argc,wchar_t** argv) {
         auto setScope=reinterpret_cast<SetScope>(GetProcAddress(library,"SetInputScope"));if(!setScope)return 5;
         for(int test=0;test<26;++test) {
             HWND top=CreateWindowW(L"STATIC",L"Grammar owned Edit scope",WS_OVERLAPPEDWINDOW|WS_VISIBLE,30,30,600,250,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
-            HWND field=CreateWindowW(L"Edit",L"hello world",WS_CHILD|WS_VISIBLE|(autovscroll?ES_MULTILINE|ES_AUTOVSCROLL:0),10,10,550,100,top,nullptr,GetModuleHandleW(nullptr),nullptr);
+            HWND field=CreateWindowW(L"Edit",L"hello world",WS_CHILD|WS_VISIBLE|(autovscroll?ES_MULTILINE|ES_AUTOVSCROLL:ES_AUTOHSCROLL),10,10,550,100,top,nullptr,GetModuleHandleW(nullptr),nullptr);
             ShowWindow(top,SW_SHOW);ShowWindow(top,SW_SHOW);SetForegroundWindow(top);SetFocus(field);
             if(test!=2&&FAILED(setScope(field,test==1?IS_PASSWORD:IS_TEXT)))return 6;
             SendMessageW(field,EM_SETSEL,6,11);

@@ -31,9 +31,9 @@ int wmain(int argc,wchar_t** argv) {
     WNDCLASSW wc{};wc.lpfnWndProc=parent_proc;wc.hInstance=GetModuleHandleW(nullptr);wc.lpszClassName=L"GrammarStandardEditOwned";
     if(!RegisterClassW(&wc)) return 3;
     int failures=0;
-    for(int scenario=0;scenario<28;++scenario) {
+    for(int scenario=0;scenario<29;++scenario) {
         HWND top=CreateWindowW(wc.lpszClassName,L"Grammar standard Edit fixture",WS_OVERLAPPEDWINDOW|WS_VISIBLE,30,30,600,260,nullptr,nullptr,wc.hInstance,nullptr);
-        HWND field=CreateWindowW(L"Edit",L"hello world",WS_CHILD|WS_VISIBLE|((scenario==19||scenario==21)?0:ES_MULTILINE|(autovscroll?ES_AUTOVSCROLL:0)),10,10,550,150,top,reinterpret_cast<HMENU>(1),wc.hInstance,nullptr);
+        HWND field=CreateWindowW(L"Edit",L"hello world",WS_CHILD|WS_VISIBLE|(scenario==28?0:(scenario==19||scenario==21)?ES_AUTOHSCROLL:ES_MULTILINE|(autovscroll?ES_AUTOVSCROLL:0)),10,10,550,150,top,reinterpret_cast<HMENU>(1),wc.hInstance,nullptr);
         HWND other=CreateWindowW(L"Edit",L"untouched",WS_CHILD|WS_VISIBLE,10,170,550,30,top,reinterpret_cast<HMENU>(2),wc.hInstance,nullptr);
         ShowWindow(top,SW_SHOW);ShowWindow(top,SW_SHOW);SetForegroundWindow(top);SetFocus(field);SendMessageW(field,EM_SETSEL,6,11);pump();
         if(scenario==18||scenario==19) {
@@ -77,7 +77,7 @@ int wmain(int argc,wchar_t** argv) {
             if(scenario==23||scenario==25) prior=reinterpret_cast<WNDPROC>(SetWindowLongPtrW(field,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(custom_proc)));
             if(scenario==24) { SetWindowLongPtrW(field,GWL_STYLE,GetWindowLongPtrW(field,GWL_STYLE)|ES_UPPERCASE); }
             if(scenario==27)SendMessageW(field,WM_MOUSEMOVE,MK_LBUTTON,0);
-            auto result=binding.apply(scenario==17?L"Grammar \xd55c\xae00 \xd83d\xde00":L"Grammar");
+            auto result=binding.apply(scenario==28?std::wstring(200,L'X'):scenario==17?L"Grammar \xd55c\xae00 \xd83d\xde00":L"Grammar");
             WCHAR actual[256]{};if(field)GetWindowTextW(field,actual,256);
             const bool normal=scenario==0||scenario==17||scenario==21||(scenario==20&&!color_edit), during=scenario==8||scenario==9||(scenario==20&&color_edit);
             const std::wstring expected=normal?(scenario==17?L"hello Grammar \xd55c\xae00 \xd83d\xde00":L"hello Grammar"):

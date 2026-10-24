@@ -260,3 +260,6 @@ removing that profile/installation; uninstall does not enumerate or erase user c
 Windows limits the credential blob size; oversized configurations are refused without
 plaintext fallback. Saving/restoring never contacts a provider. Catalog availability,
 billing and generation compatibility still require separate live verification.
+
+### Standard Edit source replacement restriction (2026-10-24)
+Single-line Windows Edit fields require their existing ES_AUTOHSCROLL style for direct Accept. Without it, Windows may truncate replacement text to the visible width even when its text limit permits the complete result. Pencil preserves capture/Copy but rejects direct replacement before mutation. It never changes the editor's styles. Multiline qualification continues to require ES_AUTOVSCROLL; this is not general application support.
