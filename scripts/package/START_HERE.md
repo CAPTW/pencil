@@ -5,8 +5,8 @@ confidential text for cloud Provider tests. No administrator installation requir
 
 1. Install PowerShell 7 and Microsoft WebView2 from their official distributions
    if missing. Windows PowerShell 5.1 is insufficient. No developer tools required.
-2. Compare the downloaded ZIP's SHA-256 with PROTOTYPE_3_R2_SHA256SUMS.txt from the release:
-   `Get-FileHash .\Pencil-0.1.0-prototype.3-r2-windows-x64.zip -Algorithm SHA256`.
+2. Compare the downloaded ZIP's SHA-256 with PROTOTYPE_3_R3_SHA256SUMS.txt from the release:
+   `Get-FileHash .\Pencil-0.1.0-prototype.3-r3-windows-x64.zip -Algorithm SHA256`.
 3. Extract the ZIP to a new folder. Open **PowerShell 7** in that folder. After
    verifying the download, Windows may require unblocking the downloaded scripts;
    unblock only these verified files, never disable system execution policy.
@@ -41,18 +41,17 @@ unsigned apps, this prototype cannot be used there. See PROTOTYPE.md for measure
 limits and THIRD_PARTY_NOTICES for dependencies. Models/runtime have separate
 upstream terms; this ZIP does not contain them.
 
-## Prototype 3 r2: API model catalog selection
+## Prototype 3 r3: secure API setup and model selection
 
-Use **Pencil-0.1.0-prototype.3-r2-windows-x64.zip** and
-**PROTOTYPE_3_R2_SHA256SUMS.txt** from the release. Previous ZIPs and their failure
+Use **Pencil-0.1.0-prototype.3-r3-windows-x64.zip** and
+**PROTOTYPE_3_R3_SHA256SUMS.txt** from the release. Previous ZIPs and their failure
 records remain historical downloads. This is an unsigned prerelease.
 
 1. Open Settings → Optional API setup.
 2. Select Claude, Google Gemini, OpenRouter or xAI; enter that service's API key.
 3. Click **Load model list**, then select **Available models**. Unsupported rows
    stay visible but disabled. Custom endpoints require manual model IDs.
-4. In the published r2 package, grant permission and click **Keep setup for this session**.
-   The later secure-storage source candidate uses **Save API setup securely** instead.
+4. Grant permission separately and click **Save API setup securely**.
 5. Capture synthetic text, select translation/rewriting, and choose **Run API
    Deep** only when ready to send it. Review before explicit Accept or Copy.
 
@@ -63,10 +62,15 @@ The isolated installed settings trial used synthetic catalog responses with real
 save/status/remove IPC; it did not validate the external service. Settings and
 catalog UI evidence do not qualify Provider translation/rewrite/Accept.
 
-Keys remain in memory for the app session, not settings files. Loading the list
-sends the key to the selected official provider but no document or generation
-request. Saving makes no network request. Restarting clears key and consent;
-**Remove API key and permission** revokes the saved setup. There is no automatic
+Keys, selected endpoint/model and consent persist in Windows Credential Manager
+for this Windows user and Pencil profile, not ordinary settings files. Restart
+restores them without contacting a provider. Leave the key blank to reuse the
+saved key only for the exact endpoint. **Revoke API consent** cancels active
+writing and retains the key with permission disabled across restarts.
+**Remove API key and permission** deletes the saved credential. If storage fails,
+revocation/deletion is unconfirmed: retry before restarting or sending more text.
+Loading the list sends the entered/saved key to the official provider, without
+document text or generation. Saving makes no network request. There is no automatic
 inference retry/fallback. OpenRouter requires ZDR routes and disables fallback,
 so a listed model can still fail the stricter inference policy. API access/billing
 is separate from CLI subscriptions. Google uses its Chat Completions compatibility
@@ -74,9 +78,9 @@ API; Claude uses text-only Messages. See PERSONAL_USE.md for bounded lookup limi
 
 This revision also includes the scoped RichEdit Undo repair and Codex CLI 0.164.0
 compatibility pin. Earlier actual-model evidence belongs to its measured binaries;
-new r2 actual Gemma UI/Accept/Undo, installed Codex login/Accept, physical IME,
+new r3 actual Gemma UI/Accept/Undo, installed Codex login/Accept, physical IME,
 ordinary profiles and other GPUs are not newly qualified. Preserve source text.
-The latest r2 validation file reports exact package-specific tests and CI results.
+The latest r3 validation file reports exact package-specific tests and CI results.
 
 ## Prototype 3 limits — read before installing
 
@@ -101,4 +105,8 @@ settings/dictionary. The extension ID is package-specific; record the ID printed
 by the installer and keep the old version closed during the trial. No settings
 migration or general-profile deployment was performed for this release.
 
-API setup persists in Windows Credential Manager in this source candidate. Use Revoke API consent to disable requests, or Remove API key and permission to delete the saved credential. Existing published r2 used session-only storage.
+One selected API setup is stored per profile, not a multi-account key ring.
+Other software running as the same Windows user is outside the protection boundary.
+Delete the saved key before removing or moving that profile; uninstall does not
+enumerate or erase credentials. Profile-path changes create a separate identity.
+Oversized configurations fail without plaintext fallback. Earlier r2 was session-only.

@@ -176,12 +176,12 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --offline
 Provider CLI의 계정 로그인·모델 이용 가능 여부는 설치 버전과 계정에 따라 달라집니다. 실제 Provider 전체를 검증했다는 의미가 아니며, Claude·Antigravity의 개인정보·인증 제한은 [현재 제품 범위](docs/PROTOTYPE.md)를 확인하세요.
 
 
-### API 모델 목록과 직접 선택 (Prototype 3 r2 / 후속 보안 저장 후보)
+### API 모델 목록과 직접 선택 (Prototype 3 r3)
 
 Settings → Optional API setup에서 Claude·Google Gemini·OpenRouter·xAI를 고르고
 API Key 입력 → **Load model list** → **Available models** 선택 → 별도 전송 동의 →
-**Save API setup securely** 순서로 설정합니다. 후속 소스 후보에서는 키·Provider·모델·동의를
-Windows Credential Manager에 프로필별로 저장해 재시작 후 복원합니다. 공개된 r2는 아직 세션 저장 방식입니다.
+**Save API setup securely** 순서로 설정합니다. r3에서는 키·Provider·모델·동의를
+Windows Credential Manager에 프로필별로 저장해 재시작 후 복원합니다. 이전 r2는 세션 저장 방식입니다.
 번역·재작성은 **Run API Deep**으로 명시적으로 요청하며, **Revoke API consent**는 동의를 철회하고
 **Remove API key and permission**은 보안 저장소의 키까지 삭제합니다.
 
