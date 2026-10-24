@@ -5,6 +5,8 @@ type ApiStatus = { epoch: string; configured: boolean; endpoint: string | null; 
 const empty: ApiStatus = { epoch: "" , configured: false, endpoint: null, model: null, consent: false, requestEnabled: false };
 
 export function ApiSettings() {
+  const [models, setModels] = useState<{id: string; name: string; selectable: boolean}[]>([]);
+  const [catalogMessage, setCatalogMessage] = useState("Model list not loaded. Actual invocation: not verified.");
   const [status, setStatus] = useState<ApiStatus>(empty);
   const [endpoint, setEndpoint] = useState("");
   const [model, setModel] = useState("");
@@ -20,13 +22,27 @@ export function ApiSettings() {
       setStatus(value); setEndpoint(value.endpoint ?? ""); setModel(value.model ?? ""); setConsent(value.consent);
     }).catch(() => { if (mounted) setMessage("API setup is unavailable."); });
     const clear = () => {
-      const action = ++version.current; setPending(false); setStatus(empty); setConsent(false);
+      const action = ++version.current; setModels([]); setCatalogMessage("Model list not loaded. Actual invocation: not verified."); setPending(false); setStatus(empty); setConsent(false);
       void invoke<ApiStatus>("api_session_status").then(value => { if (mounted && version.current === action) setStatus(value); }).catch(() => {});
       if (keyInput.current) keyInput.current.value = "";
     };
     window.addEventListener("grammar-api-cleared", clear);
     return () => { mounted = false; version.current++; window.removeEventListener("grammar-api-cleared", clear); if (keyInput.current) keyInput.current.value = ""; };
   }, []);
+  function resetCatalog() { setModels([]); setCatalogMessage("Model list not loaded. Actual invocation: not verified."); }
+  async function loadModels() {
+    if (pending) return;
+    const action = ++version.current; setPending(true); resetCatalog();
+    try {
+      const rows = await invoke<{id: string; name: string; selectable: boolean}[]>("list_api_models", {lookup: {endpoint, key: keyInput.current?.value ?? ""}});
+      if (version.current !== action) return;
+      setModels(rows); setCatalogMessage(`Model list loaded: ${rows.length}. Actual invocation: not verified. Listing does not verify billing, quota or writing-response compatibility.`);
+    } catch (error) {
+      if (version.current !== action) return;
+      const messages: Record<string,string> = {api_invalid_key:"Enter an API key first.", api_catalog_auth_denied:"Provider denied catalog access (key or permission).",api_catalog_rate_limited:"Provider rate limit reached. No retry was sent.",api_catalog_unsupported_endpoint:"Model lookup supports the four official provider presets. Enter a custom model manually.",api_catalog_timeout:"Model lookup timed out.",api_catalog_limit:"Catalog exceeded bounded limits; no partial list accepted."};
+      setCatalogMessage((messages[String(error)] ?? "Model lookup failed. No partial list accepted.") + " Actual invocation: not verified.");
+    } finally { if (version.current === action) setPending(false); }
+  }
   async function save() {
     if (pending) return;
     const action = ++version.current; setPending(true); setMessage("");
@@ -44,6 +60,7 @@ export function ApiSettings() {
     } finally { if (version.current === action) setPending(false); }
   }
   async function clear() {
+    resetCatalog();
     const action = ++version.current; setPending(true); setMessage("");
     if (keyInput.current) keyInput.current.value = "";
     try { const next = await invoke<ApiStatus>("clear_api_session"); if (version.current !== action) return; setStatus(next); setConsent(false); setMessage("API key and permission removed from this session."); }
@@ -59,7 +76,7 @@ export function ApiSettings() {
         "https://api.anthropic.com/v1/messages", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         "https://openrouter.ai/api/v1/chat/completions", "https://api.x.ai/v1/chat/completions"
       ].includes(endpoint) ? endpoint : ""} onChange={event => {
-        setEndpoint(event.target.value); setModel(""); setConsent(false);
+        resetCatalog(); setEndpoint(event.target.value); setModel(""); setConsent(false);
         if (keyInput.current) keyInput.current.value = "";
       }}>
         <option value="">Custom HTTPS / Chat Completions</option>
@@ -71,16 +88,25 @@ export function ApiSettings() {
     </label>
     <p>Enter an exact model ID available to your API account. CLI subscriptions do not configure API access. OpenRouter requires an explicit model (no auto/router variants), disables fallback, and requires zero data retention; unsupported routes fail.</p>
     <label className="settings-field">HTTPS endpoint
-      <input type="url" value={endpoint} autoComplete="off" spellCheck={false} disabled={pending} onChange={event => { setEndpoint(event.target.value); setConsent(false); }} placeholder="https://api.example.com/v1/chat/completions" />
+      <input type="url" value={endpoint} autoComplete="off" spellCheck={false} disabled={pending} onChange={event => { resetCatalog(); setEndpoint(event.target.value); setConsent(false); if (keyInput.current) keyInput.current.value = ""; }} placeholder="https://api.example.com/v1/chat/completions" />
     </label>
     <label className="settings-field">Model
       <input value={model} autoComplete="off" spellCheck={false} disabled={pending} onChange={event => { setModel(event.target.value); setConsent(false); }} />
     </label>
     <label className="settings-field">API key (session only)
-      <input ref={keyInput} type="password" autoComplete="off" spellCheck={false} disabled={pending} maxLength={4096} />
+      <input ref={keyInput} type="password" autoComplete="off" spellCheck={false} disabled={pending} maxLength={4096} onChange={() => { resetCatalog(); setConsent(false); }} />
     </label>
+    <button type="button" disabled={pending} onClick={() => void loadModels()}>Load model list</button>
+    <p>Loading sends the entered API key to the selected provider for catalog lookup only. No document text or generation request is sent. The key remains in this form until setup is saved, removed or closed.</p>
+    <label className="settings-field">Available models
+      <select disabled={pending || !models.length} value={models.some(row => row.id === model) ? model : ""} onChange={event => {setModel(event.target.value); setConsent(false);}}>
+        <option value="">Select a listed model (or enter a model ID above)</option>
+        {models.map(row => <option key={row.id} value={row.id} disabled={!row.selectable}>{row.name} — {row.id}{row.selectable ? " — invocation unverified" : " — unsupported by this writing connection"}</option>)}
+      </select>
+    </label>
+    <p role="status">{catalogMessage}</p>
     <label><input type="checkbox" checked={consent} disabled={pending} onChange={event => setConsent(event.target.checked)} />Allow explicit API requests to this endpoint and model. Requests may incur charges; provider retention policies apply.</label>
-    <p>Saved endpoint: {status.endpoint ?? "None"} · Model: {status.model ?? "None"} · Permission: {status.consent ? "allowed for explicit requests" : "not granted"}</p>
+    <p>Saved endpoint: {status.endpoint ?? "None"} 쨌 Model: {status.model ?? "None"} 쨌 Permission: {status.consent ? "allowed for explicit requests" : "not granted"}</p>
     <button type="button" disabled={pending || !status.epoch} onClick={() => void save()}>Keep setup for this session</button>
     <button type="button" disabled={pending} onClick={() => void clear()}>Remove API key and permission</button>
     {message && <p role="status">{message}</p>}

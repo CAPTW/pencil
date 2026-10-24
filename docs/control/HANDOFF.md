@@ -5093,3 +5093,24 @@ This is source candidate implementation, not installed/new release acceptance.
 Live API accounts/quality/latency/Accept remain NOT_RUN. Next: approved account
 qualification of one selected API provider in a single owned synthetic session;
 keep Codex CLI 0.164.0 installed-package qualification separately pending.
+
+
+## API catalog selection — 2026-10-24
+Added explicit authenticated catalog lookup for all four official presets and
+manual dropdown selection. Provider-reported list presence is separate from
+actual invocation (always unverified by this lookup). Fixed destinations, sensitive
+headers, no inference payload, no retries/redirects, overall deadline and aggregate
+limits; pagination cursors are encoded on the same destination. Unsupported rows
+stay visible/disabled. Catalog changes never grant inference consent. Key/provider
+edits and revocation invalidate transient UI results; late lookup responses cannot
+restore a revoked list. Pending GET is bounded, not claimed remotely cancelled.
+Review pass: examined credential destinations, pagination loops, malformed/oversize
+responses, no automatic model selection and stale UI response handling. Same-agent
+review only. No changes to Gemma, writing contract or Accept protections.
+Validation: 51 Rust Provider PASS / 3 live ignored; 9 settings UI checks PASS;
+TypeScript/frontend build and cargo check binary PASS (unused-code warnings remain).
+Initial test-helper lifetime compile error was corrected; first UI assertion used
+Playwright isDisabled on an option, corrected to check the native disabled attribute.
+Evidence: D:/dev/grammar-evidence/api-providers-20261024/catalog-*.
+Live API account/quality/inference/installed Accept and release remain NOT_RUN.
+Next: source-bound package verification, then separately authorized live qualification.

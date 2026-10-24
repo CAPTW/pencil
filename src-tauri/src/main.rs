@@ -144,6 +144,11 @@ fn retry_local_model() -> Result<(),String> { local_model_session::retry() }
 fn local_model_status() -> local_model_session::Status { local_model_session::status() }
 
 #[tauri::command]
+async fn list_api_models(lookup: provider::api_models::Lookup) -> Result<Vec<provider::api_models::Model>, String> {
+    provider::api_models::list(lookup).await.map_err(str::to_owned)
+}
+
+#[tauri::command]
 fn api_session_status(state: State<'_, AppState>) -> Result<provider::api_session::Status, String> {
     Ok(state.api_session.lock().map_err(|_| "api_session_unavailable")?.status())
 }
@@ -1867,6 +1872,7 @@ fn main() {
             export_terminology,
             load_settings,
             local_model_status,
+            list_api_models,
             api_session_status,
             configure_api_session,
             clear_api_session,

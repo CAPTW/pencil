@@ -16,6 +16,13 @@ try{
   const empty=epoch=>({epoch,configured:false,endpoint:null,model:null,consent:false,requestEnabled:false});
   window.fixtureStatus=empty('initial');window.fixtureDelayed=false;
   window.fixtureInvoke=async(command,args)=>{
+   if(command==='list_api_models') {
+    window.catalogArgs=args; window.catalogCalls=(window.catalogCalls??0)+1;
+    if(window.catalogError)throw Error('catalog error with secret');
+    const rows=[{id:'test-model',name:'Synthetic model',selectable:true},{id:'image-only',name:'Image model',selectable:false}];
+    if(window.catalogDelayed)return new Promise(resolve=>{window.catalogResolve=()=>resolve(rows);});
+    return rows;
+   }
    if(command==='api_session_status')return {...window.fixtureStatus};
    if(command==='clear_api_session'){window.fixtureStatus=empty('cleared-'+Math.random());return {...window.fixtureStatus};}
    if(command==='configure_api_session'){
@@ -38,6 +45,33 @@ try{
   assert.equal(await page.getByRole('checkbox').isChecked(),false);
  }
  checks.push('four provider presets clear draft credentials and permission');
+ await page.getByLabel('API key (session only)').fill('catalog-dummy');
+ await page.getByRole('button',{name:'Load model list'}).click();
+ await page.getByText('Model list loaded: 2.',{exact:false}).waitFor();
+ assert.equal(await page.getByRole('checkbox').isChecked(),false);
+ assert.notEqual(await page.getByRole('option',{name:/Image model/}).getAttribute('disabled'),null);
+ await page.getByLabel('Available models').selectOption('test-model');
+ assert.equal(await page.getByLabel('Model',{exact:true}).inputValue(),'test-model');
+ assert.match(await page.locator('body').textContent(),/Actual invocation: not verified/);
+ const args=await page.evaluate(()=>window.catalogArgs);assert.deepEqual(Object.keys(args.lookup).sort(),['endpoint','key']);
+ checks.push('catalog-only lookup, user selection, unsupported rows disabled, invocation remains unverified');
+ await page.getByLabel('API key (session only)').fill('changed-key');
+ assert.equal(await page.getByLabel('Available models').isDisabled(),true);
+ checks.push('key edit invalidates catalog');
+ await page.evaluate(()=>{window.catalogError=true;});
+ await page.getByRole('button',{name:'Load model list'}).click();
+ await page.getByText('Model lookup failed.',{exact:false}).waitFor();
+ assert.ok(!(await page.locator('body').textContent()).includes('error with secret'));
+ assert.equal(await page.getByLabel('Available models').isDisabled(),true);
+ checks.push('failed lookup clears results and suppresses raw errors');
+ await page.evaluate(()=>{window.catalogError=false;window.catalogDelayed=true;});
+ await page.getByRole('button',{name:'Load model list'}).click();
+ await page.waitForFunction(()=>typeof window.catalogResolve==='function');
+ await page.evaluate(async()=>{await window.fixtureInvoke('clear_api_session');window.dispatchEvent(new Event('grammar-api-cleared'));window.catalogResolve();});
+ await page.waitForFunction(()=>document.body.textContent.includes('Model list not loaded'));
+ assert.equal(await page.getByLabel('Available models').isDisabled(),true);
+ checks.push('late catalog response cannot restore revoked list');
+
  await page.getByLabel('HTTPS endpoint').fill('https://api.example.test/v1/chat/completions');
  await page.getByLabel('Model',{exact:true}).fill('fixture-model');
  await page.getByLabel('API key (session only)').fill('dummy-secret');await page.getByRole('checkbox').check();await save.click();

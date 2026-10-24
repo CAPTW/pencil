@@ -11,3 +11,5 @@ pub(crate) mod types;
 pub(crate) use manager::ProviderManager;
 pub use types::ProviderKind;
 pub(crate) use types::{ProviderSnapshot, SelfTestRecord};
+
+pub(crate) mod api_models;

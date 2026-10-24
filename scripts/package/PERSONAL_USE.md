@@ -213,3 +213,42 @@ Protocol references:
 - https://ai.google.dev/gemini-api/docs/openai
 - https://openrouter.ai/docs/guides/routing/provider-selection
 - https://docs.x.ai/developers/model-capabilities/legacy/chat-completions
+
+
+### API model catalog selection (source candidate)
+
+Choose one of the four official API presets, enter its API key, then click
+**Load model list**. Choose **Available models**, grant explicit inference
+permission separately, and save the session setup. Model lookup sends only an
+authenticated GET catalog request, never document text or a generation request.
+The key remains in the password field for saving; removing setup or closing the
+settings clears it. Changing key/provider invalidates the displayed catalog.
+
+**Model list loaded** means catalog retrieval succeeded. **Actual invocation:
+not verified** remains visible: listing does not establish billing/quota access,
+current availability, Pencil writing JSON compatibility or output quality.
+Models explicitly incompatible with the writing connection remain visible but
+cannot be selected (e.g. embedding-only Google models, image-only OpenRouter
+models, and currently disallowed OpenRouter router variants). Manual IDs remain
+available. Custom HTTPS endpoints retain manual entry; catalog discovery is
+restricted to the four exact official endpoints to avoid guessing key destinations.
+
+Claude uses GET /v1/models (after_id pagination); Google uses GET /v1beta/models
+(pageToken pagination, key header rather than URL); OpenRouter uses authenticated
+GET /api/v1/models/user with all output modalities; xAI uses GET /v1/models.
+OpenRouter catalog preferences do not establish availability under Pencil's
+additional ZDR/no-fallback inference policy. Catalogs are transient, not persisted.
+One lookup at a time, one 20-second overall deadline, at most 20 pages/10,000 IDs
+and 8 MiB combined response. Exceeding bounds or any failed page rejects the
+entire list; no automatic retry, redirect or fallback. Removal ignores late UI
+results; a pending GET can remain in flight until its bounded timeout.
+
+Official catalog references:
+- https://platform.claude.com/docs/en/api/models/list
+- https://ai.google.dev/api/models
+- https://github.com/OpenRouterTeam/go-sdk/blob/main/models.go
+- https://docs.x.ai/developers/rest-api-reference/inference/models
+
+Synthetic verification only: 51 Provider Rust tests passed (3 live tests ignored),
+9 original React component/mock-Tauri checks passed, application cargo check and
+frontend build passed. No actual keys, paid calls or installed-package tests.
