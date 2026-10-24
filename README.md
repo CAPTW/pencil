@@ -69,7 +69,7 @@ Pencil의 기본 원칙은 간단합니다. **AI는 제안하고, 변경은 사�
 
 ### 1. Download
 
-[**Prototype 3 release**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3)의 **Assets**에서 `Pencil-0.1.0-prototype.3-r3-windows-x64.zip`과 `PROTOTYPE_3_R3_SHA256SUMS.txt`를 받으세요. GitHub의 자동 생성 **Source code (zip)**은 실행 패키지가 아닙니다.
+[**Prototype 3 release**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3)의 **Assets**에서 `Pencil-0.1.0-prototype.3-r4-windows-x64.zip`과 `PROTOTYPE_3_R4_SHA256SUMS.txt`를 받으세요. GitHub의 자동 생성 **Source code (zip)**은 실행 패키지가 아닙니다.
 
 필수 환경은 **Windows x64 · PowerShell 7 · Microsoft WebView2**입니다.
 
@@ -188,3 +188,5 @@ Windows Credential Manager에 프로필별로 저장해 재시작 후 복원합�
 **목록 조회 성공은 실제 호출 가능 확인이 아닙니다.** 실제 API 인증·유료 호출·응답 품질과
 Provider Accept는 아직 미검증입니다. 설치본 설정 시험은 합성 목록 응답과 실제 저장·삭제를
 결합한 범위입니다. 일반 문서 대신 합성 문장부터 확인하고 설치 안내의 제한을 읽으세요.
+
+현재 r4의 [API 설정과 Accept 30초·Copy-only 안내](docs/releases/PROTOTYPE_3_R4_INSTALL.md)를 먼저 확인하세요.

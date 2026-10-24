@@ -2110,8 +2110,6 @@ fn global_shortcut_plugin() -> TauriPlugin<tauri::Wry> {
             let Some(operation) = ShortcutOperationGuard::try_begin(state.shortcut_operation.clone()) else { return; };
             // Only a focused Pencil window toggles closed. A visible background
             // settings/review window must not swallow an external editor capture.
-            // Only a focused Pencil window toggles closed. A visible background
-            // settings/review window must not swallow an external editor capture.
             // Read visibility again after admission; the preceding operation may
             // have finished between the initial key event and this reservation.
             let activation = if app.get_webview_window("main")

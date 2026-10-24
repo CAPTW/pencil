@@ -263,3 +263,7 @@ billing and generation compatibility still require separate live verification.
 
 ### Standard Edit source replacement restriction (2026-10-24)
 Single-line Windows Edit fields require their existing ES_AUTOHSCROLL style for direct Accept. Without it, Windows may truncate replacement text to the visible width even when its text limit permits the complete result. Pencil preserves capture/Copy but rejects direct replacement before mutation. It never changes the editor's styles. Multiline qualification continues to require ES_AUTOVSCROLL; this is not general application support.
+
+## r4: Accept 만료와 안전한 복사
+
+캡처 후 최대 **30초**에는 모델 응답 대기와 검토 시간도 포함됩니다. 만료되면 다시 선택·캡처하거나 Copy를 직접 선택하세요. 지원하지 않는 입력칸은 안전한 캡처가 가능한 경우에만 Copy-only입니다. 보호·민감 필드는 읽지 않으며 자동 복사·자동 재시도하지 않습니다. 자동 가로 스크롤 없는 한 줄 Edit에서는 Accept를 거부하므로 Copy 후 직접 붙여넣으세요.
