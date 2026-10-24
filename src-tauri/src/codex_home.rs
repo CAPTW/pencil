@@ -43,7 +43,7 @@ impl CodexHome {
         ensure_plain_directory(&path, "codex_home_not_owned")?;
         ensure_owner_marker(&path.join(OWNER_MARKER))?;
 
-        // The exact 0.144.6 app-server has no `--ignore-user-config` flag.
+        // Keep the existing config-free boundary when upgrading the CLI.
         // Refuse an app-home config rather than allowing an MCP/tool config to
         // merge underneath command-line restrictions.
         if path.join("config.toml").exists() {

@@ -67,6 +67,7 @@ const RUNTIME_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   native_capture_cancelled: "Capture was cancelled. Select the text again when you are ready.",
   rewrite_result_ready: "A result is already ready for this capture. Copy it, or capture the selection again to run Deep again.",
   codex_unavailable: "Codex CLI was not found. Instant still works; Deep with Codex needs it, or choose another Provider in Settings.",
+  codex_model_capability_unavailable: "Codex could not use the requested model or one of its capabilities. Check CLI compatibility and model availability for this account. Pencil has not switched to another model or Provider.",
 };
 
 export function userFacingRuntimeErrorMessage(error: unknown): string {

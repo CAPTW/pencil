@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub const SUPPORTED_CODEX_VERSION: &str = "codex-cli 0.144.6";
+pub const SUPPORTED_CODEX_VERSION: &str = "codex-cli 0.164.0";
 
 pub fn resolve_supported_codex() -> Result<PathBuf, String> {
     let path = resolve_codex_executable().ok_or_else(|| {
@@ -116,8 +116,9 @@ mod tests {
 
     #[test]
     fn only_the_schema_authority_version_is_supported() {
-        assert!(is_supported_codex_version("codex-cli 0.144.6"));
+        assert!(is_supported_codex_version("codex-cli 0.164.0"));
         assert!(!is_supported_codex_version("codex-cli 0.141.0"));
+        assert!(!is_supported_codex_version("codex-cli 0.144.6"));
     }
 
     #[cfg(windows)]
