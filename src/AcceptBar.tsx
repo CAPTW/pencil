@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 
-export function AcceptBar({ directApply, expiresAtMs, canCopy, busy, onAccept, onCopy }: {
+export function AcceptBar({ directApply, expiresAtMs, canCopy, busy, onAccept, onCopy, canRunApi, onRunApi }: {
   directApply: boolean; expiresAtMs?: number; canCopy: boolean; busy: boolean;
   onAccept: () => void; onCopy: () => void;
+  canRunApi?: boolean; onRunApi?: () => void;
 }) {
   // Each capture mounts a new bar. Renders/edits/results never renew its lease.
   const [deadline] = useState(() => performance.now() + Math.max(0, Math.min(30_000, (expiresAtMs ?? 0) - Date.now())));
@@ -14,6 +15,7 @@ export function AcceptBar({ directApply, expiresAtMs, canCopy, busy, onAccept, o
   }, [deadline, expiresAtMs]);
   const expired = ms <= 0;
   return <footer className="accept-bar" aria-label="Review actions">
+    {onRunApi && <button type="button" className="secondary-button api-run-button" data-testid="run-api" disabled={!canRunApi || busy} onClick={onRunApi}>Run API Deep</button>}
     <p className={directApply && expired ? "expired" : ""}>
       {directApply ? expired
         ? "Accept expired — select and capture again, or Copy."

@@ -1110,3 +1110,5 @@ h1 {
 .accept-bar-actions button { flex: 1; min-height: 36px; }
 
 .accept-bar .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.accept-bar .api-run-button { width: 100%; min-height: 34px; margin-bottom: 6px; }

@@ -464,13 +464,14 @@ export default function App() {
     targetLanguage: TranslationTargetLanguage = targetLanguageRef.current,
     autoReferenceLanguage: TranslationReferenceLanguage = autoReferenceLanguageRef.current,
     apiEpoch: string | null = null,
+    explicitRequest = true,
   ) => {
     if (!requestedToken || consentRevokingRef.current) {
       return;
     }
     if (!apiEpoch && providerAckRef.current < CLOUD_PROCESSING_DISCLOSURE_VERSION) {
-      setCloudReviewOpen(true);
-      setStatus("Cloud processing review required");
+      setCloudReviewOpen(explicitRequest);
+      setStatus(explicitRequest ? "Cloud processing review required" : "Instant stays local · choose Run Deep or Run API Deep");
       return;
     }
     const requestedIntent: RewriteIntentToken = {
@@ -766,8 +767,7 @@ export default function App() {
         if (providerAckRef.current >= CLOUD_PROCESSING_DISCLOSURE_VERSION) {
           void rewrite(modeRef.current, token, targetLanguageRef.current);
         } else {
-          setCloudReviewOpen(true);
-          setStatus("Instant stays local · review cloud processing for Deep");
+          setStatus("Instant stays local · choose Run Deep or Run API Deep");
         }
       }
     }).then((unlisten) => {
@@ -1066,7 +1066,7 @@ export default function App() {
       setStatus("Selection captured");
       if (saved.autoRewrite) {
         providerAckRef.current = cloudAckFor(saved, saved.activeProvider);
-        void rewrite(saved.mode, selection.token, saved.translation.targetLanguage);
+        void rewrite(saved.mode, selection.token, saved.translation.targetLanguage, saved.translation.autoReferenceLanguage, null, false);
       }
     }
   }
@@ -1105,7 +1105,7 @@ export default function App() {
       setStatus("Translation target changed");
       if (saved.autoRewrite) {
         providerAckRef.current = cloudAckFor(saved, saved.activeProvider);
-        void rewrite("translate", selection.token, saved.translation.targetLanguage);
+        void rewrite("translate", selection.token, saved.translation.targetLanguage, saved.translation.autoReferenceLanguage, null, false);
       }
     }
   }
@@ -1153,6 +1153,7 @@ export default function App() {
           selection.token,
           "auto",
           saved.translation.autoReferenceLanguage,
+          null, false,
         );
       }
     }
@@ -1625,6 +1626,31 @@ export default function App() {
   const providerReady = activeProviderStatus?.state === "ready" || (settings.activeProvider === "codex" && auth?.loggedIn === true);
   // A ready Deep result is copied or replaced by a new capture or intent;
   // the capture cannot start another Deep request meanwhile.
+  const apiLaunchPendingRef = useRef(false);
+  async function runApiDeep() {
+    if (apiLaunchPendingRef.current || isRewriting || isCopying || consentRevokingRef.current) return;
+    const token = currentTokenRef.current;
+    const intent = currentIntentRef.current;
+    if (!token || !intent) return;
+    const mode = modeRef.current, target = targetLanguageRef.current, reference = autoReferenceLanguageRef.current;
+    const stillCurrent = () => !consentRevokingRef.current && sameCaptureToken(token, currentTokenRef.current)
+      && sameRewriteIntent(intent, currentIntentRef.current);
+    apiLaunchPendingRef.current = true;
+    setCloudReviewOpen(false);
+    try {
+      const api = await invoke<{epoch:string;endpoint:string|null;model:string|null;requestEnabled:boolean}>("api_session_status");
+      if (!stillCurrent()) return;
+      if (!api.requestEnabled) {
+        setError("Configure an API endpoint, model, key and permission in Settings first.");
+        return;
+      }
+      if (!window.confirm(`Send the current captured selection and matched approved terms to ${api.endpoint} using ${api.model}? Charges and the provider's retention policy may apply.`)) return;
+      if (!stillCurrent()) return;
+      await rewrite(mode, token, target, reference, api.epoch);
+    } catch { setError("API request unavailable. Check the session setup."); }
+    finally { apiLaunchPendingRef.current = false; }
+  }
+
   const canRunDeep = Boolean(selection && providerReady && !isRewriting && !isCopying && !revokingConsent && !result);
   const canCancel = isRewriting;
   // After Copy the capture has ended but the copied draft stays visible, so
@@ -2559,18 +2585,7 @@ export default function App() {
                   <RefreshCcw size={16} />
                   Run Deep
                 </button>
-                <button className="secondary-button" type="button" data-testid="run-api" disabled={!selection || isRewriting || isCopying}
-                  onClick={async () => {
-                    const token = currentTokenRef.current;
-                    const mode = modeRef.current, target = targetLanguageRef.current, reference = autoReferenceLanguageRef.current;
-                    if (!token) return;
-                    try {
-                      const api = await invoke<{epoch:string;endpoint:string|null;model:string|null;requestEnabled:boolean}>("api_session_status");
-                      if (!api.requestEnabled) {setError("Configure an API endpoint, model, key and permission in Settings first.");return;}
-                      if (!window.confirm(`Send the current captured selection and matched approved terms to ${api.endpoint} using ${api.model}? Charges and the provider's retention policy may apply.`)) return;
-                      await rewrite(mode,token,target,reference,api.epoch);
-                    } catch {setError("API request unavailable. Check the session setup.");}
-                  }}>Run API Deep</button>
+
                 <button
                   className="secondary-button"
                   type="button"
@@ -2609,6 +2624,7 @@ export default function App() {
         {!settingsOpen && (selection || draft.length > 0) && (
           <AcceptBar key={selection ? `${selection.token.sessionId}:${selection.token.generation}` : "ended"}
             directApply={selection?.directApply === true} expiresAtMs={selection?.acceptExpiresAtMs}
+            canRunApi={Boolean(selection && !isRewriting && !isCopying && !revokingConsent)} onRunApi={() => void runApiDeep()}
             canCopy={canCopy} busy={isCopying} onAccept={() => void copyResult(true)} onCopy={() => void copyResult()} />
         )}
       </section>
