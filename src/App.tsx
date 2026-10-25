@@ -1,6 +1,7 @@
 import { AcceptBar } from "./AcceptBar";
 import { invoke } from "@tauri-apps/api/core";
 import { ApiSettings } from "./ApiSettings";
+import { ApiRequestDialog } from "./ApiRequestDialog";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
@@ -1636,6 +1637,15 @@ export default function App() {
   // A ready Deep result is copied or replaced by a new capture or intent;
   // the capture cannot start another Deep request meanwhile.
   const apiLaunchPendingRef = useRef(false);
+  const [apiReview, setApiReview] = useState<{ endpoint: string; model: string } | null>(null);
+  const apiReviewResolve = useRef<((accepted: boolean) => void) | null>(null);
+  useEffect(() => () => { apiReviewResolve.current?.(false); }, []);
+  function closeApiReview(accepted: boolean) {
+    const resolve = apiReviewResolve.current;
+    apiReviewResolve.current = null;
+    setApiReview(null);
+    resolve?.(accepted);
+  }
   async function runApiDeep() {
     if (apiLaunchPendingRef.current || isRewriting || isCopying || consentRevokingRef.current) return;
     const token = currentTokenRef.current;
@@ -1653,7 +1663,12 @@ export default function App() {
         setError("Configure an API endpoint, model, key and permission in Settings first.");
         return;
       }
-      if (!window.confirm(`Send the current captured selection and matched approved terms to ${api.endpoint} using ${api.model}? Charges and the provider's retention policy may apply.`)) return;
+      if (!api.endpoint || !api.model) return;
+      const accepted = await new Promise<boolean>(resolve => {
+        apiReviewResolve.current = resolve;
+        setApiReview({ endpoint: api.endpoint!, model: api.model! });
+      });
+      if (!accepted) return;
       if (!stillCurrent()) return;
       await rewrite(mode, token, target, reference, api.epoch);
     } catch { setError("API request unavailable. Check the session setup."); }
@@ -1693,6 +1708,7 @@ export default function App() {
 
   return (
     <main className={`shell${!settingsOpen && !reviewExpanded ? " compact-review" : ""}`}>
+      {apiReview && <ApiRequestDialog {...apiReview} onClose={closeApiReview} />}
       <section className="panel">
         <div className="panel-content">
         <header className="topbar" onMouseDown={beginWindowDrag}>

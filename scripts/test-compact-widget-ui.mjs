@@ -36,6 +36,30 @@ try {
  for(const testid of ['run-api','apply-result','copy-result']){
    const box=await page.getByTestId(testid).boundingBox();assert.ok(box && box.y>=0 && box.y+box.height<=360, testid+' visible');
  }
+ await page.evaluate(()=>{const previous=window.fixtureInvoke;window.commands=[];window.fixtureInvoke=async(c,a)=>{
+   window.commands.push(c);
+   if(c==='api_session_status')return {epoch:'synthetic',endpoint:'https://api.example.invalid/v1/messages',model:'synthetic-model',requestEnabled:true};
+   return previous(c,a);
+ };});
+ await page.getByTestId('run-api').click();
+ const confirmation=page.getByRole('dialog',{name:'Send to API?'});
+ await confirmation.waitFor();
+ for(const name of ['Cancel','Send request']){
+   const box=await confirmation.getByRole('button',{name,exact:true}).boundingBox();
+   assert.ok(box && box.x>=0 && box.y>=0 && box.x+box.width<=380 && box.y+box.height<=360, name+' fits compact window');
+ }
+ assert.equal(await confirmation.getByRole('button',{name:'Cancel',exact:true}).evaluate(el=>el===document.activeElement),true);
+ await page.keyboard.press('Escape');
+ await confirmation.waitFor({state:'detached'});
+ assert.equal(await page.evaluate(()=>window.commands.some(c=>c.includes('rewrite'))),false,'Cancel does not infer');
+ await page.getByTestId('run-api').click();
+ await confirmation.waitFor();
+ await page.evaluate(()=>window.listeners['selection-captured']({payload:{sessionId:'owned-new',generation:2,selectedText:'New synthetic source.',directApply:true,acceptExpiresAtMs:Date.now()+30000}}));
+ await confirmation.getByRole('button',{name:'Send request',exact:true}).click();
+ await confirmation.waitFor({state:'detached'});
+ assert.equal(await page.evaluate(()=>window.commands.some(c=>c.includes('rewrite'))),false,'Stale confirmation does not infer');
+ await page.evaluate(()=>window.listeners['instant-candidate']({payload:{sessionId:'owned-new',generation:2,candidateText:'New synthetic suggestion.'}}));
+ await page.waitForFunction(()=>document.querySelector('[aria-label="Editable rewrite result text"]').value==='New synthetic suggestion.');
  await draft.fill('Owner edited draft.');
  await page.getByRole('button',{name:'Details',exact:true}).click();
  assert.equal(await page.locator('.mode-grid').isVisible(),true);

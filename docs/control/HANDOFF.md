@@ -1,5 +1,19 @@
 # Grammar autonomous mission candidate handoff
 
+## 2026-10-25 — personal compact trial: API confirmation repair
+
+Installed source26d95c9 side-by-side with the existing profile. Compact widget and
+fixed actions appeared, but WebView2 window.confirm clipped the API disclosure and
+buttons at380px. No API response or Accept was qualified from that attempt. App
+and synthetic editor exited; no user document was used. Replaced only the API
+request confirmation with a bounded modal dialog, initial Cancel focus and Escape
+cancellation. Existing capture/intent/epoch checks remain after confirmation.
+Production-component tests cover fitting controls, no inference on Cancel and no
+inference after recapture while confirmation is open. Frontend build and governance
+pass. Installed retest is pending; first build supervisor recorded vctip leftover
+then COMPLETE owned cleanup, independently of successful build receipt.
+Evidence: D:/dev/grammar-evidence/compact-personal-20261025.
+
 ## 2026-10-25 — compact widget / connection settings candidate
 
 Owner requested simpler OpenCode-inspired connection setup, small default result
