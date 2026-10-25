@@ -1,5 +1,41 @@
 # Grammar autonomous mission candidate handoff
 
+## 2026-10-25 — compact personal package installed and live Haiku checked
+
+Final runtime source eee50aee874e80a40acf84a3b2768a161371b11b installed side-by-side
+as PencilPrototype3-compact-eee50ae; existing API/Gemma desktop shortcuts now point
+there, preserving the existing profile and D-drive Gemma paths. Old installations
+and shortcut backups retained. No key read/export/re-entry; saved Claude Haiku5.5
+and explicit API consent restored in Settings, and successful requests used them.
+
+One active native session at a time, owned classic Edit synthetic text only:
+- Translation: Korean request -> "Please send the revised report by Friday."
+  Fixed Accept applied exactly; editor reread matched; Undo restored Korean source.
+- Natural rewrite: "I am writing to ask if you can send me the updated schedule."
+  -> "I'm writing to ask if you could send me the updated schedule."
+  Fixed Accept applied exactly; editor reread matched; Undo restored source.
+- New real response left beyond30s: Accept disabled, Copy enabled; Copy preserved
+  editor text; manual paste into the owned editor exactly matched the response.
+- Compact result and fixed actions visible without scrolling in both modes;
+  bounded API review showed endpoint/model/charges and both buttons. No Codex
+  consent gate was encountered. Settings retained API-first collapsed structure.
+
+Final package ZIP SHA256 c7438ba3d70473a9abbc601b621c9aa1a3ed796fabc539a70d5cace1f6263412.
+All14 installed EXE/DLL hashes match manifest. settings.json and backup hashes match
+pretrial; dictionary and backup absent both before/after. Original Grammar mode
+restored through UI. Normal app Quit and editor Alt-F4, scoped reread found zero
+trial app/editor/launcher/profile WebView children. Build vctip helpers required
+owned Job cleanup (FAIL_LEFTOVER_CHILDREN then COMPLETE); not natural-exit PASS.
+Three real requests on final runtime, one on intermediate4046a56. Initial26d95c9
+dialog attempt did not produce a response and is not counted as live PASS.
+
+Evidence: D:/dev/grammar-evidence/compact-personal-20261025/final contains source
+build receipt, package result, installed-binaries.json, observations.json,
+profile-after.json and cleanup.json. Frontend/typecheck, compact real-component
+mock tests (including cancel/stale confirmation), layout/window contracts and
+governance PASS. This is bounded installed desktop qualification, not Chromium,
+other editors, multi-model parity, speed benchmark, CI, push or release acceptance.
+
 ## 2026-10-25 — personal compact trial: API confirmation repair
 
 Installed source26d95c9 side-by-side with the existing profile. Compact widget and
