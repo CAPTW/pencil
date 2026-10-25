@@ -2,6 +2,14 @@
 
 # Product Charter — P3-B target, P3-A preserved
 
+Owner direction (2026-10-25): default to a compact editable recommendation widget
+with explicit Accept/Copy, status and expiry; expose explanations and comparison
+through Details. Provider setup uses progressive disclosure for API connection,
+model selection and separate official CLI login, without merging their credentials
+or consent. Maintain a common measured writing-quality standard across GPT-6 Luna,
+Claude Haiku 5.5 and local Gemma 4; see MODEL_QUALITY.md. This direction is not
+installed acceptance, model equivalence, or weight-training completion.
+
 CURRENT_PRODUCT_TARGET=P3A_PRESERVED_PLUS_P3B_PROACTIVE_INLINE_ASSIST
 
 이 문서는 제품 목표에 대한 규범적 결정이다. 현재 구현·검증·Git identity·단일 next task는 canonical current-state와 current audit가 결정한다. 목표 동결은 구현 완료나 whole-product acceptance가 아니다.

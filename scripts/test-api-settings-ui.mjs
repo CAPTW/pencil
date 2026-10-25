@@ -37,6 +37,10 @@ try{
  await page.addScriptTag({content:bundle.outputFiles[0].text});
  const save=page.getByRole('button',{name:'Save API setup securely'});
  await save.waitFor();await page.waitForFunction(()=>!document.querySelector('button').disabled);
+ assert.equal(await page.getByLabel('HTTPS endpoint').isVisible(),false);
+ await page.getByText('Endpoint and manual model ID',{exact:true}).click();
+ await page.getByText('Privacy and connection management',{exact:true}).click();
+ checks.push('advanced endpoint and connection management collapsed by default, explicitly expandable');
  for (const endpoint of ['https://api.anthropic.com/v1/messages','https://generativelanguage.googleapis.com/v1beta/openai/chat/completions','https://openrouter.ai/api/v1/chat/completions','https://api.x.ai/v1/chat/completions']) {
   await page.getByLabel('API key (Windows secure storage)').fill('previous-provider-key');
   await page.getByRole('checkbox').check();
@@ -98,6 +102,8 @@ try{
  await page.evaluate(()=>document.getElementById('root').replaceWith(Object.assign(document.createElement('div'),{id:'root'})));
  const beforeRemount=await page.evaluate(()=>window.catalogCalls);
  await page.addScriptTag({content:bundle.outputFiles[0].text});
+ await page.getByText('Endpoint and manual model ID',{exact:true}).click();
+ await page.getByText('Privacy and connection management',{exact:true}).click();
  await page.waitForFunction(()=>document.body.textContent.includes('Saved endpoint: https://api.example.test/v1/chat/completions'));
  assert.equal(await page.getByLabel('Model',{exact:true}).inputValue(),'fixture-model');
  assert.equal(await page.getByLabel('API key (Windows secure storage)').inputValue(),'');

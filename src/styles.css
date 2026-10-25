@@ -12,6 +12,7 @@
   text-rendering: geometricPrecision;
 }
 
+
 * {
   box-sizing: border-box;
 }
@@ -1112,3 +1113,35 @@ h1 {
 .accept-bar .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .accept-bar .api-run-button { width: 100%; min-height: 34px; margin-bottom: 6px; }
+
+/* Progressive disclosure: keep consent, warnings, draft and expiry actionable. */
+.connection-group { border-top: 1px solid #dde2df; padding: 12px 0; }
+.connection-group summary { cursor: pointer; font-weight: 600; font-size: 12px; padding: 4px 0; }
+.connection-group[open] summary { margin-bottom: 10px; }
+.connection-hint { font-size: 11px; color: var(--text-instruction); }
+.review-toggle { background: transparent; color: var(--text-guidance); padding: 6px; font-size: 11px; }
+.compact-mode { display: flex; align-items: center; gap: 10px; font-size: 11px; }
+.compact-mode select { flex: 1; padding: 5px; border: 1px solid #dde2df; border-radius: 6px; background: white; }
+.compact-review .brand p,
+.compact-review .status-copy,
+.compact-review .mode-grid,
+.compact-review .toggles,
+.compact-review .format-options,
+.compact-review .translation-controls > p,
+.compact-review .confidence-badge,
+.compact-review .rewrite-summary,
+.compact-review .edit-list,
+.compact-review .suggestion-list,
+.compact-review .result-review,
+.compact-review .result-heading > div > span { display: none; }
+.compact-review .panel { gap: 8px; padding: 12px; }
+.compact-review .panel-content { gap: 8px; }
+.compact-review .result-card { padding: 8px; min-height: 0; flex: 1 1 auto; }
+.compact-review .result-heading { display: none; }
+.compact-review .result-area { min-height: 80px; flex: 1 0 80px; }
+.compact-review .result-actions { padding-top: 0; border-top: 0; }
+.compact-review .result-actions [data-testid="run-deep"],
+.compact-review .result-actions [data-testid="dismiss-result"],
+.compact-review .result-actions [data-testid="cancel-rewrite"]:disabled { display: none; }
+.compact-review .result-area textarea { min-height: 80px; font-size: 15px; }
+.compact-review .status-pill { max-width: 100%; }

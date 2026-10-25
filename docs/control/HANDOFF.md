@@ -1,5 +1,32 @@
 # Grammar autonomous mission candidate handoff
 
+## 2026-10-25 — compact widget / connection settings candidate
+
+Owner requested simpler OpenCode-inspired connection setup, small default result
+widget and ongoing consistent quality work across Luna/Haiku/Gemma. Candidate UI:
+API-first Settings; separate collapsed CLI account connections, general settings,
+language/dictionary, endpoint/manual model and privacy management. Secure storage,
+explicit consent, catalog-vs-invocation distinction and existing backend unchanged.
+Default widget requests 380x360; Details/Settings request420x560. Mode dropdown,
+editable result, fixed API/Accept/Copy and expiry remain accessible. Details toggle
+preserves edits. Only main-window set-size capability added; no network permission.
+
+Validation: production ApiSettings with mock Tauri14 checks PASS; production App
+compact component test PASS (draft preservation, default collapse, visible fixed
+actions, resize request, zero network); AcceptBar keyboard/expiry/re-capture tests,
+window-chrome contract, frontend build/typecheck, governance PASS. Initial layout
+test failed because unanchored selector matching read the compact override; fixed
+selector anchoring and corrected historical scrolling invariant to panel-content
+scroll with fixed footer. No product safeguard removed. Native resize/installed
+new UI/real Provider tests NOT_RUN; personal r6 and credentials untouched.
+
+MODEL_QUALITY.md records evidence-limited comparison, shared six-axis rubric,
+fixed latency goals and next baseline/held-out steps. Eight synthetic development
+cases plus offline explicit-review aggregation implemented; four negative/coverage
+tests PASS. This is not model training, inference, semantic verification or equal
+quality proof. Prior Chromium live tooling blocker remains. No paid calls this
+round. Next: native package/UI trial, then authorized same-corpus model baselines.
+
 ## 2026-10-25 — r6 Chromium Claude API attempt blocked before calls
 
 Owner requested saved Haiku API translation/rewrite/Accept in Chromium. Source r6 `52b98c6`, unchanged installed extension, one fresh owned Chromium profile and synthetic local page prepared. The desktop-review bridge is the intended existing route to the app's secure API session; extension CLI Deep is a separate path.

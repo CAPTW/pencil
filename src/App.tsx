@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ApiSettings } from "./ApiSettings";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 import {
   Check,
   BookOpen,
@@ -354,6 +355,14 @@ export default function App() {
   const [isCopying, setIsCopying] = useState(false);
   const [isStartingLogin, setIsStartingLogin] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [reviewExpanded, setReviewExpanded] = useState(false);
+  const resizeQueue = useRef(Promise.resolve());
+  useEffect(() => {
+    const expanded = settingsOpen || reviewExpanded || onboardingOpen;
+    resizeQueue.current = resizeQueue.current.catch(() => {}).then(async () => {
+      await getCurrentWindow().setSize(new LogicalSize(expanded ? 420 : 380, expanded ? 560 : 360));
+    }).catch(() => { /* Resizable layout remains usable if the host refuses sizing. */ });
+  }, [settingsOpen, reviewExpanded, onboardingOpen]);
   const [recordingShortcut, setRecordingShortcut] = useState(false);
   const [shortcutCandidateLabel, setShortcutCandidateLabel] = useState<string | null>(null);
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -1683,7 +1692,7 @@ export default function App() {
               : "Signed out";
 
   return (
-    <main className="shell">
+    <main className={`shell${!settingsOpen && !reviewExpanded ? " compact-review" : ""}`}>
       <section className="panel">
         <div className="panel-content">
         <header className="topbar" onMouseDown={beginWindowDrag}>
@@ -1700,6 +1709,10 @@ export default function App() {
             </div>
           </div>
           <div className="topbar-actions">
+            {!settingsOpen && <button className="review-toggle" type="button"
+              aria-expanded={reviewExpanded} onClick={() => setReviewExpanded(value => !value)}>
+              {reviewExpanded ? "Simple" : "Details"}
+            </button>}
             <button className="icon-button" type="button" onClick={quitApp} disabled={isCopying} aria-label="Quit Pencil" title="Quit Pencil">
               <Power size={16} />
             </button>
@@ -1778,6 +1791,8 @@ export default function App() {
               </div>
               <Keyboard size={20} />
             </div>
+            <ApiSettings />
+            <details className="connection-group"><summary>General settings</summary>
             <label>
               <input
                 type="checkbox"
@@ -1817,6 +1832,9 @@ export default function App() {
                   : settings.shortcut.primary.display}
               </button>
             </label>
+            </details>
+            <details className="connection-group"><summary>Account login / CLI connections</summary>
+            <p>Separate from API keys. Availability depends on the installed official CLI and account.</p>
             <section className="provider-settings" aria-label="Deep consent">
               <h3>Deep consent</h3>
               <p>Consent is saved per Provider and survives restart. With Auto rewrite on, a capture may send text after consent.</p>
@@ -1827,7 +1845,6 @@ export default function App() {
                 onClick={() => void revokeCloudConsent()}>Revoke all Deep consent</button>
               <p>Revocation stops the current Deep request and turns off Auto rewrite. Already sent text cannot be recalled. Your draft stays available.</p>
             </section>
-            <ApiSettings />
             <section className="provider-settings" aria-label="Providers">
               <div className="translation-settings-heading">
                 <div>
@@ -1928,6 +1945,8 @@ export default function App() {
                 );
               })}
             </section>
+            </details>
+            <details className="connection-group"><summary>Language and dictionary</summary>
             <section className="translation-settings" aria-label="Automatic translation settings">
               <div className="translation-settings-heading">
                 <div>
@@ -2208,6 +2227,7 @@ export default function App() {
                 </>
               ) : <div className="loading-state"><Loader2 className="spin" size={16} /> Loading local terminology</div>}
             </section>
+            </details>
             <div className="settings-actions">
               <button className="secondary-button" type="button" onClick={resetShortcut}>
                 <RotateCcw size={15} />
@@ -2382,6 +2402,12 @@ export default function App() {
               </div>
             ) : null}
 
+            {!reviewExpanded && <label className="compact-mode">Action
+              <select aria-label="Writing action" value={selectedMode.id}
+                onChange={event => chooseMode(event.target.value as RewriteMode)}>
+                {MODES.map(mode => <option key={mode.id} value={mode.id}>{mode.label}</option>)}
+              </select>
+            </label>}
             <div className="mode-grid" aria-label="Rewrite mode">
               {MODES.map((mode) => {
                 const isActive = mode.id === selectedMode.id;
@@ -2623,6 +2649,7 @@ export default function App() {
         </div>
         {!settingsOpen && (selection || draft.length > 0) && (
           <AcceptBar key={selection ? `${selection.token.sessionId}:${selection.token.generation}` : "ended"}
+            compact={!reviewExpanded}
             directApply={selection?.directApply === true} expiresAtMs={selection?.acceptExpiresAtMs}
             canRunApi={Boolean(selection && !isRewriting && !isCopying && !revokingConsent)} onRunApi={() => void runApiDeep()}
             canCopy={canCopy} busy={isCopying} onAccept={() => void copyResult(true)} onCopy={() => void copyResult()} />

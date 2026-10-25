@@ -1,5 +1,18 @@
 # Pencil — Product quality and release readiness
 
+## 2026-10-25 active UI and model consistency work
+
+- P1: compact default suggestion widget and progressive API/CLI settings candidate.
+  Completion: component, native sizing and installed Accept/expiry checks; preserve
+  secure storage/consent and edited drafts. Component validation is not installed acceptance.
+- P1: [shared model quality track](MODEL_QUALITY.md), GPT-6 Luna / Haiku 5.5 /
+  Gemma 4 baseline. Offline corpus/review aggregation implemented; same-corpus
+  model runs, blind reviews and held-out confirmation pending. No weight training.
+- Dependency retained: Chromium live API trial blocked by browser automation
+  identity/URL policy, not qualified through desktop evidence. Resolve before
+  claiming browser API support acceptance. Existing keys and user documents excluded
+  from fixtures, training and published evidence.
+
 Track: `PRODUCT_QUALITY_AND_RELEASE_READINESS` · Owner request: 2026-10-15.
 Q19 actual release-browser fixture:6 latest-source quantity/negation/past-date
 cases across textarea/contenteditable passed, recommendation805-827ms and

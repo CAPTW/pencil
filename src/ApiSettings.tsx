@@ -92,9 +92,8 @@ export function ApiSettings() {
     finally { if (version.current === action) setPending(false); }
   }
   return <section className="provider-settings" aria-label="Optional API setup">
-    <h3>Optional API setup</h3>
-    <p>Claude Messages and OpenAI-compatible Chat Completions. Use Run API Deep on a captured selection to send one explicit request. Automatic rewriting does not use this API.</p>
-    <p>The key, selected provider/model and permission are saved in Windows Credential Manager for this Windows user and Pencil profile. They are restored after restarting. The key is never returned to this form or saved in ordinary settings. Saving does not contact the provider.</p>
+    <h3>Connect a model</h3>
+    <p>Choose a provider, enter a key, then select a model. Saved keys stay in Windows Credential Manager.</p>
     <label className="settings-field">API provider preset
       <select disabled={pending} value={[
         "https://api.anthropic.com/v1/messages", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
@@ -110,31 +109,34 @@ export function ApiSettings() {
         <option value="https://api.x.ai/v1/chat/completions">xAI API</option>
       </select>
     </label>
-    <p>Enter an exact model ID available to your API account. CLI subscriptions do not configure API access. OpenRouter requires an explicit model (no auto/router variants), disables fallback, and requires zero data retention; unsupported routes fail.</p>
+    <details className="connection-group"><summary>Endpoint and manual model ID</summary>
     <label className="settings-field">HTTPS endpoint
       <input type="url" value={endpoint} autoComplete="off" spellCheck={false} disabled={pending} onChange={event => { resetCatalog(); setEndpoint(event.target.value); setConsent(false); if (keyInput.current) keyInput.current.value = ""; }} placeholder="https://api.example.com/v1/chat/completions" />
     </label>
     <label className="settings-field">Model
       <input value={model} autoComplete="off" spellCheck={false} disabled={pending} onChange={event => { setModel(event.target.value); setConsent(false); }} />
     </label>
+    </details>
     <label className="settings-field">API key (Windows secure storage)
       <input ref={keyInput} type="password" autoComplete="off" spellCheck={false} disabled={pending} placeholder={status.configured && endpoint === status.endpoint ? "Saved key — leave blank to keep" : "Enter API key"} maxLength={4096} onChange={() => { keyEdited.current = true; resetCatalog(); setConsent(false); }} onBlur={event => loadAfterKeyEntry(event.relatedTarget)} />
     </label>
-    <p>After entering a key, leave the key field to load the official provider’s models once. This sends the key for catalog lookup only, not a writing request. Restarting does not automatically contact the provider. You can also refresh the list manually below.</p>
+    <p className="connection-hint">Leaving the key field loads the provider’s catalog once. No document text is sent.</p>
     <button type="button" disabled={pending} onClick={() => void loadModels()}>Load model list</button>
-    <p>Loading sends the entered key (or the saved key for this exact endpoint) to the selected provider for catalog lookup only. No document text or generation request is sent. The key remains in this form until setup is saved, removed or closed.</p>
     <label className="settings-field">Available models
       <select disabled={pending || !models.length} value={models.some(row => row.id === model) ? model : ""} onChange={event => {setModel(event.target.value); setConsent(false);}}>
-        <option value="">Select a listed model (or enter a model ID above)</option>
+        <option value="">{model ? `Selected: ${model} · invocation unverified` : "Choose a model"}</option>
         {models.map(row => <option key={row.id} value={row.id} disabled={!row.selectable}>{row.name} — {row.id}{row.selectable ? " — invocation unverified" : " — unsupported by this writing connection"}</option>)}
       </select>
     </label>
     <p role="status">{catalogMessage}</p>
     <label><input type="checkbox" checked={consent} disabled={pending} onChange={event => setConsent(event.target.checked)} />Allow explicit API requests to this endpoint and model. Requests may incur charges; provider retention policies apply.</label>
     <p>Saved endpoint: {status.endpoint ?? "None"} 쨌 Model: {status.model ?? "None"} 쨌 Permission: {status.consent ? "allowed for explicit requests" : "not granted"}</p>
-    <button type="button" disabled={pending || !status.epoch} onClick={() => void save()}>Save API setup securely</button>
+    <button className="primary-button" type="button" disabled={pending || !status.epoch} onClick={() => void save()}>Save API setup securely</button>
+    <details className="connection-group"><summary>Privacy and connection management</summary>
+    <p>Saving makes no network request. API requests require Run API Deep and confirmation. CLI subscriptions are separate. OpenRouter uses an explicit model with fallback disabled and zero data retention; unsupported routes fail.</p>
     <button type="button" disabled={pending || !status.configured} onClick={() => void revoke()}>Revoke API consent</button>
     <button type="button" disabled={pending} onClick={() => void clear()}>Remove API key and permission</button>
+    </details>
     {message && <p role="status">{message}</p>}
   </section>;
 }

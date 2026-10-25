@@ -6,7 +6,7 @@ const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 
 function cssRule(selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = styles.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`, "s"));
+  const match = styles.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`, "s"));
   assert.ok(match, `missing CSS rule: ${selector}`);
   return match[1];
 }
@@ -18,7 +18,9 @@ assert.match(rootRule, /--text-guidance:\s*#[0-9a-f]{6}/i);
 assert.match(rootRule, /--text-warning:\s*#[0-9a-f]{6}/i);
 assert.match(rootRule, /--text-danger:\s*#[0-9a-f]{6}/i);
 
-assert.match(cssRule(".panel"), /overflow-y:\s*auto/);
+// The fixed footer is outside the scrollable content, not in a scrolling panel.
+assert.match(cssRule(".panel"), /overflow-y:\s*hidden/);
+assert.match(cssRule(".panel-content"), /overflow-y:\s*auto/);
 
 const cardRule = cssRule(".result-card");
 assert.match(cardRule, /flex:\s*1\s+0\s+auto/);

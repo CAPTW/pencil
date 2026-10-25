@@ -14,8 +14,8 @@
       {
         "label": "main",
         "title": "Pencil",
-        "width": 420,
-        "height": 460,
+        "width": 380,
+        "height": 360,
         "minWidth": 360,
         "minHeight": 320,
         "decorations": false,

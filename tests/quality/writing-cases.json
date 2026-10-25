@@ -1,0 +1,10 @@
+[
+  {"id":"ko-negation","mode":"translate","source":"민수 씨는 금요일까지 보고서를 보내지 않았습니다.","target":"English","critical":"Minsu is sender; past negative; Friday deadline; no invented gender."},
+  {"id":"ko-condition","mode":"translate","source":"승인이 나면 지연 씨에게 알려 주세요. 승인이 없으면 자료를 보내지 마세요.","target":"English","critical":"Two conditional branches; Jiyeon recipient; prohibit sending without approval."},
+  {"id":"ko-quote","mode":"translate","source":"선생님은 ‘아직 결정하지 않았다’고 말씀하셨습니다.","target":"English","critical":"Teacher reports undecided state; preserve quotation and respectful register without invented gender."},
+  {"id":"ko-register","mode":"natural","source":"확인하셨으면 내일까지 알려 주시겠어요?","target":"Korean","critical":"Respectful question, conditional completion, tomorrow deadline."},
+  {"id":"ko-subject","mode":"natural","source":"수진 씨가 승인하면 민호 씨가 고객에게 수정안을 보냅니다.","target":"Korean","critical":"Sujin approves; Minho sends; customer receives; retain condition."},
+  {"id":"en-numbers","mode":"natural","source":"Please send 12 copies, not 20, before 3 p.m.","target":"English","critical":"Preserve quantities, negation and deadline."},
+  {"id":"ko-paragraph","mode":"translate","source":"어제 검토를 마쳤습니다. 아직 승인은 받지 못했습니다. 승인이 나면 수정안을 보내겠습니다. 그전에는 기존 문서를 사용해 주세요.","target":"English","critical":"Review past complete, approval absent, sending conditional future, existing document used until then; no invented subject."},
+  {"id":"en-paragraph","mode":"natural","source":"The team reviewed the draft yesterday. It has not approved the budget. If approval arrives tomorrow, Mina will send the revised schedule. Until then, please keep the current dates.","target":"English","critical":"Preserve all four temporal/conditional relationships, Mina as sender, current dates unchanged."}
+]
