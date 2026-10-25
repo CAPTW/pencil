@@ -24,13 +24,15 @@ class StartupFixture(unittest.TestCase):
             script = root / "compiler.py"
             script.write_text(
                 "import subprocess, sys\n"
-                "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n",
+                "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], creationflags=0x08000000)\n",
                 encoding="utf-8")
             # Synthetic compiler exits while its declared helper retains output
             # handles. This must be explicit reaping, not EOF-based timeout or
             # a false natural-exit claim. Only this Job's children are affected.
             result = run_owned([sys.executable, str(script)], root / "owned", 60,
-                               owned_helper_images=[sys.executable])
+                               owned_helper_images=[sys.executable,
+                                   str(Path(os.environ["SystemRoot"]) / "System32/conhost.exe")])
+            print("synthetic compiler owner: " + json.dumps(result), flush=True)
             self.assertEqual(result["status"], "BUILD_COMPLETE_HELPERS_REAPED")
             self.assertFalse(result["naturalChildExit"])
             self.assertEqual(result["cleanup"], "COMPLETE")
