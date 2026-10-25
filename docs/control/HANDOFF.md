@@ -1,5 +1,13 @@
 # Grammar autonomous mission candidate handoff
 
+## 2026-10-25 — r6 Chromium Claude API attempt blocked before calls
+
+Owner requested saved Haiku API translation/rewrite/Accept in Chromium. Source r6 `52b98c6`, unchanged installed extension, one fresh owned Chromium profile and synthetic local page prepared. The desktop-review bridge is the intended existing route to the app's secure API session; extension CLI Deep is a separate path.
+
+No API request or browser interaction executed: Computer Use returned a Chrome window but rejected that exact identity with “no longer belongs to Chrome; current owner is Chrome”; fresh enumeration and get_window retry failed identically. Initial combined launch was also rejected by automatic review with generic policy reason; subsequent launch omitted extension-disabling and hidden-browser options. This is tooling BLOCKED / live NOT_RUN, not a product defect or PASS.
+
+Server and browser closed; late-started tray app required ownership-checked forced tree termination (not normal shutdown acceptance). Scoped residual count zero. Settings/backup hashes and dictionary presence unchanged; keys not read, exported or replaced. One browser session only; owned browser profile retained in external evidence. Evidence `personal-r6-chromium-20261025/RESULT.json`, profile snapshots and cleanup receipt. Next: repair the Chrome window identity/tooling issue and rerun the real installed bridge with explicit API confirmation and exact textarea/contenteditable reread. No product code or release changed.
+
 ## 2026-10-25 — published r6 personal installed Claude API trial
 
 Owner-authorized personal update of published Prototype 3 r6 (source `52b98c64d61e4a3c9f82cfcec778e53e60d471f0`, ZIP SHA256 `33ff688f00117ed16d946d898e11b1d5dab93bbf2f4172bd720588c2af2dfd15`). One host Windows synthetic single-line Edit session; existing securely stored `claude-haiku-5-5` credential and explicit API consent used, never exported or replaced. No product code changed.
