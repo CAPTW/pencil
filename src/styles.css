@@ -1145,6 +1145,9 @@ h1 {
 .compact-review .result-actions [data-testid="cancel-rewrite"]:disabled { display: none; }
 .compact-review .result-area textarea { min-height: 80px; font-size: 15px; }
 .compact-review .status-pill { max-width: 100%; }
+.compact-review .translation-controls { display: block; padding: 0; border: 0; background: transparent; }
+.compact-review .translation-field { display: flex; align-items: center; gap: 10px; }
+.compact-review .translation-field select { flex: 1; width: 0; height: 28px; }
 .api-request-dialog { width: min(340px, calc(100vw - 32px)); max-height: calc(100vh - 32px); box-sizing: border-box; overflow: auto; border: 1px solid #ccd6cf; border-radius: 12px; padding: 18px; background: #fcfdfa; color: #263d2e; }
 .api-request-dialog::backdrop { background: rgb(0 0 0 / 28%); }
 .api-request-dialog h2 { margin: 0 0 12px; font-size: 17px; }

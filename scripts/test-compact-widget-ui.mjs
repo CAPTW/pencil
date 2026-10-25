@@ -38,6 +38,7 @@ try {
  }
  await page.evaluate(()=>{const previous=window.fixtureInvoke;window.commands=[];window.fixtureInvoke=async(c,a)=>{
    window.commands.push(c);
+   if(c==='save_settings')return a.settings;
    if(c==='api_session_status')return {epoch:'synthetic',endpoint:'https://api.example.invalid/v1/messages',model:'synthetic-model',requestEnabled:true};
    return previous(c,a);
  };});
@@ -68,6 +69,14 @@ try {
  assert.equal(await draft.inputValue(),'Owner edited draft.');
  assert.deepEqual(await page.evaluate(()=>window.sizes.at(-1)),{width:380,height:360});
  await page.screenshot({path:path.join(out,'compact.png')});
+ page.once('dialog',dialog=>dialog.accept());
+ await page.getByRole('combobox',{name:'Writing action'}).selectOption('translate');
+ await page.waitForFunction(()=>window.sizes.at(-1)?.height===400);
+ await page.setViewportSize({width:380,height:400});
+ const resultBox=await draft.boundingBox();
+ const contentBox=await page.locator('.panel-content').boundingBox();
+ assert.ok(resultBox && contentBox && resultBox.y>=contentBox.y && resultBox.y+resultBox.height<=contentBox.y+contentBox.height,'Translation draft fits above fixed footer without scrolling');
+ await page.screenshot({path:path.join(out,'compact-translate.png')});
  await page.getByRole('button',{name:'Settings',exact:true}).click();
  await page.getByRole('heading',{name:'Connect a model'}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Connect Codex',exact:true}).isVisible(),false);

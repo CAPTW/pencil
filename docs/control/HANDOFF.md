@@ -14,6 +14,15 @@ pass. Installed retest is pending; first build supervisor recorded vctip leftove
 then COMPLETE owned cleanup, independently of successful build receipt.
 Evidence: D:/dev/grammar-evidence/compact-personal-20261025.
 
+Follow-up installed4046a56: saved Haiku5.5 returned the synthetic translation;
+expired Accept was disabled, Copy left the editor unchanged, manual paste into the
+owned editor exactly matched the response. Translation language controls consumed
+the result viewport, so compact translation now uses380x400 and a single inline
+language row (other modes380x360). Production component verifies the entire draft
+fits above the fixed footer. Initial new test timed out because its save_settings
+mock returned null; fixed mock to return submitted settings, rerun PASS. Personal
+app/editor exited before rebuilding; final installed Accept/rewrite retest pending.
+
 ## 2026-10-25 — compact widget / connection settings candidate
 
 Owner requested simpler OpenCode-inspired connection setup, small default result

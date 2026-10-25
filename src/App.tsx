@@ -361,9 +361,9 @@ export default function App() {
   useEffect(() => {
     const expanded = settingsOpen || reviewExpanded || onboardingOpen;
     resizeQueue.current = resizeQueue.current.catch(() => {}).then(async () => {
-      await getCurrentWindow().setSize(new LogicalSize(expanded ? 420 : 380, expanded ? 560 : 360));
+      await getCurrentWindow().setSize(new LogicalSize(expanded ? 420 : 380, expanded ? 560 : settings.mode === "translate" ? 400 : 360));
     }).catch(() => { /* Resizable layout remains usable if the host refuses sizing. */ });
-  }, [settingsOpen, reviewExpanded, onboardingOpen]);
+  }, [settingsOpen, reviewExpanded, onboardingOpen, settings.mode]);
   const [recordingShortcut, setRecordingShortcut] = useState(false);
   const [shortcutCandidateLabel, setShortcutCandidateLabel] = useState<string | null>(null);
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
