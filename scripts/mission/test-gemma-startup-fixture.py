@@ -1,7 +1,9 @@
 """Owned synthetic server must survive aborted HTTP requests; no model/GPU/UI."""
 import os
+import json
 import socket
 import struct
+import sys
 import subprocess
 import tempfile
 import time
@@ -9,16 +11,49 @@ import unittest
 import urllib.request
 from pathlib import Path
 
+if os.name == "nt":
+    from owned_build import installed_helper
+    from owned_trial import run as run_owned
+
 
 @unittest.skipUnless(os.name == "nt", "Windows fixture")
 class StartupFixture(unittest.TestCase):
+    def test_completed_compiler_with_inherited_output_child_is_owned(self):
+        with tempfile.TemporaryDirectory(prefix="grammar-compiler-child-") as tmp:
+            root = Path(tmp)
+            script = root / "compiler.py"
+            script.write_text(
+                "import subprocess, sys\n"
+                "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n",
+                encoding="utf-8")
+            # Synthetic compiler exits while its declared helper retains output
+            # handles. This must be explicit reaping, not EOF-based timeout or
+            # a false natural-exit claim. Only this Job's children are affected.
+            result = run_owned([sys.executable, str(script)], root / "owned", 60,
+                               owned_helper_images=[sys.executable])
+            self.assertEqual(result["status"], "BUILD_COMPLETE_HELPERS_REAPED")
+            self.assertFalse(result["naturalChildExit"])
+            self.assertEqual(result["cleanup"], "COMPLETE")
+            self.assertEqual(result["remainingAfterCleanup"], 0)
+
     def test_abandoned_requests_do_not_kill_warmup_server(self):
         with tempfile.TemporaryDirectory(prefix="grammar-fixture-reset-") as tmp:
             root = Path(tmp)
             exe = root / "server.exe"
             source = Path(__file__).parent / "fixtures/gemma-startup-runtime.rs"
-            subprocess.run(["rustc", str(source), "-o", str(exe)], check=True,
-                           capture_output=True, creationflags=0x08000000, timeout=60)
+            # Wait on the compiler process, not EOF from pipes inherited by
+            # toolchain descendants. Reuse the existing build-only Job owner;
+            # a declared MSVC helper may be reaped, never counted as natural exit.
+            # The actual compilation deadline remains 60 seconds.
+            compiled = run_owned(["rustc", str(source), "-o", str(exe)],
+                                 root / "compile", 60,
+                                 owned_helper_images=[installed_helper()])
+            print("fixture compile: " + json.dumps(compiled), flush=True)
+            if compiled["status"] not in ("PASS", "BUILD_COMPLETE_HELPERS_REAPED"):
+                print((root / "compile/trial.log").read_text(encoding="utf-8", errors="replace")[-8000:], flush=True)
+            self.assertIn(compiled["status"], ("PASS", "BUILD_COMPLETE_HELPERS_REAPED"))
+            self.assertEqual(compiled["cleanup"], "COMPLETE")
+            self.assertEqual(compiled["remainingAfterCleanup"], 0)
             model = root / "invalid.gguf"
             model.write_text("invalid")
             with socket.socket() as reserve:

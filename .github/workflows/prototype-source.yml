@@ -69,7 +69,11 @@ jobs:
         run: node --test adapters/chromium/tests/scheduling.test.mjs
       - name: Startup HTTP fixture disconnect regression
         if: ${{ !cancelled() }}
-        run: python scripts/mission/test-gemma-startup-fixture.py
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: --no-deps -r scripts/mission/requirements-windows-ci.txt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python scripts/mission/test-gemma-startup-fixture.py
+          exit $LASTEXITCODE
       - name: Rust regressions (ignored live tests excluded)
         if: ${{ !cancelled() }}
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --no-fail-fast -- --test-threads=1
