@@ -69,7 +69,7 @@ Pencil의 기본 원칙은 간단합니다. **AI는 제안하고, 변경은 사�
 
 ### 1. Download
 
-[**Prototype 3 release**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3)의 **Assets**에서 `Pencil-0.1.0-prototype.3-r6-windows-x64.zip`과 `PROTOTYPE_3_R6_SHA256SUMS.txt`를 받으세요. GitHub의 자동 생성 **Source code (zip)**은 실행 패키지가 아닙니다.
+[**Prototype 3 release**](https://github.com/CAPTW/pencil/releases/tag/v0.1.0-prototype.3)의 **Assets**에서 `Pencil-0.1.0-prototype.3-r7-windows-x64.zip`과 `PROTOTYPE_3_R7_SHA256SUMS.txt`를 받으세요. GitHub의 자동 생성 **Source code (zip)**은 실행 패키지가 아닙니다.
 
 필수 환경은 **Windows x64 · PowerShell 7 · Microsoft WebView2**입니다.
 
@@ -178,7 +178,7 @@ Provider CLI의 계정 로그인·모델 이용 가능 여부는 설치 버전�
 
 ### API 모델 목록과 직접 선택 (Prototype 3 r3)
 
-Settings → Optional API setup에서 Claude·Google Gemini·OpenRouter·xAI를 고르고
+Settings → Connect a model에서 Claude·Google Gemini·OpenRouter·xAI를 고르고
 API Key 입력 → **Load model list** → **Available models** 선택 → 별도 전송 동의 →
 **Save API setup securely** 순서로 설정합니다. r3에서는 키·Provider·모델·동의를
 Windows Credential Manager에 프로필별로 저장해 재시작 후 복원합니다. 이전 r2는 세션 저장 방식입니다.

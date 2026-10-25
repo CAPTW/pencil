@@ -1,5 +1,22 @@
 # Pencil 개인용 패키지 안내
 
+## Prototype 3 r7 — 작은 기본 위젯과 간단한 연결 설정
+
+Settings의 **Connect a model**에서 Provider·모델·키를 설정합니다. 계정/CLI 로그인,
+고급 endpoint, 동의 철회·키 삭제는 별도 접힌 항목에 있습니다. 키가 이미 저장됐다면
+다시 입력하지 않습니다. 새 설치본도 기존 `-ProfileDirectory`를 유지해야 같은 키와
+설정을 사용합니다. 기존 앱은 먼저 정상 종료하고 새 경로에 설치하세요.
+
+기본 위젯은 추천문과 고정 **Run API Deep / Accept / Copy**를 보여줍니다.
+**Details**로 상세 화면을 펼치고 **Simple**로 돌아올 수 있습니다. Accept는 캡처부터
+30초(모델 대기·검토 포함)이며 만료되면 재캡처 또는 Copy를 사용합니다.
+API 확인창에서 대상·모델을 확인하고 Send request를 누릅니다. Cancel/Esc는 전송하지 않습니다.
+
+동일 제품 코드의 eee50ae 개인 설치본에서 실제 Claude Haiku 5.5 합성 문장의 번역·재작성,
+표준 Edit Accept·원문 재조회·Undo·만료 후 Copy를 검증했습니다. 새 Release 재빌드는
+별도 패키지 검사이며 새 바이너리의 실제 API 재시험은 아닙니다. 다른 Provider·모델,
+Chromium의 실제 Claude Accept, IME·임의 편집기 전체 지원이나 속도 보장은 아닙니다.
+
 이 패키지는 한 Windows 사용자 계정에서 개인적으로 쓰기 위한 후보 빌드입니다. 1차 공개 Prototype 사전 릴리스로 제공되며 서명되지 않았습니다. `MANIFEST.json`에 이 패키지를 만든 소스 커밋, 모든 파일의 SHA-256, 고정된 확장 ID, 지원 범위가 기록되어 있고, `BUILD_RECEIPT.json`에 깨끗한 소스에서 실행한 release 빌드 영수증이 있습니다.
 
 ## Prototype 3 현재 상태와 제한

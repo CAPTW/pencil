@@ -5,8 +5,8 @@ confidential text for cloud Provider tests. No administrator installation requir
 
 1. Install PowerShell 7 and Microsoft WebView2 from their official distributions
    if missing. Windows PowerShell 5.1 is insufficient. No developer tools required.
-2. Compare the downloaded ZIP's SHA-256 with PROTOTYPE_3_R6_SHA256SUMS.txt from the release:
-   `Get-FileHash .\Pencil-0.1.0-prototype.3-r6-windows-x64.zip -Algorithm SHA256`.
+2. Compare the downloaded ZIP's SHA-256 with PROTOTYPE_3_R7_SHA256SUMS.txt from the release:
+   `Get-FileHash .\Pencil-0.1.0-prototype.3-r7-windows-x64.zip -Algorithm SHA256`.
 3. Extract the ZIP to a new folder. Open **PowerShell 7** in that folder. After
    verifying the download, Windows may require unblocking the downloaded scripts;
    unblock only these verified files, never disable system execution policy.
@@ -41,13 +41,13 @@ unsigned apps, this prototype cannot be used there. See PROTOTYPE.md for measure
 limits and THIRD_PARTY_NOTICES for dependencies. Models/runtime have separate
 upstream terms; this ZIP does not contain them.
 
-## Prototype 3 r6: secure API setup and model selection
+## Prototype 3 r7: compact review and secure API setup
 
-Use **Pencil-0.1.0-prototype.3-r6-windows-x64.zip** and
-**PROTOTYPE_3_R6_SHA256SUMS.txt** from the release. Previous ZIPs and their failure
+Use **Pencil-0.1.0-prototype.3-r7-windows-x64.zip** and
+**PROTOTYPE_3_R7_SHA256SUMS.txt** from the release. Previous ZIPs and their failure
 records remain historical downloads. This is an unsigned prerelease.
 
-1. Open Settings → Optional API setup.
+1. Open Settings → Connect a model.
 2. Select Claude, Google Gemini, OpenRouter or xAI; enter that service's API key.
 3. Click **Load model list**, then select **Available models**. Unsupported rows
    stay visible but disabled. Custom endpoints require manual model IDs.
@@ -55,11 +55,15 @@ records remain historical downloads. This is an unsigned prerelease.
 5. Capture synthetic text, select translation/rewriting, and choose **Run API
    Deep** only when ready to send it. Review before explicit Accept or Copy.
 
-**Actual API invocation remains NOT_RUN / unverified.** Catalog success does not
+**Scope:** the compact runtime eee50ae passed bounded real Claude Haiku 5.5
+translation/rewrite, exact desktop Accept reread, Undo and expired Copy on synthetic
+classic Edit text. This release rebuild has separate package validation; that
+earlier installed evidence is not a new-binary live test. Other providers/models
+and Chromium live Claude Accept remain unverified. Catalog success does not
 prove billing/quota availability, generation permissions, Pencil JSON compatibility,
-quality or latency. No real keys or paid calls were used to qualify these presets.
+quality or latency. Preset-wide qualification has not been performed.
 The isolated installed settings trial used synthetic catalog responses with real
-save/status/remove IPC; it did not validate the external service. Settings and
+save/status/remove IPC; that historical trial did not validate the external service. Settings and
 catalog UI evidence do not qualify Provider translation/rewrite/Accept.
 
 Keys, selected endpoint/model and consent persist in Windows Credential Manager
@@ -96,7 +100,7 @@ One-second recommendations, half-second Accept and three-second paragraphs are
 targets, not guarantees. Rejected outputs are not successful translations;
 conservative guards can reject valid wording and cannot prove general meaning,
 subject/gender binding or natural English. Physical IME, ordinary browser profiles,
-Edge, live cloud Providers and arbitrary Office/Hancom editors remain unqualified.
+Edge, other cloud Providers and arbitrary Office/Hancom editors remain unqualified.
 Writer/rHWP integrations have separate evidence and are not bundled in this ZIP.
 
 Install side-by-side into the new path above; do not overwrite another version.
@@ -110,3 +114,16 @@ Other software running as the same Windows user is outside the protection bounda
 Delete the saved key before removing or moving that profile; uninstall does not
 enumerate or erase credentials. Profile-path changes create a separate identity.
 Oversized configurations fail without plaintext fallback. Earlier r2 was session-only.
+
+## Small default widget
+
+Review the editable suggestion, then use the fixed **Run API Deep**, **Accept** or
+**Copy** buttons. **Details** expands explanations and CLI controls; **Simple**
+returns to the small widget without discarding edits. Translation adds one language
+row. API request confirmation shows the destination and model; Cancel/Escape sends
+nothing. Accept expires30 seconds after capture, including model wait and review.
+After expiry, capture again or Copy. Unsupported fields remain Copy-only/refused.
+Advanced endpoints, CLI login and privacy controls are collapsed in Settings.
+Keep the same `-ProfileDirectory` when upgrading to retain that profile's saved
+key/model/consent. Do not copy credentials or delete the old profile. Close the old
+app, install side-by-side, and retain existing settings and dictionary.

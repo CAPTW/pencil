@@ -58,6 +58,15 @@ jobs:
       - name: Capture contract
         if: ${{ !cancelled() }}
         run: node scripts/test-capture-contract.mjs
+      - name: Compact review and quality evaluator contracts
+        if: ${{ !cancelled() }}
+        run: |
+          node scripts/test-result-layout-contract.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/test-window-chrome-contract.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python scripts/test-writing-quality-evaluation.py
+          exit $LASTEXITCODE
       - name: Chromium core
         if: ${{ !cancelled() }}
         run: node adapters/chromium/tests/core.test.mjs
