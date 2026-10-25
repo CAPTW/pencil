@@ -1,5 +1,18 @@
 # Grammar autonomous mission candidate handoff
 
+## 2026-10-25 — published r6 personal installed Claude API trial
+
+Owner-authorized personal update of published Prototype 3 r6 (source `52b98c64d61e4a3c9f82cfcec778e53e60d471f0`, ZIP SHA256 `33ff688f00117ed16d946d898e11b1d5dab93bbf2f4172bd720588c2af2dfd15`). One host Windows synthetic single-line Edit session; existing securely stored `claude-haiku-5-5` credential and explicit API consent used, never exported or replaced. No product code changed.
+
+- Three explicit live requests: initial translation returned correctly but the review exceeded the 30-second capture lease, so Accept stayed disabled and the editor unchanged; fresh capture/retry translation and Natural rewrite both passed fixed-button Accept, exact editor reread, and Ctrl+Z exact original restoration.
+- Korean request became “Please send the revised report by Friday.” English schedule request became “I'm writing to ask if you could send me the updated schedule.” This is two synthetic examples, not general translation/quality acceptance.
+- Run API Deep and Accept remained visible and clickable without scrolling to the actions. No unsolicited Codex consent panel at capture, mode switch, API request or completion. The separate Codex signed-out header remains; API endpoint/model/charge confirmation correctly remains.
+- Existing task-created launch shortcuts now select r6 and the same personal profile; Gemma shortcut retains the D-drive assets. Old installations remain. Settings and settings backup hashes match before/after after restoring Grammar mode; terminology files were absent before/after. Stored key usability demonstrated by live calls, not credential extraction.
+- All 14 installed EXE/DLL hashes match the published manifest. App normal Quit and fixture close completed; launcher returned EXITED (null exitCode, not asserted zero). Scoped process check: zero remaining. No Sandbox or second test session opened.
+- One automation element geometry error recovered by refreshing the screenshot and clicking the visible button; asynchronous UI snapshots were reread. These do not constitute product defects. No latency benchmark, Chromium, RichEdit, Gemma or broader editor qualification this round. Build-time `providerLive=NOT_RUN` in the immutable package remains distinct from this later scoped live receipt.
+
+Local evidence: `personal-r6-live-20261025/FINAL_RECEIPT.json`, `install.json`, `profile-before.json`, `profile-after.json`, `installed-binaries.json`, `process-cleanup.json` under the existing external evidence root. This documentation checkpoint is not a new package or release.
+
 Mission: GRAMMAR-AUTONOMOUS-P3A-STABILIZATION-TO-P3B-CHROMIUM-PERSONAL-USE-R1. This is an incomplete mission checkpoint, not P3-A/P3-B or personal-use acceptance. Read AGENTS.md, the v1.1 contract override, control/mission.json and control/state.json. The Owner has already authorized internal continuation; no fresh per-step approval is needed.
 
 ## Pre-use inspection round (2026-09-27/28): review and fixes before a limited personal trial
